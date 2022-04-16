@@ -1,0 +1,25 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net6.0</TargetFramework>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="SymbolTable.fs" />
+    <Compile Include="TreeRewriter.fs" />
+    <Compile Include="Walker.fs" />
+    <Compile Include="Program.fs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SBLib\SBLib.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="Antlr4.Runtime">
+      <HintPath>..\packages\Antlr4.CodeGenerator.4.6.5\tools\net45\Antlr4.Runtime.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
+</Project>
