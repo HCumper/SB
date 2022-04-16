@@ -60,10 +60,8 @@ expr :
 	| Not expr																		#Not
 	| expr And expr																	#Binary
 	| expr (Or | Xor) expr															#Binary
-	| identifier																	#Ident
-	| (Integer | String | Real)														#Literal
+	| (Integer | String | Real | identifier)										#Term
 	;
-
 
 
 /* Tokens */
@@ -149,7 +147,6 @@ ID : LETTER ([0-9] | [A-Za-z] | '_')* '$'
 	| LETTER ([0-9] | [A-Za-z] | '_')*;
 
 Integer : DIGIT+;
-
 
 Real
 	: DIGIT+ Point DIGIT*

@@ -8,7 +8,6 @@ open SBLib
 
 [<EntryPoint>]
 let main argv =
-//    SymbolTable.testTable
     let filename = @"H:\source\Home Repos\SB\q3.sb"
     let reader = File.OpenText(filename)
     let cs = new AntlrInputStream(reader)
@@ -18,7 +17,8 @@ let main argv =
     let tokens = new CommonTokenStream(lexer)
     let parser = new SBParser(tokens)
     let parseTree = parser.program()
-    //Console.WriteLine(tree.ToStringTree(parser))
+    let x = parseTree.ToStringTree(parser)
+    Console.WriteLine(x)
 
     let t = Walker.WalkTreeRoot parseTree
 

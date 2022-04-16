@@ -18,9 +18,10 @@ type Symbol = {
 
 type State = {
     implicitInts : Set<string>;
-    implicitStrings : Set<string>;
-    references : Set<string>;
+    implicitStrings : string Set;
+    references : string Set;
     symTab : Map<Key, Symbol>
+    errorList : string list
 }
 
 type dim = {id: int; size:int}
@@ -44,15 +45,26 @@ let addItem inputList x =
 let walkParenthesizedList itemList resultList =
     itemList |> mapAntlr addItem
 
+let extractText (term : SBParser.TermContext) =
+    let termCont = term.children[0].Payload
+    match termCont with
+    | :? SBParser.IdentifierContext -> 
+        let identifier = termCont :?> SBParser.IdentifierContext
+        let token = identifier.children[0].Payload :?> SBToken
+        token.Text
+    | :? SBToken -> 
+        let token = termCont :?> SBToken
+        token.Text
+    | _ -> "error"
+
 let WalkDim (context : IParseTree) state =
     let varName = context.GetChild(1).Payload :?> SB.SBToken
     let paramList = context.GetChild(2).Payload :?> SBParser.ParenthesizedlistContext
     let jj = paramList.children
-    let j = paramList.children[1] :?> SBParser.LiteralContext
-    let ewr = j.children[0].Payload :?> SBToken
-    let fsf = ewr.Text
-//    let y = (paramList.children[1] :?> SBParser.LiteralContext).(children[0].Payload :?> SBToken).Text
- 
+
+    let j = paramList.children[1] :?> SBParser.TermContext
+    let text = extractText j
+
     let key = {name = varName.Text; scope = "~Global"}
     let symbol = {name = key.name; scope = "~Global"; varType=60; paramList=None}
     let newSymbolTable = state.symTab.Add(key, symbol)
@@ -108,7 +120,7 @@ and
 
 // top level only
 let WalkTreeRoot context =
-    let state = { implicitInts = Set.empty; implicitStrings = Set.empty; references = Set.empty; symTab = Map.empty }
+    let state = { implicitInts = Set.empty; implicitStrings = Set.empty; references = Set.empty; symTab = Map.empty; errorList = [] }
 
  
     let h =  WalkDown (context : ParserRuleContext) state

@@ -1,5 +1,5 @@
-140 DIM a(10001)
 150 DIM b(anid,2,3)
+140 DIM a(10001)
 97 astring$ = "hhh"
 100 CLS
 110 TURBO_repfil
