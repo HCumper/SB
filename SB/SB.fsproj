@@ -7,6 +7,7 @@
 
   <ItemGroup>
     <Compile Include="SymbolTable.fs" />
+    <Compile Include="SymbolTableBuilder.fs" />
     <Compile Include="TreeRewriter.fs" />
     <Compile Include="Walker.fs" />
     <Compile Include="Program.fs" />

@@ -5,26 +5,7 @@ open Antlr4.Runtime.Tree
 open System
 open SBLib
 open SB
-
-type Key = { name : string; scope : string }
-
-type Param = string * int
-type Symbol = { 
-    name : string;
-    varType : int;
-    scope : string;
-    paramList : List<Param> Option
-}
-
-type State = {
-    implicitInts : Set<string>;
-    implicitStrings : string Set;
-    references : string Set;
-    symTab : Map<Key, Symbol>
-    errorList : string list
-}
-
-type dim = {id: int; size:int}
+open SymbolTable
 
 let rec mapAntlr f children =
     let x =children[1]
@@ -57,25 +38,18 @@ let extractText (term : SBParser.TermContext) =
         token.Text
     | _ -> "error"
 
-let WalkDim (context : IParseTree) state =
+let WalkDim (context : IParseTree) state action =
     let varName = context.GetChild(1).Payload :?> SB.SBToken
     let paramList = context.GetChild(2).Payload :?> SBParser.ParenthesizedlistContext
-    let jj = paramList.children
-
-    let j = paramList.children[1] :?> SBParser.TermContext
-    let text = extractText j
-
-    let key = {name = varName.Text; scope = "~Global"}
-    let symbol = {name = key.name; scope = "~Global"; varType=60; paramList=None}
-    let newSymbolTable = state.symTab.Add(key, symbol)
-    let newState = {state with symTab = newSymbolTable}
-    newState
+    let text = paramList.children[1] :?> SBParser.TermContext |> extractText
+    let dimAction = action TokenType.Dimension
+    dimAction varName.Text [] state
 
 let WalkLocals ((context : IParseTree), state) index =
     let paramList = context.GetChild(1).Payload :?> SBParser.UnparenthesizedContext
     // let paramList2 = ParseUnparenthesizedContext paramList
-    let (key:Key) = {name = "varName"; scope = "function"}
-    let (symbol:Symbol) = {name = "d"; scope = "function"; varType=60; paramList=None}
+    let (key:Key) = {Name = "varName"; Scope = "function"}
+    let (symbol:Symbol) = {Name = "d"; Scope = "function"; Category=CategoryType.Empty; Type=TokenType.GreaterEqual; TypeString=""; Extra=Empty}
     let newSymbolTable = state.symTab.Add(key, symbol)
     let newState = {state with symTab = newSymbolTable}
     newState
@@ -98,31 +72,30 @@ let WalkLocals ((context : IParseTree), state) index =
 //                | _ -> state
 //        WalkAcross (context, newState) 0
 
-let rec WalkAcross (context : IParseTree) state index =
+let rec WalkAcross (context : IParseTree) state index action=
     let result = 
         let count = context.ChildCount
         match index with
         | n when n < count ->
-            let downValue = WalkDown (context.GetChild(index) : IParseTree) state
-            WalkAcross (((fst downValue): IParseTree).Parent : IParseTree) (snd downValue) (index+1)
+            let downValue = WalkDown (context.GetChild(index) : IParseTree) state action
+            WalkAcross (((fst downValue): IParseTree).Parent : IParseTree) (snd downValue) (index+1) action
         | _ -> state
     result
 and 
-    WalkDown (context : IParseTree) state =
+    WalkDown (context : IParseTree) (state: State) action =
         Console.WriteLine(context.ToString())
         let newState = 
             match context with
-                | :? SBParser.DimContext -> WalkDim context state
+                | :? SBParser.DimContext -> WalkDim context state action
 //                | :? SBParser.LocContext -> WalkLocals context state
                 | _ -> state
-        (context, WalkAcross (context:IParseTree) newState 0)
-
+        (context, WalkAcross (context:IParseTree) newState 0 action)
 
 // top level only
-let WalkTreeRoot context =
-    let state = { implicitInts = Set.empty; implicitStrings = Set.empty; references = Set.empty; symTab = Map.empty; errorList = [] }
+let WalkTreeRoot context action =
+    let state = { implicitInts = Set.empty; implicitStrings = Set.empty; references = Set.empty; symTab = Map.empty; errorList = []; currentScope = "~Global" }
 
  
-    let h =  WalkDown (context : ParserRuleContext) state
+    let h =  WalkDown (context : ParserRuleContext) state action
     Console.WriteLine(h.ToString())
   //  3

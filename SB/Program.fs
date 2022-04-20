@@ -6,8 +6,12 @@ open Antlr4.Runtime
 open SB
 open SBLib
 
+let doSomething =
+    1
+
 [<EntryPoint>]
 let main argv =
+//    SymbolTable.testTable
     let filename = @"H:\source\Home Repos\SB\q3.sb"
     let reader = File.OpenText(filename)
     let cs = new AntlrInputStream(reader)
@@ -20,7 +24,7 @@ let main argv =
     let x = parseTree.ToStringTree(parser)
     Console.WriteLine(x)
 
-    let t = Walker.WalkTreeRoot parseTree
+    let t = Walker.WalkTreeRoot parseTree SymbolTableBuilder.buildSymbolTable
 
     let x=3
     //create symbol table
