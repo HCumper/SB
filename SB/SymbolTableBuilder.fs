@@ -16,9 +16,9 @@ open SymbolTable
 //    Define Function
 //    All but assignment take variable length parameter lists
 
-let addDimSymbol varName paramList state =
-    let key = {Name = varName; Scope = "~Global"}
-    let symbol = {Name = key.Name; Scope = "~Global"; Category=CategoryType.Dim; Type=TokenType.Dimension; TypeString="Dim"; Extra=Empty}
+let addDimSymbol varName state =
+    let key = {Name = varName; Scope = state.currentScope}
+    let symbol = {Name = key.Name; Scope = state.currentScope; Category=CategoryType.Dim; Type=TokenType.Dimension;  ParameterMechanism = Inapplicable}
     let newSymbolTable = state.symTab.Add(key, symbol)
     {state with symTab = newSymbolTable}
     

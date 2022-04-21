@@ -1,4 +1,4 @@
-150 DIM b(anid,2,3)
+150 DIM b(anid,2+8,3)
 140 DIM a(10001)
 97 astring$ = "hhh"
 100 CLS

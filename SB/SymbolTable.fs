@@ -1,7 +1,9 @@
 ﻿module SymbolTable
 
-open System.Collections.Generic
-open System
+open Antlr4.Runtime
+open Antlr4.Runtime.Tree
+open SB
+open SBLib
 
 type TokenType =
    | Refer = 1 | Implic = 2 | Local=3 | Dimension=4 | DefProc=5 | DefFunc=6 | EndDef=7 | If=8 | Else=9 | Then=10 | EndIf=11 | Select=12 | EndSelect=13 | On=14 | For=15 | 
@@ -10,29 +12,17 @@ type TokenType =
       Caret=43 | Not=44 | Tilde=45 | Instr=46 | Amp=47 | Question=48 | Colon=49 | Semi=50 | Comma=51 | Point=52 | Bang=53 | Whitespace=54 | Let=55 | Newline=56 | String=57 | 
       Comment=58 | ID=59 | Integer=60 | Real=61 | Unknowntype=62 | Void=63 | Scalar=64 | LineNumber=65
 
-type CategoryType = Dim | Function | Procedure | Empty
-type ParameterPassingMethod = Value | Reference
-type Parameter = {
-    Name : string;
-    Type : TokenType;
-    ParameterPassing : ParameterPassingMethod
-    }
-type ParameterList = Parameter list
-
-type Array = int list // dynamic array sizing not supported
-type Function = ParameterList
-type Procedure = ParameterList
-type ExtraFields = Array | Function | Procedure | IsParameter | Empty
+type CategoryType = Dim | Function | Procedure | Parameter | Variable
+type ParameterPassingMethod = Value | Reference | Unknown | Inapplicable
+//type ExtraFields = Array of int list| Function of ParameterList | Procedure of ParameterList | IsParameter | Empty | Params
 
 type Key = { Name : string; Scope : string }
-
 type Symbol = {
     Name : string
     Scope : string 
     Category: CategoryType
     Type : TokenType
-    TypeString : string
-    Extra : ExtraFields
+    ParameterMechanism : ParameterPassingMethod
     }
 
 type State = {
@@ -45,11 +35,9 @@ type State = {
 }
    
 // Overwrite if key exists
-let set entry state =
-    let typeName = entry.Type.ToString()
+let set (entry:Symbol) state =
     let key = {Name=entry.Name; Scope=entry.Scope}
-    let content = {Name=entry.Name; Category=entry.Category; Type=entry.Type; TypeString=typeName; Scope=entry.Scope; Extra=entry.Extra}
-    let newTable:Map<Key, Symbol> = state.symTab |> Map.add key content
+    let newTable:Map<Key, Symbol> = state.symTab |> Map.add key entry
     { state with symTab = newTable }
     
 let get name scope state  =
@@ -65,11 +53,11 @@ let listScope currentScope state = state.symTab |> Map.filter (fun n _ -> n.Scop
     
 let testTable =
     let state = { implicitInts = Set.empty; implicitStrings = Set.empty; references = Set.empty; symTab = Map.empty; errorList = []; currentScope = "~Global" }
-    let entry = { Name="a"; Scope = "func1"; Category=CategoryType.Dim; Type=TokenType.EndDef; TypeString="ËndDef"; Extra=Empty }
+    let entry = { Name="a"; Scope = "func1"; Category=CategoryType.Dim; Type=TokenType.EndDef; ParameterMechanism = Inapplicable }
     let table1 = set entry state
-    let entry = { Name="b"; Scope = "~Global"; Category=CategoryType.Procedure; Type=TokenType.Integer; TypeString="If"; Extra=Empty }
+    let entry = { Name="b"; Scope = "~Global"; Category=CategoryType.Procedure; Type=TokenType.Integer;  ParameterMechanism = Inapplicable; }
     let table2 = set entry table1
-    let entry = { Name="c"; Scope = "func1"; Category=CategoryType.Function; Type=TokenType.Implic; TypeString="something"; Extra=Empty }
+    let entry = { Name="c"; Scope = "func1"; Category=CategoryType.Function; Type=TokenType.Implic;  ParameterMechanism = Inapplicable; }
     let table3 = set entry table2
     
     let x = get  "c" "func2" table3

@@ -7,15 +7,25 @@ open SBLib
 open SB
 open SymbolTable
 
-let rec mapAntlr f children =
-    let x =children[1]
-    //match children with
-    //| [] ->
-    //    []
-    //| head::tail ->
-    //    // new head + new tail
-    //    (f head) :: (mapAntlr f tail)
-    children
+// map with generic list to F# list
+let rec mapAntlr f (parentNode: Collections.Generic.IList<IParseTree>) =
+    match parentNode.Count with
+    | 0 -> []
+    | _ -> 
+        // new head + new tail
+        let head = f parentNode[0]
+        let _ = parentNode.RemoveAt(0)
+        head :: mapAntlr f parentNode
+
+// copy generic list to F# list
+let rec copyAntlrList (parentNode: Collections.Generic.IList<IParseTree>) =
+    match parentNode.Count with
+    | 0 -> []
+    | _ -> 
+        // new head + new tail
+        let head = parentNode[0]
+        let _ = parentNode.RemoveAt(0)
+        head :: copyAntlrList parentNode
 
 let dimSymbol state construct =
     state
@@ -24,7 +34,8 @@ let addItem inputList x =
     x
 
 let walkParenthesizedList itemList resultList =
-    itemList |> mapAntlr addItem
+    itemList |> mapAntlr     
+    addItem
 
 let extractText (term : SBParser.TermContext) =
     let termCont = term.children[0].Payload
@@ -41,15 +52,16 @@ let extractText (term : SBParser.TermContext) =
 let WalkDim (context : IParseTree) state action =
     let varName = context.GetChild(1).Payload :?> SB.SBToken
     let paramList = context.GetChild(2).Payload :?> SBParser.ParenthesizedlistContext
-    let text = paramList.children[1] :?> SBParser.TermContext |> extractText
+    let (fList:IParseTree list) = copyAntlrList paramList.children  
+ //   let termList = fList |> List.filter (fun x -> not (x :? TerminalNodeImpl || x :? SBParser.SeparatorContext))
     let dimAction = action TokenType.Dimension
-    dimAction varName.Text [] state
+    dimAction varName.Text state
 
 let WalkLocals ((context : IParseTree), state) index =
     let paramList = context.GetChild(1).Payload :?> SBParser.UnparenthesizedContext
     // let paramList2 = ParseUnparenthesizedContext paramList
     let (key:Key) = {Name = "varName"; Scope = "function"}
-    let (symbol:Symbol) = {Name = "d"; Scope = "function"; Category=CategoryType.Empty; Type=TokenType.GreaterEqual; TypeString=""; Extra=Empty}
+    let (symbol:Symbol) = {Name = "d"; Scope = "function"; Category=Variable; Type=TokenType.GreaterEqual;  ParameterMechanism = Inapplicable}
     let newSymbolTable = state.symTab.Add(key, symbol)
     let newState = {state with symTab = newSymbolTable}
     newState
@@ -94,8 +106,6 @@ and
 // top level only
 let WalkTreeRoot context action =
     let state = { implicitInts = Set.empty; implicitStrings = Set.empty; references = Set.empty; symTab = Map.empty; errorList = []; currentScope = "~Global" }
-
- 
     let h =  WalkDown (context : ParserRuleContext) state action
     Console.WriteLine(h.ToString())
-  //  3
+ 
