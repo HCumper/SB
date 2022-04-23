@@ -19,8 +19,8 @@ stmt :
 	| Local unparenthesizedlist																		#Loc
 	| Implic unparenthesizedlist																	#Implicit
 	| Refer unparenthesizedlist																		#Reference
-	| prochdr line* Integer? EndDef ID?																#Proc
-	| funchdr line* Integer? EndDef ID?																#Func
+	| prochdr line* Integer? enddef ID?																#Proc
+	| funchdr line* Integer? enddef ID?																#Func
 	| For ID Equal expr To expr Newline line* Integer? EndFor ID?									#Longfor
 	| For ID Equal expr To expr Colon stmtlist														#Shortfor
 	| Repeat ID Colon stmtlist																		#Shortrepeat
@@ -39,6 +39,8 @@ prochdr : DefProc identifier parenthesizedlist? Newline											#Procheader
 
 funchdr : DefFunc identifier parenthesizedlist? Newline											#Funcheader
 	;
+
+enddef  : 'END DEFine';
 
 identifier :
 	ID (parenthesizedlist | unparenthesizedlist)?;
@@ -71,7 +73,6 @@ Local : 'LOCal';
 Dimension : 'DIM';
 DefProc : 'DEFine PROCedure';
 DefFunc : 'DEFine FuNction';
-EndDef  : 'END DEFine';
 If : 'IF';
 Else : 'ELSE';
 Then : 'THEN';

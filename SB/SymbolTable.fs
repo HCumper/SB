@@ -12,9 +12,8 @@ type TokenType =
       Caret=43 | Not=44 | Tilde=45 | Instr=46 | Amp=47 | Question=48 | Colon=49 | Semi=50 | Comma=51 | Point=52 | Bang=53 | Whitespace=54 | Let=55 | Newline=56 | String=57 | 
       Comment=58 | ID=59 | Integer=60 | Real=61 | Unknowntype=62 | Void=63 | Scalar=64 | LineNumber=65
 
-type CategoryType = Dim | Function | Procedure | Parameter | Variable | Implicit
+type CategoryType = Dim | Function | Procedure | Parameter | Variable | Implicit | Local
 type ParameterPassingMethod = Value | Reference | Unknown | Inapplicable
-//type ExtraFields = Array of int list| Function of ParameterList | Procedure of ParameterList | IsParameter | Empty | Params
 
 type Key = { Name : string; Scope : string }
 type Symbol = {

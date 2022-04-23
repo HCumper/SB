@@ -15,43 +15,62 @@ open SymbolTable
 //    Define Function
 //    All but assignment take variable length parameter lists
 
-let defaultAction _ _ state = state
+let private defaultAction _ _ state = state
 
-let getTypeFromAnnotation (name:string) =
+let private getTypeFromAnnotation (name:string) =
     let len = name.Length - 1
     match name.Substring(len, 1) with
     | "%" -> TokenType.Integer
     | "$" -> TokenType.String
     | _ -> TokenType.Real
-
-let addDimSymbol varName _ state =
-    let dataType = getTypeFromAnnotation varName
-    let symbol = {Name = varName; Scope = state.currentScope; Category=CategoryType.Dim; Type=dataType; ParameterMechanism = Inapplicable}
-    set symbol state
     
-let rec mapIter (paramList:IParseTree list) state dataType=
+let rec private mapIter (paramList:IParseTree list) state dataType category =
     match paramList with
     | [] -> state
     | head::tail ->
         let term = (head :?> SBParser.TermContext).children[0].GetText()
-        let symbol = {Name = term; Scope = state.currentScope; Category=CategoryType.Implicit; Type=dataType; ParameterMechanism = Inapplicable}
+        let symbol = {Name = term; Scope = state.currentScope; Category=category; Type=dataType; ParameterMechanism = Inapplicable}
         let newState = set symbol state;
-        mapIter tail newState dataType
+        mapIter tail newState dataType category
 
-let addImplicitSymbol implictDecl paramList state =
-    let dataType = getTypeFromAnnotation implictDecl
-    mapIter paramList state dataType
+let private addDimSymbol varName _ state =
+    let dataType = getTypeFromAnnotation varName
+    let symbol = {Name = varName; Scope = state.currentScope; Category=CategoryType.Dim; Type=dataType; ParameterMechanism = Inapplicable}
+    set symbol state
+    
+let private addImplicitSymbol implicitDecl paramList state =
+    let dataType = getTypeFromAnnotation implicitDecl
+    mapIter paramList state dataType CategoryType.Implicit
 
-let addAssignmentSymbol (varName:string) _ state =
+let private addLocalSymbol localDecl paramList state =
+//    let newContext = { state with currentScope = funcName }
+    mapIter paramList state TokenType.Unknowntype CategoryType.Local
+
+let private addProcedureSymbol procName paramList state =
+    let symbol = {Name = procName; Scope = state.currentScope; Category=CategoryType.Procedure; Type=TokenType.Void; ParameterMechanism = Inapplicable}
+    let newContext = { state with currentScope = procName }
+    let newState = set symbol newContext
+    mapIter paramList newState TokenType.Unknowntype CategoryType.Parameter
+
+let private addFunctionSymbol funcName paramList state =
+    let symbol = {Name = funcName; Scope = state.currentScope; Category=CategoryType.Function; Type=TokenType.Unknowntype; ParameterMechanism = Inapplicable}
+    let newContext = { state with currentScope = funcName }
+    let newState = set symbol newContext
+    mapIter paramList newState TokenType.Unknowntype CategoryType.Parameter
+
+let private addAssignmentSymbol (varName:string) _ state =
     let dataType = getTypeFromAnnotation varName
     let symbol = {Name = varName; Scope = state.currentScope; Category=CategoryType.Variable; Type=dataType;  ParameterMechanism = Inapplicable}
     trySet symbol state
 
 // returns function for handling given type
-let buildSymbolTable (actionType:TokenType) =
+let BuildSymbolTable (actionType:TokenType) =
     match actionType with
     | TokenType.Dimension -> addDimSymbol
     | TokenType.ID -> addAssignmentSymbol
     | TokenType.Implic -> addImplicitSymbol
+    | TokenType.Local -> addLocalSymbol
+    | TokenType.DefProc -> addProcedureSymbol
+    | TokenType.DefFunc -> addFunctionSymbol
     | _ -> defaultAction
 

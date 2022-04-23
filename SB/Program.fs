@@ -24,7 +24,7 @@ let main argv =
     let x = parseTree.ToStringTree(parser)
     Console.WriteLine(x)
 
-    let t = Walker.WalkTreeRoot parseTree SymbolTableBuilder.buildSymbolTable
+    let t = Walker.WalkTreeRoot parseTree SymbolTableBuilder.BuildSymbolTable
 
     let x=3
     //create symbol table

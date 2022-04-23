@@ -30,18 +30,6 @@ let walkParenthesizedList itemList resultList =
     itemList |> mapAntlr     
     addItem
 
-//let extractText (term : SBParser.ExprContext) =
-//    let termCont = term.children[0].Payload
-//    match termCont with
-//    | :? SBParser.IdentifierContext -> 
-//        let identifier = termCont :?> SBParser.IdentifierContext
-//        let token = identifier.children[0].Payload :?> SBToken
-//        token.Text
-//    | :? SBToken -> 
-//        let token = termCont :?> SBToken
-//        token.Text
-//    | _ -> "error"
-
 let WalkDim (context : IParseTree) state action =
     let varName = context.GetChild(1).GetText()
     let paramList = context.GetChild(2).Payload :?> SBParser.ParenthesizedlistContext
@@ -62,6 +50,32 @@ let WalkAssignment (context : IParseTree) state action =
     let assignmentAction = action TokenType.ID
     assignmentAction lvalue [] state
 
+let WalkProcedure (context : IParseTree) state action =
+    let procName = context.GetChild(1).GetChild(0).GetText()
+    let paramList =
+        match context.GetChild(1).ChildCount with
+        | 1 -> []
+        | _ -> 
+            let paramList = context.GetChild(1).GetChild(1) :?> SBParser.ParenthesizedlistContext
+            let (fList:IParseTree list) = copyAntlrList paramList.children  
+            fList |> List.filter (fun x -> not (x :? TerminalNodeImpl || x :? SBParser.SeparatorContext))            
+
+    let procedureAction = action TokenType.DefProc
+    procedureAction procName paramList state
+
+let WalkFunction (context : IParseTree) state action =
+    let funcName = context.GetChild(1).GetChild(0).GetText()
+    let paramList =
+        match context.GetChild(1).ChildCount with
+        | 1 -> []
+        | _ -> 
+            let paramList = context.GetChild(1).GetChild(1) :?> SBParser.ParenthesizedlistContext
+            let (fList:IParseTree list) = copyAntlrList paramList.children  
+            fList |> List.filter (fun x -> not (x :? TerminalNodeImpl || x :? SBParser.SeparatorContext))            
+
+    let functionAction = action TokenType.DefFunc
+    functionAction funcName paramList state
+
 let WalkImplicit (context : IParseTree) state action =
     let implic = context.GetChild(0).GetText()
     let paramList = context.GetChild(1).Payload :?> SBParser.UnparenthesizedlistContext
@@ -69,6 +83,14 @@ let WalkImplicit (context : IParseTree) state action =
     let termList = fList |> List.filter (fun x -> not (x :? TerminalNodeImpl || x :? SBParser.SeparatorContext))
     let implicitAction = action TokenType.Implic
     implicitAction implic termList state
+    
+let WalkLocal (context : IParseTree) state action =
+    let locals = context.GetChild(0).GetText()
+    let paramList = context.GetChild(1).Payload :?> SBParser.UnparenthesizedlistContext
+    let (fList:IParseTree list) = copyAntlrList paramList.children  
+    let termList = fList |> List.filter (fun x -> not (x :? TerminalNodeImpl || x :? SBParser.SeparatorContext))
+    let localAction = action TokenType.Local
+    localAction locals termList state
     
 let WalkLocals ((context : IParseTree), state) index =
     let paramList = context.GetChild(1).Payload :?> SBParser.UnparenthesizedContext
@@ -90,13 +112,15 @@ let rec WalkAcross (context : IParseTree) state index action=
     result
 and 
     WalkDown (context : IParseTree) (state: State) action =
-        Console.WriteLine(context.ToString())
         let newState = 
             match context with
                 | :? SBParser.DimContext -> WalkDim context state action
                 | :? SBParser.AssignmentContext -> WalkAssignment context state action
                 | :? SBParser.ImplicitContext -> WalkImplicit context state action
-//                | :? SBParser.LocContext -> WalkLocals context state
+                | :? SBParser.LocContext -> WalkLocal context state action
+                | :? SBParser.ProchdrContext -> WalkProcedure context state action
+                | :? SBParser.EnddefContext -> { state with currentScope = "~Global" }
+                | :? SBParser.FunchdrContext -> WalkFunction context state action
                 | _ -> state
         (context, WalkAcross (context:IParseTree) newState 0 action)
 

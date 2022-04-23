@@ -1,3 +1,5 @@
+10 DEFine PROCedure nobody
+13 END DEFine
 22 avar = 9
 25 DIM astring$(100)
 97 astring$(7) = "hhh"
@@ -30,6 +32,7 @@
 370 IF b(loop) > b(loop + 1) THEN PRINT "Error at" ! loop
 380 END FOR loop
 390 END DEFine
+395 shouldbeglobal = 104
 400 DEFine PROCedure set_up_tabLe
 410 LOCal entry
 420   INPUT "How many numbers? ";n
