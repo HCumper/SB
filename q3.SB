@@ -1,6 +1,6 @@
-150 DIM b(anid,2+8,3)
-140 DIM a(10001)
-97 astring$ = "hhh"
+22 avar = 9
+25 DIM astring$(100)
+97 astring$(7) = "hhh"
 100 CLS
 110 TURBO_repfil
 120 sorts=0:partitions=0

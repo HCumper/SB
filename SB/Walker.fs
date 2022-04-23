@@ -8,24 +8,17 @@ open SB
 open SymbolTable
 
 // map with generic list to F# list
-let rec mapAntlr f (parentNode: Collections.Generic.IList<IParseTree>) =
+let rec mapAntlr f (parentNode: Collections.Generic.IList<'a>) =
     match parentNode.Count with
     | 0 -> []
     | _ -> 
         // new head + new tail
         let head = f parentNode[0]
-        let _ = parentNode.RemoveAt(0)
+        let _ = parentNode.RemoveAt(0)  // destructive, can't be helped
         head :: mapAntlr f parentNode
 
 // copy generic list to F# list
-let rec copyAntlrList (parentNode: Collections.Generic.IList<IParseTree>) =
-    match parentNode.Count with
-    | 0 -> []
-    | _ -> 
-        // new head + new tail
-        let head = parentNode[0]
-        let _ = parentNode.RemoveAt(0)
-        head :: copyAntlrList parentNode
+let copyAntlrList (parentNode: Collections.Generic.IList<IParseTree>) = mapAntlr (fun x -> x) parentNode
 
 let dimSymbol state construct =
     state
@@ -37,26 +30,46 @@ let walkParenthesizedList itemList resultList =
     itemList |> mapAntlr     
     addItem
 
-let extractText (term : SBParser.TermContext) =
-    let termCont = term.children[0].Payload
-    match termCont with
-    | :? SBParser.IdentifierContext -> 
-        let identifier = termCont :?> SBParser.IdentifierContext
-        let token = identifier.children[0].Payload :?> SBToken
-        token.Text
-    | :? SBToken -> 
-        let token = termCont :?> SBToken
-        token.Text
-    | _ -> "error"
+//let extractText (term : SBParser.ExprContext) =
+//    let termCont = term.children[0].Payload
+//    match termCont with
+//    | :? SBParser.IdentifierContext -> 
+//        let identifier = termCont :?> SBParser.IdentifierContext
+//        let token = identifier.children[0].Payload :?> SBToken
+//        token.Text
+//    | :? SBToken -> 
+//        let token = termCont :?> SBToken
+//        token.Text
+//    | _ -> "error"
 
 let WalkDim (context : IParseTree) state action =
-    let varName = context.GetChild(1).Payload :?> SB.SBToken
+    let varName = context.GetChild(1).GetText()
     let paramList = context.GetChild(2).Payload :?> SBParser.ParenthesizedlistContext
     let (fList:IParseTree list) = copyAntlrList paramList.children  
- //   let termList = fList |> List.filter (fun x -> not (x :? TerminalNodeImpl || x :? SBParser.SeparatorContext))
+    let termList = fList |> List.filter (fun x -> not (x :? TerminalNodeImpl || x :? SBParser.SeparatorContext))
     let dimAction = action TokenType.Dimension
-    dimAction varName.Text state
+    dimAction varName termList state
 
+let WalkAssignment (context : IParseTree) state action =
+    let lvalue =
+        match context.GetChild(0).ChildCount with 
+        | 1 -> 
+            let ctx =context.GetChild(0).Payload :?> SBParser.IdentifierContext
+            ctx.GetText()
+        | _ -> 
+            let ctx = context.GetChild(0).GetChild(0)
+            ctx.GetText()
+    let assignmentAction = action TokenType.ID
+    assignmentAction lvalue [] state
+
+let WalkImplicit (context : IParseTree) state action =
+    let implic = context.GetChild(0).GetText()
+    let paramList = context.GetChild(1).Payload :?> SBParser.UnparenthesizedlistContext
+    let (fList:IParseTree list) = copyAntlrList paramList.children  
+    let termList = fList |> List.filter (fun x -> not (x :? TerminalNodeImpl || x :? SBParser.SeparatorContext))
+    let implicitAction = action TokenType.Implic
+    implicitAction implic termList state
+    
 let WalkLocals ((context : IParseTree), state) index =
     let paramList = context.GetChild(1).Payload :?> SBParser.UnparenthesizedContext
     // let paramList2 = ParseUnparenthesizedContext paramList
@@ -65,24 +78,6 @@ let WalkLocals ((context : IParseTree), state) index =
     let newSymbolTable = state.symTab.Add(key, symbol)
     let newState = {state with symTab = newSymbolTable}
     newState
-
-//let rec WalkAcross ((context : IParseTree), state) index =
-//    let result = 
-//        if index < context.ChildCount then
-//            let downValue = WalkDown ((context.GetChild(index) : IParseTree), state)
-//            WalkAcross ((((fst downValue): IParseTree).Parent : IParseTree), (snd downValue)) (index+1)
-//        else
-//            (context, state)
-//    result
-//and 
-//    WalkDown ((context : IParseTree), state) =
-//        Console.WriteLine(context.ToString())
-//        let newState = 
-//            match context with
-//                | :? SBParser.DimContext -> WalkDim (context, state) 0
-//                | :? SBParser.LocContext -> WalkLocals (context, state) 0
-//                | _ -> state
-//        WalkAcross (context, newState) 0
 
 let rec WalkAcross (context : IParseTree) state index action=
     let result = 
@@ -99,6 +94,8 @@ and
         let newState = 
             match context with
                 | :? SBParser.DimContext -> WalkDim context state action
+                | :? SBParser.AssignmentContext -> WalkAssignment context state action
+                | :? SBParser.ImplicitContext -> WalkImplicit context state action
 //                | :? SBParser.LocContext -> WalkLocals context state
                 | _ -> state
         (context, WalkAcross (context:IParseTree) newState 0 action)

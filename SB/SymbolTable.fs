@@ -12,7 +12,7 @@ type TokenType =
       Caret=43 | Not=44 | Tilde=45 | Instr=46 | Amp=47 | Question=48 | Colon=49 | Semi=50 | Comma=51 | Point=52 | Bang=53 | Whitespace=54 | Let=55 | Newline=56 | String=57 | 
       Comment=58 | ID=59 | Integer=60 | Real=61 | Unknowntype=62 | Void=63 | Scalar=64 | LineNumber=65
 
-type CategoryType = Dim | Function | Procedure | Parameter | Variable
+type CategoryType = Dim | Function | Procedure | Parameter | Variable | Implicit
 type ParameterPassingMethod = Value | Reference | Unknown | Inapplicable
 //type ExtraFields = Array of int list| Function of ParameterList | Procedure of ParameterList | IsParameter | Empty | Params
 
@@ -34,12 +34,6 @@ type State = {
     currentScope : string
 }
    
-// Overwrite if key exists
-let set (entry:Symbol) state =
-    let key = {Name=entry.Name; Scope=entry.Scope}
-    let newTable:Map<Key, Symbol> = state.symTab |> Map.add key entry
-    { state with symTab = newTable }
-    
 let get name scope state  =
     // try local scope first
     let symbolFound = state.symTab |> Map.tryFind {Name=name; Scope=scope}
@@ -48,6 +42,21 @@ let get name scope state  =
     | None ->     // not found so try global
         let newKey = {Name=name; Scope="~Global"}
         state.symTab |> Map.tryFind newKey
+
+// Overwrite if key exists
+let set (entry:Symbol) state =
+    let key = {Name=entry.Name; Scope=entry.Scope}
+    let newTable:Map<Key, Symbol> = state.symTab |> Map.add key entry
+    { state with symTab = newTable }
+    
+// Do nothing if key exists
+let trySet (entry:Symbol) state =
+    let key = {Name=entry.Name; Scope=entry.Scope}
+    match get entry.Name entry.Scope state with
+    | None ->
+        set entry state
+    | Some _ ->
+        state
 
 let listScope currentScope state = state.symTab |> Map.filter (fun n _ -> n.Scope = currentScope)
     
