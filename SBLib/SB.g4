@@ -65,7 +65,6 @@ expr :
 	| (Integer | String | Real | identifier)										#Term
 	;
 
-
 /* Tokens */
 Refer : 'REFERENCE';
 Implic : 'IMPLICIT%' | 'IMPLICIT$';

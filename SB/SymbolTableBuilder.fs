@@ -5,7 +5,7 @@ open System
 open SBLib
 open SB
 open SymbolTable
-
+open Utility
 //There are 6 ways to create a new name
 //    Dim
 //    Local
@@ -24,15 +24,6 @@ let private getTypeFromAnnotation (name:string) =
     | "$" -> TokenType.String
     | _ -> TokenType.Real
     
-let rec private mapIter (paramList:IParseTree list) state dataType category =
-    match paramList with
-    | [] -> state
-    | head::tail ->
-        let term = (head :?> SBParser.TermContext).children[0].GetText()
-        let symbol = {Name = term; Scope = state.currentScope; Category=category; Type=dataType; ParameterMechanism = Inapplicable}
-        let newState = set symbol state;
-        mapIter tail newState dataType category
-
 let private addDimSymbol varName _ state =
     let dataType = getTypeFromAnnotation varName
     let symbol = {Name = varName; Scope = state.currentScope; Category=CategoryType.Dim; Type=dataType; ParameterMechanism = Inapplicable}

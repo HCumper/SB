@@ -5,6 +5,7 @@
 97 astring$(7) = "hhh"
 100 CLS
 110 TURBO_repfil
+115 IMPLICIT$ implicstring
 120 sorts=0:partitions=0
 140 DIM a(10001)
 150 DIM b(1,2,3)
@@ -102,7 +103,7 @@
 1020   LET that=t
 1030 END DEFine swap
 1040 :
-1050 IMPLICIT% first, last, p, item, temporary
+1050 IMPLICIT$ first, last, p, item, temporary
 1060 DEFine PROCedure insertionsort (first,last)
 1070 LOCal p,item,temporary
 1080   FOR item=first+1 TO last

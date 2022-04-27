@@ -33,7 +33,7 @@ type State = {
     currentScope : string
 }
    
-let get name scope state  =
+let get name scope state =
     // try local scope first
     let symbolFound = state.symTab |> Map.tryFind {Name=name; Scope=scope}
     match symbolFound with
@@ -58,7 +58,7 @@ let trySet (entry:Symbol) state =
         state
 
 let listScope currentScope state = state.symTab |> Map.filter (fun n _ -> n.Scope = currentScope)
-    
+
 let testTable =
     let state = { implicitInts = Set.empty; implicitStrings = Set.empty; references = Set.empty; symTab = Map.empty; errorList = []; currentScope = "~Global" }
     let entry = { Name="a"; Scope = "func1"; Category=CategoryType.Dim; Type=TokenType.EndDef; ParameterMechanism = Inapplicable }
