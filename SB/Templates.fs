@@ -2,6 +2,10 @@
 
 let assignment left right = $@"{left} = {right};)"
 
+let procFunc returnType routineName parameters = 
+    $@"{returnType} {routineName} {parameters}    
+    {{    
+    "
 
 
 (*
@@ -38,12 +42,6 @@ forTemplate(id, expr1, expr2, increment, body) ::= <<for (<id> = <expr1>; <id> \
 identifierOnlyTemplate(id) ::= "<id>();"
 
 printTemplate(params) ::= <<Console.Writeline( (<params:{it|<it>};separator=" + ">)>>			
-
-procFuncTemplate(returnType, routineName, params, body) ::= << 
-<returnType> <routineName> ( <params:{it|<it>};separator=", "> )
-{ 
-<body> 
-}; 
 >>
 
 programTemplate(programName, when, declarationsTemplate, programContent) ::= <<

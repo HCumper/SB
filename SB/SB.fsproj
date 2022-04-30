@@ -9,6 +9,7 @@
     <Compile Include="Templates.fs" />
     <Compile Include="SymbolTable.fs" />
     <Compile Include="Utility.fs" />
+    <Compile Include="CodeGenerator.fs" />
     <Compile Include="TypeResolver.fs" />
     <Compile Include="SymbolTableBuilder.fs" />
     <Compile Include="Walker.fs" />

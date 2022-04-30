@@ -26,11 +26,10 @@ type Symbol = {
 
 type State = {
     symTab : Map<Key, Symbol>
-    implicitInts : Set<string>;
-    implicitStrings : string Set;
     references : string Set;
     errorList : string list
     currentScope : string
+    outputProg : string list
 }
    
 let get name scope state =
@@ -60,7 +59,7 @@ let trySet (entry:Symbol) state =
 let listScope currentScope state = state.symTab |> Map.filter (fun n _ -> n.Scope = currentScope)
 
 let testTable =
-    let state = { implicitInts = Set.empty; implicitStrings = Set.empty; references = Set.empty; symTab = Map.empty; errorList = []; currentScope = "~Global" }
+    let state = { references = Set.empty; symTab = Map.empty; errorList = []; currentScope = "~Global"; outputProg = []}
     let entry = { Name="a"; Scope = "func1"; Category=CategoryType.Dim; Type=TokenType.EndDef; ParameterMechanism = Inapplicable }
     let table1 = set entry state
     let entry = { Name="b"; Scope = "~Global"; Category=CategoryType.Procedure; Type=TokenType.Integer;  ParameterMechanism = Inapplicable; }

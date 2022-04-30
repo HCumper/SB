@@ -1,4 +1,4 @@
-10 DEFine PROCedure nobody
+10 DEFine PROCedure nobody (a,b)
 13 END DEFine
 22 avar = 9
 25 DIM astring$(100)

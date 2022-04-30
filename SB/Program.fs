@@ -5,6 +5,7 @@ open System.IO
 open Antlr4.Runtime
 open SB
 open SBLib
+open SymbolTable
 
 [<EntryPoint>]
 let main argv =
@@ -20,8 +21,11 @@ let main argv =
     let parseTree = parser.program()
     let x = parseTree.ToStringTree(parser)
     Console.WriteLine(x)
-    Console.WriteLine(x)
+    Console.WriteLine("")
 
-    let (_, s) = Walker.WalkTreeRoot parseTree SymbolTableBuilder.BuildSymbolTable
-    let typedSymbolTable = TypeResolver.TypeImplicits s
+    let backupParseTree = parseTree
+    let initialState = { references = Set.empty; symTab = Map.empty; errorList = []; currentScope = "~Global"; outputProg = []}
+    let (_, state) = Walker.WalkTreeRoot parseTree SymbolTableBuilder.BuildSymbolTable initialState
+    let typedState = TypeResolver.TypeImplicits state
+    let (tree, _) = Walker.WalkTreeRoot parseTree CodeGenerator.Generate typedState
     3

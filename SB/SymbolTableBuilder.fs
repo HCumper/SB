@@ -34,7 +34,6 @@ let private addImplicitSymbol implicitDecl paramList state =
     mapIter paramList state dataType CategoryType.Implicit
 
 let private addLocalSymbol localDecl paramList state =
-//    let newContext = { state with currentScope = funcName }
     mapIter paramList state TokenType.Unknowntype CategoryType.Local
 
 let private addProcedureSymbol procName paramList state =

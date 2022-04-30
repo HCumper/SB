@@ -8,22 +8,25 @@ open SB
 open SymbolTable
 
 // map with generic list to F# list
-let rec private mapAntlr f (parentNode: Collections.Generic.IList<'a>) =
-    match parentNode.Count with
-    | 0 -> []
-    | _ -> 
-        // new head + new tail
-        let head = f parentNode[0]
-        let _ = parentNode.RemoveAt(0)  // destructive, can't be helped
-        head :: mapAntlr f parentNode
+//let rec private mapAntlr f (parentNode: Collections.Generic.IList<'a>) =
+//    match parentNode.Count with
+//    | 0 -> []
+//    | _ -> 
+//        // new head + new tail
+//        let head = f parentNode[0]
+//        parentNode.RemoveAt(0)  // destructive, can't be helped
+//        head :: mapAntlr f parentNode
 
-// copy generic list to F# list
-let private copyAntlrList (parentNode: Collections.Generic.IList<IParseTree>) = mapAntlr (fun x -> x) parentNode
+// copy generic list to F# list non destructively
+let rec private copyAntlrList (parentNode: Collections.Generic.IList<IParseTree>) i newList = 
+    if i = parentNode.Count then newList else
+        parentNode.Item(i)::newList 
+        |> copyAntlrList parentNode (i+1)  
 
 let private WalkDim (context : IParseTree) action state =
     let varName = context.GetChild(1).GetText()
     let paramList = context.GetChild(2).Payload :?> SBParser.ParenthesizedlistContext
-    let (fList:IParseTree list) = copyAntlrList paramList.children  
+    let (fList:IParseTree list) = copyAntlrList paramList.children 0 []
     let termList = fList |> List.filter (fun x -> not (x :? TerminalNodeImpl || x :? SBParser.SeparatorContext))
     let dimAction = action TokenType.Dimension
     dimAction varName termList state
@@ -42,7 +45,7 @@ let private WalkAssignment (context : IParseTree) action state =
 
 let private parseParamList (context: IParseTree) =
     let paramList = context.GetChild(1).GetChild(1) :?> SBParser.ParenthesizedlistContext
-    let (fList:IParseTree list) = copyAntlrList paramList.children  
+    let (fList:IParseTree list) = copyAntlrList paramList.children 0 []
     fList |> List.filter (fun x -> not (x :? TerminalNodeImpl || x :? SBParser.SeparatorContext))            
 
 let private WalkProcedure (context : IParseTree) action state =
@@ -68,7 +71,7 @@ let private WalkFunction (context : IParseTree) action state =
 let private WalkImplicit (context : IParseTree) action state =
     let implic = context.GetChild(0).GetText()
     let paramList = context.GetChild(1).Payload :?> SBParser.UnparenthesizedlistContext
-    let (fList:IParseTree list) = copyAntlrList paramList.children  
+    let (fList:IParseTree list) = copyAntlrList paramList.children 0 []
     let termList = fList |> List.filter (fun x -> not (x :? TerminalNodeImpl || x :? SBParser.SeparatorContext))
     let implicitAction = action TokenType.Implic
     implicitAction implic termList state
@@ -76,7 +79,7 @@ let private WalkImplicit (context : IParseTree) action state =
 let private WalkLocal (context : IParseTree) action state =
     let locals = context.GetChild(0).GetText()
     let paramList = context.GetChild(1).Payload :?> SBParser.UnparenthesizedlistContext
-    let (fList:IParseTree list) = copyAntlrList paramList.children  
+    let (fList:IParseTree list) = copyAntlrList paramList.children 0 [] 
     let termList = fList |> List.filter (fun x -> not (x :? TerminalNodeImpl || x :? SBParser.SeparatorContext))
     let localAction = action TokenType.Local
     localAction locals termList state
@@ -105,7 +108,6 @@ and
         (context, WalkAcross (context:IParseTree) 0 action newState )
 
 // top level only
-let WalkTreeRoot context action =
-    let state = { implicitInts = Set.empty; implicitStrings = Set.empty; references = Set.empty; symTab = Map.empty; errorList = []; currentScope = "~Global" }
+let WalkTreeRoot context action state=
     WalkDown (context : ParserRuleContext) action state 
  

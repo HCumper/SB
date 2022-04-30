@@ -15,19 +15,18 @@ let rec private mapIter implicitList name (dataType: TokenType) (state: State) =
         | None -> state
         | Some n ->
             let newSymbol = { n with Type = dataType }
-            let newState = SymbolTable.set newSymbol state
-            mapIter tail name dataType newState
+            SymbolTable.set newSymbol state
+            |> mapIter tail name dataType
 
 let rec private listIter  listImplicits (state: State) =
     match listImplicits with
     | [] -> state
     | head::tail ->
         let name = (snd head).Name
-        let symKeys = Map.toList state.symTab
         let symList = Map.toList state.symTab
         let filteredList = List.filter (fun x -> (snd x).Name = name && (snd x).Category <> CategoryType.Implicit) symList
-        let newState = mapIter filteredList name (snd head).Type state
-        listIter tail newState
+        mapIter filteredList name (snd head).Type state 
+        |> listIter tail
 
 // change variables in symbol table to type given by implicit declaration
 let TypeImplicits state =
