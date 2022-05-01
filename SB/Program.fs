@@ -12,6 +12,7 @@ let main argv =
 //    SymbolTable.testTable
     let filename = @"H:\source\Home Repos\SB\q3.sb"
     let reader = File.OpenText(filename)
+    let outputFile = @"H:\source\Home Repos\SB\q3.cs"
     let cs = new AntlrInputStream(reader)
     let factory = new SBTokenFactory()
     let (TokenFac : ITokenFactory) = factory :> ITokenFactory
@@ -27,5 +28,7 @@ let main argv =
     let initialState = { references = Set.empty; symTab = Map.empty; errorList = []; currentScope = "~Global"; outputProg = []}
     let (_, state) = Walker.WalkTreeRoot parseTree SymbolTableBuilder.BuildSymbolTable initialState
     let typedState = TypeResolver.TypeImplicits state
-    let (tree, _) = Walker.WalkTreeRoot parseTree CodeGenerator.Generate typedState
+    let (_, state) = Walker.WalkTreeRoot parseTree CodeGenerator.Generate typedState
+    let strProg = state.outputProg.ToString()
+    List.map (fun x -> File.AppendAllText(outputFile, x)) state.outputProg |> ignore
     3

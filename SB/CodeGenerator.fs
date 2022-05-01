@@ -19,6 +19,7 @@ let private getParameterText accum (scope: string) (parameters: IParseTree) stat
         match SymbolTable.get (parameters.GetText()) scope state with
         | None -> TokenType.Void.ToString()
         | Some n when n.Type = TokenType.Unknowntype -> "float"
+        | Some n when n.Type = TokenType.Integer -> "int"
         | Some n -> n.Type.ToString()
     $@"{dataType} {parameters.GetText()}, {accum}"
 
@@ -32,18 +33,22 @@ let private genProcFunc (routineName:string) parameters state =
         | [] -> ""
         | _ -> foldStateful getParameterText "" routineName parameters state
 
-    let cSharp = "(" + paramList.Remove(paramList.Length - 2) + ")"
+    let cSharp = 
+        match paramList.Length with
+        | 0 -> ""
+        | _ -> "(" + paramList.Remove(paramList.Length - 2) + ")"
     let text = Templates.procFunc (funcType.ToLower()) routineName cSharp
-    state
+    let x = state.outputProg @ [text]
+    {state with outputProg = x}
+
+let private genEndDefine _ _ state =
+    let x = state.outputProg @ ["}\r\n"]
+    {state with outputProg = x}
 
 // returns function for handling given type
 let Generate (actionType:TokenType) =
     match actionType with
     | TokenType.DefProc -> genProcFunc
-    //| TokenType.ID -> addAssignmentSymbol
-    //| TokenType.Implic -> addImplicitSymbol
-    //| TokenType.Local -> addLocalSymbol
-    //| TokenType.DefProc -> addProcedureSymbol
-    //| TokenType.DefFunc -> addFunctionSymbol
+    | TokenType.EndDef -> genEndDefine
     | _ -> defaultAction
 

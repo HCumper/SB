@@ -48,6 +48,10 @@ let private parseParamList (context: IParseTree) =
     let (fList:IParseTree list) = copyAntlrList paramList.children 0 []
     fList |> List.filter (fun x -> not (x :? TerminalNodeImpl || x :? SBParser.SeparatorContext))            
 
+let private WalkEndDef (context: IParseTree) action state =
+    let endDefAction = action TokenType.EndDef
+    endDefAction "" [] state
+
 let private WalkProcedure (context : IParseTree) action state =
     let procName = context.GetChild(1).GetChild(0).GetText()
     let paramList =
@@ -103,6 +107,7 @@ and
             | :? SBParser.LocContext -> WalkLocal context action state
             | :? SBParser.ProchdrContext -> WalkProcedure context action state
             | :? SBParser.FunchdrContext -> WalkFunction context action  state
+            | :? SBParser.EnddefContext -> WalkEndDef context action  state
             | :? SBParser.EnddefContext -> { state with currentScope = "~Global" }
             | _ -> state
         (context, WalkAcross (context:IParseTree) 0 action newState )
