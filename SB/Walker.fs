@@ -50,7 +50,9 @@ let private parseParamList (context: IParseTree) =
 
 let private WalkEndDef (context: IParseTree) action state =
     let endDefAction = action TokenType.EndDef
-    endDefAction "" [] state
+    let newState = {state with currentScope = "~Global"}
+    let newState = endDefAction "" [] state
+    {newState with currentScope = "~global"}
 
 let private WalkProcedure (context : IParseTree) action state =
     let procName = context.GetChild(1).GetChild(0).GetText()
@@ -88,6 +90,14 @@ let private WalkLocal (context : IParseTree) action state =
     let localAction = action TokenType.Local
     localAction locals termList state
     
+let private WalkBinaryExpr (context : IParseTree) action state =
+    let locals = context.GetChild(0).GetText()
+    let paramList = context.GetChild(1).Payload :?> SBParser.UnparenthesizedlistContext
+    let (fList:IParseTree list) = copyAntlrList paramList.children 0 [] 
+    let termList = fList |> List.filter (fun x -> not (x :? TerminalNodeImpl || x :? SBParser.SeparatorContext))
+    let localAction = action TokenType.Local
+    localAction locals termList state
+
 let rec private WalkAcross (context : IParseTree) index action state =
     let result = 
         let count = context.ChildCount
@@ -108,7 +118,7 @@ and
             | :? SBParser.ProchdrContext -> WalkProcedure context action state
             | :? SBParser.FunchdrContext -> WalkFunction context action  state
             | :? SBParser.EnddefContext -> WalkEndDef context action  state
-            | :? SBParser.EnddefContext -> { state with currentScope = "~Global" }
+            | :? SBParser.BinaryContext -> WalkBinaryExpr context action state
             | _ -> state
         (context, WalkAcross (context:IParseTree) 0 action newState )
 

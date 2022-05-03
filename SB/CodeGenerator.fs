@@ -1,19 +1,18 @@
 ﻿module CodeGenerator
 
 open Antlr4.Runtime.Tree
-open System
-open SBLib
-open SB
 open SymbolTable
 open Utility
 
-let rec foldStateful f (initialValue: 'a)  (name: string) (li: 'b list) (state: State) : 'a =
+let rec private foldStateful f (initialValue: 'a) (name: string) (li: 'b list) (state: State) : 'a =
     match li with
         | [] -> initialValue
         | x::xs -> foldStateful f (f initialValue name x state) name xs state
 
+// if there is not output for this construct just preserve the state
 let private defaultAction _ _ state = state
 
+// extract text from a parameter list
 let private getParameterText accum (scope: string) (parameters: IParseTree) state =
     let dataType = 
         match SymbolTable.get (parameters.GetText()) scope state with
@@ -23,6 +22,7 @@ let private getParameterText accum (scope: string) (parameters: IParseTree) stat
         | Some n -> n.Type.ToString()
     $@"{dataType} {parameters.GetText()}, {accum}"
 
+// output code for procedures an functions
 let private genProcFunc (routineName:string) parameters state =
     let funcType = 
         match SymbolTable.get routineName "~Global" state with
@@ -38,17 +38,22 @@ let private genProcFunc (routineName:string) parameters state =
         | 0 -> ""
         | _ -> "(" + paramList.Remove(paramList.Length - 2) + ")"
     let text = Templates.procFunc (funcType.ToLower()) routineName cSharp
-    let x = state.outputProg @ [text]
-    {state with outputProg = x}
+    let x = state.outputProcFn @ [text]
+    {state with outputProcFn = x}
 
 let private genEndDefine _ _ state =
-    let x = state.outputProg @ ["}\r\n"]
-    {state with outputProg = x}
+    let x = state.outputProcFn @ ["}\r\n"]
+    {state with outputProcFn = x}
+
+let private genAssign _ _ state =
+    outputCs "}\r\n" state
 
 // returns function for handling given type
 let Generate (actionType:TokenType) =
     match actionType with
     | TokenType.DefProc -> genProcFunc
+    | TokenType.DefFunc -> genProcFunc
     | TokenType.EndDef -> genEndDefine
+    | TokenType.ID -> genAssign
     | _ -> defaultAction
 

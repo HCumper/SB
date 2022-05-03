@@ -15,29 +15,29 @@ rangeexpr : constexpr To constexpr
 ;
 
 stmt :
-	Dimension ID parenthesizedlist																	#Dim
-	| Local unparenthesizedlist																		#Loc
-	| Implic unparenthesizedlist																	#Implicit
-	| Refer unparenthesizedlist																		#Reference
-	| prochdr line* Integer? enddef ID?																#Proc
-	| funchdr line* Integer? enddef ID?																#Func
-	| For ID Equal expr To expr Newline line* Integer? EndFor ID?									#Longfor
-	| For ID Equal expr To expr Colon stmtlist														#Shortfor
-	| Repeat ID Colon stmtlist																		#Shortrepeat
-	| Repeat ID Newline line* Integer? (EndRepeat ID? /*| { _input.Lt(1).Type == EndDef }?*/)		#Longrepeat
-	| If expr (Then | Colon) stmtlist (Colon Else Colon stmtlist)?									#Shortif
-	| If expr (Then)? Newline line+ (Integer? Else line+)? Integer? EndIf							#Longif
-    | Select constexpr Newline line* Integer? EndSelect												#Longselect
-	| On (constexpr) Equal rangeexpr																#Onselect
-	| Exit ID?																						#Exitstmt
-	| identifier Equal expr																			#Assignment
-	| identifier																					#IdentifierOnly
+	Dimension ID parenthesizedlist													#Dim
+	| Local unparenthesizedlist														#Loc
+	| Implic unparenthesizedlist													#Implicit
+	| Refer unparenthesizedlist														#Reference
+	| prochdr line* Integer? enddef ID?												#Proc
+	| funchdr line* Integer? enddef ID?												#Func
+	| For ID Equal expr To expr Newline line* Integer? EndFor ID?					#Longfor
+	| For ID Equal expr To expr Colon stmtlist										#Shortfor
+	| Repeat ID Colon stmtlist														#Shortrepeat
+	| Repeat ID Newline line* Integer? (EndRepeat ID?)								#Longrepeat
+	| If expr (Then | Colon) stmtlist (Colon Else Colon stmtlist)?					#Shortif
+	| If expr (Then)? Newline line+ (Integer? Else line+)? Integer? EndIf			#Longif
+    | Select constexpr Newline line* Integer? EndSelect								#Longselect
+	| On (constexpr) Equal rangeexpr												#Onselect
+	| Exit ID?																		#Exitstmt
+	| identifier Equal expr															#Assignment
+	| identifier																	#IdentifierOnly
 	;
 
-prochdr : DefProc identifier parenthesizedlist? Newline											#Procheader
+prochdr : DefProc identifier parenthesizedlist? Newline								#Procheader
 	;
 
-funchdr : DefFunc identifier parenthesizedlist? Newline											#Funcheader
+funchdr : DefFunc identifier parenthesizedlist? Newline								#Funcheader
 	;
 
 enddef  : 'END DEFine';
@@ -45,8 +45,8 @@ enddef  : 'END DEFine';
 identifier :
 	ID (parenthesizedlist | unparenthesizedlist)?;
 
-parenthesizedlist :	LeftParen expr (separator expr)* RightParen									#Parenthesizedl;
-unparenthesizedlist : expr (separator expr)*													#Unparenthesized;
+parenthesizedlist :	LeftParen expr (separator expr)* RightParen						#Parenthesizedl;
+unparenthesizedlist : expr (separator expr)*										#Unparenthesized;
 
 separator : Comma | Bang | Semi | To;
 

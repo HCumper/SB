@@ -1,10 +1,5 @@
 ﻿module SymbolTable
 
-open Antlr4.Runtime
-open Antlr4.Runtime.Tree
-open SB
-open SBLib
-
 type TokenType =
    | Refer = 1 | Implic = 2 | Local=3 | Dimension=4 | DefProc=5 | DefFunc=6 | EndDef=7 | If=8 | Else=9 | Then=10 | EndIf=11 | Select=12 | EndSelect=13 | On=14 | For=15 | 
       Next=16 | To=17 | EndFor=18 | Step=19 | Repeat=20 | Exit=21 | Until=22 | EndRepeat=23 | LeftParen=24 | RightParen=25 | LeftBracket=26 | RightBracket=27 | Equal=28 | 
@@ -29,7 +24,8 @@ type State = {
     references : string Set;
     errorList : string list
     currentScope : string
-    outputProg : string list
+    outputProcFn : string list
+    outputGlobal : string list
 }
    
 let get name scope state =
@@ -56,10 +52,11 @@ let trySet (entry:Symbol) state =
     | Some _ ->
         state
 
+// create list of eveything in the scope
 let listScope currentScope state = state.symTab |> Map.filter (fun n _ -> n.Scope = currentScope)
 
 let testTable =
-    let state = { references = Set.empty; symTab = Map.empty; errorList = []; currentScope = "~Global"; outputProg = []}
+    let state = { references = Set.empty; symTab = Map.empty; errorList = []; currentScope = "~Global"; outputProcFn = []; outputGlobal = []}
     let entry = { Name="a"; Scope = "func1"; Category=CategoryType.Dim; Type=TokenType.EndDef; ParameterMechanism = Inapplicable }
     let table1 = set entry state
     let entry = { Name="b"; Scope = "~Global"; Category=CategoryType.Procedure; Type=TokenType.Integer;  ParameterMechanism = Inapplicable; }

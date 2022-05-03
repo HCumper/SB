@@ -1,11 +1,8 @@
 ﻿module SymbolTableBuilder
 
-open Antlr4.Runtime.Tree
-open System
-open SBLib
-open SB
 open SymbolTable
 open Utility
+
 //There are 6 ways to create a new name
 //    Dim
 //    Local
@@ -53,9 +50,6 @@ let private addAssignmentSymbol (varName:string) _ state =
     let symbol = {Name = varName; Scope = state.currentScope; Category=CategoryType.Variable; Type=dataType;  ParameterMechanism = Inapplicable}
     trySet symbol state
 
-// No action here - maybe in another pass
-let private nullAction _ _ state = state
-
 // returns function for handling given type
 let BuildSymbolTable (actionType:TokenType) =
     match actionType with
@@ -65,6 +59,5 @@ let BuildSymbolTable (actionType:TokenType) =
     | TokenType.Local -> addLocalSymbol
     | TokenType.DefProc -> addProcedureSymbol
     | TokenType.DefFunc -> addFunctionSymbol
-    | TokenType.EndDef -> nullAction
     | _ -> defaultAction
 

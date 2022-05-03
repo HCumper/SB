@@ -13,6 +13,7 @@ let main argv =
     let filename = @"H:\source\Home Repos\SB\q3.sb"
     let reader = File.OpenText(filename)
     let outputFile = @"H:\source\Home Repos\SB\q3.cs"
+    File.Delete outputFile
     let cs = new AntlrInputStream(reader)
     let factory = new SBTokenFactory()
     let (TokenFac : ITokenFactory) = factory :> ITokenFactory
@@ -24,11 +25,10 @@ let main argv =
     Console.WriteLine(x)
     Console.WriteLine("")
 
-    let backupParseTree = parseTree
-    let initialState = { references = Set.empty; symTab = Map.empty; errorList = []; currentScope = "~Global"; outputProg = []}
+    let initialState = { references = Set.empty; symTab = Map.empty; errorList = []; currentScope = "~Global"; outputProcFn = []; outputGlobal = []}
     let (_, state) = Walker.WalkTreeRoot parseTree SymbolTableBuilder.BuildSymbolTable initialState
     let typedState = TypeResolver.TypeImplicits state
     let (_, state) = Walker.WalkTreeRoot parseTree CodeGenerator.Generate typedState
-    let strProg = state.outputProg.ToString()
-    List.map (fun x -> File.AppendAllText(outputFile, x)) state.outputProg |> ignore
+    let strProg = state.outputProcFn.ToString()
+    List.map (fun x -> File.AppendAllText(outputFile, x)) state.outputProcFn |> ignore
     3
