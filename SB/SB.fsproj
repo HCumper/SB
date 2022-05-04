@@ -11,8 +11,8 @@
     <Compile Include="Utility.fs" />
     <Compile Include="CodeGenerator.fs" />
     <Compile Include="TypeResolver.fs" />
-    <Compile Include="SymbolTableBuilder.fs" />
     <Compile Include="Walker.fs" />
+    <Compile Include="SymbolTableBuilder.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
 

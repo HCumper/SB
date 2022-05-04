@@ -1,6 +1,4 @@
-10 DEFine PROCedure nobody (a,b)
-13 END DEFine
-22 avar = 9*3+4
+22 avar = 9*(3+4)
 25 DIM astring$(100)
 97 astring$(7) = "hhh"
 100 CLS

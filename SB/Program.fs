@@ -25,10 +25,11 @@ let main argv =
     Console.WriteLine(x)
     Console.WriteLine("")
 
-    let initialState = { references = Set.empty; symTab = Map.empty; errorList = []; currentScope = "~Global"; outputProcFn = []; outputGlobal = []}
-    let (_, state) = Walker.WalkTreeRoot parseTree SymbolTableBuilder.BuildSymbolTable initialState
-    let typedState = TypeResolver.TypeImplicits state
-    let (_, state) = Walker.WalkTreeRoot parseTree CodeGenerator.Generate typedState
-    let strProg = state.outputProcFn.ToString()
-    List.map (fun x -> File.AppendAllText(outputFile, x)) state.outputProcFn |> ignore
+    let initialState = { references = Set.empty; symTab = Map.empty; errorList = []; currentScope = "~Global"; outputProcFn = ""; outputGlobal = ""}
+    let (_, state) = SymbolTableBuilder.WalkTreeRoot parseTree initialState
+    //let typedState = TypeResolver.TypeImplicits state
+    //let resetState = { typedState with currentScope = "~Global"}
+    //let (_, state) = Walker.WalkTreeRoot parseTree  CodeGenerator.Generate resetState
+    //let strProg = state.outputProcFn.ToString()
+//    List.map (fun x -> File.AppendAllText(outputFile, x)) state.outputProcFn |> ignore
     3

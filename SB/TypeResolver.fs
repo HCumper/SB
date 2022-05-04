@@ -6,7 +6,7 @@ open SBLib
 open SB
 open SymbolTable
 
-let rec private mapIter implicitList name (dataType: TokenType) (state: State) =
+let rec private mapIter implicitList name (dataType: int) (state: State) =
     match implicitList with
     | [] -> state
     | head::tail ->

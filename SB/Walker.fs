@@ -7,32 +7,29 @@ open SBLib
 open SB
 open SymbolTable
 
-// map with generic list to F# list
-//let rec private mapAntlr f (parentNode: Collections.Generic.IList<'a>) =
-//    match parentNode.Count with
-//    | 0 -> []
-//    | _ -> 
-//        // new head + new tail
-//        let head = f parentNode[0]
-//        parentNode.RemoveAt(0)  // destructive, can't be helped
-//        head :: mapAntlr f parentNode
-
 // copy generic list to F# list non destructively
-let rec private copyAntlrList (parentNode: Collections.Generic.IList<IParseTree>) i newList = 
+let rec copyAntlrList (parentNode: Collections.Generic.IList<IParseTree>) i newList = 
     if i = parentNode.Count then newList else
         parentNode.Item(i)::newList 
         |> copyAntlrList parentNode (i+1)  
 
-let private WalkDim (context : IParseTree) action state =
+let WalkDim (context : IParseTree) state =
     let varName = context.GetChild(1).GetText()
     let paramList = context.GetChild(2).Payload :?> SBParser.ParenthesizedlistContext
     let (fList:IParseTree list) = copyAntlrList paramList.children 0 []
     let termList = fList |> List.filter (fun x -> not (x :? TerminalNodeImpl || x :? SBParser.SeparatorContext))
-    let dimAction = action TokenType.Dimension
-    dimAction varName termList state
+    (varName, termList)
 
-let private WalkAssignment (context : IParseTree) action state =
-    let lvalue =
+let WalkLocal (context : IParseTree) state =
+    let localVar = context.GetChild(0).GetText()
+    let paramList = context.GetChild(1).Payload :?> SBParser.UnparenthesizedlistContext
+    let (fList:IParseTree list) = copyAntlrList paramList.children 0 [] 
+    let termList = fList |> List.filter (fun x -> not (x :? TerminalNodeImpl || x :? SBParser.SeparatorContext))
+    (localVar, termList)
+
+let WalkAssignment (context : IParseTree) state =
+    let lvalue = context.GetChild(0).GetText()
+    let dimensions =
         match context.GetChild(0).ChildCount with 
         | 1 -> 
             let ctx = context.GetChild(0).Payload :?> SBParser.IdentifierContext
@@ -40,89 +37,80 @@ let private WalkAssignment (context : IParseTree) action state =
         | _ -> 
             let ctx = context.GetChild(0).GetChild(0)
             ctx.GetText()
-    let assignmentAction = action TokenType.ID
-    assignmentAction lvalue [] state
+    (lvalue, dimensions)
 
-let private parseParamList (context: IParseTree) =
+let parseParamList (context: IParseTree) =
     let paramList = context.GetChild(1).GetChild(1) :?> SBParser.ParenthesizedlistContext
     let (fList:IParseTree list) = copyAntlrList paramList.children 0 []
     fList |> List.filter (fun x -> not (x :? TerminalNodeImpl || x :? SBParser.SeparatorContext))            
 
-let private WalkEndDef (context: IParseTree) action state =
-    let endDefAction = action TokenType.EndDef
+let WalkEndDef (context: IParseTree) action state =
+    let endDefAction = action SBParser.EndDef
     let newState = {state with currentScope = "~Global"}
     let newState = endDefAction "" [] state
     {newState with currentScope = "~global"}
 
-let private WalkProcedure (context : IParseTree) action state =
+let WalkProcedure (context : IParseTree) state =
     let procName = context.GetChild(1).GetChild(0).GetText()
     let paramList =
         match context.GetChild(1).ChildCount with
         | 1 -> []
         | _ -> parseParamList context 
+    (procName, paramList)
 
-    let procedureAction = action TokenType.DefProc
-    procedureAction procName paramList state
-
-let private WalkFunction (context : IParseTree) action state =
+let WalkFunction (context : IParseTree) state =
     let funcName = context.GetChild(1).GetChild(0).GetText()
     let paramList =
         match context.GetChild(1).ChildCount with
         | 1 -> []
         | _ -> parseParamList context
+    (funcName, paramList)
 
-    let functionAction = action TokenType.DefFunc
-    functionAction funcName paramList state
-
-let private WalkImplicit (context : IParseTree) action state =
+let WalkImplicit (context : IParseTree) action state _ =
     let implic = context.GetChild(0).GetText()
     let paramList = context.GetChild(1).Payload :?> SBParser.UnparenthesizedlistContext
     let (fList:IParseTree list) = copyAntlrList paramList.children 0 []
     let termList = fList |> List.filter (fun x -> not (x :? TerminalNodeImpl || x :? SBParser.SeparatorContext))
-    let implicitAction = action TokenType.Implic
+    let implicitAction = action SBParser.Implic
     implicitAction implic termList state
-    
-let private WalkLocal (context : IParseTree) action state =
-    let locals = context.GetChild(0).GetText()
-    let paramList = context.GetChild(1).Payload :?> SBParser.UnparenthesizedlistContext
-    let (fList:IParseTree list) = copyAntlrList paramList.children 0 [] 
-    let termList = fList |> List.filter (fun x -> not (x :? TerminalNodeImpl || x :? SBParser.SeparatorContext))
-    let localAction = action TokenType.Local
-    localAction locals termList state
-    
-let private WalkBinaryExpr (context : IParseTree) action state =
-    let locals = context.GetChild(0).GetText()
-    let paramList = context.GetChild(1).Payload :?> SBParser.UnparenthesizedlistContext
-    let (fList:IParseTree list) = copyAntlrList paramList.children 0 [] 
-    let termList = fList |> List.filter (fun x -> not (x :? TerminalNodeImpl || x :? SBParser.SeparatorContext))
-    let localAction = action TokenType.Local
-    localAction locals termList state
+    state
 
-let rec private WalkAcross (context : IParseTree) index action state =
-    let result = 
-        let count = context.ChildCount
-        match index with
-        | n when n < count ->
-            let downValue = WalkDown (context.GetChild(index) : IParseTree) action state
-            WalkAcross (((fst downValue): IParseTree).Parent : IParseTree) (index+1) action (snd downValue) 
-        | _ -> state
-    result
-and 
-    private WalkDown (context : IParseTree) action (state: State) =
-        let newState = 
-            match context with
-            | :? SBParser.DimContext -> WalkDim context action state 
-            | :? SBParser.AssignmentContext -> WalkAssignment context action state 
-            | :? SBParser.ImplicitContext -> WalkImplicit context action state
-            | :? SBParser.LocContext -> WalkLocal context action state
-            | :? SBParser.ProchdrContext -> WalkProcedure context action state
-            | :? SBParser.FunchdrContext -> WalkFunction context action  state
-            | :? SBParser.EnddefContext -> WalkEndDef context action  state
-            | :? SBParser.BinaryContext -> WalkBinaryExpr context action state
-            | _ -> state
-        (context, WalkAcross (context:IParseTree) 0 action newState )
+let WalkBinaryExpr (context : IParseTree) action state =
+    let binaryAction = action 1000
+    binaryAction "" [] state
+    
+let WalkTerminal (context : IParseTree) action state =
+    let text = context.GetText()
+    state
 
-// top level only
-let WalkTreeRoot context action state=
-    WalkDown (context : ParserRuleContext) action state 
- 
+//let rec WalkAcross (context : IParseTree) index action state =
+//    let result = 
+//        let count = context.ChildCount
+//        match index with
+//        | n when n < count ->
+//            let downValue = WalkDown (context.GetChild(index) : IParseTree) action state
+//            WalkAcross (((fst downValue): IParseTree).Parent : IParseTree) (index+1) action (snd downValue) 
+//        | _ -> state
+//    result
+//and 
+//    WalkDown (context : IParseTree) action (state: State) =
+//        let newState = 
+//            match context with
+//            | :? SBParser.TermContext -> WalkTerminal context action state 
+//            | :? SBParser.DimContext -> WalkDim context action state 
+//            | :? SBParser.AssignmentContext -> WalkAssignment context action state 
+////            | :? SBParser.ImplicitContext -> WalkImplicit context action state 8
+//            | :? SBParser.LocContext -> WalkLocal context action state
+//            | :? SBParser.ProchdrContext -> WalkProcedure context action state
+//            | :? SBParser.FunchdrContext -> WalkFunction context action state
+//            | :? SBParser.EndDefContext -> WalkEndDef context action state
+//            | :? SBParser.BinaryContext -> WalkBinaryExpr context action state
+//            | _ -> state
+//        let (thing: State) =
+//            match context with :? SBParser.ImplicitContext -> WalkImplicit context action state 8
+
+//        (context, WalkAcross (context:IParseTree) 0 action newState )
+
+//// top level only
+//let WalkTreeRoot (context: ParserRuleContext) (action: int->String->IParseTree list->State->State) (state: State) =
+//    WalkDown context action state 
