@@ -1,9 +1,11 @@
-22 avar = 9*(3+4)
+980 DEFine PROCedure swap(this,that)
+1030 END DEFine
+22 avar% = 9*(3+4)
 25 DIM astring$(100)
-97 astring$(7) = "hhh"
+97 astring$(7,3) = "hhh"
 100 CLS
 110 TURBO_repfil
-115 IMPLICIT$ implicstring
+115 IMPLICIT$ implicstring, secondimplic
 120 sorts=0:partitions=0
 140 DIM a(10001)
 150 DIM b(1,2,3)
@@ -41,7 +43,7 @@
 460   LET now=DATE
 470 END DEFine
 480 :
-481 DEFine FuNction foo (param1, param2)
+481 DEFine FuNction foo (param1%, param2%)
 484 END DEFine
 490 DEFine PROCedure print_table
 500 LOCal pos
@@ -103,7 +105,7 @@
 1040 :
 1050 IMPLICIT$ first, last, p, item, temporary
 1060 DEFine PROCedure insertionsort (first,last)
-1070 LOCal p,item,temporary
+1070 LOCal p%,item$,temporary
 1080   FOR item=first+1 TO last
 1090     LET p=item
 1100     LET temporary=b(p)

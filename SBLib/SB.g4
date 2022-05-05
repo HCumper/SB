@@ -19,8 +19,8 @@ stmt :
 	| Local unparenthesizedlist														#Loc
 	| Implic unparenthesizedlist													#Implicit
 	| Refer unparenthesizedlist														#Reference
-	| prochdr line* Integer? EndDef ID?												#Proc
-	| funchdr line* Integer? EndDef ID?												#Func
+	| prochdr line* Integer? endDef ID?												#Proc
+	| funchdr line* Integer? endDef ID?												#Func
 	| For ID Equal expr To expr Newline line* Integer? EndFor ID?					#Longfor
 	| For ID Equal expr To expr Colon stmtlist										#Shortfor
 	| Repeat ID Colon stmtlist														#Shortrepeat

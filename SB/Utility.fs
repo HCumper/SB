@@ -12,7 +12,12 @@ let outputCs translation (state: State) =
 let getTypeFromAnnotation (name:string) =
     let len = name.Length - 1
     match name.Substring(len, 1) with
-    | "%" -> SBParser.Integer
-    | "$" -> SBParser.String
-    | _ -> SBParser.Real
+    | "%" -> 
+        let truncatedName = name.Substring(0, len) 
+        (truncatedName, SBParser.Integer)
+    | "$" -> 
+        let truncatedName = name.Substring(0, len) 
+        (truncatedName, SBParser.String)
+    | _ -> 
+        (name, SBParser.Real)
     
