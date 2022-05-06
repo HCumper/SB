@@ -1,6 +1,5 @@
-980 FOR ind=7 TO 25+x STEP -5
-990 END FOR
 22 avar% = 9*(3+4)
+25 var2 = 3 * avar%
 25 DIM astring$(100,76)
 97 astring$(7,3) = "hhh"
 100 CLS

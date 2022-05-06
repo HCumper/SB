@@ -33,7 +33,7 @@ let WalkLocal (context : IParseTree) state =
     let stringValues = List.map (fun (x: IParseTree) -> x.GetText()) termList
     (localVar, stringValues)
 
-let WalkAssignment (context : IParseTree) state =
+let WalkAssignment (context : IParseTree) =
     let lvalue = context.GetChild(0).GetChild(0).GetText()
     let dimensions =
         match context.GetChild(0).ChildCount with 
@@ -42,13 +42,13 @@ let WalkAssignment (context : IParseTree) state =
             let paramList = context.GetChild(0).GetChild(1).Payload :?> SBParser.ParenthesizedlistContext
             let (fList:IParseTree list) = copyAntlrList paramList.children 0 []
             fList |> List.filter (fun x -> not (x :? TerminalNodeImpl || x :? SBParser.SeparatorContext))
-    (lvalue, dimensions)
+    (lvalue, dimensions, context.GetChild(2))
 
 let WalkEndDef (context: IParseTree) action state =
     let endDefAction = action SBParser.EndDef
-    let newState = {state with currentScope = "~Global"}
+    let newState = {state with currentScope = globalScope}
     let newState = endDefAction "" [] state
-    {newState with currentScope = "~global"}
+    {newState with currentScope = globalScope}
 
 let WalkProcedure (context : IParseTree) state =
     let procName = context.GetChild(1).GetChild(0).GetText()

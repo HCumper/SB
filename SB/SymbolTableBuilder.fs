@@ -53,7 +53,7 @@ let private addDimSymbol context state =
     set symbol state
     
 let private addAssignmentSymbol context state =
-    let (varName, _) = Walker.WalkAssignment context state
+    let (varName, _, _) = Walker.WalkAssignment context
     let (truncatedName, dataType) = Utility.getTypeFromAnnotation varName
     let symbol = {Name = truncatedName; Scope = state.currentScope; Category=CategoryType.Variable; Type=dataType;  ParameterMechanism = Inapplicable}
     trySet symbol state
@@ -82,7 +82,7 @@ let private addFunctionSymbol context state =
     mapStringIterFromAnnotation paramList newState CategoryType.Parameter
 
 let private addEndDefSymbol state =
-    {state with currentScope = "~Global"}
+    {state with currentScope = globalScope}
 
 let private addLongForSymbol context state =
     let (loopVar, _, _, _) = Walker.WalkFor context state

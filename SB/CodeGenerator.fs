@@ -10,7 +10,7 @@ open Utility
 
 let addToCSharp item (state: State) =
     match state.currentScope with
-    | "~Global" -> {state with outputGlobal = state.outputGlobal + item}
+    | globalScope -> {state with outputGlobal = state.outputGlobal + item}
     | _ -> {state with outputProcFn = state.outputProcFn + item}
 
 let rec private foldStateful f (initialValue: 'a) (name: string) (li: 'b list) (state: State) : 'a =
@@ -22,7 +22,7 @@ let rec private foldStateful f (initialValue: 'a) (name: string) (li: 'b list) (
 let private getParameterText accum (scope: string) (parameters: IParseTree) state =
     let dataType = 
         match SymbolTable.get (parameters.GetText()) scope state with
-        | None -> SBParser.Void.ToString()        //TokenType.Void.ToString()
+        | None -> SBParser.Void.ToString()  
         | Some n when n.Type = SBParser.Unknowntype -> "float"
         | Some n when n.Type = SBParser.Integer -> "int"
         | Some n -> n.Type.ToString()
@@ -40,13 +40,37 @@ let private genDim context (state: State) =
             | None -> "void"
             | Some sym -> identifyType sym.Type
     let dimensionString = String.replicate dimensions.Tail.Length ","
-    let dimStmt = newLine + typeString + " " + name + "[" + dimensionString + "];"
+    let dimStmt = SymbolTable.newLine + typeString + " " + name + "[" + dimensionString + "];"
     addToCSharp dimStmt state
+
+let rec private genExpression (context: IParseTree) =
+    match context with
+        | :? SBParser.TermContext -> 
+            context.GetText()
+        | :? SBParser.BinaryContext ->
+            let leftChild = genExpression (context :?> SBParser.BinaryContext).children[0]
+            let rightChild = genExpression (context :?> SBParser.BinaryContext).children[2]
+            leftChild + " " + (context :?> SBParser.BinaryContext).children[1].GetText() + " " + rightChild
+        | :? SBParser.ParenthesizedContext -> 
+            genExpression (context :?> SBParser.ParenthesizedContext).children[1]
+        | _ -> "??????????????????????"
+    
+let private genAssignment context (state: State) =
+    let (lvalue, dimensionsk, rvalue) = Walker.WalkAssignment context
+    let (name, _) = Utility.getTypeFromAnnotation lvalue
+    //let operatingScope =
+    //    match state.currentScope with
+    //    | globalScope -> state.outputGlobal + $@"{varName} = "
+    //    | _ -> state.outputProcFn + $@"{varName} = "
+    //{state with outputProcFn = operatingScope}
+    let expressionString = genExpression rvalue
+    let assignStmt = SymbolTable.newLine + name + "[" + "dimensions" + "] = ;"
+    state
 
 // output code for procedures an functions
 let private genProcFunc (routineName:string) parameters state =
     let funcType = 
-        match SymbolTable.get routineName "~Global" state with
+        match SymbolTable.get routineName globalScope state with
         | Some t -> t.Type.ToString()
         | None -> SBParser.Void.ToString().ToLower()
     let paramList =
@@ -63,15 +87,8 @@ let private genProcFunc (routineName:string) parameters state =
     {state with outputProcFn = x}
 
 let private genEndDefine _ _ state =
-    let x = state.outputProcFn + "}\r\n"
+    let x = state.outputProcFn + "}" + newLine
     {state with outputProcFn = x}
-
-let private genAssign (varName:string) parameters (state: State) =
-    let operatingScope =
-        match state.currentScope with
-        | "~Global" -> state.outputGlobal + $@"{varName} = "
-        | _ -> state.outputProcFn + $@"{varName} = "
-    {state with outputProcFn = operatingScope}
 
 let private genBinary varName parameters (state: State) =
     let x = state.outputProcFn + "xxx"
@@ -80,23 +97,12 @@ let private genBinary varName parameters (state: State) =
 let private genTerminal _ _ (state: State) =
     let operatingScope =
         match state.currentScope with
-        | "~Global" -> state.outputGlobal + "}\r\n"
-        | _ -> state.outputProcFn + "}\r\n"
+        | globalScope -> state.outputGlobal + "}" + newLine
+        | _ -> state.outputProcFn + "}" + newLine
     {state with outputProcFn = operatingScope}
 
 let private noAction _ _ (state: State) =
     state
-
-// returns function for handling given type
-let Generate (actionType:int) =
-    match actionType with
-    | SBParser.DefProc -> genProcFunc
-    | SBParser.DefFunc -> genProcFunc
-    | SBParser.EndDef -> genEndDefine
-    | SBParser.ID -> genAssign
-    | SBParser.Integer | SBParser.Real | SBParser.String | SBParser.ID -> genTerminal
-    | 1000 -> genBinary
-    | _ -> noAction
 
 ///////////////////////////////// Tree traversal stuff ////////////////////////////////////////
 let rec private WalkAcross (context : IParseTree) index state =
@@ -113,7 +119,7 @@ and
         let newState = 
             match context with
             | :? SBParser.DimContext -> genDim context state 
-            //| :? SBParser.AssignmentContext -> addAssignmentSymbol context state 
+            | :? SBParser.AssignmentContext -> genAssignment context state 
             //| :? SBParser.ImplicitContext -> addImplicitSymbol context state
             //| :? SBParser.LocContext -> addLocalSymbol context state
             //| :? SBParser.ProchdrContext -> addProcedureSymbol context state

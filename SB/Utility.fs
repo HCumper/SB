@@ -4,9 +4,6 @@ open Antlr4.Runtime.Tree
 open SBLib
 open SymbolTable
 
-let globalScope = "~Global"
-let newLine = "\n"
-
 let identifyType code =
     match code with
     | SBParser.String -> "string"
@@ -16,7 +13,7 @@ let identifyType code =
 
 let outputCs translation (state: State) =
     match state.currentScope with
-    | "~Global" -> { state with outputProcFn = state.outputProcFn + translation}
+    | globalScope -> { state with outputProcFn = state.outputProcFn + translation}
     | _ -> { state with outputProcFn = state.outputGlobal + translation}
 
 let getTypeFromAnnotation (name:string) =
