@@ -21,7 +21,7 @@ stmt :
 	| Refer unparenthesizedlist														#Reference
 	| prochdr line* Integer? endDef ID?												#Proc
 	| funchdr line* Integer? endDef ID?												#Func
-	| For ID Equal expr To expr Newline line* Integer? EndFor ID?					#Longfor
+	| For ID Equal expr To expr (Step terminator)? Newline line* Integer? EndFor ID?	#Longfor
 	| For ID Equal expr To expr Colon stmtlist										#Shortfor
 	| Repeat ID Colon stmtlist														#Shortrepeat
 	| Repeat ID Newline line* Integer? (EndRepeat ID?)								#Longrepeat
@@ -149,11 +149,14 @@ ID : LETTER ([0-9] | [A-Za-z] | '_')* '$'
 	| LETTER ([0-9] | [A-Za-z] | '_')* '%'
 	| LETTER ([0-9] | [A-Za-z] | '_')*;
 
-Integer : DIGIT+;
+Integer : DIGIT+
+		| '-' DIGIT+;
 
 Real
 	: DIGIT+ Point DIGIT*
 	| Point DIGIT+
+	| '-' DIGIT+ Point DIGIT*
+	| '-' Point DIGIT+
 	;
 
 Unknowntype:;

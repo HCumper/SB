@@ -27,9 +27,12 @@ let main argv =
 
     let initialState = { references = Set.empty; symTab = Map.empty; errorList = []; currentScope = "~Global"; outputProcFn = ""; outputGlobal = ""}
     let (_, state) = SymbolTableBuilder.WalkTreeRoot parseTree initialState
-    //let typedState = TypeResolver.TypeImplicits state
-    //let resetState = { typedState with currentScope = "~Global"}
-    //let (_, state) = Walker.WalkTreeRoot parseTree  CodeGenerator.Generate resetState
-    //let strProg = state.outputProcFn.ToString()
-//    List.map (fun x -> File.AppendAllText(outputFile, x)) state.outputProcFn |> ignore
+    let typedState = TypeResolver.TypeImplicits state
+    let resetState = { typedState with currentScope = "~Global"}
+    let state = CodeGenerator.WalkTreeRoot parseTree resetState
+//    let strProg = state.outputProcFn.ToString()
+//    List.map (fun x -> File.AppendAllText(outputFile, x)) (snd state).outputProcFn |> ignore
+
+    let listing = (snd state).outputProcFn + "\n************************************************\n" + (snd state).outputGlobal 
+    File.WriteAllText (outputFile, listing)
     3

@@ -4,6 +4,16 @@ open Antlr4.Runtime.Tree
 open SBLib
 open SymbolTable
 
+let globalScope = "~Global"
+let newLine = "\n"
+
+let identifyType code =
+    match code with
+    | SBParser.String -> "string"
+    | SBParser.Integer -> "int"
+    | SBParser.Real -> "float"
+    | _ -> "void"
+
 let outputCs translation (state: State) =
     match state.currentScope with
     | "~Global" -> { state with outputProcFn = state.outputProcFn + translation}

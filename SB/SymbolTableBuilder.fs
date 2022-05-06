@@ -84,6 +84,17 @@ let private addFunctionSymbol context state =
 let private addEndDefSymbol state =
     {state with currentScope = "~Global"}
 
+let private addLongForSymbol context state =
+    let (loopVar, _, _, _) = Walker.WalkFor context state
+    let symbol = {Name = loopVar; Scope = state.currentScope; Category=CategoryType.Variable; Type=SBParser.Real; ParameterMechanism = Inapplicable}
+    trySet symbol state
+
+let private addShortForSymbol context state =
+    let (loopVar, _, _, _) = Walker.WalkFor context state
+    let symbol = {Name = loopVar; Scope = state.currentScope; Category=CategoryType.Variable; Type=SBParser.Real; ParameterMechanism = Inapplicable}
+    trySet symbol state
+
+///////////////////////////////// Tree traversal stuff ////////////////////////////////////////
 let rec private WalkAcross (context : IParseTree) index state =
     let result = 
         let count = context.ChildCount
@@ -104,6 +115,8 @@ and
             | :? SBParser.ProchdrContext -> addProcedureSymbol context state
             | :? SBParser.FunchdrContext -> addFunctionSymbol context state
             | :? SBParser.EndDefContext -> addEndDefSymbol state
+            | :? SBParser.LongforContext -> addLongForSymbol context state
+            | :? SBParser.ShortforContext -> addShortForSymbol context state
             | _ -> state
 
         (context, WalkAcross (context:IParseTree) 0 newState )

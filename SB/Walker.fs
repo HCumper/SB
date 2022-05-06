@@ -78,8 +78,15 @@ let WalkImplicit (context : IParseTree) state =
     let stringValues = List.map (fun (x: IParseTree) -> x.GetText()) termList
     (implic, stringValues)
     
-let walkFor =
-    0
+let WalkFor (context : IParseTree) state =
+    let loopVar = context.GetChild(1).GetText()
+    let initialValue = context.GetChild(3).GetText()
+    let finalValue = context.GetChild(5).GetText()
+    let step = 
+        match context.GetChild(6).GetText() with
+        | "\r\n" | ":" -> "1"
+        | _ -> context.GetChild(7).GetText()
+    (loopVar, initialValue, finalValue, step)
 
 let WalkBinaryExpr (context : IParseTree) action state =
     let binaryAction = action 1000
