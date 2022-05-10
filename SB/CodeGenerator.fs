@@ -10,7 +10,7 @@ open Utility
 
 let addToCSharp item (state: State) =
     match state.currentScope with
-    | globalScope -> {state with outputGlobal = state.outputGlobal + item}
+    | "~Global" -> {state with outputGlobal = state.outputGlobal + item}
     | _ -> {state with outputProcFn = state.outputProcFn + item}
 
 let rec private foldStateful f (initialValue: 'a) (name: string) (li: 'b list) (state: State) : 'a =
@@ -43,18 +43,46 @@ let private genDim context (state: State) =
     let dimStmt = SymbolTable.newLine + typeString + " " + name + "[" + dimensionString + "];"
     addToCSharp dimStmt state
 
+// Operator precedence tightext binding lowest
+type Precedence = Term=0 | Paren=1 | Primary=2 | Unary=3 | Range=4 | Switch=5 | Multiplicative=6 | Additive=7 | Shift=8 | Relational=9 | Equality=10 | And=11 | XOr=12 | Or=13 | ConditionalAnd=14 | ConditionalOr=15 | Coalescing=16 | Conditional=17 | Assignment=18
+
+let private getPrecedence operator =
+    match operator with
+    | "NOT" -> Precedence.Unary
+    | "SELect" -> Precedence.Switch
+    | "*" | "/" | "MOD" | "DIV" -> Precedence.Multiplicative
+    | "+" | "-" -> Precedence.Additive
+    | "<" | ">" | "<=" | ">=" -> Precedence.Relational
+    | "=" -> Precedence.Equality
+    | "AND" -> Precedence.And
+    | "XOR" -> Precedence.XOr
+    | "OR" -> Precedence.Or
+    | _ -> Precedence.Term
+
 let rec private genExpression (context: IParseTree) =
     match context with
         | :? SBParser.TermContext -> 
-            context.GetText()
+            (context.GetText(), Precedence.Term)
         | :? SBParser.BinaryContext ->
-            let leftChild = genExpression (context :?> SBParser.BinaryContext).children[0]
-            let rightChild = genExpression (context :?> SBParser.BinaryContext).children[2]
-            leftChild + " " + (context :?> SBParser.BinaryContext).children[1].GetText() + " " + rightChild
+            let binaryContext = (context :?> SBParser.BinaryContext)
+            let (leftChild, leftPrecedence) = genExpression binaryContext.children[0]
+            let (rightChild, rightPrecedence) = genExpression binaryContext.children[2]
+            let operator = binaryContext.children[1].GetText()
+            let expressionPrecedence = getPrecedence operator
+            let leftChildString =
+                match expressionPrecedence with
+                | ep when ep < leftPrecedence -> "(" + leftChild + ")"
+                | _ -> leftChild
+            let rightChildString =
+                match expressionPrecedence with
+                | ep when ep < rightPrecedence -> "(" + rightChild + ")"
+                | _ -> rightChild
+            (leftChildString + " " + operator + " " + rightChildString, expressionPrecedence)
         | :? SBParser.ParenthesizedContext -> 
             genExpression (context :?> SBParser.ParenthesizedContext).children[1]
-        | _ -> "??????????????????????"
-    
+        | :? SBParser.UnaryAdditiveContext -> 
+            (context.GetText(), Precedence.Unary)
+
 let private genAssignment context (state: State) =
     let (lvalue, dimensionsk, rvalue) = Walker.WalkAssignment context
     let (name, _) = Utility.getTypeFromAnnotation lvalue
@@ -63,9 +91,10 @@ let private genAssignment context (state: State) =
     //    | globalScope -> state.outputGlobal + $@"{varName} = "
     //    | _ -> state.outputProcFn + $@"{varName} = "
     //{state with outputProcFn = operatingScope}
-    let expressionString = genExpression rvalue
-    let assignStmt = SymbolTable.newLine + name + "[" + "dimensions" + "] = ;"
-    state
+//    let expressionString = genExpression rvalue
+    let expr = genExpression rvalue
+    let assignStmt = $@"{SymbolTable.newLine} {name} = { fst expr};"
+    addToCSharp assignStmt state
 
 // output code for procedures an functions
 let private genProcFunc (routineName:string) parameters state =

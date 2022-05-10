@@ -50,6 +50,23 @@ unparenthesizedlist : expr (separator expr)*										#Unparenthesized;
 
 separator : Comma | Bang | Semi | To;
 
+/*
+    SB has 11 levels of operator precedence
+    (1)  Unary plus and minus
+    (2)  String concatenation
+    (3)  String search (the INSTR operator)
+    (4)  Exponentiation
+    (5)  Multiplication, Division, Modulus calculation
+    (6)  Addition and Subtraction
+    (7)  Logical comparison (not equal, greater, etc)
+    (8)  Unary logical NOT
+    (9)  Logical AND
+    (10) Logical OR and XOR
+    (11) Expressions (inc. Function parameters and array
+         subscripts) enclosed in parentheses.
+    Every terminal and expression must have an associated precedence to determine whether parentheses are needed
+*/
+
 expr :
 	  LeftParen expr RightParen														#Parenthesized
 	| (Plus | Minus) expr															#UnaryAdditive
@@ -150,7 +167,7 @@ ID : LETTER ([0-9] | [A-Za-z] | '_')* '$'
 	| LETTER ([0-9] | [A-Za-z] | '_')*;
 
 Integer : DIGIT+
-		| '-' DIGIT+;
+		;
 
 Real
 	: DIGIT+ Point DIGIT*
