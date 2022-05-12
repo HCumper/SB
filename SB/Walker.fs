@@ -8,7 +8,7 @@ open SB
 open SymbolTable
 
 // copy generic list to F# list non destructively
-let rec private copyAntlrList (parentNode: Collections.Generic.IList<IParseTree>) i newList = 
+let rec copyAntlrList (parentNode: Collections.Generic.IList<IParseTree>) i newList = 
     if i = parentNode.Count then newList else
         newList @ [parentNode.Item(i)] 
         |> copyAntlrList parentNode (i+1)  

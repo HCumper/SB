@@ -8,10 +8,15 @@ open SB
 open SymbolTable
 open Utility
 
-let addToCSharp item (state: State) =
+let addToCSharp (item:string) (state: State) =
     match state.currentScope with
     | "~Global" -> {state with outputGlobal = state.outputGlobal + item}
     | _ -> {state with outputProcFn = state.outputProcFn + item}
+
+let addStateToCSharp (item:State) (state: State) =
+    match state.currentScope with
+    | "~Global" -> {state with outputGlobal = state.outputGlobal + item.outputGlobal}
+    | _ -> {state with outputProcFn = state.outputProcFn + item.outputProcFn}
 
 let rec private foldStateful f (initialValue: 'a) (name: string) (li: 'b list) (state: State) : 'a =
     match li with
@@ -135,35 +140,50 @@ let private noAction _ _ (state: State) =
     state
 
 ///////////////////////////////// Tree traversal stuff ////////////////////////////////////////
+// walk a child list
 let rec private WalkAcross (context : IParseTree) index state =
-    let result = 
         let count = context.ChildCount
         match index with
         | n when n < count ->
             let (context, state) = WalkDown (context.GetChild(index) : IParseTree) state
             WalkAcross ((context: IParseTree).Parent : IParseTree) (index+1) state 
         | _ -> state
-    result
 and 
+    // generate output for a node depending on type and then call walk across to traverse it children
     private WalkDown (context : IParseTree) (state: State) =
         let newState = 
             match context with
             | :? SBParser.DimContext -> genDim context state 
             | :? SBParser.AssignmentContext -> genAssignment context state 
+            | :? SBParser.LongforContext -> genLongFor context state
             //| :? SBParser.ImplicitContext -> addImplicitSymbol context state
             //| :? SBParser.LocContext -> addLocalSymbol context state
             //| :? SBParser.ProchdrContext -> addProcedureSymbol context state
             //| :? SBParser.FunchdrContext -> addFunctionSymbol context state
             //| :? SBParser.EndDefContext -> addEndDefSymbol state
-            | :? SBParser.LongforContext -> genLongFor context state
             //| :? SBParser.ShortforContext -> addShortForSymbol context state
             | _ -> state
         (context, WalkAcross (context:IParseTree) 0 newState )
-and private genLongFor (context: IParseTree) (state:State) =
-    let (loopVar, initialValue, finalValue, step) = Walker.WalkFor context state
-    //call walk across for line contexts only
-    state
-
+and
+    // walk a list of statement lines from within FOR, REPeat, IF
+    private WalkList (contextList: Collections.Generic.IList<IParseTree>) index state =
+        let fsList = Walker.copyAntlrList contextList 0 []
+        let (lineList: IParseTree List) = List.filter (fun x -> x :? SBParser.LineContext) fsList
+        let count = lineList.Length
+        match index with
+        | n when n < count ->
+            let (context, state) = WalkDown (contextList[index] : IParseTree) state
+            WalkAcross ((context: IParseTree).Parent : IParseTree) (index+1) state 
+        | _ -> state
+and 
+    private genLongFor (context: IParseTree) (state:State) =
+        let (loopVar, initialValue, finalValue, step) = Walker.WalkFor context state
+        let forStmt = $@"{SymbolTable.newLine} for ({loopVar} = {initialValue}; {loopVar} <= {finalValue}; {loopVar} += {step}){SymbolTable.newLine} {{"
+        let withHeader = addToCSharp forStmt state
+        let contextList = (context:?> SBParser.LongforContext).children
+        let withBody = WalkList contextList 0 withHeader
+        addToCSharp $@"{SymbolTable.newLine} }} {SymbolTable.newLine} " withBody
+        
 // top level only
 let WalkTreeRoot (context: ParserRuleContext) (state: State) =
     WalkDown context state 
