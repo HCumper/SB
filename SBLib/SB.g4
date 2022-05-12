@@ -3,11 +3,11 @@ grammar SB;
 program : line+ EOF;
 
 line :
-	Integer? (stmtlist)? Newline
-	| Integer Colon Newline
+	lineNumber? (stmtlist)? Newline
+	| lineNumber Colon Newline
 	;
 
-stmtlist : stmt (':' stmt)*;
+stmtlist : stmt (':' stmt?)*;
 
 constexpr : Integer | Real | String | ID;
 rangeexpr : constexpr To constexpr
@@ -15,23 +15,24 @@ rangeexpr : constexpr To constexpr
 ;
 
 stmt :
-	Dimension ID parenthesizedlist													#Dim
-	| Local unparenthesizedlist														#Loc
-	| Implic unparenthesizedlist													#Implicit
-	| Refer unparenthesizedlist														#Reference
-	| prochdr line* Integer? endDef ID?												#Proc
-	| funchdr line* Integer? endDef ID?												#Func
-	| For ID Equal expr To expr (Step terminator)? Newline line* Integer? EndFor ID?	#Longfor
-	| For ID Equal expr To expr Colon stmtlist										#Shortfor
-	| Repeat ID Colon stmtlist														#Shortrepeat
-	| Repeat ID Newline line* Integer? (EndRepeat ID?)								#Longrepeat
-	| If expr (Then | Colon) stmtlist (Colon Else Colon stmtlist)?					#Shortif
-	| If expr (Then)? Newline line+ (Integer? Else line+)? Integer? EndIf			#Longif
-    | Select constexpr Newline line* Integer? EndSelect								#Longselect
-	| On (constexpr) Equal rangeexpr												#Onselect
-	| Exit ID?																		#Exitstmt
-	| identifier Equal expr															#Assignment
-	| identifier																	#IdentifierOnly
+	Dimension ID parenthesizedlist														#Dim
+	| Local unparenthesizedlist															#Loc
+	| Implic unparenthesizedlist														#Implicit
+	| Refer unparenthesizedlist															#Reference
+	| prochdr line* Integer? endDef ID?													#Proc
+	| funchdr line* Integer? endDef ID?													#Func
+	| For ID Equal expr To expr (Step terminator)? Newline line* lineNumber? endFor ID?	#Longfor
+	| For ID Equal expr To expr Colon stmtlist											#Shortfor
+	| Repeat ID Colon stmtlist															#Shortrepeat
+	| Repeat ID Newline line* Integer? (EndRepeat ID?)									#Longrepeat
+	| If expr (Then | Colon) stmtlist (Colon Else Colon stmtlist)?						#Shortif
+	| If expr (Then)? Newline line+ (Integer? Else line+)? Integer? EndIf				#Longif
+    | Select constexpr Newline line* Integer? EndSelect									#Longselect
+	| On (constexpr) Equal rangeexpr													#Onselect
+	| Next ID																			#Nextstmt
+	| Exit ID																			#Exitstmt
+	| identifier Equal expr																#Assignment
+	| identifier																		#IdentifierOnly
 	;
 
 prochdr : DefProc identifier parenthesizedlist? Newline								#Procheader
@@ -48,6 +49,8 @@ identifier :
 parenthesizedlist :	LeftParen expr (separator expr)* RightParen						#Parenthesizedl;
 unparenthesizedlist : expr (separator expr)*										#Unparenthesized;
 
+lineNumber : Integer;
+endFor : EndFor;
 separator : Comma | Bang | Semi | To;
 
 /*
@@ -159,7 +162,7 @@ Newline
 String : '"' ~('"')* '"';
 
 Comment
-	:  'REMark' ~( '\r' | '\n' )* -> skip
+	:  'REMark' ~( '\r' | '\n' )* -> channel(1)
 	;
 
 ID : LETTER ([0-9] | [A-Za-z] | '_')* '$'
@@ -179,7 +182,6 @@ Real
 Unknowntype:;
 Void:;
 Scalar:;
-LineNumber:;
 
 fragment LETTER : [a-zA-Z];
 fragment DIGIT : [0-9];

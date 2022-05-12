@@ -213,6 +213,19 @@ public interface ISBListener : IParseTreeListener {
 	void ExitOnselect([NotNull] SBParser.OnselectContext context);
 
 	/// <summary>
+	/// Enter a parse tree produced by the <c>Nextstmt</c>
+	/// labeled alternative in <see cref="SBParser.stmt"/>.
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	void EnterNextstmt([NotNull] SBParser.NextstmtContext context);
+	/// <summary>
+	/// Exit a parse tree produced by the <c>Nextstmt</c>
+	/// labeled alternative in <see cref="SBParser.stmt"/>.
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	void ExitNextstmt([NotNull] SBParser.NextstmtContext context);
+
+	/// <summary>
 	/// Enter a parse tree produced by the <c>Exitstmt</c>
 	/// labeled alternative in <see cref="SBParser.stmt"/>.
 	/// </summary>
@@ -512,6 +525,28 @@ public interface ISBListener : IParseTreeListener {
 	/// </summary>
 	/// <param name="context">The parse tree.</param>
 	void ExitUnparenthesizedlist([NotNull] SBParser.UnparenthesizedlistContext context);
+
+	/// <summary>
+	/// Enter a parse tree produced by <see cref="SBParser.lineNumber"/>.
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	void EnterLineNumber([NotNull] SBParser.LineNumberContext context);
+	/// <summary>
+	/// Exit a parse tree produced by <see cref="SBParser.lineNumber"/>.
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	void ExitLineNumber([NotNull] SBParser.LineNumberContext context);
+
+	/// <summary>
+	/// Enter a parse tree produced by <see cref="SBParser.endFor"/>.
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	void EnterEndFor([NotNull] SBParser.EndForContext context);
+	/// <summary>
+	/// Exit a parse tree produced by <see cref="SBParser.endFor"/>.
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	void ExitEndFor([NotNull] SBParser.EndForContext context);
 
 	/// <summary>
 	/// Enter a parse tree produced by <see cref="SBParser.separator"/>.

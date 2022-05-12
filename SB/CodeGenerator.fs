@@ -43,7 +43,7 @@ let private genDim context (state: State) =
     let dimStmt = SymbolTable.newLine + typeString + " " + name + "[" + dimensionString + "];"
     addToCSharp dimStmt state
 
-// Operator precedence tightext binding lowest
+// Operator precedence tightest binding lowest
 type Precedence = Term=0 | Paren=1 | Primary=2 | Unary=3 | Range=4 | Switch=5 | Multiplicative=6 | Additive=7 | Shift=8 | Relational=9 | Equality=10 | And=11 | XOr=12 | Or=13 | ConditionalAnd=14 | ConditionalOr=15 | Coalescing=16 | Conditional=17 | Assignment=18
 
 let private getPrecedence operator =
@@ -64,7 +64,7 @@ let rec private genExpression (context: IParseTree) =
         | :? SBParser.TermContext -> 
             (context.GetText(), Precedence.Term)
         | :? SBParser.BinaryContext ->
-            let binaryContext = (context :?> SBParser.BinaryContext)
+            let binaryContext = context :?> SBParser.BinaryContext
             let (leftChild, leftPrecedence) = genExpression binaryContext.children[0]
             let (rightChild, rightPrecedence) = genExpression binaryContext.children[2]
             let operator = binaryContext.children[1].GetText()
@@ -79,9 +79,10 @@ let rec private genExpression (context: IParseTree) =
                 | _ -> rightChild
             (leftChildString + " " + operator + " " + rightChildString, expressionPrecedence)
         | :? SBParser.ParenthesizedContext -> 
-            genExpression (context :?> SBParser.ParenthesizedContext).children[1]
+            genExpression (context :?> SBParser.ParenthesizedContext).children[1]  // discard parentheses
         | :? SBParser.UnaryAdditiveContext -> 
             (context.GetText(), Precedence.Unary)
+        | _ -> raise (MyError("Expression generation error"))
 
 let private genAssignment context (state: State) =
     let (lvalue, dimensionsk, rvalue) = Walker.WalkAssignment context
@@ -154,11 +155,14 @@ and
             //| :? SBParser.ProchdrContext -> addProcedureSymbol context state
             //| :? SBParser.FunchdrContext -> addFunctionSymbol context state
             //| :? SBParser.EndDefContext -> addEndDefSymbol state
-            //| :? SBParser.LongforContext -> addLongForSymbol context state
+            | :? SBParser.LongforContext -> genLongFor context state
             //| :? SBParser.ShortforContext -> addShortForSymbol context state
             | _ -> state
-
         (context, WalkAcross (context:IParseTree) 0 newState )
+and private genLongFor (context: IParseTree) (state:State) =
+    let (loopVar, initialValue, finalValue, step) = Walker.WalkFor context state
+    //call walk across for line contexts only
+    state
 
 // top level only
 let WalkTreeRoot (context: ParserRuleContext) (state: State) =

@@ -245,6 +245,21 @@ public partial class SBBaseListener : ISBListener {
 	public virtual void ExitOnselect([NotNull] SBParser.OnselectContext context) { }
 
 	/// <summary>
+	/// Enter a parse tree produced by the <c>Nextstmt</c>
+	/// labeled alternative in <see cref="SBParser.stmt"/>.
+	/// <para>The default implementation does nothing.</para>
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	public virtual void EnterNextstmt([NotNull] SBParser.NextstmtContext context) { }
+	/// <summary>
+	/// Exit a parse tree produced by the <c>Nextstmt</c>
+	/// labeled alternative in <see cref="SBParser.stmt"/>.
+	/// <para>The default implementation does nothing.</para>
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	public virtual void ExitNextstmt([NotNull] SBParser.NextstmtContext context) { }
+
+	/// <summary>
 	/// Enter a parse tree produced by the <c>Exitstmt</c>
 	/// labeled alternative in <see cref="SBParser.stmt"/>.
 	/// <para>The default implementation does nothing.</para>
@@ -594,6 +609,32 @@ public partial class SBBaseListener : ISBListener {
 	/// </summary>
 	/// <param name="context">The parse tree.</param>
 	public virtual void ExitUnparenthesizedlist([NotNull] SBParser.UnparenthesizedlistContext context) { }
+
+	/// <summary>
+	/// Enter a parse tree produced by <see cref="SBParser.lineNumber"/>.
+	/// <para>The default implementation does nothing.</para>
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	public virtual void EnterLineNumber([NotNull] SBParser.LineNumberContext context) { }
+	/// <summary>
+	/// Exit a parse tree produced by <see cref="SBParser.lineNumber"/>.
+	/// <para>The default implementation does nothing.</para>
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	public virtual void ExitLineNumber([NotNull] SBParser.LineNumberContext context) { }
+
+	/// <summary>
+	/// Enter a parse tree produced by <see cref="SBParser.endFor"/>.
+	/// <para>The default implementation does nothing.</para>
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	public virtual void EnterEndFor([NotNull] SBParser.EndForContext context) { }
+	/// <summary>
+	/// Exit a parse tree produced by <see cref="SBParser.endFor"/>.
+	/// <para>The default implementation does nothing.</para>
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	public virtual void ExitEndFor([NotNull] SBParser.EndForContext context) { }
 
 	/// <summary>
 	/// Enter a parse tree produced by <see cref="SBParser.separator"/>.

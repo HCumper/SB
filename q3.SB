@@ -1,6 +1,11 @@
+1 FOR n=1 TO 10 STEP 2
+2 PRINT n
+6 bb=22
+3 END FOR n
 22 avar% = 9+((3*(4-1))-(5/6))
-25 var2 = -3
-25 DIM astring$(100,76)
+25 var2 = -3 : gg=11
+26 REMark a comment
+25 DIM astring$(100,76) : REMark end of line comment
 97 astring$(7,3) = "hhh"
 100 CLS
 110 TURBO_repfil

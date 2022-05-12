@@ -30,6 +30,9 @@ type State = {
     outputGlobal : string
 }
    
+exception MyError of string
+
+
 let get name scope state =
     // try local scope first
     let symbolFound = state.symTab |> Map.tryFind {Name=name; Scope=scope}
