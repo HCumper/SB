@@ -21,17 +21,25 @@ let addStateToCSharp (item:State) (state: State) =
 let rec private foldStateful f (initialValue: 'a) (name: string) (li: 'b list) (state: State) : 'a =
     match li with
         | [] -> initialValue
-        | x::xs -> foldStateful f (f initialValue name x state) name xs state
+        | hd::tl -> foldStateful f (f initialValue name hd state) name tl state
+
+// translate SBParser numeric type to string
+let translateType typeCode =
+    match typeCode with
+    | SBParser.Unknowntype -> "float"
+    | SBParser.Real -> "float"
+    | SBParser.Integer -> "int"
+    | SBParser.String -> "string"
+    | SBParser.Void -> "void"
+    | _ -> "void"
 
 // extract text from a parameter list
-let private getParameterText accum (scope: string) (parameters: IParseTree) state =
+let private getParameterText accum (scope: string) (parameter: string) state =
     let dataType = 
-        match SymbolTable.get (parameters.GetText()) scope state with
-        | None -> SBParser.Void.ToString()  
-        | Some n when n.Type = SBParser.Unknowntype -> "float"
-        | Some n when n.Type = SBParser.Integer -> "int"
-        | Some n -> n.Type.ToString()
-    $@"{dataType} {parameters.GetText()}, {accum}"
+        match SymbolTable.get parameter scope state with
+        | None -> "void"  
+        | Some n -> translateType n.Type
+    $@"{accum} {dataType} {parameter},"
 
 // if there is not output for this construct just preserve the state
 let private defaultAction _ _ state = state
@@ -103,23 +111,6 @@ let private genAssignment context (state: State) =
     addToCSharp assignStmt state
 
 // output code for procedures an functions
-let private genProcFunc (routineName:string) parameters state =
-    let funcType = 
-        match SymbolTable.get routineName globalScope state with
-        | Some t -> t.Type.ToString()
-        | None -> SBParser.Void.ToString().ToLower()
-    let paramList =
-        match parameters with
-        | [] -> ""
-        | _ -> foldStateful getParameterText "" routineName parameters state
-
-    let cSharp = 
-        match paramList.Length with
-        | 0 -> ""
-        | _ -> "(" + paramList.Remove(paramList.Length - 2) + ")"
-    let text = Templates.procFunc (funcType.ToLower()) routineName cSharp
-    let x = state.outputProcFn + text
-    {state with outputProcFn = x}
 
 let private genEndDefine _ _ state =
     let x = state.outputProcFn + "}" + newLine
@@ -139,14 +130,15 @@ let private genTerminal _ _ (state: State) =
 let private noAction _ _ (state: State) =
     state
 
-///////////////////////////////// Tree traversal stuff ////////////////////////////////////////
+let private genNext (_: IParseTree) (state:State) = addToCSharp $@"{SymbolTable.newLine}continue;{SymbolTable.newLine}" state
+
 // walk a child list
 let rec private WalkAcross (context : IParseTree) index state =
         let count = context.ChildCount
         match index with
         | n when n < count ->
-            let (context, state) = WalkDown (context.GetChild(index) : IParseTree) state
-            WalkAcross ((context: IParseTree).Parent : IParseTree) (index+1) state 
+            let (context, newState) = WalkDown (context.GetChild(index) : IParseTree) state
+            WalkAcross ((context: IParseTree).Parent : IParseTree) (index+1) newState 
         | _ -> state
 and 
     // generate output for a node depending on type and then call walk across to traverse it children
@@ -155,35 +147,47 @@ and
             match context with
             | :? SBParser.DimContext -> genDim context state 
             | :? SBParser.AssignmentContext -> genAssignment context state 
-            | :? SBParser.LongforContext -> genLongFor context state
+            | :? SBParser.LongforContext | :? SBParser.ShortforContext -> genFor context state
+            | :? SBParser.NextstmtContext -> genNext context state 
+            | :? SBParser.ProchdrContext -> genProcFunc context state
             //| :? SBParser.ImplicitContext -> addImplicitSymbol context state
             //| :? SBParser.LocContext -> addLocalSymbol context state
-            //| :? SBParser.ProchdrContext -> addProcedureSymbol context state
             //| :? SBParser.FunchdrContext -> addFunctionSymbol context state
             //| :? SBParser.EndDefContext -> addEndDefSymbol state
-            //| :? SBParser.ShortforContext -> addShortForSymbol context state
-            | _ -> state
-        (context, WalkAcross (context:IParseTree) 0 newState )
-and
-    // walk a list of statement lines from within FOR, REPeat, IF
-    private WalkList (contextList: Collections.Generic.IList<IParseTree>) index state =
-        let fsList = Walker.copyAntlrList contextList 0 []
-        let (lineList: IParseTree List) = List.filter (fun x -> x :? SBParser.LineContext) fsList
-        let count = lineList.Length
-        match index with
-        | n when n < count ->
-            let (context, state) = WalkDown (contextList[index] : IParseTree) state
-            WalkAcross ((context: IParseTree).Parent : IParseTree) (index+1) state 
-        | _ -> state
+            | _ -> WalkAcross (context:IParseTree) 0 state 
+//        (context, WalkAcross (context:IParseTree) 0 newState )
+        (context, newState)
 and 
-    private genLongFor (context: IParseTree) (state:State) =
+    private genFor (context: IParseTree) (state:State) =
         let (loopVar, initialValue, finalValue, step) = Walker.WalkFor context state
-        let forStmt = $@"{SymbolTable.newLine} for ({loopVar} = {initialValue}; {loopVar} <= {finalValue}; {loopVar} += {step}){SymbolTable.newLine} {{"
-        let withHeader = addToCSharp forStmt state
-        let contextList = (context:?> SBParser.LongforContext).children
-        let withBody = WalkList contextList 0 withHeader
-        addToCSharp $@"{SymbolTable.newLine} }} {SymbolTable.newLine} " withBody
-        
+        let forStmt = $@"{SymbolTable.newLine} for ({loopVar} = {initialValue}; {loopVar} <= {finalValue}; {loopVar} += "
+        let (theStep: string) = "2"
+        let stepStmt = forStmt + theStep + "{"
+        let withBody = addToCSharp stepStmt state 
+        let body2 = WalkAcross context 0 withBody
+        let bodyAdded = addToCSharp $@"{SymbolTable.newLine} " body2
+        addToCSharp $@"{SymbolTable.newLine}}}" bodyAdded
+and
+    private genProcFunc context state =
+        let (routineName, parameters) = Walker.WalkProcedure context state
+        let routineType = 
+            match SymbolTable.get routineName globalScope state with
+            | Some t -> t.Type.ToString()
+            | None -> translateType SBParser.Void
+        let routineInt = translateType (routineType |> int)
+        let paramList =
+            match parameters with
+            | [] -> ""
+            | _ -> foldStateful getParameterText "" routineName parameters state
+
+        let cSharp = 
+            match paramList.Length with
+            | 0 -> ""
+            | _ -> "(" + paramList.Remove(paramList.Length - 1) + ")"
+        let text = Templates.procFunc routineInt routineName cSharp
+        let x = state.outputProcFn + text + $@"{SymbolTable.newLine}{SymbolTable.newLine}"
+        {state with outputProcFn = x}
+
 // top level only
-let WalkTreeRoot (context: ParserRuleContext) (state: State) =
+let walkTreeRoot (context: ParserRuleContext) (state: State) =
     WalkDown context state 

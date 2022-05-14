@@ -29,7 +29,7 @@ let main argv =
     let (_, state) = SymbolTableBuilder.WalkTreeRoot parseTree initialState
     let typedState = TypeResolver.TypeImplicits state
     let resetState = { typedState with currentScope = globalScope}
-    let state = CodeGenerator.WalkTreeRoot parseTree resetState
+    let state = CodeGenerator.walkTreeRoot parseTree resetState
 //    let strProg = state.outputProcFn.ToString()
 //    List.map (fun x -> File.AppendAllText(outputFile, x)) (snd state).outputProcFn |> ignore
 

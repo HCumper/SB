@@ -1,5 +1,6 @@
 1 FOR n=1 TO 10 STEP 2
 2 PRINT n
+3 NEXT n
 6 bb=22
 3 END FOR n
 22 avar% = 9+((3*(4-1))-(5/6))

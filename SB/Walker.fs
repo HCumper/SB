@@ -8,27 +8,29 @@ open SB
 open SymbolTable
 
 // copy generic list to F# list non destructively
-let rec copyAntlrList (parentNode: Collections.Generic.IList<IParseTree>) i newList = 
-    if i = parentNode.Count then newList else
-        newList @ [parentNode.Item(i)] 
-        |> copyAntlrList parentNode (i+1)  
+let copyAntlrList (parentNode: Collections.Generic.IList<IParseTree>) =
+    let rec copyAntlrListWithIndex (parentNode: Collections.Generic.IList<IParseTree>) i newList = 
+        if i = parentNode.Count then newList else
+            newList @ [parentNode.Item(i)] 
+            |> copyAntlrListWithIndex parentNode (i+1)  
+    copyAntlrListWithIndex parentNode 0 []
 
 let private parseParamList (context: IParseTree) =
     let paramList = context.GetChild(1).GetChild(1) :?> SBParser.ParenthesizedlistContext
-    let (fList:IParseTree list) = copyAntlrList paramList.children 0 []
+    let (fList:IParseTree list) = copyAntlrList paramList.children
     fList |> List.filter (fun x -> not (x :? TerminalNodeImpl || x :? SBParser.SeparatorContext))            
 
 let WalkDim (context : IParseTree) =
     let varName = context.GetChild(1).GetText()
     let paramList = context.GetChild(2).Payload :?> SBParser.ParenthesizedlistContext
-    let (fList:IParseTree list) = copyAntlrList paramList.children 0 []
+    let (fList:IParseTree list) = copyAntlrList paramList.children
     let termList = fList |> List.filter (fun x -> not (x :? TerminalNodeImpl || x :? SBParser.SeparatorContext))
     (varName, termList)
 
 let WalkLocal (context : IParseTree) state =
     let localVar = context.GetChild(0).GetText()
     let paramList = context.GetChild(1).Payload :?> SBParser.UnparenthesizedlistContext
-    let (fList:IParseTree list) = copyAntlrList paramList.children 0 [] 
+    let (fList:IParseTree list) = copyAntlrList paramList.children
     let termList = fList |> List.filter (fun x -> not (x :? TerminalNodeImpl || x :? SBParser.SeparatorContext))
     let stringValues = List.map (fun (x: IParseTree) -> x.GetText()) termList
     (localVar, stringValues)
@@ -40,7 +42,7 @@ let WalkAssignment (context : IParseTree) =
         | 1 -> []
         | _ -> 
             let paramList = context.GetChild(0).GetChild(1).Payload :?> SBParser.ParenthesizedlistContext
-            let (fList:IParseTree list) = copyAntlrList paramList.children 0 []
+            let (fList:IParseTree list) = copyAntlrList paramList.children
             fList |> List.filter (fun x -> not (x :? TerminalNodeImpl || x :? SBParser.SeparatorContext))
     (lvalue, dimensions, context.GetChild(2))
 
@@ -73,7 +75,7 @@ let WalkFunction (context : IParseTree) state =
 let WalkImplicit (context : IParseTree) state =
     let implic = context.GetChild(0).GetText()
     let paramList = context.GetChild(1).Payload :?> SBParser.UnparenthesizedlistContext
-    let (fList:IParseTree list) = copyAntlrList paramList.children 0 []
+    let (fList:IParseTree list) = copyAntlrList paramList.children
     let termList = fList |> List.filter (fun x -> not (x :? TerminalNodeImpl || x :? SBParser.SeparatorContext))
     let stringValues = List.map (fun (x: IParseTree) -> x.GetText()) termList
     (implic, stringValues)
@@ -84,7 +86,7 @@ let WalkFor (context : IParseTree) state =
     let finalValue = context.GetChild(5).GetText()
     let step = 
         match context.GetChild(6).GetText() with
-        | "\r\n" | ":" -> "1"
+        | "\n" | ":" -> "1"
         | _ -> context.GetChild(7).GetText()
     (loopVar, initialValue, finalValue, step)
 
