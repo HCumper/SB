@@ -265,58 +265,6 @@ public interface ISBListener : IParseTreeListener {
 	void ExitIdentifierOnly([NotNull] SBParser.IdentifierOnlyContext context);
 
 	/// <summary>
-	/// Enter a parse tree produced by the <c>Procheader</c>
-	/// labeled alternative in <see cref="SBParser.prochdr"/>.
-	/// </summary>
-	/// <param name="context">The parse tree.</param>
-	void EnterProcheader([NotNull] SBParser.ProcheaderContext context);
-	/// <summary>
-	/// Exit a parse tree produced by the <c>Procheader</c>
-	/// labeled alternative in <see cref="SBParser.prochdr"/>.
-	/// </summary>
-	/// <param name="context">The parse tree.</param>
-	void ExitProcheader([NotNull] SBParser.ProcheaderContext context);
-
-	/// <summary>
-	/// Enter a parse tree produced by the <c>Funcheader</c>
-	/// labeled alternative in <see cref="SBParser.funchdr"/>.
-	/// </summary>
-	/// <param name="context">The parse tree.</param>
-	void EnterFuncheader([NotNull] SBParser.FuncheaderContext context);
-	/// <summary>
-	/// Exit a parse tree produced by the <c>Funcheader</c>
-	/// labeled alternative in <see cref="SBParser.funchdr"/>.
-	/// </summary>
-	/// <param name="context">The parse tree.</param>
-	void ExitFuncheader([NotNull] SBParser.FuncheaderContext context);
-
-	/// <summary>
-	/// Enter a parse tree produced by the <c>Parenthesizedl</c>
-	/// labeled alternative in <see cref="SBParser.parenthesizedlist"/>.
-	/// </summary>
-	/// <param name="context">The parse tree.</param>
-	void EnterParenthesizedl([NotNull] SBParser.ParenthesizedlContext context);
-	/// <summary>
-	/// Exit a parse tree produced by the <c>Parenthesizedl</c>
-	/// labeled alternative in <see cref="SBParser.parenthesizedlist"/>.
-	/// </summary>
-	/// <param name="context">The parse tree.</param>
-	void ExitParenthesizedl([NotNull] SBParser.ParenthesizedlContext context);
-
-	/// <summary>
-	/// Enter a parse tree produced by the <c>Unparenthesized</c>
-	/// labeled alternative in <see cref="SBParser.unparenthesizedlist"/>.
-	/// </summary>
-	/// <param name="context">The parse tree.</param>
-	void EnterUnparenthesized([NotNull] SBParser.UnparenthesizedContext context);
-	/// <summary>
-	/// Exit a parse tree produced by the <c>Unparenthesized</c>
-	/// labeled alternative in <see cref="SBParser.unparenthesizedlist"/>.
-	/// </summary>
-	/// <param name="context">The parse tree.</param>
-	void ExitUnparenthesized([NotNull] SBParser.UnparenthesizedContext context);
-
-	/// <summary>
 	/// Enter a parse tree produced by the <c>Parenthesized</c>
 	/// labeled alternative in <see cref="SBParser.expr"/>.
 	/// </summary>
@@ -428,28 +376,6 @@ public interface ISBListener : IParseTreeListener {
 	void ExitStmtlist([NotNull] SBParser.StmtlistContext context);
 
 	/// <summary>
-	/// Enter a parse tree produced by <see cref="SBParser.constexpr"/>.
-	/// </summary>
-	/// <param name="context">The parse tree.</param>
-	void EnterConstexpr([NotNull] SBParser.ConstexprContext context);
-	/// <summary>
-	/// Exit a parse tree produced by <see cref="SBParser.constexpr"/>.
-	/// </summary>
-	/// <param name="context">The parse tree.</param>
-	void ExitConstexpr([NotNull] SBParser.ConstexprContext context);
-
-	/// <summary>
-	/// Enter a parse tree produced by <see cref="SBParser.rangeexpr"/>.
-	/// </summary>
-	/// <param name="context">The parse tree.</param>
-	void EnterRangeexpr([NotNull] SBParser.RangeexprContext context);
-	/// <summary>
-	/// Exit a parse tree produced by <see cref="SBParser.rangeexpr"/>.
-	/// </summary>
-	/// <param name="context">The parse tree.</param>
-	void ExitRangeexpr([NotNull] SBParser.RangeexprContext context);
-
-	/// <summary>
 	/// Enter a parse tree produced by <see cref="SBParser.stmt"/>.
 	/// </summary>
 	/// <param name="context">The parse tree.</param>
@@ -481,17 +407,6 @@ public interface ISBListener : IParseTreeListener {
 	/// </summary>
 	/// <param name="context">The parse tree.</param>
 	void ExitFunchdr([NotNull] SBParser.FunchdrContext context);
-
-	/// <summary>
-	/// Enter a parse tree produced by <see cref="SBParser.endDef"/>.
-	/// </summary>
-	/// <param name="context">The parse tree.</param>
-	void EnterEndDef([NotNull] SBParser.EndDefContext context);
-	/// <summary>
-	/// Exit a parse tree produced by <see cref="SBParser.endDef"/>.
-	/// </summary>
-	/// <param name="context">The parse tree.</param>
-	void ExitEndDef([NotNull] SBParser.EndDefContext context);
 
 	/// <summary>
 	/// Enter a parse tree produced by <see cref="SBParser.identifier"/>.
@@ -527,6 +442,50 @@ public interface ISBListener : IParseTreeListener {
 	void ExitUnparenthesizedlist([NotNull] SBParser.UnparenthesizedlistContext context);
 
 	/// <summary>
+	/// Enter a parse tree produced by <see cref="SBParser.separator"/>.
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	void EnterSeparator([NotNull] SBParser.SeparatorContext context);
+	/// <summary>
+	/// Exit a parse tree produced by <see cref="SBParser.separator"/>.
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	void ExitSeparator([NotNull] SBParser.SeparatorContext context);
+
+	/// <summary>
+	/// Enter a parse tree produced by <see cref="SBParser.constexpr"/>.
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	void EnterConstexpr([NotNull] SBParser.ConstexprContext context);
+	/// <summary>
+	/// Exit a parse tree produced by <see cref="SBParser.constexpr"/>.
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	void ExitConstexpr([NotNull] SBParser.ConstexprContext context);
+
+	/// <summary>
+	/// Enter a parse tree produced by <see cref="SBParser.rangeexpr"/>.
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	void EnterRangeexpr([NotNull] SBParser.RangeexprContext context);
+	/// <summary>
+	/// Exit a parse tree produced by <see cref="SBParser.rangeexpr"/>.
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	void ExitRangeexpr([NotNull] SBParser.RangeexprContext context);
+
+	/// <summary>
+	/// Enter a parse tree produced by <see cref="SBParser.terminator"/>.
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	void EnterTerminator([NotNull] SBParser.TerminatorContext context);
+	/// <summary>
+	/// Exit a parse tree produced by <see cref="SBParser.terminator"/>.
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	void ExitTerminator([NotNull] SBParser.TerminatorContext context);
+
+	/// <summary>
 	/// Enter a parse tree produced by <see cref="SBParser.lineNumber"/>.
 	/// </summary>
 	/// <param name="context">The parse tree.</param>
@@ -549,15 +508,48 @@ public interface ISBListener : IParseTreeListener {
 	void ExitEndFor([NotNull] SBParser.EndForContext context);
 
 	/// <summary>
-	/// Enter a parse tree produced by <see cref="SBParser.separator"/>.
+	/// Enter a parse tree produced by <see cref="SBParser.endDef"/>.
 	/// </summary>
 	/// <param name="context">The parse tree.</param>
-	void EnterSeparator([NotNull] SBParser.SeparatorContext context);
+	void EnterEndDef([NotNull] SBParser.EndDefContext context);
 	/// <summary>
-	/// Exit a parse tree produced by <see cref="SBParser.separator"/>.
+	/// Exit a parse tree produced by <see cref="SBParser.endDef"/>.
 	/// </summary>
 	/// <param name="context">The parse tree.</param>
-	void ExitSeparator([NotNull] SBParser.SeparatorContext context);
+	void ExitEndDef([NotNull] SBParser.EndDefContext context);
+
+	/// <summary>
+	/// Enter a parse tree produced by <see cref="SBParser.endRepeat"/>.
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	void EnterEndRepeat([NotNull] SBParser.EndRepeatContext context);
+	/// <summary>
+	/// Exit a parse tree produced by <see cref="SBParser.endRepeat"/>.
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	void ExitEndRepeat([NotNull] SBParser.EndRepeatContext context);
+
+	/// <summary>
+	/// Enter a parse tree produced by <see cref="SBParser.endIf"/>.
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	void EnterEndIf([NotNull] SBParser.EndIfContext context);
+	/// <summary>
+	/// Exit a parse tree produced by <see cref="SBParser.endIf"/>.
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	void ExitEndIf([NotNull] SBParser.EndIfContext context);
+
+	/// <summary>
+	/// Enter a parse tree produced by <see cref="SBParser.endSelect"/>.
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	void EnterEndSelect([NotNull] SBParser.EndSelectContext context);
+	/// <summary>
+	/// Exit a parse tree produced by <see cref="SBParser.endSelect"/>.
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	void ExitEndSelect([NotNull] SBParser.EndSelectContext context);
 
 	/// <summary>
 	/// Enter a parse tree produced by <see cref="SBParser.expr"/>.
@@ -569,15 +561,4 @@ public interface ISBListener : IParseTreeListener {
 	/// </summary>
 	/// <param name="context">The parse tree.</param>
 	void ExitExpr([NotNull] SBParser.ExprContext context);
-
-	/// <summary>
-	/// Enter a parse tree produced by <see cref="SBParser.terminator"/>.
-	/// </summary>
-	/// <param name="context">The parse tree.</param>
-	void EnterTerminator([NotNull] SBParser.TerminatorContext context);
-	/// <summary>
-	/// Exit a parse tree produced by <see cref="SBParser.terminator"/>.
-	/// </summary>
-	/// <param name="context">The parse tree.</param>
-	void ExitTerminator([NotNull] SBParser.TerminatorContext context);
 }

@@ -32,7 +32,6 @@ type State = {
    
 exception MyError of string
 
-
 let get name scope state =
     // try local scope first
     let symbolFound = state.symTab |> Map.tryFind {Name=name; Scope=scope}
@@ -50,7 +49,6 @@ let set (entry:Symbol) state =
     
 // Do nothing if key exists
 let trySet (entry:Symbol) state =
-    let key = {Name=entry.Name; Scope=entry.Scope}
     match get entry.Name entry.Scope state with
     | None ->
         set entry state

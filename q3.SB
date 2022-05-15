@@ -33,7 +33,7 @@
 320 STOP
 330 :
 340 DEFine PROCedure check
-350 PRINT "Time" ! DATE-now
+350 REMark PRINT "Time" ! DATE-now
 360 FOR loop = 1 TO n-1
 370 IF b(loop) > b(loop + 1) THEN PRINT "Error at" ! loop
 380 END FOR loop
@@ -163,15 +163,15 @@
 1570   END IF
 1580 END DEFine QUICKSORT2
 1590 :
-1600 DEFine PROCedure QS2_PARTITION (i,j)
+ DEFine PROCedure QS2_PARTITION (i,j)
 1610 LOCal k,temp,exchange,loop,inc_k,dec_j
-1620   temp = b((i+j)/2) : k = i
+   temp = b((i+j)/2) : k = i
 1630 partitions=partitions+1
 1640   REPeat loop
 1650 partitions=partitions+1
 1660     REPeat inc_k
 1670       k = k + 1
-1680       REMark this is where the 'guaranteed highest value' comes in
+       REMark this is where the 'guaranteed highest value' comes in
 1690       IF b(k) >= temp : EXIT inc_k
 1700     END REPeat inc_k
 1710     REPeat dec_j

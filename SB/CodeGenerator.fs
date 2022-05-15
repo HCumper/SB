@@ -132,6 +132,15 @@ let private noAction _ _ (state: State) =
 
 let private genNext (_: IParseTree) (state:State) = addToCSharp $@"{SymbolTable.newLine}continue;{SymbolTable.newLine}" state
 
+let varString (tokenType: int) (symbols: Symbol List) =
+    let prefix = match tokenType with SBParser.Integer -> "int " | SBParser.Real -> "float " | _ -> "string "
+    let vars = symbols |> List.filter (fun sym -> sym.Type = tokenType)
+    match vars.Length with
+    | 0 -> ""
+    | _ -> 
+        let commaList = (prefix, vars) ||> List.fold (fun accum element -> accum + element.Name + ", ") 
+        commaList.Remove(commaList.Length - 2) + ";"
+
 // walk a child list
 let rec private WalkAcross (context : IParseTree) index state =
         let count = context.ChildCount
@@ -149,7 +158,8 @@ and
             | :? SBParser.AssignmentContext -> genAssignment context state 
             | :? SBParser.LongforContext | :? SBParser.ShortforContext -> genFor context state
             | :? SBParser.NextstmtContext -> genNext context state 
-            | :? SBParser.ProchdrContext -> genProcFunc context state
+//            | :? SBParser.ProchdrContext -> genProcFunc context state
+            | :? SBParser.ProcContext -> genProcFunc context state
             //| :? SBParser.ImplicitContext -> addImplicitSymbol context state
             //| :? SBParser.LocContext -> addLocalSymbol context state
             //| :? SBParser.FunchdrContext -> addFunctionSymbol context state
@@ -169,7 +179,7 @@ and
         addToCSharp $@"{SymbolTable.newLine}}}" bodyAdded
 and
     private genProcFunc context state =
-        let (routineName, parameters) = Walker.WalkProcedure context state
+        let (routineName, parameters) = Walker.WalkProcedure (context.GetChild(1)) state
         let routineType = 
             match SymbolTable.get routineName globalScope state with
             | Some t -> t.Type.ToString()
@@ -185,8 +195,20 @@ and
             | 0 -> ""
             | _ -> "(" + paramList.Remove(paramList.Length - 1) + ")"
         let text = Templates.procFunc routineInt routineName cSharp
-        let x = state.outputProcFn + text + $@"{SymbolTable.newLine}{SymbolTable.newLine}"
-        {state with outputProcFn = x}
+        let x = state.outputProcFn + text
+        let declaration = {state with outputProcFn = x}
+
+        // Add local variable declarations
+        let locals = declaration.symTab |> Map.filter (fun {Key.Name=_; Scope=scope} symbol -> scope = routineName && symbol.Category = CategoryType.Local)
+        let symbols = ([], locals) ||> Map.fold (fun accum _ symbol -> accum @ [symbol])
+        let integersString = symbols |> varString SBParser.Integer
+        let stringsString = symbols |> varString SBParser.String
+        let floatsString = symbols |> varString SBParser.Real
+        let y = $@"{declaration.outputProcFn} {integersString}{SymbolTable.newLine}{stringsString}{SymbolTable.newLine} {floatsString}{SymbolTable.newLine}"
+        let readyForBody = {state with outputProcFn = y}
+        let withBody = WalkAcross context 0 readyForBody
+        let bodyAdded = addToCSharp $@"{SymbolTable.newLine} " withBody
+        addToCSharp $@"{SymbolTable.newLine}}}" bodyAdded
 
 // top level only
 let walkTreeRoot (context: ParserRuleContext) (state: State) =

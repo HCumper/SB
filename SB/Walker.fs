@@ -53,7 +53,7 @@ let WalkEndDef (context: IParseTree) action state =
     {newState with currentScope = globalScope}
 
 let WalkProcedure (context : IParseTree) state =
-    let procName = context.GetChild(1).GetChild(0).GetText()
+    let procName = context.GetChild(1).GetText()
     let paramList =
         match context.GetChild(1).ChildCount with
         | 1 -> []

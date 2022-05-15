@@ -9,25 +9,20 @@ line :
 
 stmtlist : stmt (':' stmt?)*;
 
-constexpr : Integer | Real | String | ID;
-rangeexpr : constexpr To constexpr
-		  | constexpr
-;
-
 stmt :
 	Dimension ID parenthesizedlist														#Dim
 	| Local unparenthesizedlist															#Loc
 	| Implic unparenthesizedlist														#Implicit
 	| Refer unparenthesizedlist															#Reference
-	| prochdr line* Integer? endDef ID?													#Proc
-	| funchdr line* Integer? endDef ID?													#Func
+	| prochdr line* lineNumber? endDef ID?												#Proc
+	| funchdr line* lineNumber? endDef ID?												#Func
 	| For ID Equal expr To expr (Step terminator)? Newline line* lineNumber? endFor ID?	#Longfor
 	| For ID Equal expr To expr Colon stmtlist											#Shortfor
 	| Repeat ID Colon stmtlist															#Shortrepeat
-	| Repeat ID Newline line* Integer? (EndRepeat ID?)									#Longrepeat
+	| Repeat ID Newline line* lineNumber? endRepeat ID?									#Longrepeat
 	| If expr (Then | Colon) stmtlist (Colon Else Colon stmtlist)?						#Shortif
-	| If expr (Then)? Newline line+ (Integer? Else line+)? Integer? EndIf				#Longif
-    | Select constexpr Newline line* Integer? EndSelect									#Longselect
+	| If expr (Then)? Newline line+ (lineNumber? Else line+)? lineNumber? endIf			#Longif
+    | Select constexpr Newline line* lineNumber? endSelect								#Longselect
 	| On (constexpr) Equal rangeexpr													#Onselect
 	| Next ID																			#Nextstmt
 	| Exit ID																			#Exitstmt
@@ -35,23 +30,22 @@ stmt :
 	| identifier																		#IdentifierOnly
 	;
 
-prochdr : DefProc identifier parenthesizedlist? Newline								#Procheader
-	;
-
-funchdr : DefFunc identifier parenthesizedlist? Newline								#Funcheader
-	;
-
-endDef  : EndDef;
-
-identifier :
-	ID (parenthesizedlist | unparenthesizedlist)?;
-
-parenthesizedlist :	LeftParen expr (separator expr)* RightParen						#Parenthesizedl;
-unparenthesizedlist : expr (separator expr)*										#Unparenthesized;
+prochdr : DefProc identifier parenthesizedlist? Newline;
+funchdr : DefFunc identifier parenthesizedlist? Newline;
+identifier : ID (parenthesizedlist | unparenthesizedlist)?;
+parenthesizedlist :	LeftParen expr (separator expr)* RightParen;
+unparenthesizedlist : expr (separator expr)*;
+separator : Comma | Bang | Semi | To;
+constexpr : Integer | Real | String | ID;
+rangeexpr : constexpr To constexpr | constexpr;
+terminator : Integer | String | Real | identifier;
 
 lineNumber : Integer;
 endFor : EndFor;
-separator : Comma | Bang | Semi | To;
+endDef  : EndDef;
+endRepeat : EndRepeat;
+endIf : EndIf;
+endSelect : EndSelect;
 
 /*
     SB has 11 levels of operator precedence
@@ -85,7 +79,6 @@ expr :
 	| terminator																	#Term
 	;
 
-terminator : Integer | String | Real | identifier;
 
 /* Tokens */
 Refer : 'REFERENCE';
@@ -145,43 +138,22 @@ Colon : ':';
 Semi : ';';
 Comma : ',';
 Point : '.';
-
 Bang : '!';
        
-Whitespace
-    :   [ \t]+
-        -> skip
-    ;
+Whitespace : [ \t]+ -> skip;
 
+Newline : (( '\r' '\n') |   '\n');
 Let : 'LET' -> skip;
+Comment	:  'REMark' ~( '\r' | '\n' )* -> channel(1)	;
 
-Newline
-    :   (( '\r' '\n') |   '\n') 
-	;
+ID : LETTER ([0-9] | [A-Za-z] | '_')* ('$'|'%')?;
 
+Integer : DIGIT+;
+Real : DIGIT* Point DIGIT*;
 String : '"' ~('"')* '"';
 
-Comment
-	:  'REMark' ~( '\r' | '\n' )* -> channel(1)
-	;
-
-ID : LETTER ([0-9] | [A-Za-z] | '_')* '$'
-	| LETTER ([0-9] | [A-Za-z] | '_')* '%'
-	| LETTER ([0-9] | [A-Za-z] | '_')*;
-
-Integer : DIGIT+
-		;
-
-Real
-	: DIGIT+ Point DIGIT*
-	| Point DIGIT+
-	| '-' DIGIT+ Point DIGIT*
-	| '-' Point DIGIT+
-	;
-
-Unknowntype:;
-Void:;
-Scalar:;
+Unknowntype : 'program use only';
+Void : 'program use only';
 
 fragment LETTER : [a-zA-Z];
 fragment DIGIT : [0-9];
