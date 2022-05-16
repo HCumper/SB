@@ -67,17 +67,10 @@ let private addLocalSymbol context state =
     let (_, paramList) = Walker.WalkLocal context state
     mapStringIterFromAnnotation paramList state CategoryType.Local
 
-let private addProcedureSymbol context state =
-    let (procName, paramList) = Walker.WalkProcedure context state
+let private addProcFuncSymbol context state =
+    let (procName, paramList) = Walker.WalkProcFunc context state
     let symbol = {Name = procName; Scope = state.currentScope; Category=CategoryType.Procedure; Type=SBParser.Void; ParameterMechanism = Inapplicable}
     let newContext = { state with currentScope = procName }
-    let newState = set symbol newContext
-    mapStringIterFromAnnotation paramList newState CategoryType.Parameter
-
-let private addFunctionSymbol context state =
-    let (funcName, paramList) = Walker.WalkFunction context state
-    let symbol = {Name = funcName; Scope = state.currentScope; Category=CategoryType.Function; Type=SBParser.Unknowntype; ParameterMechanism = Inapplicable}
-    let newContext = { state with currentScope = funcName }
     let newState = set symbol newContext
     mapStringIterFromAnnotation paramList newState CategoryType.Parameter
 
@@ -112,8 +105,7 @@ and
             | :? SBParser.AssignmentContext -> addAssignmentSymbol context state 
             | :? SBParser.ImplicitContext -> addImplicitSymbol context state
             | :? SBParser.LocContext -> addLocalSymbol context state
-            | :? SBParser.ProchdrContext -> addProcedureSymbol context state
-            | :? SBParser.FunchdrContext -> addFunctionSymbol context state
+            | :? SBParser.ProchdrContext | :? SBParser.FunchdrContext -> addProcFuncSymbol context state
             | :? SBParser.EndDefContext -> addEndDefSymbol state
             | :? SBParser.LongforContext -> addLongForSymbol context state
             | :? SBParser.ShortforContext -> addShortForSymbol context state

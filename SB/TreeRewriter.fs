@@ -5,7 +5,7 @@ open Antlr4.Runtime.Tree
 open System
 open SBLib
 open SB
-open Walker
+//open Walker
 
 type TokenType =
     Program | Line | StmtList | Stmt
@@ -19,40 +19,6 @@ type Node = {
     children: Node list;
 }
 
-// converts an antlr list of antlr nodes to an F# list of antlr nodes
-let buildChildList (antlrTree: IParseTree) =
-    let rec buildChildListInternal (antlrTree: IParseTree) index childList =
-        match index with
-        | numberOfChildren when numberOfChildren = antlrTree.ChildCount -> childList
-        | _ -> buildChildListInternal antlrTree (index+1) (childList @ [antlrTree.GetChild(index)])
-    buildChildListInternal antlrTree 0 []
-
-let rec private WalkDown (context : IParseTree) (parseTree: Node) =
-    let childList = buildChildList context
-    let node = {tokenType=Program; content=context.GetText(); children=[]}
-    (context, WalkList childList 0 parseTree )
-and
-    private WalkList (contextList: IParseTree List) index parseTree =
-        let count = contextList.Length
-        match index with
-        | n when n < count ->
-            let (contextList) = WalkDown (contextList[index] : IParseTree) parseTree
-            WalkList ((context: IParseTree).Parent : IParseTree) (index+1) parseTree 
-        | _ -> parseTree
-        
-
-
-// converts an antlr tree of antlr nodes to an F# tree of F# nodes
-let TranslateParseTree (context: IParseTree) (parseTree: Node) =
-    let node = {tokenType=Program; content=context.GetText(); children=[]}
-    WalkDown context parseTree
-
-
-
-
-//and
-//    ParseTree = Empty | Node of Node
-
 //let rec parseTreeMap fn (parseTree: ParseTree) =
 //    match parseTree with
 //    | Empty -> Empty
@@ -61,6 +27,41 @@ let TranslateParseTree (context: IParseTree) (parseTree: Node) =
 //        let kids = newNode.children
 //        let newKids = List.map (fun x -> parseTreeMap fn x) kids
 //        Node {newNode with children=newKids}
+
+// converts an antlr list of antlr nodes to an F# list of antlr nodes
+//let buildChildList (antlrTree: IParseTree) =
+//    let rec buildChildListInternal (antlrTree: IParseTree) index childList =
+//        match index with
+//        | numberOfChildren when numberOfChildren = antlrTree.ChildCount -> childList
+//        | _ -> buildChildListInternal antlrTree (index+1) (childList @ [antlrTree.GetChild(index)])
+//    buildChildListInternal antlrTree 0 []
+
+//let rec private WalkDown (context : IParseTree) (parseTree: Node) =
+//    let childList = buildChildList context
+//    let node = {tokenType=Program; content=context.GetText(); children=[]}
+//    (context, WalkList childList 0 parseTree )
+//and
+//    private WalkList (contextList: IParseTree List) index parseTree =
+//        let count = contextList.Length
+//        match index with
+//        | n when n < count ->
+//            let (contextList) = WalkDown (contextList[index] : IParseTree) parseTree
+//            WalkList ((context: IParseTree).Parent : IParseTree) (index+1) parseTree 
+//        | _ -> parseTree
+        
+
+
+// converts an antlr tree of antlr nodes to an F# tree of F# nodes
+//let TranslateParseTree (context: IParseTree) (parseTree: Node) =
+//    let node = {tokenType=Program; content=context.GetText(); children=[]}
+//    WalkDown context parseTree
+
+
+
+
+//and
+//    ParseTree = Empty | Node of Node
+
 
 //let x (node: Node) = 
 //    let myNode = Node {tokenType=Program; content="CCC"; children=[]}

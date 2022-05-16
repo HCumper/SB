@@ -52,7 +52,7 @@ let WalkEndDef (context: IParseTree) action state =
     let newState = endDefAction "" [] state
     {newState with currentScope = globalScope}
 
-let WalkProcedure (context : IParseTree) state =
+let WalkProcFunc (context : IParseTree) state =
     let procName = context.GetChild(1).GetText()
     let paramList =
         match context.GetChild(1).ChildCount with
@@ -61,16 +61,6 @@ let WalkProcedure (context : IParseTree) state =
     let termList = paramList |> List.filter (fun x -> not (x :? TerminalNodeImpl || x :? SBParser.SeparatorContext))
     let stringValues = List.map (fun (x: IParseTree) -> x.GetText()) termList
     (procName, stringValues)
-
-let WalkFunction (context : IParseTree) state =
-    let funcName = context.GetChild(1).GetChild(0).GetText()
-    let paramList =
-        match context.GetChild(1).ChildCount with
-        | 1 -> []
-        | _ -> parseParamList context
-    let termList = paramList |> List.filter (fun x -> not (x :? TerminalNodeImpl || x :? SBParser.SeparatorContext))
-    let stringValues = List.map (fun (x: IParseTree) -> x.GetText()) termList
-    (funcName, stringValues)
 
 let WalkImplicit (context : IParseTree) state =
     let implic = context.GetChild(0).GetText()
@@ -85,8 +75,8 @@ let WalkFor (context : IParseTree) state =
     let initialValue = context.GetChild(3).GetText()
     let finalValue = context.GetChild(5).GetText()
     let step = 
-        match context.GetChild(6).GetText() with
-        | "\n" | ":" -> "1"
+        match context.GetChild(6) with
+        | :? TerminalNodeImpl -> "1"
         | _ -> context.GetChild(7).GetText()
     (loopVar, initialValue, finalValue, step)
 

@@ -1,0 +1,21 @@
+﻿digraph ATN {
+rankdir=LR;
+s9[fontsize=11, label="9", shape=doublecircle, fixedsize=true, width=.6];
+s8[fontsize=11,label="8", shape=circle, fixedsize=true, width=.55, peripheries=1];
+s227[fontsize=11,label="227", shape=circle, fixedsize=true, width=.55, peripheries=1];
+s228[fontsize=11,label="228", shape=circle, fixedsize=true, width=.55, peripheries=1];
+s230[fontsize=11,label="{&rarr;\n230\nd=29|{<p0>|<p1>}}", shape=record, fixedsize=false, peripheries=1];
+s229[fontsize=11,label="229", shape=circle, fixedsize=true, width=.55, peripheries=1];
+s231[fontsize=11,label="&larr;\n231", shape=circle, fixedsize=true, width=.55, peripheries=1];
+s232[fontsize=11,label="232", shape=circle, fixedsize=true, width=.55, peripheries=1];
+s233[fontsize=11,label="233", shape=circle, fixedsize=true, width=.55, peripheries=1];
+s8 -> s227 [fontname="Times-Italic", label="&epsilon;"];
+s227 -> s228 [fontsize=11, fontname="Courier", arrowsize=.7, label = "'DEFine PROCedure'", arrowhead = normal];
+s228 -> s230 [fontsize=11, fontname="Courier", arrowsize=.7, label = "<identifier>", arrowhead = normal];
+s230:p0 -> s229 [fontname="Times-Italic", label="&epsilon;"];
+s230:p1 -> s231 [fontname="Times-Italic", label="&epsilon;"];
+s229 -> s231 [fontsize=11, fontname="Courier", arrowsize=.7, label = "<parenthesizedlist>", arrowhead = normal];
+s231 -> s232 [fontname="Times-Italic", label="&epsilon;"];
+s232 -> s233 [fontsize=11, fontname="Courier", arrowsize=.7, label = "Newline", arrowhead = normal];
+s233 -> s9 [fontname="Times-Italic", label="&epsilon;"];
+}

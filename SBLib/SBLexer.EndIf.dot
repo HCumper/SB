@@ -1,0 +1,20 @@
+﻿digraph ATN {
+rankdir=LR;
+s20[fontsize=11, label="20", shape=doublecircle, fixedsize=true, width=.6];
+s19[fontsize=11,label="19", shape=circle, fixedsize=true, width=.55, peripheries=1];
+s219[fontsize=11,label="219", shape=circle, fixedsize=true, width=.55, peripheries=1];
+s220[fontsize=11,label="220", shape=circle, fixedsize=true, width=.55, peripheries=1];
+s221[fontsize=11,label="221", shape=circle, fixedsize=true, width=.55, peripheries=1];
+s222[fontsize=11,label="222", shape=circle, fixedsize=true, width=.55, peripheries=1];
+s223[fontsize=11,label="223", shape=circle, fixedsize=true, width=.55, peripheries=1];
+s224[fontsize=11,label="224", shape=circle, fixedsize=true, width=.55, peripheries=1];
+s225[fontsize=11,label="225", shape=circle, fixedsize=true, width=.55, peripheries=1];
+s19 -> s219 [fontname="Times-Italic", label="&epsilon;"];
+s219 -> s220 [fontsize=11, fontname="Courier", arrowsize=.7, label = "'E'", arrowhead = normal];
+s220 -> s221 [fontsize=11, fontname="Courier", arrowsize=.7, label = "'N'", arrowhead = normal];
+s221 -> s222 [fontsize=11, fontname="Courier", arrowsize=.7, label = "'D'", arrowhead = normal];
+s222 -> s223 [fontsize=11, fontname="Courier", arrowsize=.7, label = "' '", arrowhead = normal];
+s223 -> s224 [fontsize=11, fontname="Courier", arrowsize=.7, label = "'I'", arrowhead = normal];
+s224 -> s225 [fontsize=11, fontname="Courier", arrowsize=.7, label = "'F'", arrowhead = normal];
+s225 -> s20 [fontname="Times-Italic", label="&epsilon;"];
+}

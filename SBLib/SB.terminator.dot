@@ -1,0 +1,21 @@
+﻿digraph ATN {
+rankdir=LR;
+s25[fontsize=11, label="25", shape=doublecircle, fixedsize=true, width=.6];
+s24[fontsize=11,label="24", shape=circle, fixedsize=true, width=.55, peripheries=1];
+s282[fontsize=11,label="{&rarr;\n282\nd=35|{<p0>|<p1>|<p2>|<p3>}}", shape=record, fixedsize=false, peripheries=1];
+s278[fontsize=11,label="278", shape=circle, fixedsize=true, width=.55, peripheries=1];
+s279[fontsize=11,label="279", shape=circle, fixedsize=true, width=.55, peripheries=1];
+s280[fontsize=11,label="280", shape=circle, fixedsize=true, width=.55, peripheries=1];
+s281[fontsize=11,label="281", shape=circle, fixedsize=true, width=.55, peripheries=1];
+s283[fontsize=11,label="&larr;\n283", shape=circle, fixedsize=true, width=.55, peripheries=1];
+s24 -> s282 [fontname="Times-Italic", label="&epsilon;"];
+s282:p0 -> s278 [fontname="Times-Italic", label="&epsilon;"];
+s282:p1 -> s279 [fontname="Times-Italic", label="&epsilon;"];
+s282:p2 -> s280 [fontname="Times-Italic", label="&epsilon;"];
+s282:p3 -> s281 [fontname="Times-Italic", label="&epsilon;"];
+s278 -> s283 [fontsize=11, fontname="Courier", arrowsize=.7, label = "Integer", arrowhead = normal];
+s279 -> s283 [fontsize=11, fontname="Courier", arrowsize=.7, label = "String", arrowhead = normal];
+s280 -> s283 [fontsize=11, fontname="Courier", arrowsize=.7, label = "Real", arrowhead = normal];
+s281 -> s283 [fontsize=11, fontname="Courier", arrowsize=.7, label = "<identifier>", arrowhead = normal];
+s283 -> s25 [fontname="Times-Italic", label="&epsilon;"];
+}

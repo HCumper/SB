@@ -1,0 +1,18 @@
+﻿digraph ATN {
+rankdir=LR;
+s44[fontsize=11, label="44", shape=doublecircle, fixedsize=true, width=.6];
+s43[fontsize=11,label="43", shape=circle, fixedsize=true, width=.55, peripheries=1];
+s298[fontsize=11,label="298", shape=circle, fixedsize=true, width=.55, peripheries=1];
+s299[fontsize=11,label="299", shape=circle, fixedsize=true, width=.55, peripheries=1];
+s300[fontsize=11,label="300", shape=circle, fixedsize=true, width=.55, peripheries=1];
+s301[fontsize=11,label="301", shape=circle, fixedsize=true, width=.55, peripheries=1];
+s302[fontsize=11,label="302", shape=circle, fixedsize=true, width=.55, peripheries=1];
+s303[fontsize=11,label="303", shape=circle, fixedsize=true, width=.55, peripheries=1];
+s43 -> s298 [fontname="Times-Italic", label="&epsilon;"];
+s298 -> s299 [fontsize=11, fontname="Courier", arrowsize=.7, label = "'U'", arrowhead = normal];
+s299 -> s300 [fontsize=11, fontname="Courier", arrowsize=.7, label = "'N'", arrowhead = normal];
+s300 -> s301 [fontsize=11, fontname="Courier", arrowsize=.7, label = "'T'", arrowhead = normal];
+s301 -> s302 [fontsize=11, fontname="Courier", arrowsize=.7, label = "'I'", arrowhead = normal];
+s302 -> s303 [fontsize=11, fontname="Courier", arrowsize=.7, label = "'L'", arrowhead = normal];
+s303 -> s44 [fontname="Times-Italic", label="&epsilon;"];
+}

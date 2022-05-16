@@ -1,0 +1,28 @@
+﻿digraph ATN {
+rankdir=LR;
+s116[fontsize=11, label="116", shape=doublecircle, fixedsize=true, width=.6];
+s115[fontsize=11,label="115", shape=circle, fixedsize=true, width=.55, peripheries=1];
+s426[fontsize=11,label="426", shape=circle, fixedsize=true, width=.55, peripheries=1];
+s430[fontsize=11,label="{430*\nd=6|{<p0>|<p1>}}", shape=record, fixedsize=false, peripheries=1];
+s428[fontsize=11,label="&rarr;\n428*\nd=5", shape=circle, fixedsize=true, width=.55, peripheries=1];
+s431[fontsize=11,label="431", shape=circle, fixedsize=true, width=.55, peripheries=1];
+s427[fontsize=11,label="427", shape=circle, fixedsize=true, width=.55, peripheries=1];
+s434[fontsize=11,label="{&rarr;\n434\nd=7|{<p0>|<p1>}}", shape=record, fixedsize=false, peripheries=1];
+s429[fontsize=11,label="&larr;\n429", shape=circle, fixedsize=true, width=.55, peripheries=1];
+s433[fontsize=11,label="433", shape=circle, fixedsize=true, width=.55, peripheries=1];
+s435[fontsize=11,label="&larr;\n435", shape=circle, fixedsize=true, width=.55, peripheries=1];
+s432[fontsize=11,label="432*", shape=circle, fixedsize=true, width=.55, peripheries=1];
+s115 -> s426 [fontname="Times-Italic", label="&epsilon;"];
+s426 -> s430 [fontsize=11, fontname="Courier", arrowsize=.7, label = "<LETTER>", arrowhead = normal];
+s430:p0 -> s428 [fontname="Times-Italic", label="&epsilon;"];
+s430:p1 -> s431 [fontname="Times-Italic", label="&epsilon;"];
+s428 -> s427 [fontname="Times-Italic", label="&epsilon;"];
+s431 -> s434 [fontname="Times-Italic", label="&epsilon;"];
+s427 -> s429 [fontsize=11, fontname="Courier", arrowsize=.7, label = "{'0'..'9', 'A'..'Z', '_', 'a'..'z'}", arrowhead = normal];
+s434:p0 -> s433 [fontname="Times-Italic", label="&epsilon;"];
+s434:p1 -> s435 [fontname="Times-Italic", label="&epsilon;"];
+s429 -> s432 [fontname="Times-Italic", label="&epsilon;"];
+s433 -> s435 [fontsize=11, fontname="Courier", arrowsize=.7, label = "'$'..'%'", arrowhead = normal];
+s435 -> s116 [fontname="Times-Italic", label="&epsilon;"];
+s432 -> s430 [fontname="Times-Italic", label="&epsilon;", style="dashed"];
+}

@@ -1,4 +1,16 @@
-1 FOR n=1 TO 10 STEP 2
+481 DEFine FuNction foo (param1%, param2%)
+484 END DEFine
+490 DEFine PROCedure print_table
+500 LOCal pos
+510   LET finished=DATE-now
+520   PRINT : PRINT
+530   BEEP 10000,100
+540   FOR pos=n-4 TO n
+550     PRINT a(pos)
+560   END FOR pos
+570   PRINT "Time taken" ! finished
+580 END DEFine
+1 FOR n=1 TO 10
 2 PRINT n
 3 NEXT n
 6 bb=22
@@ -33,10 +45,10 @@
 320 STOP
 330 :
 340 DEFine PROCedure check
-350 REMark PRINT "Time" ! DATE-now
-360 FOR loop = 1 TO n-1
-370 IF b(loop) > b(loop + 1) THEN PRINT "Error at" ! loop
-380 END FOR loop
+350		REMark PRINT "Time" ! DATE-now
+360		FOR loop = 1 TO n-1
+370			IF b(loop) > b(loop + 1) THEN PRINT "Error at" ! loop
+380		END FOR loop
 390 END DEFine
 395 shouldbeglobal = 104
 400 DEFine PROCedure set_up_tabLe

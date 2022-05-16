@@ -123,7 +123,7 @@ let private genBinary varName parameters (state: State) =
 let private genTerminal _ _ (state: State) =
     let operatingScope =
         match state.currentScope with
-        | globalScope -> state.outputGlobal + "}" + newLine
+        | "~Global" -> state.outputGlobal + "}" + newLine
         | _ -> state.outputProcFn + "}" + newLine
     {state with outputProcFn = operatingScope}
 
@@ -132,7 +132,7 @@ let private noAction _ _ (state: State) =
 
 let private genNext (_: IParseTree) (state:State) = addToCSharp $@"{SymbolTable.newLine}continue;{SymbolTable.newLine}" state
 
-let varString (tokenType: int) (symbols: Symbol List) =
+let private varString (tokenType: int) (symbols: Symbol List) =
     let prefix = match tokenType with SBParser.Integer -> "int " | SBParser.Real -> "float " | _ -> "string "
     let vars = symbols |> List.filter (fun sym -> sym.Type = tokenType)
     match vars.Length with
@@ -158,28 +158,19 @@ and
             | :? SBParser.AssignmentContext -> genAssignment context state 
             | :? SBParser.LongforContext | :? SBParser.ShortforContext -> genFor context state
             | :? SBParser.NextstmtContext -> genNext context state 
-//            | :? SBParser.ProchdrContext -> genProcFunc context state
-            | :? SBParser.ProcContext -> genProcFunc context state
-            //| :? SBParser.ImplicitContext -> addImplicitSymbol context state
-            //| :? SBParser.LocContext -> addLocalSymbol context state
-            //| :? SBParser.FunchdrContext -> addFunctionSymbol context state
-            //| :? SBParser.EndDefContext -> addEndDefSymbol state
+            | :? SBParser.ProcContext | :? SBParser.FuncContext -> genProcFunc context state
             | _ -> WalkAcross (context:IParseTree) 0 state 
-//        (context, WalkAcross (context:IParseTree) 0 newState )
         (context, newState)
 and 
     private genFor (context: IParseTree) (state:State) =
         let (loopVar, initialValue, finalValue, step) = Walker.WalkFor context state
-        let forStmt = $@"{SymbolTable.newLine} for ({loopVar} = {initialValue}; {loopVar} <= {finalValue}; {loopVar} += "
-        let (theStep: string) = "2"
-        let stepStmt = forStmt + theStep + "{"
-        let withBody = addToCSharp stepStmt state 
+        let forStmt = $@"{SymbolTable.newLine} for ({loopVar} = {initialValue}; {loopVar} <= {finalValue}; {loopVar} += {step} {{"
+        let withBody = addToCSharp forStmt state 
         let body2 = WalkAcross context 0 withBody
-        let bodyAdded = addToCSharp $@"{SymbolTable.newLine} " body2
-        addToCSharp $@"{SymbolTable.newLine}}}" bodyAdded
+        addToCSharp $@"{SymbolTable.newLine}}}" body2
 and
     private genProcFunc context state =
-        let (routineName, parameters) = Walker.WalkProcedure (context.GetChild(1)) state
+        let (routineName, parameters) = Walker.WalkProcFunc (context.GetChild(0)) state
         let routineType = 
             match SymbolTable.get routineName globalScope state with
             | Some t -> t.Type.ToString()
@@ -195,8 +186,14 @@ and
             | 0 -> ""
             | _ -> "(" + paramList.Remove(paramList.Length - 1) + ")"
         let text = Templates.procFunc routineInt routineName cSharp
-        let x = state.outputProcFn + text
-        let declaration = {state with outputProcFn = x}
+        let newText = state.outputProcFn + text
+        let declaration = {{state with outputProcFn = newText} with currentScope=routineName} 
+        
+        //Demo of annotating a node
+        //let (values:ParseTreeProperty<int>) = new ParseTreeProperty<int>()
+        //let y = values.Put(context, 36);
+        //let x = values.Get(context);
+        //values.removeFrom(context);
 
         // Add local variable declarations
         let locals = declaration.symTab |> Map.filter (fun {Key.Name=_; Scope=scope} symbol -> scope = routineName && symbol.Category = CategoryType.Local)
@@ -205,10 +202,12 @@ and
         let stringsString = symbols |> varString SBParser.String
         let floatsString = symbols |> varString SBParser.Real
         let y = $@"{declaration.outputProcFn} {integersString}{SymbolTable.newLine}{stringsString}{SymbolTable.newLine} {floatsString}{SymbolTable.newLine}"
-        let readyForBody = {state with outputProcFn = y}
+        let readyForBody = {declaration with outputProcFn = y}
+        //TODO declarations for local arrays
+        //TODO function return types
         let withBody = WalkAcross context 0 readyForBody
         let bodyAdded = addToCSharp $@"{SymbolTable.newLine} " withBody
-        addToCSharp $@"{SymbolTable.newLine}}}" bodyAdded
+        addToCSharp $@"{SymbolTable.newLine}}}{SymbolTable.newLine}{SymbolTable.newLine}" bodyAdded
 
 // top level only
 let walkTreeRoot (context: ParserRuleContext) (state: State) =
