@@ -6,19 +6,12 @@ open System
 open SBLib
 open SB
 open SymbolTable
+open Utility
+// responsible for understanding SBasic constructs and navigating them for an unspecified purpose
 
-// copy generic list to F# list non destructively
-let copyAntlrList (parentNode: Collections.Generic.IList<IParseTree>) =
-    let rec copyAntlrListWithIndex (parentNode: Collections.Generic.IList<IParseTree>) i newList = 
-        if i = parentNode.Count then newList else
-            newList @ [parentNode.Item(i)] 
-            |> copyAntlrListWithIndex parentNode (i+1)  
-    copyAntlrListWithIndex parentNode 0 []
-
-let private parseParamList (context: IParseTree) =
-    let paramList = context.GetChild(1).GetChild(1) :?> SBParser.ParenthesizedlistContext
-    let (fList:IParseTree list) = copyAntlrList paramList.children
-    fList |> List.filter (fun x -> not (x :? TerminalNodeImpl || x :? SBParser.SeparatorContext))            
+// turn context into F# list of Antlr nodes representing its children with syntactic garbage discarded
+let private parseParenthesizedParamList (context: IParseTree) =
+    gatherChildren context |> List.filter (fun x -> not (x :? TerminalNodeImpl || x :? SBParser.SeparatorContext))            
 
 let WalkDim (context : IParseTree) =
     let varName = context.GetChild(1).GetText()
@@ -27,13 +20,12 @@ let WalkDim (context : IParseTree) =
     let termList = fList |> List.filter (fun x -> not (x :? TerminalNodeImpl || x :? SBParser.SeparatorContext))
     (varName, termList)
 
-let WalkLocal (context : IParseTree) state =
+let WalkLocal (context : IParseTree) =
     let localVar = context.GetChild(0).GetText()
     let paramList = context.GetChild(1).Payload :?> SBParser.UnparenthesizedlistContext
     let (fList:IParseTree list) = copyAntlrList paramList.children
     let termList = fList |> List.filter (fun x -> not (x :? TerminalNodeImpl || x :? SBParser.SeparatorContext))
-    let stringValues = List.map (fun (x: IParseTree) -> x.GetText()) termList
-    (localVar, stringValues)
+    (localVar, termList)
 
 let WalkAssignment (context : IParseTree) =
     let lvalue = context.GetChild(0).GetChild(0).GetText()
@@ -52,17 +44,15 @@ let WalkEndDef (context: IParseTree) action state =
     let newState = endDefAction "" [] state
     {newState with currentScope = globalScope}
 
-let WalkProcFunc (context : IParseTree) state =
-    let procName = context.GetChild(1).GetText()
+let WalkProcFunc (context : IParseTree) =
+    let procName = context.GetChild(1).GetChild(0).GetText()
     let paramList =
         match context.GetChild(1).ChildCount with
         | 1 -> []
-        | _ -> parseParamList context
-    let termList = paramList |> List.filter (fun x -> not (x :? TerminalNodeImpl || x :? SBParser.SeparatorContext))
-    let stringValues = List.map (fun (x: IParseTree) -> x.GetText()) termList
-    (procName, stringValues)
+        | _ -> parseParenthesizedParamList (context.GetChild(1).GetChild(1))
+    (procName, paramList)
 
-let WalkImplicit (context : IParseTree) state =
+let WalkImplicit (context : IParseTree) =
     let implic = context.GetChild(0).GetText()
     let paramList = context.GetChild(1).Payload :?> SBParser.UnparenthesizedlistContext
     let (fList:IParseTree list) = copyAntlrList paramList.children
@@ -70,10 +60,10 @@ let WalkImplicit (context : IParseTree) state =
     let stringValues = List.map (fun (x: IParseTree) -> x.GetText()) termList
     (implic, stringValues)
     
-let WalkFor (context : IParseTree) state =
+let WalkFor (context : IParseTree) =
     let loopVar = context.GetChild(1).GetText()
-    let initialValue = context.GetChild(3).GetText()
-    let finalValue = context.GetChild(5).GetText()
+    let initialValue = context.GetChild(3) // must return whole node as it may be an expression
+    let finalValue = context.GetChild(5)
     let step = 
         match context.GetChild(6) with
         | :? TerminalNodeImpl -> "1"

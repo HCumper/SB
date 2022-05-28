@@ -6,12 +6,12 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Include="TreeRewriter.fs" />
-    <Compile Include="Templates.fs" />
     <Compile Include="SymbolTable.fs" />
     <Compile Include="Utility.fs" />
-    <Compile Include="TypeResolver.fs" />
     <Compile Include="Walker.fs" />
+    <Compile Include="TreeRewriter.fs" />
+    <Compile Include="Templates.fs" />
+    <Compile Include="TypeResolver.fs" />
     <Compile Include="CodeGenerator.fs" />
     <Compile Include="SymbolTableBuilder.fs" />
     <Compile Include="Program.fs" />

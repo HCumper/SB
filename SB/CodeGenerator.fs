@@ -8,6 +8,11 @@ open SB
 open SymbolTable
 open Utility
 
+let outputCs translation (state: State) =
+    match state.currentScope with
+    | globalScope -> { state with outputProcFn = state.outputProcFn + translation}
+    | _ -> { state with outputProcFn = state.outputGlobal + translation}
+
 let addToCSharp (item:string) (state: State) =
     match state.currentScope with
     | "~Global" -> {state with outputGlobal = state.outputGlobal + item}
@@ -44,7 +49,7 @@ let private getParameterText accum (scope: string) (parameter: string) state =
 // if there is not output for this construct just preserve the state
 let private defaultAction _ _ state = state
 
-// output code for procedures an functions
+// output code for dims
 let private genDim context (state: State) =
     let (varName, dimensions) = Walker.WalkDim context
     let (name, _) = Utility.getTypeFromAnnotation varName
@@ -110,8 +115,6 @@ let private genAssignment context (state: State) =
     let assignStmt = $@"{SymbolTable.newLine} {name} = { fst expr};"
     addToCSharp assignStmt state
 
-// output code for procedures an functions
-
 let private genEndDefine _ _ state =
     let x = state.outputProcFn + "}" + newLine
     {state with outputProcFn = x}
@@ -163,14 +166,14 @@ and
         (context, newState)
 and 
     private genFor (context: IParseTree) (state:State) =
-        let (loopVar, initialValue, finalValue, step) = Walker.WalkFor context state
+        let (loopVar, initialValue, finalValue, step) = Walker.WalkFor context
         let forStmt = $@"{SymbolTable.newLine} for ({loopVar} = {initialValue}; {loopVar} <= {finalValue}; {loopVar} += {step} {{"
-        let withBody = addToCSharp forStmt state 
-        let body2 = WalkAcross context 0 withBody
-        addToCSharp $@"{SymbolTable.newLine}}}" body2
+        let state = addToCSharp forStmt state 
+        let state = WalkAcross context 0 state
+        addToCSharp $@"{SymbolTable.newLine}}}" state
 and
     private genProcFunc context state =
-        let (routineName, parameters) = Walker.WalkProcFunc (context.GetChild(0)) state
+        let (routineName, parameters) = Walker.WalkProcFunc (context.GetChild(0))
         let routineType = 
             match SymbolTable.get routineName globalScope state with
             | Some t -> t.Type.ToString()
@@ -179,7 +182,7 @@ and
         let paramList =
             match parameters with
             | [] -> ""
-            | _ -> foldStateful getParameterText "" routineName parameters state
+            | _ -> foldStateful getParameterText "" routineName [] state
 
         let cSharp = 
             match paramList.Length with

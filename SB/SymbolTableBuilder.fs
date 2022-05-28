@@ -16,26 +16,7 @@ open Antlr4.Runtime.Tree
 //    Define Function
 //    All but assignment take variable length parameter lists
 
-// map while propagating state forward between operations on each element using an Antlr list of nodes
-let rec mapIter (paramList:IParseTree list) (state: State) dataType category =
-    match paramList with
-    | [] -> state
-    | head::tail ->
-        let term = (head :?> SBParser.TermContext).children[0].GetText()
-        let (symbol: Symbol) = {Name = term; Scope = state.currentScope; Category=category; Type=dataType; ParameterMechanism = Inapplicable}
-        let newState = set symbol state;
-        mapIter tail newState dataType category
-
-// map while propagating state forward between operations on each element using an F# list of values
-let rec mapStringIter (paramList:string List) (state: State) dataType category =
-    match paramList with
-    | [] -> state
-    | head::tail ->
-        let (symbol: Symbol) = {Name = head; Scope = state.currentScope; Category=category; Type=dataType; ParameterMechanism = Inapplicable}
-        let newState = set symbol state;
-        mapStringIter tail newState dataType category
-
-let rec mapStringIterFromAnnotation (paramList:string List) (state: State) category =
+let rec mapStringIterFromAnnotation (paramList:string List) state category =
     match paramList with
     | [] -> state
     | head::tail ->
@@ -59,31 +40,30 @@ let private addAssignmentSymbol context state =
     trySet symbol state
 
 let private addImplicitSymbol context state =
-    let (implicDecl, names) = Walker.WalkImplicit context state
+    let (implicDecl, names) = Walker.WalkImplicit context
     let (_, dataType) = getTypeFromAnnotation implicDecl
-    mapStringIter names state dataType CategoryType.Implicit
+    Utility.mapStringIter names state dataType CategoryType.Implicit
 
 let private addLocalSymbol context state =
-    let (_, paramList) = Walker.WalkLocal context state
-    mapStringIterFromAnnotation paramList state CategoryType.Local
+    let (_, paramList) = Walker.WalkLocal context
+    mapStringIterFromAnnotation (*paramList*) ["dummy param list"] state CategoryType.Local
 
 let private addProcFuncSymbol context state =
-    let (procName, paramList) = Walker.WalkProcFunc context state
+    let (procName, paramList) = Walker.WalkProcFunc context
     let symbol = {Name = procName; Scope = state.currentScope; Category=CategoryType.Procedure; Type=SBParser.Void; ParameterMechanism = Inapplicable}
     let newContext = { state with currentScope = procName }
     let newState = set symbol newContext
-    mapStringIterFromAnnotation paramList newState CategoryType.Parameter
-
+    state
 let private addEndDefSymbol state =
     {state with currentScope = globalScope}
 
 let private addLongForSymbol context state =
-    let (loopVar, _, _, _) = Walker.WalkFor context state
+    let (loopVar, _, _, _) = Walker.WalkFor context
     let symbol = {Name = loopVar; Scope = state.currentScope; Category=CategoryType.Variable; Type=SBParser.Real; ParameterMechanism = Inapplicable}
     trySet symbol state
 
 let private addShortForSymbol context state =
-    let (loopVar, _, _, _) = Walker.WalkFor context state
+    let (loopVar, _, _, _) = Walker.WalkFor context
     let symbol = {Name = loopVar; Scope = state.currentScope; Category=CategoryType.Variable; Type=SBParser.Real; ParameterMechanism = Inapplicable}
     trySet symbol state
 

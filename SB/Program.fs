@@ -6,6 +6,7 @@ open Antlr4.Runtime
 open SB
 open SBLib
 open SymbolTable
+open TreeRewriter
 
 [<EntryPoint>]
 let main argv =
@@ -25,6 +26,8 @@ let main argv =
     Console.WriteLine(x)
     Console.WriteLine("")
 
+    let ast = TreeRewriter.RewriteTree parseTree
+    
     let initialState = { references = Set.empty; symTab = Map.empty; errorList = []; currentScope = globalScope; outputProcFn = ""; outputGlobal = ""}
     let (_, state) = SymbolTableBuilder.WalkTreeRoot parseTree initialState
     let typedState = TypeResolver.TypeImplicits state
