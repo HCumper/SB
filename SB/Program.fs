@@ -27,7 +27,7 @@ let main argv =
     Console.WriteLine("")
 
     let ast = TreeRewriter.RewriteTree parseTree
-    
+    Console.WriteLine(ast)
     let initialState = { references = Set.empty; symTab = Map.empty; errorList = []; currentScope = globalScope; outputProcFn = ""; outputGlobal = ""}
     let (_, state) = SymbolTableBuilder.WalkTreeRoot parseTree initialState
     let typedState = TypeResolver.TypeImplicits state
