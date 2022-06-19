@@ -70,6 +70,14 @@ let WalkFor (context : IParseTree) =
         | _ -> context.GetChild(7).GetText()
     (loopVar, initialValue, finalValue, step)
 
+let WalkIf (context : IParseTree) =
+    let termList = context |> gatherChildren |> List.filter (fun x -> not (x :? TerminalNodeImpl || x :? SBParser.EndIfContext || x :? SBParser.LineNumberContext))
+    "bif"
+
+let WalkRepeat (context : IParseTree) =
+    let loopVar = context.GetChild(1).GetText()
+    loopVar
+
 let WalkBinaryExpr (context : IParseTree) action state =
     let binaryAction = action 1000
     binaryAction "" [] state

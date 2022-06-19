@@ -200,6 +200,19 @@ public interface ISBListener : IParseTreeListener {
 	void ExitLongselect([NotNull] SBParser.LongselectContext context);
 
 	/// <summary>
+	/// Enter a parse tree produced by the <c>Remark</c>
+	/// labeled alternative in <see cref="SBParser.stmt"/>.
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	void EnterRemark([NotNull] SBParser.RemarkContext context);
+	/// <summary>
+	/// Exit a parse tree produced by the <c>Remark</c>
+	/// labeled alternative in <see cref="SBParser.stmt"/>.
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	void ExitRemark([NotNull] SBParser.RemarkContext context);
+
+	/// <summary>
 	/// Enter a parse tree produced by the <c>Onselect</c>
 	/// labeled alternative in <see cref="SBParser.stmt"/>.
 	/// </summary>

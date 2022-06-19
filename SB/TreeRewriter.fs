@@ -6,7 +6,7 @@ open Antlr4.Runtime.Tree
 open SBLib
 
 type TokenType =
-    Program | Line | LineNumber | StmtList | Stmt | None | Function | Procedure | Parameter | Terminator | Local | Assignment | Value | BinaryExpr | ProcFnCall | LongFor | AssignmentTarget | Expression | Dim
+    Program | Line | LineNumber | StmtList | Stmt | None | Function | Procedure | Parameter | Terminator | Local | Assignment | Value | BinaryExpr | ProcFnCall | LongFor | AssignmentTarget | Expression | Dim | Reference | Repeat | If | Remark
 
 // The one and only
 type Node = {
@@ -48,6 +48,8 @@ and
         | :? SBParser.LocContext -> translateLocal context
         | :? SBParser.LongforContext -> translateLongFor context
         | :? SBParser.ShortforContext -> translateLongFor context
+        | :? SBParser.LongrepeatContext -> translateLongRepeat context
+        | :? SBParser.LongifContext -> translateIf context
         | :? TerminalNodeImpl -> Empty
         | :? SBParser.ProcContext -> translateProc context
 //        | :? SBParser.ProccallContext | :? SBParser.ProccallContext -> translateProcFnCall context
@@ -60,6 +62,8 @@ and
         | :? SBParser.UnaryAdditiveContext -> translateUnaryExpr context
         | :? SBParser.DimContext -> translateDim context
         | :? SBParser.ImplicitContext -> translateImplicit context
+        | :? SBParser.ReferenceContext -> translateReference context
+        | :? SBParser.RemarkContext -> translateRemark context
         | _ -> Node{tokenType=None; content="mismatch"; children=[]}
  and
     // translate the root program node
@@ -104,6 +108,12 @@ and
         let localChildren = List.map (fun child -> {child with tokenType=Value}) children
         Node({tokenType=Local; content=local; children=localChildren})
 and
+    translateReference (context: IParseTree): SubTree =
+        let (ref, refVars) = Walker.WalkLocal context
+        let children = WalkAcross refVars
+        let localChildren = List.map (fun child -> {child with tokenType=Value}) children
+        Node({tokenType=Reference; content=ref; children=localChildren})
+and
     translateImplicit (context: IParseTree): SubTree =
         let (local, locals) = Walker.WalkLocal context
         let children = WalkAcross locals
@@ -139,14 +149,22 @@ and
         let nodeInitialValue = match initialValue with Node(initialValue) -> initialValue
         let nodeFinalValue = match finalValue with Node(finalValue) -> finalValue
         let step = {tokenType=Terminator; content=stepString; children=[]}
-        Node {tokenType=TokenType.LongFor; content=context.GetText(); children=[loopVar; nodeInitialValue; nodeFinalValue; step]}
+        Node {tokenType=TokenType.LongFor; content=loopVarString; children=[loopVar; nodeInitialValue; nodeFinalValue; step]}
+and
+    translateLongRepeat (context: IParseTree): SubTree =
+        let loopVarString = Walker.WalkRepeat context
+        Node {tokenType=TokenType.Repeat; content=loopVarString; children=[]}
+and
+    translateIf (context: IParseTree): SubTree =
+        let loopVarString = Walker.WalkIf context
+        Node {tokenType=TokenType.If; content=loopVarString; children=[]}
 and
     translateExpr  (context: IParseTree): SubTree =
         match context with
         | :? SBParser.ParenthesizedContext -> translateParenthesizedExpr context
         | :? SBParser.BinaryContext -> translateBinaryExpr context
         | :? SBParser.InstrContext | :? SBParser.UnaryAdditiveContext | :? SBParser.NotContext -> translateUnaryExpr context
-        //| :? SBParser.TermContext -> translateTermExpr context
+        | :? SBParser.TermContext -> translateTermExpr context
         | _ -> Node{tokenType=None; content="expression mismatch"; children=[]}
 and
     translateBinaryExpr (context: IParseTree): SubTree =
@@ -161,6 +179,10 @@ and
         let expr2 = {tokenType=tokType2; content=nodeContent2.content; children=nodeContent2.children}
         Node({tokenType=BinaryExpr; content=operator; children=[expr1; expr2]})
 and
+    translateTermExpr (context: IParseTree): SubTree =
+        let text = context.GetText()
+        Node{tokenType=Terminator; content=text; children=[]}
+and
     translateParenthesizedExpr (context: IParseTree): SubTree =
         WalkDown context
 and
@@ -174,6 +196,10 @@ and
         let children = gatherChildren (context.GetChild(1))
         let op = children[1].GetText()
         Node({tokenType=Expression; content=op; children=WalkAcross children})
+and
+    translateRemark (context: IParseTree): SubTree =
+        let content = context.GetChild(0).GetText().[7..]
+        Node({tokenType=Remark; content=content; children=[]})
 
 // top level only
 let RewriteTree (parseTree: IParseTree) : SubTree =

@@ -230,6 +230,21 @@ public partial class SBBaseListener : ISBListener {
 	public virtual void ExitLongselect([NotNull] SBParser.LongselectContext context) { }
 
 	/// <summary>
+	/// Enter a parse tree produced by the <c>Remark</c>
+	/// labeled alternative in <see cref="SBParser.stmt"/>.
+	/// <para>The default implementation does nothing.</para>
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	public virtual void EnterRemark([NotNull] SBParser.RemarkContext context) { }
+	/// <summary>
+	/// Exit a parse tree produced by the <c>Remark</c>
+	/// labeled alternative in <see cref="SBParser.stmt"/>.
+	/// <para>The default implementation does nothing.</para>
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	public virtual void ExitRemark([NotNull] SBParser.RemarkContext context) { }
+
+	/// <summary>
 	/// Enter a parse tree produced by the <c>Onselect</c>
 	/// labeled alternative in <see cref="SBParser.stmt"/>.
 	/// <para>The default implementation does nothing.</para>

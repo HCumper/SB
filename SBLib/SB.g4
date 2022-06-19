@@ -23,7 +23,8 @@ stmt :
 	| If expr (Then | Colon) stmtlist (Colon Else Colon stmtlist)?						#Shortif
 	| If expr (Then)? Newline line+ (lineNumber? Else line+)? lineNumber? endIf			#Longif
     | Select constexpr Newline line* lineNumber? endSelect								#Longselect
-	| On (constexpr) Equal rangeexpr													#Onselect
+	| Comment																			#Remark
+ 	| On (constexpr) Equal rangeexpr													#Onselect
 	| Next ID																			#Nextstmt
 	| Exit ID																			#Exitstmt
 	| identifier Equal expr																#Assignment
@@ -144,7 +145,7 @@ Whitespace : [ \t]+ -> skip;
 
 Newline : (( '\r' '\n') |   '\n');
 Let : 'LET' -> skip;
-Comment	:  'REMark' ~( '\r' | '\n' )* -> channel(1)	;
+Comment	:  'REMark' ~( '\r' | '\n' )*;
 
 ID : LETTER ([0-9] | [A-Za-z] | '_')* ('$'|'%')?;
 
