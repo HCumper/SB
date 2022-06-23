@@ -265,19 +265,6 @@ public interface ISBListener : IParseTreeListener {
 	void ExitAssignment([NotNull] SBParser.AssignmentContext context);
 
 	/// <summary>
-	/// Enter a parse tree produced by the <c>IdentifierOnly</c>
-	/// labeled alternative in <see cref="SBParser.stmt"/>.
-	/// </summary>
-	/// <param name="context">The parse tree.</param>
-	void EnterIdentifierOnly([NotNull] SBParser.IdentifierOnlyContext context);
-	/// <summary>
-	/// Exit a parse tree produced by the <c>IdentifierOnly</c>
-	/// labeled alternative in <see cref="SBParser.stmt"/>.
-	/// </summary>
-	/// <param name="context">The parse tree.</param>
-	void ExitIdentifierOnly([NotNull] SBParser.IdentifierOnlyContext context);
-
-	/// <summary>
 	/// Enter a parse tree produced by the <c>Parenthesized</c>
 	/// labeled alternative in <see cref="SBParser.expr"/>.
 	/// </summary>

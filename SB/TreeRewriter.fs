@@ -4,20 +4,32 @@ module TreeRewriter
 open Utility
 open Antlr4.Runtime.Tree
 open SBLib
+open System
 
 type TokenType =
-    Program | Line | LineNumber | StmtList | Stmt | None | Function | Procedure | Parameter | Terminator | Local | Assignment | Value | BinaryExpr | ProcFnCall | LongFor | AssignmentTarget | Expression | Dim | Reference | Repeat | If | Remark
+    Program | Line | LineNumber | StmtList | Stmt | None | Function | Procedure | Parameter | Local | Assignment | Value | BinaryExpr | ProcFnCall | LongFor | AssignmentTarget | Expression | Dim | Reference | Repeat | If | Remark | Implicit
+
+type EvaluatedType = Integer | Real | String
 
 // The one and only
 type Node = {
     tokenType: TokenType;
     content: string;
-    // evaluated type
-    // source code reference
+    //evaluatedType: EvaluatedType
+    //sourceReference: int
     children: Node list;
 }
 
 type SubTree = Node of Node | Children of Node List | Empty
+
+//type NewNode (?tokenType0 : TokenType, ?content0 : string, ?sourceReference0 : int, ?children0 : NewNode list) =
+//    let tokenType = defaultArg tokenType0 None
+//    let content = defaultArg content0 ""
+//    let sourceReference = defaultArg sourceReference0 0
+//    let children = defaultArg children0 []
+ 
+//let doIt tokenType content children =
+//    Node({tokenType=tokenType; content=content; children=children})
 
 // walk the children of the current node
 let rec private WalkAcross (contextList : IParseTree List) =
@@ -39,7 +51,7 @@ and
     private WalkDown context : SubTree =
         match context with
         | :? SBParser.AssignmentContext -> translateAssignment context
-        | :? SBParser.BinaryContext -> translateBinaryExpr context
+        | :? SBParser.BinaryContext -> translateExpr context
         | :? SBParser.EndDefContext -> Empty
         | :? SBParser.FuncContext -> translateFunc context
         | :? SBParser.FunchdrContext | :? SBParser.ProchdrContext -> translateProcFuncHdr context
@@ -57,9 +69,9 @@ and
         | :? SBParser.StmtlistContext -> translateStmtList context
         | :? SBParser.TermContext -> translateTerminal context
         | :? SBParser.TerminatorContext -> translateTerm context
-        | :? SBParser.IdentifierOnlyContext -> translateProcFnCall context
+        | :? SBParser.IdentifierOnlyContext | :? SBParser.IdentifierContext -> translateProcFnCall context
         | :? SBParser.ParenthesizedContext -> translateParenthesized context
-        | :? SBParser.UnaryAdditiveContext -> translateUnaryExpr context
+        | :? SBParser.UnaryAdditiveContext -> translateExpr context
         | :? SBParser.DimContext -> translateDim context
         | :? SBParser.ImplicitContext -> translateImplicit context
         | :? SBParser.ReferenceContext -> translateReference context
@@ -100,7 +112,9 @@ and
         Node({tokenType=Procedure; content=routineName; children=WalkAcross (context |> Utility.gatherChildren)})
 and
     translateTerminal (context: IParseTree): SubTree =
-        Node({tokenType=Terminator; content=context.GetText(); children=[]})
+    match context.ChildCount with
+        | 0 -> Node({tokenType=Value; content=context.GetText(); children=[]})
+        | _ -> WalkDown (context.GetChild(0))
 and
     translateLocal (context: IParseTree): SubTree =
         let (local, locals) = Walker.WalkLocal context
@@ -118,17 +132,20 @@ and
         let (local, locals) = Walker.WalkLocal context
         let children = WalkAcross locals
         let localChildren = List.map (fun child -> {child with tokenType=Value}) children
-        Node({tokenType=Local; content=local; children=localChildren})
+        Node({tokenType=Implicit; content=local; children=localChildren})
 and
     translateAssignment (context: IParseTree): SubTree =
-        let (lvalue, dimensions, rvalue) = Walker.WalkAssignment context
-        let target = WalkDown rvalue
-        let nodeContents = match target with Node(target) -> target
-        let assignTarget = {tokenType=AssignmentTarget; content=lvalue; children=[]}
-        Node({tokenType=Assignment; content="="; children=assignTarget::[nodeContents]})
+        let (lvalue, dimensions, rvalue, targetDimensions) = Walker.WalkAssignment context
+        let target = WalkDown (context.GetChild(2))
+        let targetNode = (fun x -> match x with Node(x) -> x) target
+        let dims = WalkAcross dimensions
+        let sourceNode = {tokenType=ProcFnCall; content=lvalue; children=dims}
+        Node({tokenType=Assignment; content="="; children=sourceNode::[targetNode]})
 and
     translateTerm (context: IParseTree): SubTree =
-        Empty
+    match context.ChildCount with
+        | 0 -> Node({tokenType=Value; content=context.GetText(); children=[]})
+        | _ -> WalkDown (context.GetChild(0))
 and
     translateProcFnCall (context: IParseTree): SubTree =
         let routineName = context.GetChild(0).GetText()
@@ -143,12 +160,12 @@ and
 and
     translateLongFor (context: IParseTree): SubTree =
         let (loopVarString, initialValue, finalValue, stepString) = Walker.WalkFor context
-        let loopVar = {tokenType=LongFor; content=loopVarString; children=[]}
+        let loopVar = {tokenType=Value; content=loopVarString; children=[]}
         let initialValue = translateExpr initialValue
         let finalValue = translateExpr finalValue
         let nodeInitialValue = match initialValue with Node(initialValue) -> initialValue
         let nodeFinalValue = match finalValue with Node(finalValue) -> finalValue
-        let step = {tokenType=Terminator; content=stepString; children=[]}
+        let step = {tokenType=Value; content=stepString; children=[]}
         Node {tokenType=TokenType.LongFor; content=loopVarString; children=[loopVar; nodeInitialValue; nodeFinalValue; step]}
 and
     translateLongRepeat (context: IParseTree): SubTree =
@@ -181,7 +198,7 @@ and
 and
     translateTermExpr (context: IParseTree): SubTree =
         let text = context.GetText()
-        Node{tokenType=Terminator; content=text; children=[]}
+        Node{tokenType=Value; content=text; children=[]}
 and
     translateParenthesizedExpr (context: IParseTree): SubTree =
         WalkDown context

@@ -34,7 +34,7 @@ let private addDimSymbol context state =
     set symbol state
     
 let private addAssignmentSymbol context state =
-    let (varName, _, _) = Walker.WalkAssignment context
+    let (varName, _, _, _) = Walker.WalkAssignment context
     let (truncatedName, dataType) = Utility.getTypeFromAnnotation varName
     let symbol = {Name = truncatedName; Scope = state.currentScope; Category=CategoryType.Variable; Type=dataType;  ParameterMechanism = Inapplicable}
     trySet symbol state

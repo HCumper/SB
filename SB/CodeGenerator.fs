@@ -103,7 +103,7 @@ let rec private genExpression (context: IParseTree) =
         | _ -> raise (MyError("Expression generation error"))
 
 let private genAssignment context (state: State) =
-    let (lvalue, dimensionsk, rvalue) = Walker.WalkAssignment context
+    let (lvalue, dimensions, rvalue, targetDimensions) = Walker.WalkAssignment context
     let (name, _) = Utility.getTypeFromAnnotation lvalue
     //let operatingScope =
     //    match state.currentScope with
@@ -111,9 +111,10 @@ let private genAssignment context (state: State) =
     //    | _ -> state.outputProcFn + $@"{varName} = "
     //{state with outputProcFn = operatingScope}
 //    let expressionString = genExpression rvalue
-    let expr = genExpression rvalue
-    let assignStmt = $@"{SymbolTable.newLine} {name} = { fst expr};"
-    addToCSharp assignStmt state
+    //let expr = genExpression rvalue
+    //let assignStmt = $@"{SymbolTable.newLine} {name} = { fst expr};"
+    //addToCSharp assignStmt state
+    state
 
 let private genEndDefine _ _ state =
     let x = state.outputProcFn + "}" + newLine

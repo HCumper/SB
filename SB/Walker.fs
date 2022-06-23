@@ -36,7 +36,16 @@ let WalkAssignment (context : IParseTree) =
             let paramList = context.GetChild(0).GetChild(1).Payload :?> SBParser.ParenthesizedlistContext
             let (fList:IParseTree list) = copyAntlrList paramList.children
             fList |> List.filter (fun x -> not (x :? TerminalNodeImpl || x :? SBParser.SeparatorContext))
-    (lvalue, dimensions, context.GetChild(2))
+
+    let rvalue = context.GetChild(2).GetChild(0).GetChild(0).GetChild(0).GetText()
+    let targetDimensions =
+        match context.GetChild(2).GetChild(0).GetChild(0).ChildCount with 
+        | 1 -> []
+        | _ -> 
+            let paramList = context.GetChild(2).GetChild(0).GetChild(0).GetChild(1).Payload :?> SBParser.ParenthesizedlistContext
+            let (fList:IParseTree list) = copyAntlrList paramList.children
+            fList |> List.filter (fun x -> not (x :? TerminalNodeImpl || x :? SBParser.SeparatorContext))
+    (lvalue, dimensions, rvalue, targetDimensions)
 
 let WalkEndDef (context: IParseTree) action state =
     let endDefAction = action SBParser.EndDef
