@@ -37,19 +37,19 @@ let getTypeFromAnnotation (name:string) =
     | _ -> 
         (name, SBParser.Real)
     
-//get the children of a context as an F# list of Antlr nodes without assuming children is visible
+// get the children of a context as an F# list of Antlr nodes without assuming children is visible
 let gatherChildren (context: IParseTree) = 
-    let rec innerGatherChildren (context: IParseTree) index antlrList = 
+    let rec gatherChildrenInner (context: IParseTree) index antlrList = 
         let count = context.ChildCount 
         match index with
         | n when n < count ->
-            context.GetChild(index)::innerGatherChildren context (index+1) antlrList 
+            context.GetChild(index)::gatherChildrenInner context (index+1) antlrList 
         | _ -> antlrList
-    innerGatherChildren context 0 []
+    gatherChildrenInner context 0 []
 
 // implementation of map, input Antlr list output F# list
 let mapAntlrList (mappingFunction: IParseTree -> 'b) (inputList: Collections.Generic.IList<IParseTree>) =
-    let rec mapAntlrListWithIndex (mappingFunction: 'a -> 'b) (inputList: Collections.Generic.IList<IParseTree>) outputList index =
+    let rec mapAntlrListWithIndex (mappingFunction: IParseTree -> 'b) (inputList: Collections.Generic.IList<IParseTree>) outputList index =
         match index with
         | len when len = inputList.Count -> outputList
         | _ -> 
@@ -58,7 +58,7 @@ let mapAntlrList (mappingFunction: IParseTree -> 'b) (inputList: Collections.Gen
     mapAntlrListWithIndex mappingFunction inputList [] 0
 
 // copy generic list to F# list non destructively
-let copyAntlrList (parentNode: Collections.Generic.IList<IParseTree>) = mapAntlrList (fun x -> x) (parentNode: Collections.Generic.IList<IParseTree>)
+let copyAntlrList (parentNode: Collections.Generic.IList<IParseTree>) = mapAntlrList id (parentNode: Collections.Generic.IList<IParseTree>)
 
 // map while propagating state forward between operations on each element using an Antlr list of nodes
 let rec mapIter (paramList:IParseTree list) (state: State) dataType category =
@@ -66,7 +66,7 @@ let rec mapIter (paramList:IParseTree list) (state: State) dataType category =
     | [] -> state
     | head::tail ->
         let term = (head :?> SBParser.TermContext).children[0].GetText()
-        let (symbol: Symbol) = {Name = term; Scope = state.currentScope; Category=category; Type=dataType; ParameterMechanism = Inapplicable}
+        let symbol = {Name = term; Scope = state.currentScope; Category=category; Type=dataType; ParameterMechanism = Inapplicable}
         let newState = set symbol state;
         mapIter tail newState dataType category
 

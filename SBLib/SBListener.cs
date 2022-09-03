@@ -265,6 +265,19 @@ public interface ISBListener : IParseTreeListener {
 	void ExitAssignment([NotNull] SBParser.AssignmentContext context);
 
 	/// <summary>
+	/// Enter a parse tree produced by the <c>IdentifierOnly</c>
+	/// labeled alternative in <see cref="SBParser.stmt"/>.
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	void EnterIdentifierOnly([NotNull] SBParser.IdentifierOnlyContext context);
+	/// <summary>
+	/// Exit a parse tree produced by the <c>IdentifierOnly</c>
+	/// labeled alternative in <see cref="SBParser.stmt"/>.
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	void ExitIdentifierOnly([NotNull] SBParser.IdentifierOnlyContext context);
+
+	/// <summary>
 	/// Enter a parse tree produced by the <c>Parenthesized</c>
 	/// labeled alternative in <see cref="SBParser.expr"/>.
 	/// </summary>
@@ -276,19 +289,6 @@ public interface ISBListener : IParseTreeListener {
 	/// </summary>
 	/// <param name="context">The parse tree.</param>
 	void ExitParenthesized([NotNull] SBParser.ParenthesizedContext context);
-
-	/// <summary>
-	/// Enter a parse tree produced by the <c>UnaryAdditive</c>
-	/// labeled alternative in <see cref="SBParser.expr"/>.
-	/// </summary>
-	/// <param name="context">The parse tree.</param>
-	void EnterUnaryAdditive([NotNull] SBParser.UnaryAdditiveContext context);
-	/// <summary>
-	/// Exit a parse tree produced by the <c>UnaryAdditive</c>
-	/// labeled alternative in <see cref="SBParser.expr"/>.
-	/// </summary>
-	/// <param name="context">The parse tree.</param>
-	void ExitUnaryAdditive([NotNull] SBParser.UnaryAdditiveContext context);
 
 	/// <summary>
 	/// Enter a parse tree produced by the <c>Binary</c>

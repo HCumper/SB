@@ -7,7 +7,7 @@ open SBLib
 open System
 
 type TokenType =
-    Program | Line | LineNumber | StmtList | Stmt | None | Function | Procedure | Parameter | Local | Assignment | Value | BinaryExpr | ProcFnCall | LongFor | AssignmentTarget | Expression | Dim | Reference | Repeat | If | Remark | Implicit
+    Assignment | AssignmentTarget | BinaryExpr | Dim | Expression | If | Function | Implicit | Line | LineNumber | Local | LongFor | None | Parameter | Procedure | ProcFnCall | Program | Reference | Remark | Repeat | Stmt | StmtList | Value
 
 type EvaluatedType = Integer | Real | String
 
@@ -27,9 +27,6 @@ type SubTree = Node of Node | Children of Node List | Empty
 //    let content = defaultArg content0 ""
 //    let sourceReference = defaultArg sourceReference0 0
 //    let children = defaultArg children0 []
- 
-//let doIt tokenType content children =
-//    Node({tokenType=tokenType; content=content; children=children})
 
 // walk the children of the current node
 let rec private WalkAcross (contextList : IParseTree List) =
@@ -43,10 +40,10 @@ let rec private WalkAcross (contextList : IParseTree List) =
                 | Node(ast) -> astChildren @ [ast]
                 | Children(astList) -> astChildren @ astList
                 | Empty -> astChildren
-            WalkAcrossInner (contextList : IParseTree List) (index+1) appendedAstChildren 
+            WalkAcrossInner (contextList : IParseTree List) (index+1) appendedAstChildren
         | _ -> astChildren
     WalkAcrossInner (contextList : IParseTree List) 0 []
-and 
+and
     // generate output for a node depending on type and which will call walk across to traverse its children
     private WalkDown context : SubTree =
         match context with
@@ -62,23 +59,22 @@ and
         | :? SBParser.ShortforContext -> translateLongFor context
         | :? SBParser.LongrepeatContext -> translateLongRepeat context
         | :? SBParser.LongifContext -> translateIf context
-        | :? TerminalNodeImpl -> Empty
+        | :? TerminalNodeImpl -> translateTerminalNodeImpl context
+        | :? SBParser.TermContext (*| :? SBParser.UnaryTermContext*) -> translateTerm context
+        | :? SBParser.TerminatorContext (*| :? SBParser.UnaryTerminatorContext*) -> translateTerminator context
         | :? SBParser.ProcContext -> translateProc context
 //        | :? SBParser.ProccallContext | :? SBParser.ProccallContext -> translateProcFnCall context
         | :? SBParser.ProgramContext -> translateProgram context
         | :? SBParser.StmtlistContext -> translateStmtList context
-        | :? SBParser.TermContext -> translateTerminal context
-        | :? SBParser.TerminatorContext -> translateTerm context
         | :? SBParser.IdentifierOnlyContext | :? SBParser.IdentifierContext -> translateProcFnCall context
         | :? SBParser.ParenthesizedContext -> translateParenthesized context
-        | :? SBParser.UnaryAdditiveContext -> translateExpr context
+//        | :? SBParser.UnaryAdditiveContext -> translateExpr context
         | :? SBParser.DimContext -> translateDim context
         | :? SBParser.ImplicitContext -> translateImplicit context
         | :? SBParser.ReferenceContext -> translateReference context
         | :? SBParser.RemarkContext -> translateRemark context
         | _ -> Node{tokenType=None; content="mismatch"; children=[]}
  and
-    // translate the root program node
     translateProgram context =
         let astProgram = {tokenType= Program; content="The whole program"; children = []}
         Node({astProgram with children=WalkAcross (context |> gatherChildren)})
@@ -86,9 +82,8 @@ and
     translateLine context =
         Children(WalkAcross (context |> gatherChildren))
 and
-   translateLineNumber context =
+    translateLineNumber context =
         Empty
-        // only a terminal node underneath, no need to look at it
 and
     translateStmtList (context: IParseTree) =
        Children(WalkAcross (context |> gatherChildren))
@@ -111,7 +106,17 @@ and
         let (routineName, _) = Walker.WalkProcFunc (context.GetChild(0))
         Node({tokenType=Procedure; content=routineName; children=WalkAcross (context |> Utility.gatherChildren)})
 and
-    translateTerminal (context: IParseTree): SubTree =
+    translateTerm (context: IParseTree): SubTree =
+    match context.ChildCount with
+        | 0 -> Node({tokenType=Value; content=context.GetText(); children=[]})
+        | _ -> WalkDown (context.GetChild(0))
+and
+    translateTerminalNodeImpl (context: IParseTree): SubTree =
+    match context.ChildCount with
+        | 0 -> Node({tokenType=Value; content=context.GetText(); children=[]})
+        | _ -> WalkDown (context.GetChild(0))
+and
+    translateTerminator (context: IParseTree): SubTree =
     match context.ChildCount with
         | 0 -> Node({tokenType=Value; content=context.GetText(); children=[]})
         | _ -> WalkDown (context.GetChild(0))
@@ -135,17 +140,14 @@ and
         Node({tokenType=Implicit; content=local; children=localChildren})
 and
     translateAssignment (context: IParseTree): SubTree =
-        let (lvalue, dimensions, rvalue, targetDimensions) = Walker.WalkAssignment context
+//        let (lvalue, dimensions, rvalue, targetDimensions) = Walker.WalkAssignment context
+        let lvalue = context.GetChild(0).GetChild(0).GetText()
+
         let target = WalkDown (context.GetChild(2))
         let targetNode = (fun x -> match x with Node(x) -> x) target
-        let dims = WalkAcross dimensions
-        let sourceNode = {tokenType=ProcFnCall; content=lvalue; children=dims}
+//        let dims = WalkAcross targetNode
+        let sourceNode = {tokenType=ProcFnCall; content=lvalue; children=[]}
         Node({tokenType=Assignment; content="="; children=sourceNode::[targetNode]})
-and
-    translateTerm (context: IParseTree): SubTree =
-    match context.ChildCount with
-        | 0 -> Node({tokenType=Value; content=context.GetText(); children=[]})
-        | _ -> WalkDown (context.GetChild(0))
 and
     translateProcFnCall (context: IParseTree): SubTree =
         let routineName = context.GetChild(0).GetText()
@@ -154,7 +156,7 @@ and
             | 1 -> []
             | _ ->
                 let children = gatherChildren (context.GetChild(1))
-                let fChildren = children |> List.filter (fun x -> not (x :? TerminalNodeImpl || x :? SBParser.SeparatorContext))            
+                let fChildren = children |> List.filter (fun x -> not (x :? TerminalNodeImpl || x :? SBParser.SeparatorContext))
                 List.map (fun x -> WalkDown x ) fChildren |> List.map (fun x -> match x with Node(x) -> x)
         Node ({tokenType=ProcFnCall; content=routineName; children=nodeChildren})
 and
@@ -163,7 +165,7 @@ and
         let loopVar = {tokenType=Value; content=loopVarString; children=[]}
         let initialValue = translateExpr initialValue
         let finalValue = translateExpr finalValue
-        let nodeInitialValue = match initialValue with Node(initialValue) -> initialValue
+        let nodeInitialValue = match initialValue with Node(initialValue) -> initialValue | _ -> failwith "todo"
         let nodeFinalValue = match finalValue with Node(finalValue) -> finalValue
         let step = {tokenType=Value; content=stepString; children=[]}
         Node {tokenType=TokenType.LongFor; content=loopVarString; children=[loopVar; nodeInitialValue; nodeFinalValue; step]}
@@ -180,7 +182,7 @@ and
         match context with
         | :? SBParser.ParenthesizedContext -> translateParenthesizedExpr context
         | :? SBParser.BinaryContext -> translateBinaryExpr context
-        | :? SBParser.InstrContext | :? SBParser.UnaryAdditiveContext | :? SBParser.NotContext -> translateUnaryExpr context
+        | :? SBParser.InstrContext |  :? SBParser.NotContext -> translateUnaryExpr context
         | :? SBParser.TermContext -> translateTermExpr context
         | _ -> Node{tokenType=None; content="expression mismatch"; children=[]}
 and
@@ -220,7 +222,7 @@ and
 
 // top level only
 let RewriteTree (parseTree: IParseTree) : SubTree =
-    WalkDown parseTree  
+    WalkDown parseTree
 
 //// debugging purposes
 //let rec dumpTree (ast: subtree) =

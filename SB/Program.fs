@@ -10,7 +10,6 @@ open TreeRewriter
 
 [<EntryPoint>]
 let main argv =
-//    SymbolTable.testTable
     let filename = @"H:\source\Home Repos\SB\q3.sb"
     let reader = File.OpenText(filename)
     let outputFile = @"H:\source\Home Repos\SB\q3.cs"

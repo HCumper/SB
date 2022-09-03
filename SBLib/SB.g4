@@ -39,7 +39,8 @@ unparenthesizedlist : expr (separator expr)*;
 separator : Comma | Bang | Semi | To;
 constexpr : Integer | Real | String | ID;
 rangeexpr : constexpr To constexpr | constexpr;
-terminator : Integer | String | Real | identifier;
+/*unaryTerminator : (Minus Integer | Minus Real | Minus identifier);*/
+terminator : (Integer | String | Real | identifier);
 
 lineNumber : Integer;
 endFor : EndFor;
@@ -67,7 +68,6 @@ endSelect : EndSelect;
 
 expr :
 	  LeftParen expr RightParen														#Parenthesized
-	| (Plus | Minus) expr															#UnaryAdditive
 	| expr Amp expr																	#Binary
 	| <assoc=right> (String | ID) Instr expr										#Instr
 	| <assoc=right> expr Caret expr													#Binary
@@ -79,7 +79,6 @@ expr :
 	| expr (Or | Xor) expr															#Binary
 	| terminator																	#Term
 	;
-
 
 /* Tokens */
 Refer : 'REFERENCE';
@@ -149,8 +148,8 @@ Comment	:  'REMark' ~( '\r' | '\n' )*;
 
 ID : LETTER ([0-9] | [A-Za-z] | '_')* ('$'|'%')?;
 
-Integer : DIGIT+;
-Real : DIGIT* Point DIGIT*;
+Integer :  '-'? DIGIT+;
+Real : '-'? DIGIT* Point DIGIT*;
 String : '"' ~('"')* '"';
 
 Unknowntype : 'program use only';

@@ -98,8 +98,8 @@ let rec private genExpression (context: IParseTree) =
             (leftChildString + " " + operator + " " + rightChildString, expressionPrecedence)
         | :? SBParser.ParenthesizedContext -> 
             genExpression (context :?> SBParser.ParenthesizedContext).children[1]  // discard parentheses
-        | :? SBParser.UnaryAdditiveContext -> 
-            (context.GetText(), Precedence.Unary)
+        //| :? SBParser.UnaryAdditiveContext -> 
+        //    (context.GetText(), Precedence.Unary)
         | _ -> raise (MyError("Expression generation error"))
 
 let private genAssignment context (state: State) =

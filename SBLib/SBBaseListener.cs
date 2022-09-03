@@ -305,6 +305,21 @@ public partial class SBBaseListener : ISBListener {
 	public virtual void ExitAssignment([NotNull] SBParser.AssignmentContext context) { }
 
 	/// <summary>
+	/// Enter a parse tree produced by the <c>IdentifierOnly</c>
+	/// labeled alternative in <see cref="SBParser.stmt"/>.
+	/// <para>The default implementation does nothing.</para>
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	public virtual void EnterIdentifierOnly([NotNull] SBParser.IdentifierOnlyContext context) { }
+	/// <summary>
+	/// Exit a parse tree produced by the <c>IdentifierOnly</c>
+	/// labeled alternative in <see cref="SBParser.stmt"/>.
+	/// <para>The default implementation does nothing.</para>
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	public virtual void ExitIdentifierOnly([NotNull] SBParser.IdentifierOnlyContext context) { }
+
+	/// <summary>
 	/// Enter a parse tree produced by the <c>Parenthesized</c>
 	/// labeled alternative in <see cref="SBParser.expr"/>.
 	/// <para>The default implementation does nothing.</para>
@@ -318,21 +333,6 @@ public partial class SBBaseListener : ISBListener {
 	/// </summary>
 	/// <param name="context">The parse tree.</param>
 	public virtual void ExitParenthesized([NotNull] SBParser.ParenthesizedContext context) { }
-
-	/// <summary>
-	/// Enter a parse tree produced by the <c>UnaryAdditive</c>
-	/// labeled alternative in <see cref="SBParser.expr"/>.
-	/// <para>The default implementation does nothing.</para>
-	/// </summary>
-	/// <param name="context">The parse tree.</param>
-	public virtual void EnterUnaryAdditive([NotNull] SBParser.UnaryAdditiveContext context) { }
-	/// <summary>
-	/// Exit a parse tree produced by the <c>UnaryAdditive</c>
-	/// labeled alternative in <see cref="SBParser.expr"/>.
-	/// <para>The default implementation does nothing.</para>
-	/// </summary>
-	/// <param name="context">The parse tree.</param>
-	public virtual void ExitUnaryAdditive([NotNull] SBParser.UnaryAdditiveContext context) { }
 
 	/// <summary>
 	/// Enter a parse tree produced by the <c>Binary</c>
