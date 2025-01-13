@@ -1,4 +1,4 @@
-﻿namespace SBLib
+﻿namespace Lib
 {
     partial class SBParser
     {

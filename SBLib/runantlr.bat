@@ -1,1 +1,0 @@
-..\packages\Antlr4.CodeGenerator.4.6.5\tools\net45\antlr4 -Dlanguage=CSharp "h:\source\home repos\sb\sblib\SB.g4
