@@ -32,8 +32,7 @@ let main argv =
     Console.WriteLine(x)
     Console.WriteLine("")
 
-    let fsTree = traverseTree parseTree cs
-
+    let fsTree = processParseTree parseTree cs
     
     let ast = RewriteTree parseTree
     Console.WriteLine(ast)

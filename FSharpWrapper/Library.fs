@@ -36,14 +36,14 @@ let getTextForNode (node: ParserRuleContext) (input: ICharStream) : string =
         input.GetText(Interval(startToken.StartIndex, stopToken.StopIndex))
 
 /// Visitor function to process a single node
-let visitNode (node: IParseTree) (inputStream: ICharStream): FSParseTree =
+let visitNode (node: IParseTree) (inputStream: ICharStream) (parent: FSParseTree option): FSParseTree =
     match node with
     | :? TerminalNodeImpl as terminal ->
         let token = terminal.Symbol
         {
             ChildCount = 0
             IsEmpty = false
-            Parent = None
+            Parent = parent
             Payload = None
             RuleIndex = -1
             SourceInterval = (token.StartIndex, token.StopIndex)
@@ -78,18 +78,23 @@ let visitNode (node: IParseTree) (inputStream: ICharStream): FSParseTree =
     | _ -> raise (ParseTreeException($"Unsupported node type: {node.GetType().Name}"))
 
 /// Tree traversal function that recursively walks through the parse tree
-let rec traverseTree (node: IParseTree) inputStream : FSParseTree =
-    let copiedNode = visitNode node inputStream
+let rec traverseTree (node: IParseTree) inputStream (parent: FSParseTree option) : FSParseTree =
+    let copiedNode = visitNode node inputStream parent
 
     // Process children if the node is a rule context
     match node with
     | :? ParserRuleContext as ctx ->
         let children =
             [ for i in 0 .. ctx.ChildCount - 1 do
-                yield traverseTree (ctx.GetChild(i)) inputStream ]
-        { copiedNode with Children = children; ChildCount = children.Length }
-    | _ -> copiedNode // Terminal nodes don't have children
+                yield traverseTree (ctx.GetChild(i)) inputStream (Some copiedNode) ]
+        { copiedNode with
+            Children = children
+            ChildCount = children.Length
+            Parent = parent } // Set the parent field
+    | _ ->
+        { copiedNode with Parent = parent } // Terminal nodes also get the parent
 
 /// Entry function to start walking from the root of the parse tree
 let processParseTree (tree: IParseTree) (inputStream: ICharStream) : FSParseTree =
-    traverseTree tree inputStream
+    traverseTree tree inputStream None
+
