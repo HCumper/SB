@@ -16,12 +16,18 @@ stmt :
 	| Refer unparenthesizedlist															#Reference
 	| prochdr line* lineNumber? endDef ID?												#Proc
 	| funchdr line* lineNumber? endDef ID?												#Func
-	| For ID Equal expr To expr (Step terminator)? Newline line* lineNumber? endFor ID?	#Longfor
-	| For ID Equal expr To expr Colon stmtlist											#Shortfor
-	| Repeat ID Colon stmtlist															#Shortrepeat
-	| Repeat ID Newline line* lineNumber? endRepeat ID?									#Longrepeat
-	| If expr (Then | Colon) stmtlist (Colon Else Colon stmtlist)?						#Shortif
-	| If expr (Then)? Newline line+ (lineNumber? Else line+)? lineNumber? endIf			#Longif
+    | For ID Equal expr To expr 
+      ( (Step terminator)? Newline line* lineNumber? endFor ID?  // Long form
+      | Colon stmtlist                                         // Short form
+      )                                                                                 #Forloop
+    | Repeat ID 
+      ( Colon stmtlist                                    // Short form
+      | Newline line* lineNumber? endRepeat ID?           // Long form
+      )                                                                                 #Repeat
+    | If expr 
+      ( (Then | Colon) stmtlist (Colon Else Colon stmtlist)?                   // Short form
+      | (Then)? Newline line+ (lineNumber? Else line+)? lineNumber? endIf      // Long form
+      )                                                                                 #If
     | Select constexpr Newline line* lineNumber? endSelect								#Longselect
 	| Comment																			#Remark
  	| On (constexpr) Equal rangeexpr													#Onselect
@@ -104,7 +110,7 @@ Repeat : 'REPeat';
 Exit : 'EXIT';
 Until : 'UNTIL';
 EndRepeat : 'END REPeat';
-
+ 
 LeftParen : '(';
 RightParen : ')';
 LeftBracket : '[';
