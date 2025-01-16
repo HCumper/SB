@@ -152,8 +152,7 @@ and private WalkDown (context: IParseTree) (state: State) =
         | :? SBParser.ProchdrContext
         | :? SBParser.FunchdrContext -> addProcFuncSymbol context state
         | :? SBParser.EndDefContext -> addEndDefSymbol state
-        | :? SBParser.LongforContext -> addLongForSymbol context state
-        | :? SBParser.ShortforContext -> addShortForSymbol context state
+        | :? SBParser.ForloopContext -> addLongForSymbol context state
         | _ -> state
 
     (context, WalkAcross (context: IParseTree) 0 newState)

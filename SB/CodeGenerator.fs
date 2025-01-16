@@ -235,8 +235,7 @@ and private WalkDown (context: IParseTree) (state: State) =
         match context with
         | :? SBParser.DimContext -> genDim context state
         | :? SBParser.AssignmentContext -> genAssignment context state
-        | :? SBParser.LongforContext
-        | :? SBParser.ShortforContext -> genFor context state
+        | :? SBParser.ForloopContext -> genFor context state
         | :? SBParser.NextstmtContext -> genNext context state
         | :? SBParser.ProcContext
         | :? SBParser.FuncContext -> genProcFunc context state

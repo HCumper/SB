@@ -1,9 +1,111 @@
 ﻿module Utility
 
 open Antlr4.Runtime.Tree
-open SB
 open SymbolTable
 open System
+open Antlr4.Runtime
+
+
+// Types of tokens used in parse tree
+type NodeKind =
+    | Assignment
+    | AssignmentTarget
+    | BinaryExpr
+    | Dim
+    | Expression
+    | If
+    | Function
+    | Identifier
+    | Implicit
+    | Line
+    | LineNumber
+    | Local
+    | For
+    | Nothing
+    | Parameter
+    | Procedure
+    | ProcFnCall
+    | Program
+    | Reference
+    | Remark
+    | Repeat
+    | Stmt
+    | StmtList
+    | Value
+    | Unknown
+
+    
+// // Convert Antlr data types for parse nodes to Token Type field entries for FSParse
+// let extractTokenType (node: ParserRuleContext) =
+//     match node with
+//     | :? SBParser.ProgramContext as programCtx ->
+//         Program
+//     | :? SBParser.LineContext as lineCtx ->
+//         Line
+//     | :? SBParser.ForloopContext as forCtx ->
+//         For
+//     
+//     | :? SBParser.AssignmentContext as assignCtx ->
+//         let variable = assignCtx.identifier().GetText()
+//         let valueExpr = ParseTreeToAst (assignCtx.expr())
+//         AssignmentNode(variable, valueExpr)
+//
+//     | :? SBParser.IfContext as ifCtx ->
+//         let condition = parseTreeToAst (ifCtx.expr())
+//         let thenBlock =
+//             [ for i in 0 .. ifCtx.line().Length - 1 do
+//                 yield parseTreeToAst (ifCtx.line(i)) ]
+//         let elseBlock =
+//             if ifCtx.Else() <> null then
+//                 Some (
+//                     [ for i in 0 .. ifCtx.lineNumber().Length - 1 do
+//                         yield parseTreeToAst (ifCtx.lineNumber(i)) ]
+//                 )
+//             else None
+//         IfNode(condition, thenBlock, elseBlock)
+//
+//     | :? SBParser.RepeatContext as repeatCtx ->
+//         let variable = repeatCtx.ID().GetText()
+//         let body =
+//             [ for i in 0 .. repeatCtx.line().Length - 1 do
+//                 yield parseTreeToAst (repeatCtx.line(i)) ]
+//         RepeatNode(variable, body)
+//
+//     | :? SBParser.RemarkContext as remarkCtx ->
+//         let commentText = remarkCtx.GetText()
+//         RemarkNode(commentText)
+//
+//     | :? SBParser.BinaryContext as binaryCtx ->
+//         let leftOperand = parseTreeToAst (binaryCtx.GetChild(0))
+//         let operator = binaryCtx.GetChild(1).GetText()
+//         let rightOperand = parseTreeToAst (binaryCtx.GetChild(2))
+//         BinaryOperationNode(operator, leftOperand, rightOperand)
+//
+//     | :? SBParser.IdentifierContext as identifierCtx ->
+//         let identifierText = identifierCtx.GetText()
+//         IdentifierNode(identifierText)
+//
+//     | :? SBParser.LiteralContext as literalCtx ->
+//         let literalValue = literalCtx.GetText()
+//         LiteralNode(literalValue)
+//
+//     | _ ->
+//         UnknownNode(node.GetText())
+        
+
+// Node in the AST
+// type ASTNode = {
+//     TokenType: TokenType
+//     SourceText: string
+//     Children: ASTNode list
+//     //evaluatedType: EvaluatedType
+//     //sourceReference: int
+// }
+
+// type EvaluatedType =
+//     | Integer
+//     | Real
+//     | String
 
 // Functions implemented
 // convert SBParser type to string

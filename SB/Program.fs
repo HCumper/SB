@@ -6,8 +6,9 @@ open Antlr4.Runtime
 open SB
 open SB
 open SymbolTable
-open TreeRewriter
+//open ConvertToAST
 open ReformatParseTree
+//open CreateAST
 
 [<EntryPoint>]
 let main argv =
@@ -34,8 +35,9 @@ let main argv =
 
     let fsTree = processParseTree parseTree cs
     
-    let ast = RewriteTree parseTree
-    Console.WriteLine(ast)
+//    let ast = WalkDown fsTree
+ //   let ast = CreateAST.RewriteTree fsTree
+//    Console.WriteLine(ast)
 
     let initialState =
         { references = Set.empty

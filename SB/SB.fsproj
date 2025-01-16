@@ -8,8 +8,8 @@
     <ItemGroup>
         <Compile Include="SymbolTable.fs" />
         <Compile Include="Utility.fs" />
+        <Compile Include="ReformatParseTree.fs" />
         <Compile Include="Walker.fs" />
-        <Compile Include="TreeRewriter.fs" />
         <Compile Include="Templates.fs" />
         <Compile Include="TypeResolver.fs" />
         <Compile Include="CodeGenerator.fs" />
@@ -27,7 +27,7 @@
     </ItemGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\FSharpWrapper\FSharpWrapper.fsproj" />
+      <ProjectReference Include="..\SBLib\SBLib.csproj" />
     </ItemGroup>
 
 </Project>
