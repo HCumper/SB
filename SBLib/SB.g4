@@ -3,11 +3,11 @@ grammar SB;
 program : line+ EOF;
 
 line :
-	lineNumber? (stmtlist)? Newline
+	lineNumber? stmtlist? Newline
 	| lineNumber Colon Newline
 	;
 
-stmtlist : stmt (':' stmt?)*;
+stmtlist : stmt (':' stmt)*;
 
 stmt :
 	Dimension ID parenthesizedlist														#Dim
@@ -17,17 +17,20 @@ stmt :
 	| prochdr line* lineNumber? endDef ID?												#Proc
 	| funchdr line* lineNumber? endDef ID?												#Func
     | For ID Equal expr To expr 
-      ( (Step terminator)? Newline line* lineNumber? endFor ID?  // Long form
-      | Colon stmtlist                                         // Short form
-      )                                                                                 #Forloop
+      ( (Step (Integer | String | Real | identifier))? (Newline | Comment) line* lineNumber? endFor ID?  // Long form
+      | Colon stmtlist                        // Short form
+      )                                                                                 #Forloop                                                                              
+                    
     | Repeat ID 
       ( Colon stmtlist                                    // Short form
       | Newline line* lineNumber? endRepeat ID?           // Long form
       )                                                                                 #Repeat
+
     | If expr 
       ( (Then | Colon) stmtlist (Colon Else Colon stmtlist)?                   // Short form
       | (Then)? Newline line+ (lineNumber? Else line+)? lineNumber? endIf      // Long form
       )                                                                                 #If
+
     | Select constexpr Newline line* lineNumber? endSelect								#Longselect
 	| Comment																			#Remark
  	| On (constexpr) Equal rangeexpr													#Onselect
@@ -46,7 +49,6 @@ separator : Comma | Bang | Semi | To;
 constexpr : Integer | Real | String | ID;
 rangeexpr : constexpr To constexpr | constexpr;
 /*unaryTerminator : (Minus Integer | Minus Real | Minus identifier);*/
-terminator : (Integer | String | Real | identifier);
 
 lineNumber : Integer;
 endFor : EndFor;
@@ -83,7 +85,7 @@ expr :
 	| Not expr																		#Not
 	| expr And expr																	#Binary
 	| expr (Or | Xor) expr															#Binary
-	| terminator																	#Term
+	| (Integer | String | Real | identifier)            							#Term
 	;
 
 /* Tokens */

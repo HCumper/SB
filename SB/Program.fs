@@ -4,11 +4,9 @@ open System
 open System.IO
 open Antlr4.Runtime
 open SB
-open SB
 open SymbolTable
-//open ConvertToAST
 open ReformatParseTree
-//open CreateAST
+open CreateAST
 
 [<EntryPoint>]
 let main argv =
@@ -35,34 +33,33 @@ let main argv =
 
     let fsTree = processParseTree parseTree cs
     
-//    let ast = WalkDown fsTree
- //   let ast = CreateAST.RewriteTree fsTree
-//    Console.WriteLine(ast)
+    let ast = walkDown fsTree
+    Console.WriteLine(ast)
 
-    let initialState =
-        { references = Set.empty
-          symTab = Map.empty
-          errorList = []
-          currentScope = globalScope
-          outputProcFn = ""
-          outputGlobal = "" }
+    // let initialState =
+    //     { references = Set.empty
+    //       symTab = Map.empty
+    //       errorList = []
+    //       currentScope = globalScope
+    //       outputProcFn = ""
+    //       outputGlobal = "" }
+    //
+    // let (_, state) = SymbolTableBuilder.WalkTreeRoot parseTree initialState
+    //
+    // let typedState = TypeResolver.TypeImplicits state
+    //
+    // let resetState =
+    //     { typedState with
+    //         currentScope = globalScope }
 
-    let (_, state) = SymbolTableBuilder.WalkTreeRoot parseTree initialState
-
-    let typedState = TypeResolver.TypeImplicits state
-
-    let resetState =
-        { typedState with
-            currentScope = globalScope }
-
-    let state = CodeGenerator.walkTreeRoot parseTree resetState
+//    let state = CodeGenerator.walkTreeRoot parseTree resetState
     //    let strProg = state.outputProcFn.ToString()
     //    List.map (fun x -> File.AppendAllText(outputFile, x)) (snd state).outputProcFn |> ignore
 
-    let listing =
-        (snd state).outputProcFn
-        + "\n************************************************\n"
-        + (snd state).outputGlobal
+    // let listing =
+    //     (snd state).outputProcFn
+    //     + "\n************************************************\n"
+    //     + (snd state).outputGlobal
 
-    File.WriteAllText(outputFile, listing)
+//    File.WriteAllText(outputFile, listing)
     3

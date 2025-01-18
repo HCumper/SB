@@ -12,29 +12,62 @@ type NodeKind =
     | AssignmentTarget
     | BinaryExpr
     | Dim
+    | EndDef
+    | EndFor
     | Expression
+    | For
     | If
     | Function
     | Identifier
+    | IdentifierOnly
     | Implicit
     | Line
     | LineNumber
+    | Loc
     | Local
-    | For
     | Nothing
     | Parameter
+    | ParenthesizedList
     | Procedure
     | ProcFnCall
+    | Prochdr
+    | Proc
     | Program
     | Reference
     | Remark
     | Repeat
+    | Separator
     | Stmt
     | StmtList
+    | Term
+    | Terminator
     | Value
     | Unknown
+    | UnparenthesizedList
 
+// A record for node data
+type FSNode = {
+    RuleIndex  : int
+    Exception  : RecognitionException
+    SourceText : string
+    Position   : int * int
+    Children   : FSParseTree list
+}
+
+// Single record type to hold the node
+and FSParseTree = {
+    Kind : NodeKind
+    Data : FSNode
+}
     
+/// <summary>
+/// Represents a node in the final abstract syntax tree (AST).
+/// </summary>
+type ASTNode =
+    { tokenType: NodeKind
+      content: string
+      children: ASTNode list }
+
 // // Convert Antlr data types for parse nodes to Token Type field entries for FSParse
 // let extractTokenType (node: ParserRuleContext) =
 //     match node with
@@ -144,6 +177,17 @@ let gatherChildren (context: IParseTree) =
 
         match index with
         | n when n < count -> context.GetChild (index) :: gatherChildrenInner context (index + 1) antlrList
+        | _ -> antlrList
+
+    gatherChildrenInner context 0 []
+
+// get the children of a context as an F# list of Antlr nodes without assuming children is visible
+let gatherFSChildren (context: FSNode) =
+    let rec gatherChildrenInner (context: FSNode) index antlrList =
+        let count = context.Children.Length
+
+        match index with
+        | n when n < count -> context.Children[index] :: gatherChildrenInner context (index + 1) antlrList
         | _ -> antlrList
 
     gatherChildrenInner context 0 []

@@ -6,52 +6,45 @@ open Antlr4.Runtime.Misc
 open Utility
 
 // ---------------------------------------------------
-// 2. A record for node data
-// ---------------------------------------------------
-type FSNode = {
-    RuleIndex  : int
-    Exception  : RecognitionException
-    SourceText : string
-    Position   : int * int
-    Children   : FSParseTree list
-}
-
-// ---------------------------------------------------
-// 3. Single record type to hold the node
-// ---------------------------------------------------
-and FSParseTree = {
-    Kind : NodeKind
-    Data : FSNode
-}
-
-// ---------------------------------------------------
 // 4. Helper: convert class name to NodeKind
 // ---------------------------------------------------
 let toNodeKind (antlrClassName: string) : NodeKind =
     match antlrClassName with
     | "AssignmentContext"       -> Assignment
     | "AssignmentTargetContext" -> AssignmentTarget
+    | "BinaryContext"           -> BinaryExpr
     | "BinaryExprContext"       -> BinaryExpr
     | "DimContext"              -> Dim
+    | "EndDefContext"           -> EndDef
+    | "EndForContext"           -> EndFor
     | "ExpressionContext"       -> Expression
-    | "IfContext"               -> If
+    | "ForloopContext"          -> For
     | "FunctionContext"         -> Function
+    | "IfContext"               -> If
     | "IdentifierContext"       -> Identifier
+    | "IdentifierOnlyContext"   -> IdentifierOnly
     | "ImplicitContext"         -> Implicit
     | "LineContext"             -> Line
     | "LineNumberContext"       -> LineNumber
+    | "LocContext"              -> Loc
     | "LocalContext"            -> Local
     | "LongForContext"          -> For
     | "NothingContext"          -> Nothing
     | "ParameterContext"        -> Parameter
+    | "ParenthesizedlistContext"-> ParenthesizedList
+    | "ProcContext"             -> Proc
+    | "ProchdrContext"          -> Prochdr
     | "ProcedureContext"        -> Procedure
     | "ProcFnCallContext"       -> ProcFnCall
     | "ProgramContext"          -> Program
     | "ReferenceContext"        -> Reference
     | "RemarkContext"           -> Remark
     | "RepeatContext"           -> Repeat
+    | "SeparatorContext"        -> Nothing
     | "StmtContext"             -> Stmt
     | "StmtlistContext"         -> StmtList
+    | "TermContext"             -> Term
+    | "UnparenthesizedlistContext"  -> UnparenthesizedList
     | "ValueContext"            -> Value
     | _                         -> Unknown
 

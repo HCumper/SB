@@ -1,5 +1,5 @@
 3 x=8
-25 var2 = -3 : gg=11
+4 var 2 = -3 : gg=11
 26 REMark a comment
 25 DIM astring$(100,76) : REMark end of line comment
 97 astring$(7,3) = "hhh"
@@ -11,12 +11,12 @@
 150 DIM b(1,2,3)
 160 LET shortlist=9
 170 set_up_tabLe
-180 FOR lo=1 TO n : b(lo)=a(lo)
+180 FOR lo=1 TO n STEP 2 : b(lo)=a(lo)
 190 now = DATE
 200 b(n+1)=10001
 210 quicksort 1,n
 220 check
-230 INPUT t$
+230 INPUT t
 240 STOP
 250 FOR lo=1 TO n : b(lo)=a(lo)
 260 REMark b(n+1)=10001
@@ -106,7 +106,7 @@
 1050 IMPLICIT$ first, last, p, item, temporary
 1060 DEFine PROCedure insertionsort (first,last)
 1070 LOCal p%,item$,temporary
-1080   FOR item=first+1 TO last
+1080   FOR item=first+1 TO last : REMark item is the item to be inserted
 1090     LET p=item
 1100     LET temporary=b(p)
 1110     REPeat compare

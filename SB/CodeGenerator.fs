@@ -51,7 +51,7 @@ let private defaultAction _ _ state = state
 // output code for dims
 let private genDim context (state: State) =
     let (varName, dimensions) =
-        Walker.WalkDim context
+        ASTWalker.WalkDim context
 
     let (name, _) =
         Utility.getTypeFromAnnotation varName
@@ -162,7 +162,7 @@ let rec private genExpression (context: IParseTree) =
 
 let private genAssignment context (state: State) =
     let (lvalue, dimensions, rvalue, targetDimensions) =
-        Walker.WalkAssignment context
+        ASTWalker.WalkAssignment context
 
     let (name, _) =
         Utility.getTypeFromAnnotation lvalue
@@ -245,7 +245,7 @@ and private WalkDown (context: IParseTree) (state: State) =
 
 and private genFor (context: IParseTree) (state: State) =
     let (loopVar, initialValue, finalValue, step) =
-        Walker.WalkFor context
+        ASTWalker.WalkFor context
 
     let forStmt =
         $@"{SymbolTable.newLine} for ({loopVar} = {initialValue}; {loopVar} <= {finalValue}; {loopVar} += {step} {{"
@@ -256,7 +256,7 @@ and private genFor (context: IParseTree) (state: State) =
 
 and private genProcFunc context state =
     let (routineName, parameters) =
-        Walker.WalkProcFunc (context.GetChild (0))
+        ASTWalker.WalkProcFunc (context.GetChild (0))
 
     let routineType =
         match SymbolTable.get routineName globalScope state with
