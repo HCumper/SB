@@ -7,20 +7,28 @@ line :
 	| lineNumber Colon Newline
 	;
 
-stmtlist : stmt (':' stmt)*;
+stmtlist : stmt (':' stmt)*; 
 
 stmt :
-	Dimension ID parenthesizedlist														#Dim
+	Dimension ID parenthesizedlist		 												#Dim
 	| Local unparenthesizedlist															#Loc
 	| Implic unparenthesizedlist														#Implicit
-	| Refer unparenthesizedlist															#Reference
+	| Refer unparenthesizedlist															#Reference155
 	| prochdr line* lineNumber? endDef ID?												#Proc
-	| funchdr line* lineNumber? endDef ID?												#Func
-    | For ID Equal expr To expr 
-      ( (Step (Integer | String | Real | identifier))? (Newline | Comment) line* lineNumber? endFor ID?  // Long form
-      | Colon stmtlist                        // Short form
-      )                                                                                 #Forloop                                                                              
-                    
+	| funchdr line* lineNumber? endDef ID?		 										#Func
+    | For ID Equal expr To expr (Step expr)?
+        (
+          // Long form with remark
+          Colon Comment Newline line* lineNumber? endFor ID?
+           
+          // Short form
+          | Colon stmtlist
+     
+          // Long form without remark
+          | Newline line* lineNumber? endFor ID?
+        )
+         #Forloop
+                 
     | Repeat ID 
       ( Colon stmtlist                                    // Short form
       | Newline line* lineNumber? endRepeat ID?           // Long form
@@ -36,19 +44,20 @@ stmt :
  	| On (constexpr) Equal rangeexpr													#Onselect
 	| Next ID																			#Nextstmt
 	| Exit ID																			#Exitstmt
-	| identifier Equal expr																#Assignment
+	| ID (parenthesizedlist)? Equal expr												#Assignment
+	| ID (unparenthesizedlist)?															#ProcCall
 	| identifier																		#IdentifierOnly
 	;
 
 prochdr : DefProc identifier parenthesizedlist? Newline;
 funchdr : DefFunc identifier parenthesizedlist? Newline;
-identifier : ID (parenthesizedlist | unparenthesizedlist)?;
+identifier : ID (parenthesizedlist)?;
 parenthesizedlist :	LeftParen expr (separator expr)* RightParen;
 unparenthesizedlist : expr (separator expr)*;
 separator : Comma | Bang | Semi | To;
 constexpr : Integer | Real | String | ID;
 rangeexpr : constexpr To constexpr | constexpr;
-/*unaryTerminator : (Minus Integer | Minus Real | Minus identifier);*/
+unaryTerminator : (Minus Integer | Minus Real | Minus identifier);
 
 lineNumber : Integer;
 endFor : EndFor;
@@ -73,20 +82,27 @@ endSelect : EndSelect;
          subscripts) enclosed in parentheses.
     Every terminal and expression must have an associated precedence to determine whether parentheses are needed
 */
-
-expr :
-	  LeftParen expr RightParen														#Parenthesized
-	| expr Amp expr																	#Binary
-	| <assoc=right> (String | ID) Instr expr										#Instr
-	| <assoc=right> expr Caret expr													#Binary
-	| expr (Multiply | Divide | Mod | Div) expr										#Binary
-	| expr (Plus | Minus) expr														#Binary
-	| expr (Equal | NotEqual | Less | LessEqual | Greater | GreaterEqual) expr		#Binary
-	| Not expr																		#Not
-	| expr And expr																	#Binary
-	| expr (Or | Xor) expr															#Binary
-	| (Integer | String | Real | identifier)            							#Term
-	;
+expr
+    : LeftParen expr RightParen                                                         #Parenthesized
+    | expr Amp expr                                                                     #Binary //Concatenation
+    | expr (Plus | Minus) expr                                                          #Binary //Add/Subtract
+    | expr (Multiply | Divide | Mod | Div) expr                                         #Binary //Multiply/Divide
+    | expr Caret expr                                                                   #Exponentiation
+    | expr (Equal | NotEqual | Less | LessEqual | Greater | GreaterEqual) expr          #Comparison
+    | expr And expr                                                                     #Logical //AND
+    | expr (Or | Xor) expr                                                              #Logical //OR/XOR
+    | Not expr                                                                          #Unary //Not
+    | (Plus | Minus)? primary                                                           #Unary //plus/minus
+    | (Integer | Real | String | identifier)                                            #Term
+    ;
+    
+primary
+    : LeftParen expr RightParen
+    | Integer
+    | Real
+    | String
+    | identifier
+    ;
 
 /* Tokens */
 Refer : 'REFERENCE';
@@ -156,7 +172,7 @@ Comment	:  'REMark' ~( '\r' | '\n' )*;
 
 ID : LETTER ([0-9] | [A-Za-z] | '_')* ('$'|'%')?;
 
-Integer :  '-'? DIGIT+;
+Integer : DIGIT+;
 Real : '-'? DIGIT* Point DIGIT*;
 String : '"' ~('"')* '"';
 

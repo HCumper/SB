@@ -10,7 +10,6 @@
         <Compile Include="Utility.fs" />
         <Compile Include="ReformatParseTree.fs" />
         <Compile Include="ASTWalker.fs" />
-        <Compile Include="Templates.fs" />
         <Compile Include="TypeResolver.fs" />
         <Compile Include="SymbolTableBuilder.fs" />
         <Compile Include="CreateAST.fs" />
@@ -24,6 +23,10 @@
       <Reference Include="SBLib">
         <HintPath>..\SBLib\bin\Debug\net9.0\SBLib.dll</HintPath>
       </Reference>
+    </ItemGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\SBLib\SBLib.csproj" />
     </ItemGroup>
 
 </Project>

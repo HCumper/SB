@@ -70,10 +70,10 @@ let private addImplicitSymbol context state =
     let (implicDecl, names) =
         ASTWalker.WalkImplicit context
 
-    let (_, dataType) =
-        getTypeFromAnnotation implicDecl
+    // let (_, dataType) =
+    //     getTypeFromAnnotation implicDecl
 
-    Utility.mapStringIter names state dataType CategoryType.Implicit
+    Utility.mapStringIter [names] state 0 CategoryType.Implicit
 
 let private addLocalSymbol context state =
     let (_, paramList) =

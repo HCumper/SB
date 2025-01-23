@@ -13,10 +13,14 @@ type NodeKind =
     | BinaryExpr
     | Dim
     | EndDef
+    | EndIf
     | EndFor
+    | Exitstmt
+    | EndRepeat
     | Expression
     | For
     | If
+    | Funchdr
     | Function
     | Identifier
     | IdentifierOnly
@@ -28,6 +32,7 @@ type NodeKind =
     | Nothing
     | Parameter
     | ParenthesizedList
+    | Primary
     | Procedure
     | ProcFnCall
     | Prochdr
@@ -40,6 +45,7 @@ type NodeKind =
     | Stmt
     | StmtList
     | Term
+    | Terminal
     | Terminator
     | Value
     | Unknown

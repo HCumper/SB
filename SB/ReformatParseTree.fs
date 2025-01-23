@@ -15,11 +15,15 @@ let toNodeKind (antlrClassName: string) : NodeKind =
     | "BinaryContext"           -> BinaryExpr
     | "BinaryExprContext"       -> BinaryExpr
     | "DimContext"              -> Dim
+    | "ExitstmtContext"         -> Exitstmt
     | "EndDefContext"           -> EndDef
+    | "EndIfContext"            -> EndIf
     | "EndForContext"           -> EndFor
+    | "EndRepeatContext"        -> EndRepeat
     | "ExpressionContext"       -> Expression
     | "ForloopContext"          -> For
-    | "FunctionContext"         -> Function
+    | "FunchdrContext"          -> Funchdr
+    | "FuncContext"             -> Function
     | "IfContext"               -> If
     | "IdentifierContext"       -> Identifier
     | "IdentifierOnlyContext"   -> IdentifierOnly
@@ -32,10 +36,11 @@ let toNodeKind (antlrClassName: string) : NodeKind =
     | "NothingContext"          -> Nothing
     | "ParameterContext"        -> Parameter
     | "ParenthesizedlistContext"-> ParenthesizedList
+    | "PrimaryContext"          -> Primary
     | "ProcContext"             -> Proc
     | "ProchdrContext"          -> Prochdr
     | "ProcedureContext"        -> Procedure
-    | "ProcFnCallContext"       -> ProcFnCall
+    | "ProcCallContext"         -> ProcFnCall
     | "ProgramContext"          -> Program
     | "ReferenceContext"        -> Reference
     | "RemarkContext"           -> Remark

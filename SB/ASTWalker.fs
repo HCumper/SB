@@ -9,23 +9,32 @@ let private meaningfulChildren (children: System.Collections.IEnumerable) =
     children
     |> Seq.cast<FSParseTree>
     |> List.ofSeq
-    |> List.filter (fun x -> not (x.Kind = TerminalNodeImpl || x.Kind = SBParser.SeparatorContext))
+    |> List.filter (fun x -> not (x.Kind = Terminal || x.Kind = Separator))
+
+//  Helper to find a child by its index
+let private getChild (context: FSParseTree) subscript =
+    context.Data.Children[subscript]
 
 // Helper to gather all children from a context and immediately filter them
 let private gatherMeaningfulChildren (context: FSParseTree) =
-    gatherChildren context |> List.filter (fun x -> not (x :? TerminalNodeImpl || x :? SBParser.SeparatorContext))
+    gatherFSChildren context.Data |> List.filter (fun x -> not (x.Kind = Terminal || x.Kind = Separator))
+
+// Helper function counting the number of children in a context
+let countChildren (context: FSParseTree) =  
+    context.Data.Children.Length
 
 /// Walks a DIM declaration node
 let WalkDim (context: FSParseTree) =
-    if context.ChildCount < 3 then failwith "Invalid DIM declaration"
-    let varName = context.GetChild(1)Data.Children[0].SourceText
-    let paramList = context.GetChild(2).Payload :?> SBParser.ParenthesizedlistContext
-    let termList = meaningfulChildren paramList.children
-    (varName, termList)
+    match context.Data.Children with
+    | children when children.Length >= 3 ->
+        let varName = (getChild context 0).Data.SourceText
+        let termList = meaningfulChildren (getChild context 2).Data.Children
+        (varName, termList)
+    | _ -> failwith "Invalid DIM declaration"
 
 /// Walks a LOCAL declaration node
 let WalkLocal (context: FSParseTree) =
-    if context.Data.Children.Length < 2 then failwith "Invalid LOCAL declaration"
+    if countChildren(context) < 2 then failwith "Invalid LOCAL declaration"
     let localKeyword = context.Data.Children[0].Data.SourceText
     //let paramList = context.Data.children[1].Payload :?> SBParser.UnparenthesizedlistContext
     //let termList = meaningfulChildren paramList.children
@@ -33,24 +42,25 @@ let WalkLocal (context: FSParseTree) =
 
 /// Walks an assignment node
 let WalkAssignment (context: FSParseTree) =
-    if context.ChildCount < 3 then failwith "Invalid assignment"
+    if context.Data.Children.Length < 3 then failwith "Invalid assignment"
     let lvalue = context.Data.Children[0].Data.Children[0].Data.SourceText
 
     let dimensions =
-        if context.Data.Children[0].ChildCount > 1 then
-            let paramList = context.Data.Children[0].GetChild(1).Payload :?> SBParser.ParenthesizedlistContext
-            meaningfulChildren paramList.children
+        if countChildren context > 1 then
+//            let paramList = context.Data.Children[0].GetChild(1).Payload :?> SBParser.ParenthesizedlistContext
+            []
         else []
 
-    let rvalue = context.GetChild(2).Data.Children[0].Data.Children[0]Data.Children[0].SourceText
+    let rvalue = (getChild context 2).Data.Children[0].Data.Children[0].Data.Children[0].Data.SourceText
 
-    let targetDimensions =
-        if context.GetChild(2).Data.Children[0].Data.Children[0].ChildCount > 1 then
-            let paramList =
-                context.GetChild(2).Data.Children[0].Data.Children[0].GetChild(1).Payload :?> SBParser.ParenthesizedlistContext
-            meaningfulChildren paramList.children
-        else []
+    // let targetDimensions =
+    //     if ((getChild context 2).Data.Children[0].Data.Children[0].Data |> countChildren) > 1 then
+    //         let paramList =
+    //             context.GetChild(2).Data.Children[0].Data.Children[0].GetChild(1).Payload :?> SBParser.ParenthesizedlistContext
+    //         meaningfulChildren paramList.children
+    //     else []
 
+    let targetDimensions = []
     (lvalue, dimensions, rvalue, targetDimensions)
 
 /// Walks the END DEF statement
@@ -61,32 +71,33 @@ let WalkEndDef (context: FSParseTree) action state =
 
 /// Walks a procedure or function definition
 let WalkProcFunc (context: FSParseTree) =
-    if context.ChildCount < 2 then failwith "Invalid procedure or function definition"
-    let nameNode = context.GetChild(1)
-    let procName = nameNode.Data.Children[0]Data.Children[0].SourceText
+    if countChildren context < 2 then failwith "Invalid procedure or function definition"
+    let nameNode = getChild context 1
+    let procName = (getChild (getChild nameNode 0) 0).Data.SourceText
     let paramList =
-        if nameNode.ChildCount > 1 then gatherMeaningfulChildren (nameNode.GetChild(1)) else []
+        if countChildren nameNode > 1 then gatherMeaningfulChildren (getChild nameNode 1) else []
     (procName, paramList)
 
 /// Walks an IMPLICIT declaration
 let WalkImplicit (context: FSParseTree) =
-    if context.ChildCount < 2 then failwith "Invalid IMPLICIT declaration"
-    let implic = context.Data.Children[0]Data.Children[0].SourceText
-    let paramList = context.GetChild(1).Payload :?> SBParser.UnparenthesizedlistContext
-    let termList = meaningfulChildren paramList.children
-    let stringValues = termList |> List.map (fun x -> xData.Children[0].SourceText)
-    (implic, stringValues)
+    // if countChildren context < 2 then failwith "Invalid IMPLICIT declaration"
+    // let implic = context.Data.Children[0]Data.Children[0].SourceText
+    // let paramList = context.GetChild(1).Payload :?> SBParser.UnparenthesizedlistContext
+    // let termList = meaningfulChildren paramList.children
+    // let stringValues = termList |> List.map (fun x -> xData.Children[0].SourceText)
+    //(implic, stringValues)
+    ([], "")
 
 /// Walks a FOR loop node
 let WalkFor (context: FSParseTree) =
-    if context.ChildCount < 6 then failwith "Invalid FOR loop syntax"
-    let loopVar = context.GetChild(1)Data.Children[0].SourceText
-    let initialValue = context.GetChild(3)
-    let finalValue = context.GetChild(5)
+    if countChildren context < 6 then failwith "Invalid FOR loop syntax"
+    let loopVar = context.Data.Children[1].Data.Children[0].Data.SourceText
+    let initialValue = context.Data.Children[3].Data.SourceText
+    let finalValue = getChild context 5
     let step =
-        if context.ChildCount > 6 then
+        if countChildren context > 6 then
             let s = context.Data.Children[0].Data.SourceText.ToUpper()
-            if s = "STEP" && context.ChildCount > 7 then context.GetChild(7)Data.Children[0].SourceText else "1"
+            if s = "STEP" && countChildren context > 7 then (getChild context 7).Data.Children[0].Data.SourceText else "1"
         else "1"
     (loopVar, initialValue, finalValue, step)
 
@@ -97,7 +108,7 @@ let WalkIf (context: FSParseTree) =
 
 /// Walks a REPEAT loop node
 let WalkRepeat (context: FSParseTree) =
-    let loopVar = context.GetChild(1)Data.Children[0].SourceText
+    let loopVar = context.Data.Children[1].Data.Children[0].Data.SourceText
     loopVar
 
 /// Walks a binary expression node (placeholder)
@@ -107,5 +118,5 @@ let WalkBinaryExpr (context: FSParseTree) action state =
 
 /// Walks a terminal node (placeholder)
 let WalkTerminal (context: FSParseTree) action state =
-    let _text = contextData.Children[0].SourceText
+    let _text = context.Data.Children[0].Data.SourceText
     state
