@@ -18,6 +18,7 @@ let main argv =
 
     File.Delete outputFile
     let cs = AntlrInputStream(reader)
+    reader.Close()
     let factory = SBTokenFactory()
 
     let (TokenFac: ITokenFactory) = factory :> ITokenFactory

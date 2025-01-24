@@ -29,7 +29,7 @@ stmt :
         )
          #Forloop
                  
-    | Repeat ID 
+    | Repeat significantIdentifier 
       ( Colon stmtlist                                    // Short form
       | Newline line* lineNumber? endRepeat ID?           // Long form
       )                                                                                 #Repeat
@@ -58,6 +58,7 @@ separator : Comma | Bang | Semi | To;
 constexpr : Integer | Real | String | ID;
 rangeexpr : constexpr To constexpr | constexpr;
 unaryTerminator : (Minus Integer | Minus Real | Minus identifier);
+significantIdentifier : identifier;
 
 lineNumber : Integer;
 endFor : EndFor;
@@ -81,6 +82,8 @@ endSelect : EndSelect;
     (11) Expressions (inc. Function parameters and array
          subscripts) enclosed in parentheses.
     Every terminal and expression must have an associated precedence to determine whether parentheses are needed
+    
+    Relies on Antlr's precedence rules to handle the precedence of the operators
 */
 expr
     : LeftParen expr RightParen                                                         #Parenthesized

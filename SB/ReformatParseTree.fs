@@ -48,7 +48,8 @@ let toNodeKind (antlrClassName: string) : NodeKind =
     | "SeparatorContext"        -> Nothing
     | "StmtContext"             -> Stmt
     | "StmtlistContext"         -> StmtList
-    | "TermContext"             -> Term
+    | "TermContext"             -> TerminalNodeImpl
+    | "TerminalNodeImpl"        -> TerminalNodeImpl
     | "UnparenthesizedlistContext"  -> UnparenthesizedList
     | "ValueContext"            -> Value
     | _                         -> Unknown
@@ -65,12 +66,25 @@ let getTextForNode (node: ParserRuleContext) (input: ICharStream) : string =
 // ---------------------------------------------------
 // 6. Create an FSParseTree node with empty children
 // ---------------------------------------------------
-let visitNode (node: ParserRuleContext) (inputStream: ICharStream) : FSParseTree =
+let visitNode (node: IParseTree) (inputStream: ICharStream) : FSParseTree =
     let nodeData = {
-        RuleIndex  = node.RuleIndex
+//        RuleIndex  = node.RuleIndex
         Exception  = RecognitionException("Default exception placeholder", null, null, null)
-        SourceText = getTextForNode node inputStream
-        Position   = (node.Start.Line, node.Stop.Line)
+        SourceText = node.GetText()
+        Position   = (node.SourceInterval.a, node.SourceInterval.b)
+        Children   = []
+    }
+    {
+        Kind = toNodeKind (node.GetType().Name)
+        Data = nodeData
+    }
+
+let visitTerminal (node: TerminalNodeImpl) (inputStream: ICharStream) : FSParseTree =
+    let nodeData = {
+//        RuleIndex  = 0
+        Exception  = RecognitionException("Default exception placeholder", null, null, null)
+        SourceText = node.Payload.Text
+        Position   = (node.Payload.StartIndex, node.Payload.StopIndex)
         Children   = []
     }
     {
@@ -81,19 +95,33 @@ let visitNode (node: ParserRuleContext) (inputStream: ICharStream) : FSParseTree
 // ---------------------------------------------------
 // 7. Recursively populate children
 // ---------------------------------------------------
-let rec traverseTree (node: ParserRuleContext) (inputStream: ICharStream) : FSParseTree =
+let rec traverseTree (node: IParseTree) (inputStream: ICharStream): FSParseTree =
     let current = visitNode node inputStream
-    let childTrees =
-        [ for i in 0 .. node.ChildCount - 1 do
-            match node.children[i] with
-            | :? ParserRuleContext as childCtx ->
-                yield traverseTree childCtx inputStream
-            | _ -> () ]
+    if node.ChildCount = 0 then
+        // No children, return current node
+        current
+    else
+        // Recursively traverse children
+        let children = 
+            [0..node.ChildCount-1]
+            |> List.map (fun i -> node.GetChild(i))
+            |> List.map (fun child -> traverseTree child inputStream)
+        // Concatenate existing children with new ones
+        { current with Data.Children = children }
 
-    { current with Data.Children = childTrees }
+// let rec traverseTree (node: ParserRuleContext) (inputStream: ICharStream) : FSParseTree =
+//     let current = visitNode node inputStream
+//     let childTrees =
+//         node.children
+//         |> List.ofSeq
+//         |> List.choose (function
+//             | :? ParserRuleContext as childCtx -> Some (traverseTree childCtx inputStream)
+//             | _ -> None)
+//
+//     { current with Data.Children = childTrees }
 
 // ---------------------------------------------------
 // 8. Entry point
 // ---------------------------------------------------
 let processParseTree (tree: IParseTree) (inputStream: ICharStream) : FSParseTree =
-    traverseTree (tree :?> ParserRuleContext) inputStream
+    traverseTree tree inputStream 

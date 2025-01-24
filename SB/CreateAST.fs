@@ -6,7 +6,7 @@ open Antlr4.Runtime.Tree
 
 /// Intermediate union type to represent partial results when translating parse-tree nodes.
 type SubTree =
-    | Node of ASTNode
+    | AstNode of ASTNode
     | Children of ASTNode list
     | Empty
 
@@ -16,51 +16,55 @@ type SubTree =
 
 /// Creates a single 'Value' node from a parse-tree context that contains no children.
 let private createValueSubTree (context: FSParseTree) =
-    Node
+    AstNode
         { tokenType = Value
           content = context.Data.SourceText
+          position = context.Data.Position 
           children = [] }
 
 /// A visitor to Walk down a single FSParseTree node to decide which translation function to call.
 /// This is the core dispatcher that routes parse-tree contexts to their corresponding
 /// AST-construction function.
 let rec walkDown (context: FSParseTree) : SubTree =
+    printfn $"Processing Kind: %A{context.Kind}"
+
     match context.Kind with
-    // | Assignment           -> translateAssignment context
-    // | BinaryContext        -> translateExpr context
-    // | EndDefContext        -> Empty
-    // | FuncContext          -> translateFunc context
-    // | FunchdrContext       -> translateProcFuncHdr context 
-    // | ProchdrContext       -> translateProcFuncHdr context
-    | LineContext             -> translateLine context
-    | LineNumberContext       -> translateLineNumber context
-    // | LocContext           -> translateLocal context
-    // | ForloopContext       -> translateFor context
-    | Nothing                 -> translateNothing context
-    // | RepeatContext        -> translateRepeat context
-    // | IfContext            -> translateIf context
-    // | TerminalNodeImpl     -> translateTerminalNodeImpl context
-    | Term                    -> translateTerm context
-    // | TerminatorContext    -> translateTerminator context
-    // | ProcContext          -> translateProc context
-     | ProgramContext         -> translateProgram context
-    // | StmtlistContext      -> translateStmtList context
-    // | IdentifierOnlyContext-> translateProcFnCall context
-    | Identifier              -> translateIdentifier context
-       | UnparenthesizedList  -> translateUnparenthesizeList context 
-    // | ParenthesizedContext -> translateParenthesized context
-    // | DimContext           -> translateDim context
-    | Primary                 -> translatePrimary context        
-    | ImplicitContext         -> translateImplicit context
-    // | ReferenceContext     -> translateReference context
-//    | RemarkContext        -> translateRemark context
-     | _ ->
+    // | NodeKind.Assignment           -> translateAssignment context
+    // | NodeKind.BinaryContext        -> translateExpr context
+    // | NodeKind.DimContext           -> translateDim context
+    // | NodeKind.EndDefContext        -> Empty
+    // | NodeKind.ForloopContext       -> translateFor context
+    // | NodeKind.FuncContext          -> translateFunc context
+    // | NodeKind.FunchdrContext       -> translateProcFuncHdr context
+    | NodeKind.Identifier -> translateIdentifier context
+    | NodeKind.If -> translateIf context
+    // | NodeKind.IdentifierOnlyContext-> translateProcFnCall context
+    | NodeKind.Implicit -> translateImplicit context
+    | NodeKind.Line -> translateLine context
+    | NodeKind.LineNumber -> Empty
+    // | NodeKind.LocContext           -> translateLocal context
+    | NodeKind.Nothing -> translateNothing context
+    // | NodeKind.ParenthesizedContext -> translateParenthesized context
+    // | NodeKind.ProchdrContext       -> translateProcFuncHdr context
+    // | NodeKind.ProcContext          -> translateProc context
+    | NodeKind.Primary -> translatePrimary context
+    | NodeKind.Program -> translateProgram context
+    // | NodeKind.ReferenceContext     -> translateReference context
+    // | NodeKind.RemarkContext        -> translateRemark context
+    | NodeKind.Repeat -> translateRepeat context
+    | NodeKind.StmtList -> translateStmtList context
+    // | NodeKind.TerminatorContext    -> translateTerminator context
+    // | NodeKind.TerminalNodeImpl     -> translateTerminalNodeImpl context
+    | NodeKind.Term -> translateTerm context
+    | NodeKind.UnparenthesizedList -> translateUnparenthesizeList context
+    | _ ->
         // Fallback for unrecognized context
-        Node
+        AstNode
             { tokenType = Nothing
-              content = "mismatch"
+              content = $"mismatch on {context.Kind}"
+              position = context.Data.Position 
               children = [] }
-            
+
 /// <summary>
 /// Walk across a list of IParseTree nodes, converting each to an AST sub-tree.
 /// </summary>
@@ -68,9 +72,9 @@ and private walkAcross (contexts: FSParseTree list) : ASTNode list =
     contexts
     |> List.map walkDown
     |> List.collect (function
-        | Node n        -> [ n ]
+        | AstNode n -> [ n ]
         | Children nLst -> nLst
-        | Empty         -> [])
+        | Empty -> [])
 
 /// If the given context has no children because it is terminal, create a Value node; otherwise descend into its first child.
 and private translateValueIfNoChildren (context: FSParseTree) =
@@ -88,12 +92,12 @@ and private createNodeFromLocal (desiredTokenType: NodeKind) (context: FSParseTr
 
     // Re-tag all child nodes as Value (these are typically variable names/identifiers)
     let localChildren =
-        childNodes
-        |> List.map (fun child -> { child with tokenType = Value })
+        childNodes |> List.map (fun child -> { child with tokenType = Value })
 
-    Node
+    AstNode
         { tokenType = desiredTokenType
           content = keyword
+          position = context.Data.Position 
           children = localChildren }
 
 // --------------------------------------------------------------------
@@ -104,17 +108,16 @@ and private createNodeFromLocal (desiredTokenType: NodeKind) (context: FSParseTr
 /// are all the walked results of its sub-nodes.
 and translateProgram (context: FSParseTree) =
     let childrenNodes = walkAcross (context.Data |> gatherFSChildren)
-    Node {
-        tokenType = Program
-        content = "The whole program"
-        children = childrenNodes
-    }
-    
-and translateIdentifier (context: FSParseTree) =
-    translateValueIfNoChildren context
 
-and translateNothing (context: FSParseTree) =
-    translateValueIfNoChildren context
+    AstNode
+        { tokenType = Program
+          content = "The whole program"
+          position = context.Data.Position 
+          children = childrenNodes }
+
+and translateIdentifier (context: FSParseTree) = translateValueIfNoChildren context
+
+and translateNothing (context: FSParseTree) = translateValueIfNoChildren context
 
 /// Translates a single line context into a collection of child nodes.
 /// Typically lines themselves are aggregated, so we return Children.
@@ -132,18 +135,13 @@ and translateUnparenthesizeList (context: FSParseTree) =
     let childNodes = walkAcross (context.Data |> gatherFSChildren)
     Children childNodes
 
-/// A line number is often carried separately or is not necessary to store in the AST.
-/// Return Empty here, or you can store it if needed.
-and translateLineNumber (_context: FSParseTree) = Empty
+and translateTerm (context: FSParseTree) = translateValueIfNoChildren context
 
-and translateTerm (context: FSParseTree) =
-    translateValueIfNoChildren context
+/// Translates a statement-list context by aggregating all child statements.
+and translateStmtList (context: FSParseTree) =
+    let childNodes = walkAcross (context.Data |> gatherFSChildren)
+    Children childNodes
 
-// /// Translates a statement-list context by aggregating all child statements.
-// and translateStmtList (context: FSParseTree) =
-//     let childNodes = walkAcross (context |> gatherFSChildren)
-//     Children childNodes
-//
 // /// Translates a function definition.
 // and translateFunc (context: FSParseTree) : SubTree =
 //     let (routineName, _) = ASTWalker.WalkProcFunc(context.GetChild(0))
@@ -275,25 +273,26 @@ and translateImplicit context = createNodeFromLocal Implicit context
 //         children = [ loopVarNode; initNode; finalNode; stepNode ]
 //     }
 //
-// /// Translates a long REPEAT statement.
-// and translateLongRepeat (context: FSParseTree) : SubTree =
-//     let loopVarStr = ASTWalker.WalkRepeat context
-//     Node {
-//         tokenType = Repeat
-//         content = loopVarStr
-//         children = []
-//     }
-//
-// /// Translates an IF statement context.
-// /// The actual string returned from Walker.WalkIf might hold some additional info (condition, etc.).
-// and translateIf (context: FSParseTree) : SubTree =
-//     let ifString = ASTWalker.WalkIf context
-//     Node {
-//         tokenType = If
-//         content = ifString
-//         children = []
-//     }
-//
+
+/// Translates a REPEAT statement.
+and translateRepeat (context: FSParseTree) : SubTree =
+    let loopVarStr = ASTWalker.WalkRepeat context
+
+    AstNode
+        { tokenType = Repeat
+          content = loopVarStr
+          position = context.Data.Position 
+          children = [] }
+
+and translateIf (context: FSParseTree) : SubTree =
+    let ifChildren = walkAcross [context.Data.Children[1]; context.Data.Children[3]]
+    AstNode {
+        tokenType = If
+        content = context.Data.SourceText
+        position = context.Data.Position 
+        children = ifChildren 
+    }
+
 // --------------------------------------------------------------------
 // Expression translations
 // --------------------------------------------------------------------
@@ -334,5 +333,4 @@ and translateImplicit context = createNodeFromLocal Implicit context
 //         | Node n -> n
 //         | _      -> failwith "Expected Node on right side of binary expression"
 
-    // Decide whether child nodes are "Expression" or "Value" based on child presence
- 
+// Decide whether child nodes are "Expression" or "Value" based on child presence

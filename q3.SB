@@ -1,37 +1,3 @@
-600 IMPLICIT% l, r, i, j, pivot
-605 REFERENCE r
-610 DEFine PROCedure quicksort(l,r)
-620 LOCal i,j,pivot
-630   i=l : j=r
-640   REMark IF b(i)<b(i+1) : swap b(i),b(i+1)
-650   REMark IF b(i+1)>b(j) : swap b(i+1),b(j)
-660   REMark IF b(i)>b(i+1) : swap b(i),b(i+1)
-670   pivot=b(i)
-680   REPeat loop
-690     REPeat inc_k
 700       IF pivot<=b(i) : EXIT inc_k
 710       i=i+1
-720     END REPeat inc_k
-730     REPeat dec_j
-740       IF pivot>=b(j) : EXIT dec_j
-750       j=j-1
-760     END REPeat dec_j
-770     IF i<j : swap b(i),b(j)
-780     IF i<=j : i=i+1 : j=j-1
-790     IF i>j : EXIT loop
-800   END REPeat loop
-810   IF l< j THEN
-820     IF j-l >= shortlist THEN
-830      quicksort l,j
-840     ELSE
-850       insertionsort l,j
-860     END IF
-870   END IF
-880   IF i < r THEN
-890     IF r - 1 >= shortlist THEN
-900       quicksort i,r
-910     ELSE
-920      insertionsort i,r
-930     END IF
-940   END IF
-950 END DEFine
+

@@ -45,7 +45,7 @@ type NodeKind =
     | Stmt
     | StmtList
     | Term
-    | Terminal
+    | TerminalNodeImpl
     | Terminator
     | Value
     | Unknown
@@ -53,7 +53,7 @@ type NodeKind =
 
 // A record for node data
 type FSNode = {
-    RuleIndex  : int
+//    RuleIndex  : int
     Exception  : RecognitionException
     SourceText : string
     Position   : int * int
@@ -72,6 +72,7 @@ and FSParseTree = {
 type ASTNode =
     { tokenType: NodeKind
       content: string
+      position: int * int
       children: ASTNode list }
 
 // // Convert Antlr data types for parse nodes to Token Type field entries for FSParse

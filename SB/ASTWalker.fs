@@ -9,7 +9,7 @@ let private meaningfulChildren (children: System.Collections.IEnumerable) =
     children
     |> Seq.cast<FSParseTree>
     |> List.ofSeq
-    |> List.filter (fun x -> not (x.Kind = Terminal || x.Kind = Separator))
+    |> List.filter (fun x -> not (x.Kind = TerminalNodeImpl || x.Kind = Separator))
 
 //  Helper to find a child by its index
 let private getChild (context: FSParseTree) subscript =
@@ -17,7 +17,7 @@ let private getChild (context: FSParseTree) subscript =
 
 // Helper to gather all children from a context and immediately filter them
 let private gatherMeaningfulChildren (context: FSParseTree) =
-    gatherFSChildren context.Data |> List.filter (fun x -> not (x.Kind = Terminal || x.Kind = Separator))
+    gatherFSChildren context.Data |> List.filter (fun x -> not (x.Kind = TerminalNodeImpl || x.Kind = Separator))
 
 // Helper function counting the number of children in a context
 let countChildren (context: FSParseTree) =  
