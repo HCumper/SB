@@ -14,6 +14,14 @@ type SubTree =
 // Common helper functions
 // --------------------------------------------------------------------
 
+/// Get a child of FsParseTree by index.
+let private getChild (context: FSParseTree) index =
+    context.Data.Children[index]
+    
+/// Get first child of FsParseTree.
+let private getFirstChild (context: FSParseTree) =
+    getChild context 0
+
 /// Creates a single 'Value' node from a parse-tree context that contains no children.
 let private createValueSubTree (context: FSParseTree) =
     AstNode
@@ -30,7 +38,7 @@ let rec walkDown (context: FSParseTree) : SubTree =
 
     match context.Kind with
     // | NodeKind.Assignment           -> translateAssignment context
-    // | NodeKind.BinaryContext        -> translateExpr context
+    | NodeKind.BinaryExpr              -> translateExpr context
     // | NodeKind.DimContext           -> translateDim context
     // | NodeKind.EndDefContext        -> Empty
     // | NodeKind.ForloopContext       -> translateFor context
@@ -54,7 +62,7 @@ let rec walkDown (context: FSParseTree) : SubTree =
     | NodeKind.Repeat -> translateRepeat context
     | NodeKind.StmtList -> translateStmtList context
     // | NodeKind.TerminatorContext    -> translateTerminator context
-    // | NodeKind.TerminalNodeImpl     -> translateTerminalNodeImpl context
+    | NodeKind.TerminalNodeImpl        -> translateTerminalNodeImpl context
     | NodeKind.Term -> translateTerm context
     | NodeKind.UnparenthesizedList -> translateUnparenthesizeList context
     | _ ->
@@ -80,7 +88,7 @@ and private walkAcross (contexts: FSParseTree list) : ASTNode list =
 and private translateValueIfNoChildren (context: FSParseTree) =
     match context.Data.Children.Length with
     | 0 -> createValueSubTree context
-    | _ -> walkDown context.Data.Children[0]
+    | _ -> walkDown (getFirstChild context)
 
 /// General helper to unify code for local/reference/implicit statements:
 /// (1) Extracts keyword + child items using Walker.
@@ -115,7 +123,13 @@ and translateProgram (context: FSParseTree) =
           position = context.Data.Position 
           children = childrenNodes }
 
-and translateIdentifier (context: FSParseTree) = translateValueIfNoChildren context
+and translateIdentifier (context: FSParseTree) =
+    let sourceText = context.Data.SourceText
+    AstNode
+        { tokenType = Identifier
+          content = sourceText
+          position = context.Data.Position 
+          children = [] }
 
 and translateNothing (context: FSParseTree) = translateValueIfNoChildren context
 
@@ -126,8 +140,7 @@ and translateLine (context: FSParseTree) =
     Children childNodes
 
 and translatePrimary (context: FSParseTree) =
-    let childNodes = walkAcross (context.Data |> gatherFSChildren)
-    Children childNodes
+    walkDown (getFirstChild context)
 
 /// Translates a single line context into a collection of child nodes.
 /// Typically lines themselves are aggregated, so we return Children.
@@ -190,10 +203,10 @@ and translateImplicit context = createNodeFromLocal Implicit context
 // /// Produces a Value node if no children; otherwise walks its first child.
 // and translateTerm (context: FSParseTree) =
 //     translateValueIfNoChildren context
-//
-// and translateTerminalNodeImpl (context: FSParseTree) =
-//     translateValueIfNoChildren context
-//
+
+and translateTerminalNodeImpl (context: FSParseTree) =
+    walkDown (getFirstChild context)
+
 // and translateTerminator (context: FSParseTree) =
 //     translateValueIfNoChildren context
 //
@@ -285,7 +298,7 @@ and translateRepeat (context: FSParseTree) : SubTree =
           children = [] }
 
 and translateIf (context: FSParseTree) : SubTree =
-    let ifChildren = walkAcross [context.Data.Children[1]; context.Data.Children[3]]
+    let ifChildren = walkAcross [getChild context 1; getChild context 3]
     AstNode {
         tokenType = If
         content = context.Data.SourceText
@@ -299,38 +312,42 @@ and translateIf (context: FSParseTree) : SubTree =
 
 /// Main entry point for translating expressions.
 /// Dispatches to specialized translation functions.
-// and translateExpr (context: FSParseTree) : SubTree =
-//     match context.Kind with
-//     | ParenthesizedList -> translateParenthesizedExpr context
-//     | BinaryContext        -> translateBinaryExpr context
-//     | InstrContext
-// //    | NotContext           -> translateUnaryExpr context
-//     | TermContext          -> translateTermExpr context
-//     | _ ->
-//         Node {
-//             tokenType = None
-//             content = "expression mismatch"
-//             children = []
-//         }
-//
-// /// Translates a binary expression (expr op expr).
-// /// Left and right child expressions are walked separately.
-// and translateBinaryExpr (context: FSParseTree) : SubTree =
-//     // Left expression
-//     let lhsSubTree = walkDown (context.GetChild(0))
-//     let lhsNode =
-//         match lhsSubTree with
-//         | Node n -> n
-//         | _      -> failwith "Expected Node on left side of binary expression"
-//
-//     // Operator
-//     let operatorText = context.GetChild(1).GetText()
-//
-//     // Right expression
-//     let rhsSubTree = walkDown (context.GetChild(2))
-//     let rhsNode =
-//         match rhsSubTree with
-//         | Node n -> n
-//         | _      -> failwith "Expected Node on right side of binary expression"
+and translateExpr (context: FSParseTree) : SubTree =
+    match context.Kind with
+ //   | ParenthesizedList -> translateParenthesizedExpr context
+    | BinaryContext        -> translateBinaryExpr context
+ //   | InstrContext
+//    | NotContext           -> translateUnaryExpr context
+//    | TermContext          -> translateTermExpr context
+    | _ ->
+        AstNode {
+            tokenType = Unknown
+            content = "expression mismatch"
+            position =  context.Data.Position
+            children = []
+        }
 
-// Decide whether child nodes are "Expression" or "Value" based on child presence
+/// Translates a binary expression (expr op expr).
+/// Left and right child expressions are walked separately.
+and translateBinaryExpr (context: FSParseTree) : SubTree =
+    // Left expression
+    let lhsSubTree = walkDown (getFirstChild context)
+    let lhsNode =
+        match lhsSubTree with
+        | AstNode n -> n
+        | _      -> failwith "Expected Node on left side of binary expression"
+
+    // Operator
+    let operatorText = (getChild context 1).Data.Children[1].Data.SourceText 
+    // Right expression
+    let rhsSubTree = walkDown (getChild context 2)
+    let rhsNode =
+        match rhsSubTree with
+        | AstNode n -> n
+        | _      -> failwith "Expected Node on right side of binary expression"
+    AstNode {
+        tokenType = BinaryExpr
+        content = operatorText
+        position =  context.Data.Position
+        children = [lhsNode; rhsNode]
+    }

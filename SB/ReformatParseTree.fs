@@ -109,19 +109,5 @@ let rec traverseTree (node: IParseTree) (inputStream: ICharStream): FSParseTree 
         // Concatenate existing children with new ones
         { current with Data.Children = children }
 
-// let rec traverseTree (node: ParserRuleContext) (inputStream: ICharStream) : FSParseTree =
-//     let current = visitNode node inputStream
-//     let childTrees =
-//         node.children
-//         |> List.ofSeq
-//         |> List.choose (function
-//             | :? ParserRuleContext as childCtx -> Some (traverseTree childCtx inputStream)
-//             | _ -> None)
-//
-//     { current with Data.Children = childTrees }
-
-// ---------------------------------------------------
-// 8. Entry point
-// ---------------------------------------------------
 let processParseTree (tree: IParseTree) (inputStream: ICharStream) : FSParseTree =
     traverseTree tree inputStream 

@@ -30,6 +30,7 @@ type NodeKind =
     | Loc
     | Local
     | Nothing
+    | Operator
     | Parameter
     | ParenthesizedList
     | Primary
@@ -71,7 +72,7 @@ and FSParseTree = {
 /// </summary>
 type ASTNode =
     { tokenType: NodeKind
-      content: string
+      content: stringworking
       position: int * int
       children: ASTNode list }
 
