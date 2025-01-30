@@ -2,7 +2,6 @@
 
 open SymbolTable
 open Utility
-open SB
 open Antlr4.Runtime
 open Antlr4.Runtime.Tree
 
@@ -130,12 +129,12 @@ let private addShortForSymbol context state =
 ///////////////////////////////// Tree traversal stuff ////////////////////////////////////////
 let rec private WalkAcross (context: FSParseTree) index state =
     let result =
-        let count = context.Data.Children.Length
+        let count = context.Children.Length
 
         match index with
         | n when n < count ->
             let (context, state) =
-                WalkDown (context.Data.Children[index]: FSParseTree) state
+                WalkDown (context.Children[index]: FSParseTree) state
 
             WalkAcross (context: FSParseTree) (index + 1) state
         | _ -> state

@@ -35,6 +35,8 @@
     <ItemGroup>
       <Compile Remove="SB.g4.lexer.cs" />
       <Compile Remove="SB.g4.parser.cs" />
+      <Compile Remove="SBTokenFactory.cs" />
+      <Compile Remove="SBToken.cs" />
     </ItemGroup>
 
     <ItemGroup>

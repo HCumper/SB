@@ -8,6 +8,7 @@
     <ItemGroup>
         <Compile Include="SymbolTable.fs" />
         <Compile Include="Utility.fs" />
+        <Compile Include="CleanParseTree.fs" />
         <Compile Include="ReformatParseTree.fs" />
         <Compile Include="ASTWalker.fs" />
         <Compile Include="TypeResolver.fs" />
@@ -23,6 +24,11 @@
       <Reference Include="SBLib">
         <HintPath>..\SBLib\bin\Debug\net9.0\SBLib.dll</HintPath>
       </Reference>
+    </ItemGroup>
+
+    <ItemGroup>
+      <PackageReference Include="Antlr4.Runtime.Standard" Version="4.13.1" />
+      <PackageReference Include="FSharpx.Collections" Version="3.1.0" />
     </ItemGroup>
 
     <ItemGroup>

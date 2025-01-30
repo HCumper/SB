@@ -1,25 +1,26 @@
 ﻿module Program
 
+
 open System
 open System.IO
 open Antlr4.Runtime
-open SB
 open SymbolTable
 open ReformatParseTree
 open CreateAST
+open CleanParseTree
 
 [<EntryPoint>]
 let main argv =
-    let filename = @"I:\source\Home Repos\SB\q3.sb"
+    let filename = @"C:\source\SB\q3.sb"
 
     let reader = File.OpenText(filename)
 
-    let outputFile = @"I:\source\Home Repos\SB\q3.cs"
+    let outputFile = @"C:\source\SB\q3.cs"
 
     File.Delete outputFile
     let cs = AntlrInputStream(reader)
     reader.Close()
-    let factory = SBTokenFactory()
+    let factory = CommonTokenFactory()
 
     let (TokenFac: ITokenFactory) = factory :> ITokenFactory
 
@@ -33,10 +34,11 @@ let main argv =
     Console.WriteLine("")
     
     let fsTree = processParseTree parseTree cs
-    
-    let ast = walkDown fsTree
+    let cleanedFsTree = cleanParseTree fsTree true
+    let ast = walkDown (cleanedFsTree |> Option.get)
     Console.WriteLine(ast)
 
+    4
     // let initialState =
     //     { references = Set.empty
     //       symTab = Map.empty
@@ -63,4 +65,3 @@ let main argv =
     //     + (snd state).outputGlobal
 
 //    File.WriteAllText(outputFile, listing)
-    3

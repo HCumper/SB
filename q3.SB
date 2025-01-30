@@ -1,3 +1,12 @@
-700       IF pivot<=b(i) : EXIT inc_k
-710       i=i+1
-
+481 DEFine FuNction foo (param1, param2)
+484 END DEFine
+490 DEFine PROCedure print_table
+500 LOCal pos
+510   LET finished=DATE-now
+520   PRINT : PRINT
+530   BEEP 10000,100
+540   FOR pos=n-4 TO n
+550     PRINT a(pos)
+560   END FOR pos
+570   PRINT "Time taken" ! finished
+580 END DEFine

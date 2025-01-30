@@ -6,7 +6,7 @@ open Antlr4.Runtime.Misc
 open Utility
 
 // ---------------------------------------------------
-// 4. Helper: convert class name to NodeKind
+// Helper: convert class name to NodeKind
 // ---------------------------------------------------
 let toNodeKind (antlrClassName: string) : NodeKind =
     match antlrClassName with
@@ -55,59 +55,53 @@ let toNodeKind (antlrClassName: string) : NodeKind =
     | _                         -> Unknown
 
 // ---------------------------------------------------
-// 5. Extract text from node
+// Helper: extract text from node
 // ---------------------------------------------------
 let getTextForNode (node: ParserRuleContext) (input: ICharStream) : string =
     match node.Start, node.Stop with
     | null, _ | _, null -> "" // fallback
-    | startToken, stopToken ->
+    | startToken, stopToken -> 
         input.GetText(Interval(startToken.StartIndex, stopToken.StopIndex))
 
 // ---------------------------------------------------
-// 6. Create an FSParseTree node with empty children
+// Helper: Create an FSParseTree node with empty children
 // ---------------------------------------------------
 let visitNode (node: IParseTree) (inputStream: ICharStream) : FSParseTree =
-    let nodeData = {
-//        RuleIndex  = node.RuleIndex
-        Exception  = RecognitionException("Default exception placeholder", null, null, null)
+    {
+        Kind = toNodeKind (node.GetType().Name); 
+        Exception  = None
         SourceText = node.GetText()
         Position   = (node.SourceInterval.a, node.SourceInterval.b)
         Children   = []
     }
-    {
-        Kind = toNodeKind (node.GetType().Name)
-        Data = nodeData
-    }
 
-let visitTerminal (node: TerminalNodeImpl) (inputStream: ICharStream) : FSParseTree =
-    let nodeData = {
-//        RuleIndex  = 0
-        Exception  = RecognitionException("Default exception placeholder", null, null, null)
-        SourceText = node.Payload.Text
-        Position   = (node.Payload.StartIndex, node.Payload.StopIndex)
-        Children   = []
-    }
-    {
-        Kind = toNodeKind (node.GetType().Name)
-        Data = nodeData
-    }
+/// Generalized function for visiting any node
+let visitGenericNode (node: IParseTree) (inputStream: ICharStream) : FSParseTree =
+    match node with
+    | :? TerminalNodeImpl as terminalNode -> 
+        {
+            Kind = toNodeKind (terminalNode.GetType().Name)
+            Exception  = None
+            SourceText = terminalNode.Payload.Text
+            Position   = (terminalNode.Payload.StartIndex, terminalNode.Payload.StopIndex)
+            Children   = []
+        }
+    | _ -> visitNode node inputStream
 
 // ---------------------------------------------------
-// 7. Recursively populate children
+// Recursively populate children and create the FSParseTree
 // ---------------------------------------------------
 let rec traverseTree (node: IParseTree) (inputStream: ICharStream): FSParseTree =
-    let current = visitNode node inputStream
-    if node.ChildCount = 0 then
-        // No children, return current node
-        current
-    else
+    let current = visitGenericNode node inputStream
+    if node.ChildCount = 0 then 
+        current // No children, return the current node
+    else 
         // Recursively traverse children
         let children = 
-            [0..node.ChildCount-1]
+            [ 0 .. node.ChildCount - 1 ]
             |> List.map (fun i -> node.GetChild(i))
             |> List.map (fun child -> traverseTree child inputStream)
-        // Concatenate existing children with new ones
-        { current with Data.Children = children }
+        { current with Children = children }
 
 let processParseTree (tree: IParseTree) (inputStream: ICharStream) : FSParseTree =
-    traverseTree tree inputStream 
+    traverseTree tree inputStream
