@@ -2,12 +2,6 @@
 
 open Utility
 
-/// Intermediate union type to represent partial results when translating parse-tree nodes.
-type SubTree =
-    | AstNode of ASTNode
-    | Children of ASTNode list
-    | Empty
-
 // ----------------------------------------------------
 // Common helper functions
 // ----------------------------------------------------
@@ -54,12 +48,14 @@ let rec walkDown (context: FSParseTree) : SubTree =
     match context.Kind with
     | NodeKind.Assignment            -> translateAssignment context
     | NodeKind.BinaryExpr            -> translateExpr context
+    | NodeKind.CallExpr              -> translateCallExpr context
     | NodeKind.Exitstmt              -> translateAsChildren context
+    | NodeKind.Function              -> translateFunction context
     | NodeKind.Identifier            -> translateIdentifier context
     | NodeKind.If                    -> translateIf context
     | NodeKind.Implicit              -> translateValueIfNoChildren context
     | NodeKind.Line                  -> translateAsChildren context
-    | NodeKind.LineNumber            -> Empty
+    | NodeKind.Loc                   -> translateValueIfNoChildren context
     | NodeKind.Nothing               -> translateValueIfNoChildren context
     | NodeKind.ParenthesizedList     -> translateAsChildren context
     | NodeKind.Primary               -> walkDown (getFirstChild context)
@@ -67,10 +63,12 @@ let rec walkDown (context: FSParseTree) : SubTree =
     | NodeKind.Program               -> translateProgram context
     | NodeKind.Repeat                -> translateRepeat context
     | NodeKind.StmtList              -> translateValueIfNoChildren context
+    | NodeKind.StringLiteral         -> translateStringLiteral context
     | NodeKind.Term                  -> translateValueIfNoChildren context
     | NodeKind.TerminalNodeImpl      -> translateTerminalNodeImpl context
+    | NodeKind.TypedIdentifier       -> translateTypedIdentifier context
     | NodeKind.UnparenthesizedList   -> translateAsChildren context
-    | _ -> createAstNode Nothing $"mismatch on {context.Kind}" context.Position []
+    | _ -> createAstNode Unknown $"mismatch on {context.Kind}" context.Position []
 
 /// Helper to walk across a list of parse-tree nodes, flattening any `Children` values.
 and private walkAcross (contexts: FSParseTree list) : ASTNode list =
@@ -90,6 +88,7 @@ and private walkAllChildren (context: FSParseTree) : ASTNode list =
 // Wrappers for returning `Children` vs. creating a single `AstNode`
 // ----------------------------------------------------
 
+/// Many translations simply return `Children` after walking all children.
 /// Many translations simply return `Children` after walking all children.
 and private translateAsChildren (context: FSParseTree) =
     Children (walkAllChildren context)
@@ -145,6 +144,20 @@ and translateProcedure (context: FSParseTree) : SubTree =
     [ getChild context 1; getChild context 2 ]
     |> walkAcross
     |> createAstNode If context.SourceText context.Position
+    
+and translateFunction (context: FSParseTree) : SubTree =
+    // Extract function name from the header
+    let functionName = context.Children[0].Children[1].Children[0].SourceText
+
+    // Extract parameters (if any)
+    let parameters =
+        let parameterNode = context.Children[0].Children[1]  // Function name and parameters
+        if parameterNode.Children.Length > 1 then
+            walkAllChildren parameterNode.Children.[1]  // Parameters list
+        else
+            []  // No parameters
+
+    createAstNode Function functionName context.Position parameters
 
 // ----------------------------------------------------
 // Expression translations
@@ -153,6 +166,7 @@ and translateProcedure (context: FSParseTree) : SubTree =
 and translateExpr (context: FSParseTree) : SubTree =
     match context.Kind with
     | BinaryContext -> translateBinaryExpr context
+    | UnaryContext  -> translateUnaryExpr context
     | _ -> createAstNode Unknown "expression mismatch" context.Position []
 
 and translateBinaryExpr (context: FSParseTree) : SubTree =
@@ -171,3 +185,28 @@ and translateBinaryExpr (context: FSParseTree) : SubTree =
         | _ -> failwith "Expected Node on right side of binary expression"
 
     createAstNode BinaryExpr operatorText context.Position [lhsNode; rhsNode]
+
+and translateUnaryExpr (context: FSParseTree) : SubTree =
+    let operatorText = (getChild context 0).SourceText
+    let operandSubTree = walkDown (getChild context 1)
+    let operandNode =
+        match operandSubTree with
+        | AstNode n -> n
+        | _ -> failwith "Expected Node for unary operand"
+
+    createAstNode UnaryExpr operatorText context.Position [operandNode]
+
+and translateCallExpr (context: FSParseTree) : SubTree =
+    let funcName = (getChild context 0).SourceText
+    let args = walkAllChildren (getChild context 1)
+    createAstNode CallExpr funcName context.Position args
+
+and translateStringLiteral (context: FSParseTree) : SubTree =
+    createAstNode StringLiteral context.SourceText context.Position []
+
+and translateTypedIdentifier (context: FSParseTree) : SubTree =
+    let identifier = (getChild context 0).SourceText
+    let typeInfo = (getChild context 1).SourceText
+    createAstNode TypedIdentifier identifier context.Position [
+        { TokenType = TypedIdentifier; Content = typeInfo; Position = context.Position; Children = [] }
+    ]

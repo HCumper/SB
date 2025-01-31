@@ -7,10 +7,12 @@ open Antlr4.Runtime
 
 /// Types of tokens used in the parse tree
 type NodeKind =
+    | Any   // Never assigned to a node, for pattern matching only
     | ArrayOrFunctionCall
     | Assignment
     | AssignmentTarget
     | BinaryExpr
+    | CallExpr
     | Dim
     | EndDef
     | EndIf
@@ -45,10 +47,13 @@ type NodeKind =
     | Separator
     | Stmt
     | StmtList
+    | StringLiteral
     | Term
     | TerminalNodeImpl
     | Terminator
+    | TypedIdentifier
     | Value
+    | UnaryExpr    
     | Unknown
     | UnparenthesizedList
 
@@ -135,3 +140,64 @@ let rec mapStringIter (paramList: string list) (state: State) dataType category 
         }
         set symbol state
     ) state
+
+/// Tree pattern matching
+type ASTPattern = {
+    PatternTokenType: NodeKind option
+    PatternContent: string option // `None` means ignore, `"@parent"` means match parent content
+    PatternPosition: (int * int) option
+    PatternChildren: ASTPattern list option
+}
+
+let rec matchPattern (parentContent: string option) (pattern: ASTPattern) (node: ASTNode) =
+    let matchTokenType = 
+        match pattern.PatternTokenType with
+        | Some pType -> pType = node.TokenType
+        | None -> true
+
+    let matchContent = 
+        match pattern.PatternContent with
+        | Some "@parent" -> parentContent = Some node.Content  // Match inherited parent content
+        | Some pContent -> pContent = node.Content
+        | None -> true
+
+    let matchPosition = 
+        match pattern.PatternPosition with
+        | Some pPos -> pPos = node.Position
+        | None -> true
+
+    let matchChildren =
+        match pattern.PatternChildren with
+        | Some pChildren -> 
+            List.length pChildren = List.length node.Children &&
+            List.forall2 (matchPattern (Some node.Content)) pChildren node.Children
+        | None -> true
+
+    matchTokenType && matchContent && matchPosition && matchChildren
+
+let rec replacePattern (pattern: ASTPattern) (replacementTemplate: ASTNode) (node: ASTNode) =
+    if matchPattern None pattern node then
+        if replacementTemplate.Content = "@parent" then
+            { replacementTemplate with Content = node.Content }  // Inherit content
+        else
+            replacementTemplate
+    else
+        { node with Children = List.map (replacePattern pattern replacementTemplate) node.Children }
+
+let rec printAST (indent: string) (node: ASTNode) =
+    printfn "%s%O: \"%s\"" indent node.TokenType node.Content
+    node.Children |> List.iter (printAST (indent + "  "))
+    
+/// Intermediate union type to represent partial results when translating parse-tree nodes.
+type SubTree =
+    | AstNode of ASTNode
+    | Children of ASTNode list
+    | Empty
+    
+  let subTreeToASTNode (subTree: SubTree) : ASTNode =
+    match subTree with
+    | AstNode ast -> ast  // Directly return ASTNode
+    | Children children -> 
+        { TokenType = Unknown; Content = ""; Position = (0, 0); Children = children }  // Create a new ASTNode with children
+    | Empty -> 
+        { TokenType = Unknown; Content = ""; Position = (0, 0); Children = [] }  // Default empty ASTNode

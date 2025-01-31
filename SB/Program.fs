@@ -8,6 +8,7 @@ open SymbolTable
 open ReformatParseTree
 open CreateAST
 open CleanParseTree
+open Utility
 
 [<EntryPoint>]
 let main argv =
@@ -35,8 +36,15 @@ let main argv =
     
     let fsTree = processParseTree parseTree cs
     let cleanedFsTree = cleanParseTree fsTree true
-    let ast = walkDown (cleanedFsTree |> Option.get)
-    Console.WriteLine(ast)
+    let ast = walkDown (cleanedFsTree |> Option.get)    
+    Console.WriteLine("initial AST")
+    subTreeToASTNode ast |>
+    printAST "  "
+    Console.WriteLine("cleaned AST")
+    
+    let cleanedAST = transformedTree (subTreeToASTNode ast)
+    cleanedAST |>
+    printAST "  "
 
     4
     // let initialState =
