@@ -4,232 +4,288 @@ open Antlr4.Runtime.Tree
 open SymbolTable
 open System
 open Antlr4.Runtime
+open FSharpPlus
+open FSharpPlus.Data
 
-
-// Types of tokens used in parse tree
+/// Types of tokens used in the parse tree
 type NodeKind =
+    | Any   // Never assigned to a node, for pattern matching only
+    | ArrayOrFunctionCall
     | Assignment
     | AssignmentTarget
     | BinaryExpr
+    | Body
+    | CallExpr
     | Dim
+    | EndDef // TODO create node for
+    | EndIf
+    | EndFor
+    | Exitstmt
+    | EndRepeat
     | Expression
+    | For
     | If
+    | Funchdr
     | Function
     | Identifier
+    | IdentifierOnly
     | Implicit
     | Line
     | LineNumber
+    | Loc
     | Local
-    | For
     | Nothing
-    | Parameter
+    | Operator
+    | Parameters
+    | ParenthesizedList
+    | Primary
     | Procedure
     | ProcFnCall
+    | Prochdr
+    | Proc
     | Program
     | Reference
     | Remark
     | Repeat
+    | Separator
     | Stmt
     | StmtList
+    | StringLiteral
+    | Term
+    | TerminalNodeImpl
+    | Terminator
+    | TypedIdentifier
     | Value
+    | UnaryExpr    
     | Unknown
+    | UnparenthesizedList
 
-    
-// // Convert Antlr data types for parse nodes to Token Type field entries for FSParse
-// let extractTokenType (node: ParserRuleContext) =
-//     match node with
-//     | :? SBParser.ProgramContext as programCtx ->
-//         Program
-//     | :? SBParser.LineContext as lineCtx ->
-//         Line
-//     | :? SBParser.ForloopContext as forCtx ->
-//         For
-//     
-//     | :? SBParser.AssignmentContext as assignCtx ->
-//         let variable = assignCtx.identifier().GetText()
-//         let valueExpr = ParseTreeToAst (assignCtx.expr())
-//         AssignmentNode(variable, valueExpr)
-//
-//     | :? SBParser.IfContext as ifCtx ->
-//         let condition = parseTreeToAst (ifCtx.expr())
-//         let thenBlock =
-//             [ for i in 0 .. ifCtx.line().Length - 1 do
-//                 yield parseTreeToAst (ifCtx.line(i)) ]
-//         let elseBlock =
-//             if ifCtx.Else() <> null then
-//                 Some (
-//                     [ for i in 0 .. ifCtx.lineNumber().Length - 1 do
-//                         yield parseTreeToAst (ifCtx.lineNumber(i)) ]
-//                 )
-//             else None
-//         IfNode(condition, thenBlock, elseBlock)
-//
-//     | :? SBParser.RepeatContext as repeatCtx ->
-//         let variable = repeatCtx.ID().GetText()
-//         let body =
-//             [ for i in 0 .. repeatCtx.line().Length - 1 do
-//                 yield parseTreeToAst (repeatCtx.line(i)) ]
-//         RepeatNode(variable, body)
-//
-//     | :? SBParser.RemarkContext as remarkCtx ->
-//         let commentText = remarkCtx.GetText()
-//         RemarkNode(commentText)
-//
-//     | :? SBParser.BinaryContext as binaryCtx ->
-//         let leftOperand = parseTreeToAst (binaryCtx.GetChild(0))
-//         let operator = binaryCtx.GetChild(1).GetText()
-//         let rightOperand = parseTreeToAst (binaryCtx.GetChild(2))
-//         BinaryOperationNode(operator, leftOperand, rightOperand)
-//
-//     | :? SBParser.IdentifierContext as identifierCtx ->
-//         let identifierText = identifierCtx.GetText()
-//         IdentifierNode(identifierText)
-//
-//     | :? SBParser.LiteralContext as literalCtx ->
-//         let literalValue = literalCtx.GetText()
-//         LiteralNode(literalValue)
-//
-//     | _ ->
-//         UnknownNode(node.GetText())
-        
+/// Represents a node in the parse tree
+and FSParseTree = {
+    Kind: NodeKind
+    Exception: RecognitionException option
+    SourceText: string
+    Position: int * int
+    Children: FSParseTree list
+}
 
-// Node in the AST
-// type ASTNode = {
-//     TokenType: TokenType
-//     SourceText: string
-//     Children: ASTNode list
-//     //evaluatedType: EvaluatedType
-//     //sourceReference: int
-// }
+/// Represents a node in the abstract syntax tree (AST)
+type ASTNode = {
+    TokenType: NodeKind
+    Content: string
+    Position: int * int
+    Children: ASTNode list
+}
 
-// type EvaluatedType =
-//     | Integer
-//     | Real
-//     | String
+/// Active pattern to simplify type identification
+let (|StringType|IntegerType|RealType|VoidType|) code =
+    match code with
+    | SBParser.String -> StringType
+    | SBParser.Integer -> IntegerType
+    | SBParser.Real -> RealType
+    | _ -> VoidType
 
-// Functions implemented
-// convert SBParser type to string
-// returns variable name and type from annotated name
-// get the children of a context as an F# list of Antlr nodes without assuming children is visible
-// implementation of map, input Antlr list output F# list
-// copy generic list to F# list non destructively
-// map while propagating state forward between operations on each element using an Antlr list of nodes
-// map while propagating state forward between operations on each element using an F# list of values
-
-// convert SBParser type to string
+/// Convert SBParser type to string
 let identifyType code =
     match code with
-    | SBParser.String -> "string"
-    | SBParser.Integer -> "int"
-    | SBParser.Real -> "float"
-    | _ -> "void"
+    | StringType -> "string"
+    | IntegerType -> "int"
+    | RealType -> "float"
+    | VoidType -> "void"
 
-// returns variable name and type from annotated name
+/// Returns variable name and type from annotated name
 let getTypeFromAnnotation (name: string) =
     let len = name.Length - 1
+    match name[len] with
+    | '%' -> name.Substring(0, len), SBParser.Integer
+    | '$' -> name.Substring(0, len), SBParser.String
+    | _ -> name, SBParser.Real
 
-    match name.Substring (len, 1) with
-    | "%" ->
-        let truncatedName = name.Substring (0, len)
-        (truncatedName, SBParser.Integer)
-    | "$" ->
-        let truncatedName = name.Substring (0, len)
-        (truncatedName, SBParser.String)
-    | _ -> (name, SBParser.Real)
-
-// get the children of a context as an F# list of Antlr nodes without assuming children is visible
+/// Get the children of a context as an F# list of Antlr nodes
 let gatherChildren (context: IParseTree) =
-    let rec gatherChildrenInner (context: IParseTree) index antlrList =
-        let count = context.ChildCount
+    [ for index in 0 .. context.ChildCount - 1 do yield context.GetChild(index) ]
 
-        match index with
-        | n when n < count -> context.GetChild (index) :: gatherChildrenInner context (index + 1) antlrList
-        | _ -> antlrList
+/// Get the children of a context as an F# list of FS nodes
+let gatherFSChildren (context: FSParseTree) =
+    context.Children
 
-    gatherChildrenInner context 0 []
-
-// implementation of map, input Antlr list output F# list
+/// Map over an Antlr list with a mapping function
 let mapAntlrList (mappingFunction: IParseTree -> 'b) (inputList: Collections.Generic.IList<IParseTree>) =
-    let rec mapAntlrListWithIndex
-        (mappingFunction: IParseTree -> 'b)
-        (inputList: Collections.Generic.IList<IParseTree>)
-        outputList
-        index
-        =
-        match index with
-        | len when len = inputList.Count -> outputList
-        | _ ->
-            let newElement = mappingFunction inputList[index]
+    [ for item in inputList do yield mappingFunction item ]
 
-            mapAntlrListWithIndex mappingFunction inputList (outputList @ [ newElement ]) (index + 1)
-
-    mapAntlrListWithIndex mappingFunction inputList [] 0
-
-// copy generic list to F# list non destructively
+/// Copy an Antlr list to an F# list non-destructively
 let copyAntlrList (parentNode: Collections.Generic.IList<IParseTree>) =
-    mapAntlrList id (parentNode: Collections.Generic.IList<IParseTree>)
+    mapAntlrList id parentNode
 
-// map while propagating state forward between operations on each element using an Antlr list of nodes
-let rec mapIter (paramList: IParseTree list) (state: State) dataType category =
-    match paramList with
-    | [] -> state
-    | head :: tail ->
+
+
+
+// Define the State monad type: a function from state 's to a result 'a and a new state 's.
+type State<'s, 'a> = 's -> 'a * 's
+
+// Define a computation expression builder for the State monad.
+type StateBuilder() =
+    member _.Bind(x: State<'s, 'a>, f: 'a -> State<'s, 'b>) : State<'s, 'b> =
+        fun state ->
+            let (result, newState) = x state
+            f result newState
+    
+    member _.Return(x: 'a) : State<'s, 'a> =
+        fun state -> (x, state)
+    
+    member _.ReturnFrom(x: State<'s, 'a>) : State<'s, 'a> = x
+    
+    member _.Zero() : State<'s, unit> =
+        fun state -> ((), state)
+    
+    member _.Delay(f: unit -> State<'s, 'a>) : State<'s, 'a> = f()
+
+// Instantiate the builder.
+let state = StateBuilder()
+
+// Helper function to get the current state.
+let get : State<'s, 's> = fun s -> (s, s)
+
+// Helper function to update (or "put") a new state.
+let put newState : State<'s, unit> = fun _ -> ((), newState)
+/// Symbol Table builder
+
+let updateStateWithSymbol (symbol: Symbol) (state: State) : State =
+    { state with symTab =  state.symTab.Add({ Name = symbol.Name; Scope = symbol.Scope }, symbol) }
+    
+/// A stateful computation that processes one IParseTree node.
+/// It extracts the term from the node, creates a Symbol using the current state's scope,
+/// updates the state with that Symbol, and finally returns the Symbol.
+let processNode (node: IParseTree) dataType category : State<State, Symbol> =
+    state {
+        // Use pattern matching to safely cast the node to the expected type.
         let term =
-            (head :?> SBParser.TermContext)
-                .children[ 0 ]
-                .GetText ()
+            match node with
+            | :? SBParser.TermContext as termCtx ->
+                // Assuming the term is in the first child.
+                termCtx.children[0].GetText()
+            | _ ->
+                failwith "Unexpected node type; expected SBParser.TermContext."
+                
+        // Retrieve the current state.
+        let! currentState = get
+        
+        // Create a new Symbol using the current state's scope.
+        let symbol = {
+            Name = term
+            Scope = currentState.currentScope
+            Category = category
+            Type = dataType
+            ParameterMechanism = Inapplicable
+        }
+        
+        // Update the state with the new symbol.
+        do! put (updateStateWithSymbol symbol currentState)
+        
+        // Return the symbol as the result of this computation.
+        return symbol
+    }
 
-        let symbol =
-            { Name = term
-              Scope = state.currentScope
-              Category = category
-              Type = dataType
-              ParameterMechanism = Inapplicable }
+// no longer used
+/// Processes a list of IParseTree nodes, threading state through each operation,
+/// and returns the final state after all nodes have been processed.
+// let mapIter (nodes: IParseTree list) (initialState: State) dataType category : State =
+//     // Traverse the list, applying the stateful processNode function to each node.
+//     let computation : State<State, Symbol list> =
+//         traverse (fun node -> processNode node dataType category) nodes
+//         
+//     // Run the computation with the provided initial state.
+//     let (_symbols, finalState) = State.run computation initialState
+//     
+//     // Return the final state.
+//     finalState
 
-        let newState = set symbol state
-        mapIter tail newState dataType category
+/// Map while propagating state forward between operations on each element using an Antlr list of nodes
+// let rec mapIter (paramList: IParseTree list) (state: State) dataType category =
+//     paramList |> List.fold (fun state head ->
+//         let term = (head :?> SBParser.TermContext).children.[0].GetText()
+//         let symbol = {
+//             Name = term
+//             Scope = state.currentScope
+//             Category = category
+//             Type = dataType
+//             ParameterMechanism = Inapplicable
+//         }
+//         set symbol state
+//     ) state
 
-// map while propagating state forward between operations on each element using an F# list of values
-let rec mapStringIter (paramList: string List) (state: State) dataType category =
-    match paramList with
-    | [] -> state
-    | head :: tail ->
-        let (symbol: Symbol) =
-            { Name = head
-              Scope = state.currentScope
-              Category = category
-              Type = dataType
-              ParameterMechanism = Inapplicable }
+/// Map while propagating state forward between operations on each element using an F# list of values
+let rec mapStringIter (paramList: string list) (state: State) dataType category =
+    paramList |> List.fold (fun state head ->
+        let symbol = {
+            Name = head
+            Scope = state.currentScope
+            Category = category
+            Type = dataType
+            ParameterMechanism = Inapplicable
+        }
+        set symbol state
+    ) state
 
-        let newState = set symbol state
-        mapStringIter tail newState dataType category
+/// Replace subtree in AST
+/// Tree pattern matching
+type ASTPattern = {
+    PatternTokenType: NodeKind option
+    PatternContent: string option // `None` means ignore, `"@parent"` means match parent content
+    PatternPosition: (int * int) option
+    PatternChildren: ASTPattern list option
+}
 
-//let private parseUnparenthesizedParams (context: IParseTree) =
-//    let paramList = context.GetChild(1) :?> SBParser.UnparenthesizedlistContext
-//    let (fList:IParseTree list) = copyAntlrList paramList.children
-//    fList |> List.filter (fun x -> not (x :? TerminalNodeImpl || x :? SBParser.SeparatorContext))
+let rec private matchPattern (parentContent: string option) (pattern: ASTPattern) (node: ASTNode) =
+    let matchTokenType = 
+        match pattern.PatternTokenType with
+        | Some pType -> pType = node.TokenType
+        | None -> true
 
+    let matchContent = 
+        match pattern.PatternContent with
+        | Some "@parent" -> parentContent = Some node.Content  // Match inherited parent content
+        | Some pContent -> pContent = node.Content
+        | None -> true
 
-//let private parseParamList (context: Collections.Generic.IList<IParseTree>) =
-//    let paramList = context.GetChild(1).GetChild(1) :?> SBParser.ParenthesizedlistContext
-//    let (fList:IParseTree list) = copyAntlrList paramList.children
-//    fList |> List.filter (fun x -> not (x :? TerminalNodeImpl || x :? SBParser.SeparatorContext))
+    let matchPosition = 
+        match pattern.PatternPosition with
+        | Some pPos -> pPos = node.Position
+        | None -> true
 
+    let matchChildren =
+        match pattern.PatternChildren with
+        | Some pChildren -> 
+            List.length pChildren = List.length node.Children &&
+            List.forall2 (matchPattern (Some node.Content)) pChildren node.Children
+        | None -> true
 
-//let rec parseTreeMap fn (parseTree: ParseTree) =
-//    match parseTree with
-//    | Empty -> Empty
-//    | Node(n) ->
-//        let (newNode: Node) = fn n
-//        let kids = newNode.children
-//        let newKids = List.map (fun x -> parseTreeMap fn x) kids
-//        Node {newNode with children=newKids}
+    matchTokenType && matchContent && matchPosition && matchChildren
 
+/// Replace a pattern in the AST with a new subtree
+let rec replacePattern (pattern: ASTPattern) (replacementTemplate: ASTNode) (node: ASTNode) =
+    if matchPattern None pattern node then
+        if replacementTemplate.Content = "@parent" then
+            { replacementTemplate with Content = node.Content }  // Inherit content
+        else
+            replacementTemplate
+    else
+        { node with Children = List.map (replacePattern pattern replacementTemplate) node.Children }
 
-// converts an antlr list of antlr nodes to an F# list of antlr nodes
-//let private buildChildList (antlrTree: IParseTree) =
-//    let rec buildChildListInternal (antlrTree: IParseTree) index childList =
-//        match index with
-//        | numberOfChildren when numberOfChildren = antlrTree.ChildCount -> childList
-//        | _ -> buildChildListInternal antlrTree (index+1) (childList @ [antlrTree.GetChild(index)])
-//    buildChildListInternal antlrTree 0 []
+let rec printAST (indent: string) (node: ASTNode) =
+    printfn $"%s{indent}{node.TokenType}: \"%s{node.Content}\""
+    node.Children |> List.iter (printAST (indent + "  "))
+    
+/// Intermediate union type to represent partial results when translating parse-tree nodes.
+type SubTree =
+    | AstNode of ASTNode
+    | Children of ASTNode list
+    | Empty
+    
+  let subTreeToASTNode (subTree: SubTree) : ASTNode =
+    match subTree with
+    | AstNode ast -> ast  // Directly return ASTNode
+    | Children children -> 
+        { TokenType = Unknown; Content = ""; Position = (0, 0); Children = children }  // Create a new ASTNode with children
+    | Empty -> 
+        { TokenType = Unknown; Content = ""; Position = (0, 0); Children = [] }  // Default empty ASTNode

@@ -5,97 +5,105 @@ open Antlr4.Runtime.Tree
 open Antlr4.Runtime.Misc
 open Utility
 
-// ---------------------------------------------------
-// 2. A record for node data
-// ---------------------------------------------------
-type FSNode = {
-    RuleIndex  : int
-    Exception  : RecognitionException
-    SourceText : string
-    Position   : int * int
-    Children   : FSParseTree list
-}
+/// Convert Antlr4 parse tree to FSParseTree
 
 // ---------------------------------------------------
-// 3. Single record type to hold the node
-// ---------------------------------------------------
-and FSParseTree = {
-    Kind : NodeKind
-    Data : FSNode
-}
-
-// ---------------------------------------------------
-// 4. Helper: convert class name to NodeKind
+// Helper: convert class name to NodeKind
 // ---------------------------------------------------
 let toNodeKind (antlrClassName: string) : NodeKind =
     match antlrClassName with
     | "AssignmentContext"       -> Assignment
     | "AssignmentTargetContext" -> AssignmentTarget
+    | "BinaryContext"           -> BinaryExpr
     | "BinaryExprContext"       -> BinaryExpr
     | "DimContext"              -> Dim
+    | "ExitstmtContext"         -> Exitstmt
+    | "EndDefContext"           -> EndDef
+    | "EndIfContext"            -> EndIf
+    | "EndForContext"           -> EndFor
+    | "EndRepeatContext"        -> EndRepeat
     | "ExpressionContext"       -> Expression
+    | "ForloopContext"          -> For
+    | "FunchdrContext"          -> Funchdr
+    | "FuncContext"             -> Function
     | "IfContext"               -> If
-    | "FunctionContext"         -> Function
     | "IdentifierContext"       -> Identifier
+    | "IdentifierOnlyContext"   -> IdentifierOnly
     | "ImplicitContext"         -> Implicit
     | "LineContext"             -> Line
     | "LineNumberContext"       -> LineNumber
+    | "LocContext"              -> Loc
     | "LocalContext"            -> Local
     | "LongForContext"          -> For
     | "NothingContext"          -> Nothing
-    | "ParameterContext"        -> Parameter
+    | "ParameterContext"        -> Parameters
+    | "ParenthesizedlistContext"-> ParenthesizedList
+    | "PrimaryContext"          -> Primary
+    | "ProcContext"             -> Proc
+    | "ProchdrContext"          -> Prochdr
     | "ProcedureContext"        -> Procedure
-    | "ProcFnCallContext"       -> ProcFnCall
+    | "ProcCallContext"         -> ProcFnCall
     | "ProgramContext"          -> Program
     | "ReferenceContext"        -> Reference
     | "RemarkContext"           -> Remark
     | "RepeatContext"           -> Repeat
+    | "SeparatorContext"        -> Nothing
     | "StmtContext"             -> Stmt
     | "StmtlistContext"         -> StmtList
+    | "TermContext"             -> TerminalNodeImpl
+    | "TerminalNodeImpl"        -> TerminalNodeImpl
+    | "UnparenthesizedlistContext"  -> UnparenthesizedList
     | "ValueContext"            -> Value
     | _                         -> Unknown
 
 // ---------------------------------------------------
-// 5. Extract text from node
+// Helper: extract text from node
 // ---------------------------------------------------
 let getTextForNode (node: ParserRuleContext) (input: ICharStream) : string =
     match node.Start, node.Stop with
     | null, _ | _, null -> "" // fallback
-    | startToken, stopToken ->
+    | startToken, stopToken -> 
         input.GetText(Interval(startToken.StartIndex, stopToken.StopIndex))
 
 // ---------------------------------------------------
-// 6. Create an FSParseTree node with empty children
+// Helper: Create an FSParseTree node with empty children
 // ---------------------------------------------------
-let visitNode (node: ParserRuleContext) (inputStream: ICharStream) : FSParseTree =
-    let nodeData = {
-        RuleIndex  = node.RuleIndex
-        Exception  = RecognitionException("Default exception placeholder", null, null, null)
-        SourceText = getTextForNode node inputStream
-        Position   = (node.Start.Line, node.Stop.Line)
+let visitNode (node: IParseTree) (inputStream: ICharStream) : FSParseTree =
+    {
+        Kind = toNodeKind (node.GetType().Name); 
+        Exception  = None
+        SourceText = node.GetText()
+        Position   = (node.SourceInterval.a, node.SourceInterval.b)
         Children   = []
     }
-    {
-        Kind = toNodeKind (node.GetType().Name)
-        Data = nodeData
-    }
+
+/// Generalized function for visiting any node
+let visitGenericNode (node: IParseTree) (inputStream: ICharStream) : FSParseTree =
+    match node with
+    | :? TerminalNodeImpl as terminalNode -> 
+        {
+            Kind = toNodeKind (terminalNode.GetType().Name)
+            Exception  = None
+            SourceText = terminalNode.Payload.Text
+            Position   = (terminalNode.Payload.StartIndex, terminalNode.Payload.StopIndex)
+            Children   = []
+        }
+    | _ -> visitNode node inputStream
 
 // ---------------------------------------------------
-// 7. Recursively populate children
+// Recursively populate children and create the FSParseTree
 // ---------------------------------------------------
-let rec traverseTree (node: ParserRuleContext) (inputStream: ICharStream) : FSParseTree =
-    let current = visitNode node inputStream
-    let childTrees =
-        [ for i in 0 .. node.ChildCount - 1 do
-            match node.children[i] with
-            | :? ParserRuleContext as childCtx ->
-                yield traverseTree childCtx inputStream
-            | _ -> () ]
+let rec traverseTree (node: IParseTree) (inputStream: ICharStream): FSParseTree =
+    let current = visitGenericNode node inputStream
+    if node.ChildCount = 0 then 
+        current // No children, return the current node
+    else 
+        // Recursively traverse children
+        let children = 
+            [ 0 .. node.ChildCount - 1 ]
+            |> List.map (fun i -> node.GetChild(i))
+            |> List.map (fun child -> traverseTree child inputStream)
+        { current with Children = children }
 
-    { current with Data.Children = childTrees }
-
-// ---------------------------------------------------
-// 8. Entry point
-// ---------------------------------------------------
 let processParseTree (tree: IParseTree) (inputStream: ICharStream) : FSParseTree =
-    traverseTree (tree :?> ParserRuleContext) inputStream
+    traverseTree tree inputStream

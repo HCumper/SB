@@ -1,7 +1,5 @@
 ﻿module SymbolTable
 
-open SB
-
 let globalScope = "~Global"
 let newLine = "\n"
 

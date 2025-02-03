@@ -35,10 +35,16 @@
     <ItemGroup>
       <Compile Remove="SB.g4.lexer.cs" />
       <Compile Remove="SB.g4.parser.cs" />
+      <Compile Remove="SBTokenFactory.cs" />
+      <Compile Remove="SBToken.cs" />
     </ItemGroup>
 
     <ItemGroup>
       <PackageReference Include="Antlr4.Runtime.Standard" Version="4.13.1" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <Folder Include="output\" />
     </ItemGroup>
 
 </Project>

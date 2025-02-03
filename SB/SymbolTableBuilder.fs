@@ -2,7 +2,6 @@
 
 open SymbolTable
 open Utility
-open SB
 open Antlr4.Runtime
 open Antlr4.Runtime.Tree
 
@@ -36,7 +35,7 @@ let rec mapStringIterFromAnnotation (paramList: string List) state category =
 let private default_ _ state = state
 
 let private addDimSymbol context state =
-    let (varName, _) = Walker.WalkDim context
+    let (varName, _) = ASTWalker.WalkDim context
 
     let (name, dataType) =
         Utility.getTypeFromAnnotation varName
@@ -52,7 +51,7 @@ let private addDimSymbol context state =
 
 let private addAssignmentSymbol context state =
     let (varName, _, _, _) =
-        Walker.WalkAssignment context
+        ASTWalker.WalkAssignment context
 
     let (truncatedName, dataType) =
         Utility.getTypeFromAnnotation varName
@@ -68,22 +67,22 @@ let private addAssignmentSymbol context state =
 
 let private addImplicitSymbol context state =
     let (implicDecl, names) =
-        Walker.WalkImplicit context
+        ASTWalker.WalkImplicit context
 
-    let (_, dataType) =
-        getTypeFromAnnotation implicDecl
+    // let (_, dataType) =
+    //     getTypeFromAnnotation implicDecl
 
-    Utility.mapStringIter names state dataType CategoryType.Implicit
+    Utility.mapStringIter [names] state 0 CategoryType.Implicit
 
 let private addLocalSymbol context state =
     let (_, paramList) =
-        Walker.WalkLocal context
+        ASTWalker.WalkLocal context
 
     mapStringIterFromAnnotation (*paramList*) [ "dummy param list" ] state CategoryType.Local
 
 let private addProcFuncSymbol context state =
     let (procName, paramList) =
-        Walker.WalkProcFunc context
+        ASTWalker.WalkProcFunc context
 
     let symbol =
         { Name = procName
@@ -103,7 +102,7 @@ let private addEndDefSymbol state =
 
 let private addLongForSymbol context state =
     let (loopVar, _, _, _) =
-        Walker.WalkFor context
+        ASTWalker.WalkFor context
 
     let symbol =
         { Name = loopVar
@@ -116,7 +115,7 @@ let private addLongForSymbol context state =
 
 let private addShortForSymbol context state =
     let (loopVar, _, _, _) =
-        Walker.WalkFor context
+        ASTWalker.WalkFor context
 
     let symbol =
         { Name = loopVar
@@ -128,34 +127,34 @@ let private addShortForSymbol context state =
     trySet symbol state
 
 ///////////////////////////////// Tree traversal stuff ////////////////////////////////////////
-let rec private WalkAcross (context: IParseTree) index state =
+let rec private WalkAcross (context: FSParseTree) index state =
     let result =
-        let count = context.ChildCount
+        let count = context.Children.Length
 
         match index with
         | n when n < count ->
             let (context, state) =
-                WalkDown (context.GetChild (index): IParseTree) state
+                WalkDown (context.Children[index]: FSParseTree) state
 
-            WalkAcross ((context: IParseTree).Parent: IParseTree) (index + 1) state
+            WalkAcross (context: FSParseTree) (index + 1) state
         | _ -> state
 
     result
 
-and private WalkDown (context: IParseTree) (state: State) =
+and private WalkDown (context: FSParseTree) (state: State) =
     let newState =
-        match context with
-        | :? SBParser.DimContext -> addDimSymbol context state
-        | :? SBParser.AssignmentContext -> addAssignmentSymbol context state
-        | :? SBParser.ImplicitContext -> addImplicitSymbol context state
-        | :? SBParser.LocContext -> addLocalSymbol context state
-        | :? SBParser.ProchdrContext
-        | :? SBParser.FunchdrContext -> addProcFuncSymbol context state
-        | :? SBParser.EndDefContext -> addEndDefSymbol state
-        | :? SBParser.ForloopContext -> addLongForSymbol context state
+        match context.Kind with
+        | DimContext -> addDimSymbol context state
+        | AssignmentContext -> addAssignmentSymbol context state
+        | ImplicitContext -> addImplicitSymbol context state
+        | LocContext -> addLocalSymbol context state
+        | ProchdrContext -> addProcFuncSymbol context state
+        | FunchdrContext -> addProcFuncSymbol context state
+        | EndDefContext -> addEndDefSymbol state
+        | ForloopContext -> addLongForSymbol context state
         | _ -> state
 
-    (context, WalkAcross (context: IParseTree) 0 newState)
+    (context, WalkAcross (context: FSParseTree) 0 newState)
 
 // top level only
-let WalkTreeRoot (context: ParserRuleContext) (state: State) = WalkDown context state
+let WalkTreeRoot (context: FSParseTree) (state: State) = WalkDown context state
