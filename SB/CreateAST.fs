@@ -90,7 +90,6 @@ and private walkAllChildren (context: FSParseTree) : ASTNode list =
 // ----------------------------------------------------
 
 /// Many translations simply return `Children` after walking all children.
-/// Many translations simply return `Children` after walking all children.
 and private translateAsChildren (context: FSParseTree) =
     Children (walkAllChildren context)
 

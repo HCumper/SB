@@ -1,4 +1,6 @@
-﻿open System
+﻿module CompilerPipeline
+
+open System
 open System.IO
 open Antlr4.Runtime
 open FSharpPlus
@@ -7,8 +9,8 @@ open Utility
 open ReformatParseTree
 open CleanParseTree
 open CreateAST
+open ConvertToAST
 
-module CompilerPipeline =
     type Configuration = {
         InputFile: string
         OutputFile: string
@@ -43,6 +45,7 @@ module CompilerPipeline =
         | ex -> return! Error (ParseError ex.Message) }
 
     let processToAST (parseTree, inputStream) = result {
+        let x = convertToAST parseTree
         try
             match processParseTree parseTree  inputStream |> cleanParseTree true with
             | Some cleaned -> 
@@ -74,28 +77,28 @@ module CompilerPipeline =
 [<EntryPoint>]
 let main argv =
     let handleError = function
-        | CompilerPipeline.InvalidArguments msg ->
+        | InvalidArguments msg ->
             Console.Error.WriteLine $"Argument error: %s{msg}"
             1
-        | CompilerPipeline.FileNotFound path ->
+        | FileNotFound path ->
             Console.Error.WriteLine $"File not found: %s{path}"
             2
-        | CompilerPipeline.ParseError msg ->
+        | ParseError msg ->
             Console.Error.WriteLine $"Parse error: %s{msg}"
             3
-        | CompilerPipeline.ASTConstructionError msg ->
+        | ASTConstructionError msg ->
             Console.Error.WriteLine $"AST construction failed: %s{msg}"
             4
-        | CompilerPipeline.IOError msg ->
+        | IOError msg ->
             Console.Error.WriteLine $"I/O error: %s{msg}"
             5
 
     result {
-        let! config = CompilerPipeline.parseArguments argv
-        let! parseTree = CompilerPipeline.parseFile config
-        let! ast = CompilerPipeline.processToAST parseTree
-        CompilerPipeline.logDiagnostics config parseTree ast
-        do! CompilerPipeline.generateOutput config ast
+        let! config = parseArguments argv
+        let! parseTree = parseFile config
+        let! ast = processToAST parseTree
+        logDiagnostics config parseTree ast
+        do! generateOutput config ast
         return 0
     }
     |> Result.either id handleError     

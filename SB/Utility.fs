@@ -7,7 +7,7 @@ open Antlr4.Runtime
 open FSharpPlus
 open FSharpPlus.Data
 
-/// Types of tokens used in the parse tree
+/// Types of tokens used in the FS parse tree
 type NodeKind =
     | Any   // Never assigned to a node, for pattern matching only
     | ArrayOrFunctionCall

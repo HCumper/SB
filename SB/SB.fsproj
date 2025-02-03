@@ -14,6 +14,7 @@
         <Compile Include="TypeResolver.fs" />
         <Compile Include="SymbolTableBuilder.fs" />
         <Compile Include="CreateAST.fs" />
+        <Compile Include="ConvertToAST.fs" />
         <Compile Include="Program.fs" />
     </ItemGroup>
 
