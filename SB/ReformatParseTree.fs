@@ -65,6 +65,14 @@ let getTextForNode (node: ParserRuleContext) (input: ICharStream) : string =
     | startToken, stopToken -> 
         input.GetText(Interval(startToken.StartIndex, stopToken.StopIndex))
 
+/// Extracts line and column information from an IParseTree node
+let extractPosition (tree: IParseTree) =
+    match tree with
+    | :? ITerminalNode as terminalNode -> 
+        terminalNode.Symbol.Line, terminalNode.Symbol.Column
+    | :? ParserRuleContext as context ->
+        context.Start.Line, context.Start.Column
+
 // ---------------------------------------------------
 // Helper: Create an FSParseTree node with empty children
 // ---------------------------------------------------
@@ -73,7 +81,7 @@ let visitNode (node: IParseTree) (inputStream: ICharStream) : FSParseTree =
         Kind = toNodeKind (node.GetType().Name); 
         Exception  = None
         SourceText = node.GetText()
-        Position   = (node.SourceInterval.a, node.SourceInterval.b)
+        Position   = extractPosition node   
         Children   = []
     }
 

@@ -289,3 +289,48 @@ type SubTree =
         { TokenType = Unknown; Content = ""; Position = (0, 0); Children = children }  // Create a new ASTNode with children
     | Empty -> 
         { TokenType = Unknown; Content = ""; Position = (0, 0); Children = [] }  // Default empty ASTNode
+
+// Computation Expressions omitted by FSharPlus
+
+open FSharpPlus
+open FSharpPlus.Data
+
+    /// Computation expression builder for Result<'T, 'E>
+    type ResultBuilder() =
+        member _.Return(x) : Result<'T, 'E> = Ok x
+        member _.ReturnFrom(m: Result<'T, 'E>) = m
+        member _.Bind(m: Result<'T, 'E>, f: 'T -> Result<'U, 'E>) : Result<'U, 'E> =
+            Result.bind f m
+        member _.Zero() : Result<unit, 'E> = Ok ()
+        member _.Combine(m: Result<'T, 'E>, f: unit -> Result<'U, 'E>) : Result<'U, 'E> =
+            match m with
+            | Ok _ -> f ()
+            | Error e -> Error e
+        member _.Delay(f: unit -> Result<'T, 'E>) = f
+        member _.Run(f: unit -> Result<'T, 'E>) = f ()
+        member _.TryWith(m: unit -> Result<'T, 'E>, handler: exn -> Result<'T, 'E>) =
+            try m () with e -> handler e
+        member _.TryFinally(m: unit -> Result<'T, 'E>, compensation: unit -> unit) =
+            try m () finally compensation ()
+        member _.Using(resource: #IDisposable, body: #IDisposable -> Result<'T, 'E>) =
+            try body resource finally resource.Dispose()
+        member _.While(condition: unit -> bool, body: unit -> Result<unit, 'E>) =
+            let rec loop () =
+                if condition () then
+                    match body () with
+                    | Ok () -> loop ()
+                    | Error e -> Error e
+                else Ok ()
+            loop ()
+        member _.For(sequence: seq<'T>, body: 'T -> Result<unit, 'E>) =
+            let rec loop seq =
+                match Seq.tryHead seq with
+                | None -> Ok ()
+                | Some x ->
+                    match body x with
+                    | Ok () -> loop (Seq.tail seq)
+                    | Error e -> Error e
+            loop sequence
+
+    /// Instantiate the builder
+    let result = ResultBuilder()

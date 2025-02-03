@@ -1,86 +1,101 @@
-﻿module Program
-
-
-open System
+﻿open System
 open System.IO
 open Antlr4.Runtime
-open SymbolTable
-open ReformatParseTree
-open CreateAST
-open CleanParseTree
+open FSharpPlus
+open FSharpPlus.Control
 open Utility
+open ReformatParseTree
+open CleanParseTree
+open CreateAST
+
+module CompilerPipeline =
+    type Configuration = {
+        InputFile: string
+        OutputFile: string
+        Verbose: bool
+    }
+
+    type ProcessingError =
+        | FileNotFound of string
+        | ParseError of string
+        | ASTConstructionError of string
+        | IOError of string
+        | InvalidArguments of string
+
+    let parseArguments = function
+        | [| input; output |] -> Ok { InputFile = input; OutputFile = output; Verbose = false }
+        | args -> Error (InvalidArguments $"Expected 2 arguments but got %d{args.Length}")
+
+    let private createLexer (input: AntlrInputStream) =
+        let factory = CommonTokenFactory() :> ITokenFactory
+        SBLexer(input, TokenFactory = factory)
+
+    let parseFile config = result {
+        try
+            use reader = File.OpenText(config.InputFile)
+            let inputStream = AntlrInputStream(reader)
+            let lexer = createLexer inputStream
+            let tokenStream = CommonTokenStream(lexer)
+            let parser = SBParser(tokenStream)
+            return (parser.program(), inputStream)
+        with
+        | :? FileNotFoundException -> return! Error (FileNotFound config.InputFile)
+        | ex -> return! Error (ParseError ex.Message) }
+
+    let processToAST (parseTree, inputStream) = result {
+        try
+            match processParseTree parseTree  inputStream |> cleanParseTree true with
+            | Some cleaned -> 
+                return walkDown cleaned |> subTreeToASTNode
+            | None -> 
+                return! Error (ASTConstructionError "Failed to clean parse tree")
+        with ex ->
+            return! Error (ASTConstructionError ex.Message) }
+
+    let generateOutput config ast = result {
+        try
+            File.Delete config.OutputFile
+            use writer = new StreamWriter(config.OutputFile)
+            // Actual generation would go here
+            printAST "  " ast |> writer.WriteLine
+            return ()
+        with ex ->
+            return! Error (IOError ex.Message) }
+
+    let logDiagnostics config (parseTree, _) ast =
+        if config.Verbose then
+            Console.WriteLine("ANTLR Parse Tree:")
+            Console.WriteLine(parseTree.ToString())
+            Console.WriteLine("\nInitial AST:")
+            printAST "  " ast |> Console.WriteLine
+            Console.WriteLine("\nTransformed AST:")
+            transformedTree ast |> printAST "  " |> Console.WriteLine
 
 [<EntryPoint>]
 let main argv =
-    let filename = @"C:\source\SB\q3.sb"
+    let handleError = function
+        | CompilerPipeline.InvalidArguments msg ->
+            Console.Error.WriteLine $"Argument error: %s{msg}"
+            1
+        | CompilerPipeline.FileNotFound path ->
+            Console.Error.WriteLine $"File not found: %s{path}"
+            2
+        | CompilerPipeline.ParseError msg ->
+            Console.Error.WriteLine $"Parse error: %s{msg}"
+            3
+        | CompilerPipeline.ASTConstructionError msg ->
+            Console.Error.WriteLine $"AST construction failed: %s{msg}"
+            4
+        | CompilerPipeline.IOError msg ->
+            Console.Error.WriteLine $"I/O error: %s{msg}"
+            5
 
-    let reader = File.OpenText(filename)
-
-    let outputFile = @"C:\source\SB\q3.cs"
-
-    File.Delete outputFile
-    let cs = AntlrInputStream(reader)
-    reader.Close()
-    let factory = CommonTokenFactory()
-
-    let (TokenFac: ITokenFactory) = factory :> ITokenFactory
-
-    let lexer = SBLexer(input = cs, TokenFactory = TokenFac)
-
-    /// This is the combined lex and parse using Antlr4
-    let tokens = CommonTokenStream(lexer)
-    let parser = SBParser(tokens)
-    let parseTree = parser.program ()
-    let x = parseTree.ToStringTree(parser)
-    Console.WriteLine(x)
-    Console.WriteLine("")
-    
-    /// Convert the OO parse tree to more idiomatic FSParseTree
-    /// This is a dummb step with no knowlege of the parse tree structure
-    let fsTree = processParseTree parseTree cs
-    
-    /// Clean the parse tree by removing nodes that match a given predicate.
-    /// TODO remove this step
-    let cleanedFsTree = cleanParseTree fsTree true
-    
-    /// Convert the parse tree to an AST
-    /// requires detailed knowledge of SB grammar
-    let ast = walkDown (cleanedFsTree |> Option.get)    
-    Console.WriteLine("initial AST")
-    subTreeToASTNode ast |>
-    printAST "  "
-    Console.WriteLine("cleaned AST")
-    
-    /// Clean the AST by removing nodes that match a given predicate.
-    /// TODO remove this step
-    let cleanedAST = transformedTree (subTreeToASTNode ast)
-    cleanedAST |>
-    printAST "  "
-
-    4
-    // let initialState =
-    //     { references = Set.empty
-    //       symTab = Map.empty
-    //       errorList = []
-    //       currentScope = globalScope
-    //       outputProcFn = ""
-    //       outputGlobal = "" }
-    //
-    // let (_, state) = SymbolTableBuilder.WalkTreeRoot parseTree initialState
-    //
-    // let typedState = TypeResolver.TypeImplicits state
-    //
-    // let resetState =
-    //     { typedState with
-    //         currentScope = globalScope }
-
-//    let state = CodeGenerator.walkTreeRoot parseTree resetState
-    //    let strProg = state.outputProcFn.ToString()
-    //    List.map (fun x -> File.AppendAllText(outputFile, x)) (snd state).outputProcFn |> ignore
-
-    // let listing =
-    //     (snd state).outputProcFn
-    //     + "\n************************************************\n"
-    //     + (snd state).outputGlobal
-
-//    File.WriteAllText(outputFile, listing)
+    result {
+        let! config = CompilerPipeline.parseArguments argv
+        let! parseTree = CompilerPipeline.parseFile config
+        let! ast = CompilerPipeline.processToAST parseTree
+        CompilerPipeline.logDiagnostics config parseTree ast
+        do! CompilerPipeline.generateOutput config ast
+        return 0
+    }
+    |> Result.either id handleError     
