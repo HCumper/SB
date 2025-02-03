@@ -5,6 +5,8 @@ open Antlr4.Runtime.Tree
 open Antlr4.Runtime.Misc
 open Utility
 
+/// Convert Antlr4 parse tree to FSParseTree
+
 // ---------------------------------------------------
 // Helper: convert class name to NodeKind
 // ---------------------------------------------------
@@ -34,7 +36,7 @@ let toNodeKind (antlrClassName: string) : NodeKind =
     | "LocalContext"            -> Local
     | "LongForContext"          -> For
     | "NothingContext"          -> Nothing
-    | "ParameterContext"        -> Parameter
+    | "ParameterContext"        -> Parameters
     | "ParenthesizedlistContext"-> ParenthesizedList
     | "PrimaryContext"          -> Primary
     | "ProcContext"             -> Proc

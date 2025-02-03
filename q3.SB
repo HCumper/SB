@@ -1,4 +1,6 @@
 481 DEFine FuNction foo (param1, param2)
+482 x = 4
+483 y = 5
 484 END DEFine
 490 DEFine PROCedure print_table
 500 LOCal pos

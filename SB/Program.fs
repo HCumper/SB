@@ -27,6 +27,7 @@ let main argv =
 
     let lexer = SBLexer(input = cs, TokenFactory = TokenFac)
 
+    /// This is the combined lex and parse using Antlr4
     let tokens = CommonTokenStream(lexer)
     let parser = SBParser(tokens)
     let parseTree = parser.program ()
@@ -34,14 +35,24 @@ let main argv =
     Console.WriteLine(x)
     Console.WriteLine("")
     
+    /// Convert the OO parse tree to more idiomatic FSParseTree
+    /// This is a dummb step with no knowlege of the parse tree structure
     let fsTree = processParseTree parseTree cs
+    
+    /// Clean the parse tree by removing nodes that match a given predicate.
+    /// TODO remove this step
     let cleanedFsTree = cleanParseTree fsTree true
+    
+    /// Convert the parse tree to an AST
+    /// requires detailed knowledge of SB grammar
     let ast = walkDown (cleanedFsTree |> Option.get)    
     Console.WriteLine("initial AST")
     subTreeToASTNode ast |>
     printAST "  "
     Console.WriteLine("cleaned AST")
     
+    /// Clean the AST by removing nodes that match a given predicate.
+    /// TODO remove this step
     let cleanedAST = transformedTree (subTreeToASTNode ast)
     cleanedAST |>
     printAST "  "

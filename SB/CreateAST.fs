@@ -51,7 +51,8 @@ let rec walkDown (context: FSParseTree) : SubTree =
     | NodeKind.CallExpr              -> translateCallExpr context
     | NodeKind.Exitstmt              -> translateAsChildren context
     | NodeKind.Function              -> translateFunction context
-    | NodeKind.Identifier            -> translateIdentifier context
+    | NodeKind.Identifier
+    | NodeKind.IdentifierOnly        -> translateIdentifier context
     | NodeKind.If                    -> translateIf context
     | NodeKind.Implicit              -> translateValueIfNoChildren context
     | NodeKind.Line                  -> translateAsChildren context
@@ -139,26 +140,36 @@ and translateIf (context: FSParseTree) : SubTree =
     |> walkAcross
     |> createAstNode If context.SourceText context.Position
 
-and translateProcedure (context: FSParseTree) : SubTree =
-    // 0th child is the header, last is the end def, indeterminate number of children in between
-    [ getChild context 1; getChild context 2 ]
-    |> walkAcross
-    |> createAstNode If context.SourceText context.Position
-    
-and translateFunction (context: FSParseTree) : SubTree =
-    // Extract function name from the header
-    let functionName = context.Children[0].Children[1].Children[0].SourceText
+and translateProcFunc kind (context: FSParseTree) : SubTree =
+    // Extract the header node that contains the identifier and parameters.
+    let headerNode = context.Children[0].Children[1]
 
-    // Extract parameters (if any)
-    let parameters =
-        let parameterNode = context.Children[0].Children[1]  // Function name and parameters
-        if parameterNode.Children.Length > 1 then
-            walkAllChildren parameterNode.Children.[1]  // Parameters list
+    // Extract the name and parameters (if available).
+    let name = headerNode.Children[0].SourceText
+    let parameters = 
+        if headerNode.Children.Length > 1 then 
+            walkAllChildren headerNode.Children[1]
         else
-            []  // No parameters
+            []
 
-    createAstNode Function functionName context.Position parameters
+    // Create the parameters node.
+    let parametersNode = createAstNode Parameters "Parameters" context.Position parameters |> function AstNode n -> n
 
+    // Process the body of the function/procedure.
+    // remove hdr and end def
+    let bodyLines = List.take (List.length context.Children - 1) context.Children |> List.tail 
+    let body = walkAcross (bodyLines)
+    let procFNBody = createAstNode Body "Proc/FN Body" context.Position body |> function AstNode n -> n
+
+    // Return the AST node with the provided kind, name, position, and the processed parameters and body.
+    createAstNode kind name context.Position [parametersNode; procFNBody]
+
+// Define the procedure translator using the common helper.
+and translateProcedure (context: FSParseTree) : SubTree = translateProcFunc Procedure context
+
+// Define the function translator using the common helper.
+and translateFunction (context: FSParseTree) : SubTree = translateProcFunc Function context
+    
 // ----------------------------------------------------
 // Expression translations
 // ----------------------------------------------------
