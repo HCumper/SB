@@ -44,11 +44,16 @@ open Antlr4.Runtime.Tree
 
     let processToAST (parseTree, inputStream) : Result<ASTNode, ProcessingError> = result {
         try
-            let listener = ASTBuilderListener()
-            let walker = ParseTreeWalker()
-            walker.Walk(listener, parseTree)
-            let (extractedAst: ASTNode) = listener.GetAST()
-            return! Ok extractedAst
+            let convertTreeToAst (parseTree: IParseTree) : ASTNode list =
+                let visitor = ASTBuildingVisitor()
+                parseTree.Accept(visitor)  // Start the visiting process
+
+//            let listener = ASTBuilderListener()
+//            let walker = ParseTreeWalker()
+            let ast = convertTreeToAst parseTree
+//            let (extractedAst: ASTNode) = listener.GetAST()
+            prettyPrintAst (List.head ast) 4 |> Console.WriteLine
+            return! Ok (head ast)
         with ex ->
             return! Error (ASTConstructionError ex.Message) }
 

@@ -24,6 +24,7 @@ type NodeKind =
     | EndRepeat
     | Expression
     | For
+    | ID
     | If
     | Funchdr
     | Function
@@ -35,6 +36,7 @@ type NodeKind =
     | Loc
     | Local
     | Nothing
+    | NumberLiteral
     | Operator
     | Parameters
     | ParenthesizedList
@@ -108,9 +110,44 @@ let mapAntlrList (mappingFunction: IParseTree -> 'b) (inputList: Collections.Gen
 let copyAntlrList (parentNode: Collections.Generic.IList<IParseTree>) =
     mapAntlrList id parentNode
 
+/// Helper function to create an ASTNode.
+let createAstNode (tokenType: NodeKind) (value: string) (position: int * int) (children: ASTNode list)=
+    {
+        TokenType = tokenType
+        Value = value
+        Position = position
+        Children = children
+    }
 
+/// Pretty-print an AST node and all its descendants.
+/// `indent` is the current indentation level in spaces.
+let rec prettyPrintAst (node: ASTNode) (indent: int) : string =
+    // Generate indentation
+    let padding = String.replicate indent " "
 
+    // Build a line for the current node
+    let currentLine =
+        sprintf "%s- %A (\"%s\", pos=%A)\n"
+            padding
+            node.TokenType
+            node.Value
+            node.Position
 
+    // Recursively pretty-print children, increasing the indentation
+    let childLines =
+        node.Children
+        |> List.map (fun child -> prettyPrintAst child (indent + 2))
+        |> String.concat ""
+
+    // Combine current line with all child lines
+    currentLine + childLines
+
+/// Entry point if you want a convenience function that starts at 0 indent
+let prettyPrintAstRoot (root: ASTNode) : string =
+    prettyPrintAst root 0
+///////////////////////////////////////////////////////
+// Monads
+///////////////////////////////////////////////////////
 // Define the State monad type: a function from state 's to a result 'a and a new state 's.
 type State<'s, 'a> = 's -> 'a * 's
 
