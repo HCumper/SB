@@ -1,22 +1,23 @@
 ﻿module CreateAST
 
+open Antlr4.Runtime.Tree
 open Utility
 
 // ----------------------------------------------------
 // Common helper functions
 // ----------------------------------------------------
 
-/// Get a child of FsParseTree by index.
-let private getChild (context: FSParseTree) index =
-    context.Children.[index]
+/// Get a child of IParseTree by index.
+let private getChild (context: IParseTree) index =
+    context.GetChild(index)
 
-/// Get first child of FsParseTree.
-let private getFirstChild (context: FSParseTree) =
+/// Get first child of IParseTree.
+let private getFirstChild (context: IParseTree) =
     getChild context 0
 
 /// Helper function to create an ASTNode.
-let private createAstNode (tokenType: NodeKind) (content: string) (position: int * int) (children: ASTNode list) : SubTree =
-    AstNode {
+let private createAstNode (tokenType: NodeKind) (content: string) (position: int * int) (children: ASTNode list)=
+    {
         TokenType = tokenType
         Content = content
         Position = position
@@ -24,8 +25,8 @@ let private createAstNode (tokenType: NodeKind) (content: string) (position: int
     }
 
 /// Creates a 'Value' node from a parse-tree context with no children.
-let private createValueSubTree (context: FSParseTree) : SubTree =
-    createAstNode Value context.SourceText context.Position []
+// let private createValueSubTree (context: IParseTree) : SubTree =
+//     createAstNode Value context.SourceText context.Position []
 
 /// Recursively filters nodes based on a predicate.
 let rec treeFilter predicate node =
@@ -42,7 +43,7 @@ let rec treeFilter predicate node =
 
 /// Walks down a parse-tree node to produce a `SubTree`.
 /// This is the main dispatcher that routes parse-tree contexts to the appropriate AST construction function.
-let rec walkDown (context: FSParseTree) : SubTree =
+let rec walkDown (context: IParseTree)=
     printfn $"Processing Kind: %A{context.Kind}"
 
     match context.Kind with
@@ -72,7 +73,7 @@ let rec walkDown (context: FSParseTree) : SubTree =
     | _ -> createAstNode Unknown $"mismatch on {context.Kind}" context.Position []
 
 /// Helper to walk across a list of parse-tree nodes, flattening any `Children` values.
-and private walkAcross (contexts: FSParseTree list) : ASTNode list =
+and private walkAcross (contexts: IParseTree list) : ASTNode list =
     contexts
     |> List.map walkDown
     |> List.collect (function
@@ -81,7 +82,7 @@ and private walkAcross (contexts: FSParseTree list) : ASTNode list =
         | Empty          -> [])
 
 /// Helper to walk all children of a single context as a list of `ASTNode`.
-and private walkAllChildren (context: FSParseTree) : ASTNode list =
+and private walkAllChildren (context: IParseTree) : ASTNode list =
     context.Children
     |> walkAcross
 
@@ -90,11 +91,11 @@ and private walkAllChildren (context: FSParseTree) : ASTNode list =
 // ----------------------------------------------------
 
 /// Many translations simply return `Children` after walking all children.
-and private translateAsChildren (context: FSParseTree) =
+and private translateAsChildren (context: IParseTree) =
     Children (walkAllChildren context)
 
 /// Returns a 'Value' node if there are no children; otherwise walk down the first child.
-and private translateValueIfNoChildren (context: FSParseTree) =
+and private translateValueIfNoChildren (context: IParseTree) =
     if context.Children.Length = 0 then
         createValueSubTree context
     else
@@ -104,15 +105,15 @@ and private translateValueIfNoChildren (context: FSParseTree) =
 // Individual "translate*" functions
 // ----------------------------------------------------
 
-and translateAssignment (context: FSParseTree) =
+and translateAssignment (context: IParseTree) =
     walkAllChildren context
     |> createAstNode Assignment "Assignment" context.Position
 
-and translateProgram (context: FSParseTree) =
+and translateProgram (context: IParseTree) =
     walkAllChildren context
     |> createAstNode Program "The whole program" context.Position
 
-and translateIdentifier (context: FSParseTree) =
+and translateIdentifier (context: IParseTree) =
     let processedChildren = walkAllChildren context
     let punctuation = set [ "."; ","; ":"; ")" ]
     let filteredChildren = List.filter (fun x -> not (punctuation.Contains x.Content)) processedChildren
@@ -121,7 +122,7 @@ and translateIdentifier (context: FSParseTree) =
         else ArrayOrFunctionCall
     createAstNode tokType context.SourceText context.Position filteredChildren
 
-and translateTerminalNodeImpl (context: FSParseTree) =
+and translateTerminalNodeImpl (context: IParseTree) =
     if context.SourceText = "<EOF>" then
         Empty
     else
@@ -130,16 +131,16 @@ and translateTerminalNodeImpl (context: FSParseTree) =
         else
             walkDown (getFirstChild context)
 
-and translateRepeat (context: FSParseTree) : SubTree =
+and translateRepeat (context: IParseTree) =
     let loopVarStr = ASTWalker.WalkRepeat context
     createAstNode Repeat loopVarStr context.Position []
 
-and translateIf (context: FSParseTree) : SubTree =
+and translateIf (context: IParseTree) =
     [ getChild context 1; getChild context 2 ]
     |> walkAcross
     |> createAstNode If context.SourceText context.Position
 
-and translateProcFunc kind (context: FSParseTree) : SubTree =
+and translateProcFunc kind (context: IParseTree) =
     // Extract the header node that contains the identifier and parameters.
     let headerNode = context.Children[0].Children[1]
 
@@ -164,22 +165,22 @@ and translateProcFunc kind (context: FSParseTree) : SubTree =
     createAstNode kind name context.Position [parametersNode; procFNBody]
 
 // Define the procedure translator using the common helper.
-and translateProcedure (context: FSParseTree) : SubTree = translateProcFunc Procedure context
+and translateProcedure (context: IParseTree)= translateProcFunc Procedure context
 
 // Define the function translator using the common helper.
-and translateFunction (context: FSParseTree) : SubTree = translateProcFunc Function context
+and translateFunction (context: IParseTree) = translateProcFunc Function context
     
 // ----------------------------------------------------
 // Expression translations
 // ----------------------------------------------------
 
-and translateExpr (context: FSParseTree) : SubTree =
+and translateExpr (context: IParseTree) =
     match context.Kind with
     | BinaryContext -> translateBinaryExpr context
     | UnaryContext  -> translateUnaryExpr context
     | _ -> createAstNode Unknown "expression mismatch" context.Position []
 
-and translateBinaryExpr (context: FSParseTree) : SubTree =
+and translateBinaryExpr (context: IParseTree) =
     let lhsSubTree = walkDown (getFirstChild context)
     let lhsNode =
         match lhsSubTree with
@@ -196,7 +197,7 @@ and translateBinaryExpr (context: FSParseTree) : SubTree =
 
     createAstNode BinaryExpr operatorText context.Position [lhsNode; rhsNode]
 
-and translateUnaryExpr (context: FSParseTree) : SubTree =
+and translateUnaryExpr (context: IParseTree) =
     let operatorText = (getChild context 0).SourceText
     let operandSubTree = walkDown (getChild context 1)
     let operandNode =
@@ -206,15 +207,15 @@ and translateUnaryExpr (context: FSParseTree) : SubTree =
 
     createAstNode UnaryExpr operatorText context.Position [operandNode]
 
-and translateCallExpr (context: FSParseTree) : SubTree =
+and translateCallExpr (context: IParseTree) =
     let funcName = (getChild context 0).SourceText
     let args = walkAllChildren (getChild context 1)
     createAstNode CallExpr funcName context.Position args
 
-and translateStringLiteral (context: FSParseTree) : SubTree =
+and translateStringLiteral (context: IParseTree) =
     createAstNode StringLiteral context.SourceText context.Position []
 
-and translateTypedIdentifier (context: FSParseTree) : SubTree =
+and translateTypedIdentifier (context: IParseTree) =
     let identifier = (getChild context 0).SourceText
     let typeInfo = (getChild context 1).SourceText
     createAstNode TypedIdentifier identifier context.Position [

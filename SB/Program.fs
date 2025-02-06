@@ -6,10 +6,8 @@ open Antlr4.Runtime
 open FSharpPlus
 open FSharpPlus.Control
 open Utility
-open ReformatParseTree
-open CleanParseTree
-open CreateAST
-open ConvertToAST
+open ParseTreeListener
+open Antlr4.Runtime.Tree
 
     type Configuration = {
         InputFile: string
@@ -44,14 +42,13 @@ open ConvertToAST
         | :? FileNotFoundException -> return! Error (FileNotFound config.InputFile)
         | ex -> return! Error (ParseError ex.Message) }
 
-    let processToAST (parseTree, inputStream) = result {
-        let x = convertToAST parseTree
+    let processToAST (parseTree, inputStream) : Result<ASTNode, ProcessingError> = result {
         try
-            match processParseTree parseTree  inputStream |> cleanParseTree true with
-            | Some cleaned -> 
-                return walkDown cleaned |> subTreeToASTNode
-            | None -> 
-                return! Error (ASTConstructionError "Failed to clean parse tree")
+            let listener = ASTBuilderListener()
+            let walker = ParseTreeWalker()
+            walker.Walk(listener, parseTree)
+            let (extractedAst: ASTNode) = listener.GetAST()
+            return! Ok extractedAst
         with ex ->
             return! Error (ASTConstructionError ex.Message) }
 
@@ -72,7 +69,7 @@ open ConvertToAST
             Console.WriteLine("\nInitial AST:")
             printAST "  " ast |> Console.WriteLine
             Console.WriteLine("\nTransformed AST:")
-            transformedTree ast |> printAST "  " |> Console.WriteLine
+//            transformedTree ast |> printAST "  " |> Console.WriteLine
 
 [<EntryPoint>]
 let main argv =

@@ -13,6 +13,8 @@ Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "SB", "SB\SB.fsproj", "{EA79
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SBLib", "SBLib\SBLib.csproj", "{4C94014F-7DC1-4F30-9908-9D260B92DE26}"
 EndProject
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "TestBed", "TestBed\TestBed.fsproj", "{DA21D9E0-C5FC-45EC-A777-5BE324A6DDB0}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -27,6 +29,10 @@ Global
 		{4C94014F-7DC1-4F30-9908-9D260B92DE26}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{4C94014F-7DC1-4F30-9908-9D260B92DE26}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{4C94014F-7DC1-4F30-9908-9D260B92DE26}.Release|Any CPU.Build.0 = Release|Any CPU
+		{DA21D9E0-C5FC-45EC-A777-5BE324A6DDB0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{DA21D9E0-C5FC-45EC-A777-5BE324A6DDB0}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{DA21D9E0-C5FC-45EC-A777-5BE324A6DDB0}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{DA21D9E0-C5FC-45EC-A777-5BE324A6DDB0}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

@@ -1,13 +1,13 @@
 ﻿module Utility
 
 open Antlr4.Runtime.Tree
-open SymbolTable
 open System
 open Antlr4.Runtime
 open FSharpPlus
 open FSharpPlus.Data
 
-/// Types of tokens used in the FS parse tree
+/// Types of tokens used in the AST
+/// It is homogenous with normalized children
 type NodeKind =
     | Any   // Never assigned to a node, for pattern matching only
     | ArrayOrFunctionCall
@@ -60,19 +60,10 @@ type NodeKind =
     | Unknown
     | UnparenthesizedList
 
-/// Represents a node in the parse tree
-and FSParseTree = {
-    Kind: NodeKind
-    Exception: RecognitionException option
-    SourceText: string
-    Position: int * int
-    Children: FSParseTree list
-}
-
 /// Represents a node in the abstract syntax tree (AST)
 type ASTNode = {
     TokenType: NodeKind
-    Content: string
+    Value: string
     Position: int * int
     Children: ASTNode list
 }
@@ -106,8 +97,8 @@ let gatherChildren (context: IParseTree) =
     [ for index in 0 .. context.ChildCount - 1 do yield context.GetChild(index) ]
 
 /// Get the children of a context as an F# list of FS nodes
-let gatherFSChildren (context: FSParseTree) =
-    context.Children
+// let gatherFSChildren (context: FSParseTree) =
+//     context.Children
 
 /// Map over an Antlr list with a mapping function
 let mapAntlrList (mappingFunction: IParseTree -> 'b) (inputList: Collections.Generic.IList<IParseTree>) =
@@ -150,41 +141,41 @@ let get : State<'s, 's> = fun s -> (s, s)
 let put newState : State<'s, unit> = fun _ -> ((), newState)
 /// Symbol Table builder
 
-let updateStateWithSymbol (symbol: Symbol) (state: State) : State =
-    { state with symTab =  state.symTab.Add({ Name = symbol.Name; Scope = symbol.Scope }, symbol) }
-    
+// let updateStateWithSymbol (symbol: Symbol) (state: State) : State =
+//     { state with symTab =  state.symTab.Add({ Name = symbol.Name; Scope = symbol.Scope }, symbol) }
+//     
 /// A stateful computation that processes one IParseTree node.
 /// It extracts the term from the node, creates a Symbol using the current state's scope,
 /// updates the state with that Symbol, and finally returns the Symbol.
-let processNode (node: IParseTree) dataType category : State<State, Symbol> =
-    state {
-        // Use pattern matching to safely cast the node to the expected type.
-        let term =
-            match node with
-            | :? SBParser.TermContext as termCtx ->
-                // Assuming the term is in the first child.
-                termCtx.children[0].GetText()
-            | _ ->
-                failwith "Unexpected node type; expected SBParser.TermContext."
-                
-        // Retrieve the current state.
-        let! currentState = get
-        
-        // Create a new Symbol using the current state's scope.
-        let symbol = {
-            Name = term
-            Scope = currentState.currentScope
-            Category = category
-            Type = dataType
-            ParameterMechanism = Inapplicable
-        }
-        
-        // Update the state with the new symbol.
-        do! put (updateStateWithSymbol symbol currentState)
-        
-        // Return the symbol as the result of this computation.
-        return symbol
-    }
+// let processNode (node: IParseTree) dataType category : State<State, Symbol> =
+//     state {
+//         // Use pattern matching to safely cast the node to the expected type.
+//         let term =
+//             match node with
+//             | :? SBParser.TermContext as termCtx ->
+//                 // Assuming the term is in the first child.
+//                 termCtx.children[0].GetText()
+//             | _ ->
+//                 failwith "Unexpected node type; expected SBParser.TermContext."
+//                 
+//         // Retrieve the current state.
+//         let! currentState = get
+//         
+//         // Create a new Symbol using the current state's scope.
+//         let symbol = {
+//             Name = term
+//             Scope = currentState.currentScope
+//             Category = category
+//             Type = dataType
+//             ParameterMechanism = Inapplicable
+//         }
+//         
+//         // Update the state with the new symbol.
+//         do! put (updateStateWithSymbol symbol currentState)
+//         
+//         // Return the symbol as the result of this computation.
+//         return symbol
+//     }
 
 // no longer used
 /// Processes a list of IParseTree nodes, threading state through each operation,
@@ -215,17 +206,17 @@ let processNode (node: IParseTree) dataType category : State<State, Symbol> =
 //     ) state
 
 /// Map while propagating state forward between operations on each element using an F# list of values
-let rec mapStringIter (paramList: string list) (state: State) dataType category =
-    paramList |> List.fold (fun state head ->
-        let symbol = {
-            Name = head
-            Scope = state.currentScope
-            Category = category
-            Type = dataType
-            ParameterMechanism = Inapplicable
-        }
-        set symbol state
-    ) state
+// let rec mapStringIter (paramList: string list) (state: State) dataType category =
+//     paramList |> List.fold (fun state head ->
+//         let symbol = {
+//             Name = head
+//             Scope = state.currentScope
+//             Category = category
+//             Type = dataType
+//             ParameterMechanism = Inapplicable
+//         }
+//         set symbol state
+//     ) state
 
 /// Replace subtree in AST
 /// Tree pattern matching
@@ -244,8 +235,8 @@ let rec private matchPattern (parentContent: string option) (pattern: ASTPattern
 
     let matchContent = 
         match pattern.PatternContent with
-        | Some "@parent" -> parentContent = Some node.Content  // Match inherited parent content
-        | Some pContent -> pContent = node.Content
+        | Some "@parent" -> parentContent = Some node.Value  // Match inherited parent content
+        | Some pContent -> pContent = node.Value
         | None -> true
 
     let matchPosition = 
@@ -257,7 +248,7 @@ let rec private matchPattern (parentContent: string option) (pattern: ASTPattern
         match pattern.PatternChildren with
         | Some pChildren -> 
             List.length pChildren = List.length node.Children &&
-            List.forall2 (matchPattern (Some node.Content)) pChildren node.Children
+            List.forall2 (matchPattern (Some node.Value)) pChildren node.Children
         | None -> true
 
     matchTokenType && matchContent && matchPosition && matchChildren
@@ -265,30 +256,30 @@ let rec private matchPattern (parentContent: string option) (pattern: ASTPattern
 /// Replace a pattern in the AST with a new subtree
 let rec replacePattern (pattern: ASTPattern) (replacementTemplate: ASTNode) (node: ASTNode) =
     if matchPattern None pattern node then
-        if replacementTemplate.Content = "@parent" then
-            { replacementTemplate with Content = node.Content }  // Inherit content
+        if replacementTemplate.Value = "@parent" then
+            { replacementTemplate with Value = node.Value }  // Inherit content
         else
             replacementTemplate
     else
         { node with Children = List.map (replacePattern pattern replacementTemplate) node.Children }
 
 let rec printAST (indent: string) (node: ASTNode) =
-    printfn $"%s{indent}{node.TokenType}: \"%s{node.Content}\""
+    printfn $"%s{indent}{node.TokenType}: \"%s{node.Value}\""
     node.Children |> List.iter (printAST (indent + "  "))
-    
+        
 /// Intermediate union type to represent partial results when translating parse-tree nodes.
-type SubTree =
-    | AstNode of ASTNode
-    | Children of ASTNode list
-    | Empty
+// type SubTree =
+//     | AstNode of ASTNode
+//     | Children of ASTNode list
+//     | Empty
     
-  let subTreeToASTNode (subTree: SubTree) : ASTNode =
-    match subTree with
-    | AstNode ast -> ast  // Directly return ASTNode
-    | Children children -> 
-        { TokenType = Unknown; Content = ""; Position = (0, 0); Children = children }  // Create a new ASTNode with children
-    | Empty -> 
-        { TokenType = Unknown; Content = ""; Position = (0, 0); Children = [] }  // Default empty ASTNode
+  // let subTreeToASTNode (subTree: SubTree) : ASTNode =
+  //   match subTree with
+  //   | AstNode ast -> ast  // Directly return ASTNode
+  //   | Children children -> 
+  //       { TokenType = Unknown; Content = ""; Position = (0, 0); Children = children }  // Create a new ASTNode with children
+  //   | Empty -> 
+  //       { TokenType = Unknown; Content = ""; Position = (0, 0); Children = [] }  // Default empty ASTNode
 
 // Computation Expressions omitted by FSharPlus
 

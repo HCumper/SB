@@ -6,15 +6,8 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <Compile Include="SymbolTable.fs" />
         <Compile Include="Utility.fs" />
-        <Compile Include="CleanParseTree.fs" />
-        <Compile Include="ReformatParseTree.fs" />
-        <Compile Include="ASTWalker.fs" />
-        <Compile Include="TypeResolver.fs" />
-        <Compile Include="SymbolTableBuilder.fs" />
-        <Compile Include="CreateAST.fs" />
-        <Compile Include="ConvertToAST.fs" />
+        <Compile Include="ParseTreeListener.fs" />
         <Compile Include="Program.fs" />
     </ItemGroup>
 
@@ -29,7 +22,8 @@
 
     <ItemGroup>
       <PackageReference Include="Antlr4.Runtime.Standard" Version="4.13.1" />
-      <PackageReference Include="FSharpPlus" Version="1.6.1" />
+      <PackageReference Include="FSharpPlus" Version="1.7.0" />
+      <PackageReference Include="FSharpx.Collections" Version="3.1.0" />
     </ItemGroup>
 
     <ItemGroup>
