@@ -29,33 +29,114 @@ let getPosition (ruleNode: IRuleNode) : int * int =
 type NodeBehavior =
     | Produce of NodeKind
     | ProduceNameOnly of NodeKind
+    | ProduceaNDStop of NodeKind
     | Discard
     | BubbleUp
 
 /// Known rule behaviors keyed by rule name (from `SBParser.ruleNames`)
 let knownBehaviors: IDictionary<string, NodeBehavior> =
     dict [
-        "PROGRAM", Produce Program
-        "FUNCHDR", ProduceNameOnly Function
-        "TERMINALNODE", Produce TerminalNodeImpl
-        "LINE",   BubbleUp
+        // Standard rules
+        "TERMINALNODE", Produce NodeKind.TerminalNodeImpl
+
+        "ASSIGNMENT", ProduceNameOnly NodeKind.Assignment
+        "ASSIGNTO", Produce NodeKind.Assignment
+        "PARAMETERS", ProduceNameOnly NodeKind.Parameters
+        "PARENTHESIZEDLIST", ProduceNameOnly NodeKind.ParenthesizedList
+        "FUNCHDR", ProduceNameOnly NodeKind.Funchdr
+        "PROGRAM", ProduceNameOnly NodeKind.Program
+
+        "EXPR", BubbleUp
+        "IDENTIFIER", BubbleUp
+        "LINE", BubbleUp
+        "PRIMARY", BubbleUp
+        "STMT", BubbleUp
         "STMTLIST", BubbleUp
-        "STMT",   BubbleUp
-        "LINENUMBER",     Discard
+
+        "LINENUMBER", Discard
+
+        // SB-specific constructs
+        "DIM", Produce NodeKind.Dim
+        "LOC", Produce NodeKind.Local
+        "IMPLICIT", Produce NodeKind.Implicit
+        "REFERENCE155", Produce NodeKind.Reference
+        "PROC", Produce NodeKind.Procedure
+        "FUNC", Produce NodeKind.Function
+        "FORLOOP", Produce NodeKind.For
+        "REPEAT", Produce NodeKind.Repeat
+        "IF", Produce NodeKind.If
+        "LONGSELECT", Produce NodeKind.Unknown   // No corresponding DU value; using Unknown
+        "ONSELECT", Produce NodeKind.Unknown      // No corresponding DU value; using Unknown
+        "NEXTSTMT", Produce NodeKind.Unknown        // No corresponding DU value; using Unknown
+        "EXITSTMT", Produce NodeKind.Exitstmt
+        "PROCCALL", Produce NodeKind.ProcFnCall
+        "IDENTIFIERONLY", Produce NodeKind.IdentifierOnly
+        "SEPARATOR", Discard
     ]
     
-let terminalBehaviors = 
+/// Known terminal behaviors keyed by token type
+let terminalBehaviors: IDictionary<string, NodeBehavior> =
     dict [
-        "IDENTIFIER", Produce Identifier
-        "NUMBER", Produce NumberLiteral
-        "STRING", Produce StringLiteral
-        "ENDDEF", Produce StringLiteral
-        "FUNCHDR", ProduceNameOnly StringLiteral
-        "FUNCTION", ProduceNameOnly StringLiteral
-        "ID", Produce ID
+        "ENDDEF", Produce NodeKind.EndDef
+        "ID", Produce NodeKind.ID
+        "IDENTIFIER", Produce NodeKind.Identifier
+        "INTEGER", Produce NodeKind.NumberLiteral
+        "NUMBER", Produce NodeKind.NumberLiteral
+        "STRING", Produce NodeKind.StringLiteral
+        
         "COMMENT", Discard
+        "DEFFUNC", Discard
+        "FUNCTION", ProduceNameOnly NodeKind.Function
         "WS", Discard
-        // Add other terminal types as needed
+        
+        // Additional keywords and punctuation
+        "REFERENCE", ProduceNameOnly NodeKind.Reference
+        "IMPLICIT", ProduceNameOnly NodeKind.Implicit
+        "LOCAL", ProduceNameOnly NodeKind.Local
+        "DIM", ProduceNameOnly NodeKind.Dim
+        "DEFPROC", Discard
+        "DEFUNC", Discard
+        "IF", ProduceNameOnly NodeKind.If
+        "ELSE", ProduceNameOnly NodeKind.Unknown  // No DU case for Else; using Unknown
+        "THEN", Discard
+        "ENDIF", Produce NodeKind.EndIf
+        "SELECT", ProduceNameOnly NodeKind.Unknown  // No DU case for Select; using Unknown
+        "ENDSELECT", Discard
+        "ON", ProduceNameOnly NodeKind.Reference     // Approximate mapping
+        "FOR", ProduceNameOnly NodeKind.For
+        "NEXT", Discard                              // Could also be mapped to Unknown if needed
+        "TO", Discard
+        "STEP", Discard
+        "REPEAT", ProduceNameOnly NodeKind.Repeat
+        "EXIT", ProduceNameOnly NodeKind.Exitstmt
+        "UNTIL", Discard
+        "ENDREPEAT", Discard
+
+        // Punctuation and operators (all discarded)
+        "EQUALS", Discard
+        "LEFTPAREN", Discard
+        "RIGHTPAREN", Discard
+        "COLON", Discard
+        "SEMI", Discard
+        "PLUS", Discard
+        "MINUS", Discard
+        "MULTIPLY", Discard
+        "DIVIDE", Discard
+        "MOD", Discard
+        "DIV", Discard
+        "AND", Discard
+        "OR", Discard
+        "XOR", Discard
+        "CARET", Discard
+        "NOT", Discard
+        "TILDE", Discard
+        "INSTR", Discard
+        "AMP", Discard
+        "QUESTION", Discard
+        "POINT", Discard
+        "COMMA", Discard
+        "BANG", Discard
+        "NEWLINE", Discard
     ]
 
 // ----------------------------------------------------------------
@@ -91,7 +172,7 @@ type ASTBuildingVisitor() =
 
         | (true, ProduceNameOnly kind) ->
             // Produce a new AST node containing all child results but no content
-            [ createAstNode kind "" pos childResults ]
+            [ createAstNode kind ("would be " + content) pos childResults ]
 
         | (true, Discard) ->
             // Discard node and children
@@ -103,7 +184,7 @@ type ASTBuildingVisitor() =
 
         | (false, _) ->
             // Fallback: treat as unknown
-            [ createAstNode Unknown content pos childResults ]
+            [ createAstNode Unknown (ruleName.ToUpper() + content) pos childResults ]
 
     /// Terminals: discard, or produce a leaf node if needed
     // Modified VisitTerminal method
@@ -115,7 +196,7 @@ type ASTBuildingVisitor() =
         | (true, Produce kind) ->
             [ createAstNode kind symbol.Text (symbol.Line, symbol.Column) [] ]
         | (true, ProduceNameOnly kind) ->
-            [ createAstNode kind "" (symbol.Line, symbol.Column) [] ]
+            [ createAstNode kind ("would be " + symbol.Text) (symbol.Line, symbol.Column) [] ]
         | (true, Discard) -> []
         | _ -> 
             // Fallback for unhandled terminals

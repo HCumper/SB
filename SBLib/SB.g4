@@ -16,7 +16,7 @@ stmt :
 	| Refer unparenthesizedlist															#Reference155
 	| prochdr line* lineNumber? endDef ID?												#Proc
 	| funchdr line* lineNumber? endDef ID?		 										#Func
-    | For ID Equal expr To expr (Step expr)?
+    | For ID equals expr To expr (Step expr)?
         (
           // Long form with remark
           Colon Comment Newline line* lineNumber? endFor ID?
@@ -44,14 +44,17 @@ stmt :
  	| On (constexpr) Equal rangeexpr													#Onselect
 	| Next ID																			#Nextstmt
 	| Exit ID																			#Exitstmt
-	| ID (parenthesizedlist)? Equal expr												#Assignment
+	| identifier (parenthesizedlist)? assignto expr                                             #Assign
 	| ID (unparenthesizedlist)?															#ProcCall
 	| identifier																		#IdentifierOnly
 	;
 
+assignto: '=';
+equals: '=';
 prochdr : DefProc identifier parenthesizedlist? Newline;
-funchdr : DefFunc identifier parenthesizedlist? Newline;
+funchdr : DefFunc parameters parenthesizedlist? Newline;
 identifier : ID (parenthesizedlist)?;
+parameters : ID (parenthesizedlist)?;
 parenthesizedlist :	LeftParen expr (separator expr)* RightParen;
 unparenthesizedlist : expr (separator expr)*;
 separator : Comma | Bang | Semi | To;
