@@ -29,7 +29,6 @@ let getPosition (ruleNode: IRuleNode) : int * int =
 type NodeBehavior =
     | Produce of NodeKind
     | ProduceNameOnly of NodeKind
-    | ProduceaNDStop of NodeKind
     | Discard
     | BubbleUp
 
@@ -43,10 +42,10 @@ let knownBehaviors: IDictionary<string, NodeBehavior> =
         "ASSIGNTO", Produce NodeKind.Assignment
         "PARAMETERS", ProduceNameOnly NodeKind.Parameters
         "PARENTHESIZEDLIST", ProduceNameOnly NodeKind.ParenthesizedList
-        "FUNCHDR", ProduceNameOnly NodeKind.Funchdr
         "PROGRAM", ProduceNameOnly NodeKind.Program
 
         "EXPR", BubbleUp
+        "FUNCHDR", ProduceNameOnly NodeKind.Funchdr
         "IDENTIFIER", BubbleUp
         "LINE", BubbleUp
         "PRIMARY", BubbleUp
@@ -61,7 +60,6 @@ let knownBehaviors: IDictionary<string, NodeBehavior> =
         "IMPLICIT", Produce NodeKind.Implicit
         "REFERENCE155", Produce NodeKind.Reference
         "PROC", Produce NodeKind.Procedure
-        "FUNC", Produce NodeKind.Function
         "FORLOOP", Produce NodeKind.For
         "REPEAT", Produce NodeKind.Repeat
         "IF", Produce NodeKind.If
@@ -71,6 +69,9 @@ let knownBehaviors: IDictionary<string, NodeBehavior> =
         "EXITSTMT", Produce NodeKind.Exitstmt
         "PROCCALL", Produce NodeKind.ProcFnCall
         "IDENTIFIERONLY", Produce NodeKind.IdentifierOnly
+
+        "FUNC", BubbleUp
+
         "SEPARATOR", Discard
     ]
     
@@ -84,9 +85,9 @@ let terminalBehaviors: IDictionary<string, NodeBehavior> =
         "NUMBER", Produce NodeKind.NumberLiteral
         "STRING", Produce NodeKind.StringLiteral
         
-        "COMMENT", Discard
-        "DEFFUNC", Discard
         "FUNCTION", ProduceNameOnly NodeKind.Function
+        "COMMENT", Discard
+        "DEFFUNC", Produce NodeKind.DefFunc
         "WS", Discard
         
         // Additional keywords and punctuation
@@ -95,7 +96,7 @@ let terminalBehaviors: IDictionary<string, NodeBehavior> =
         "LOCAL", ProduceNameOnly NodeKind.Local
         "DIM", ProduceNameOnly NodeKind.Dim
         "DEFPROC", Discard
-        "DEFUNC", Discard
+        "DEFFUNC", Discard
         "IF", ProduceNameOnly NodeKind.If
         "ELSE", ProduceNameOnly NodeKind.Unknown  // No DU case for Else; using Unknown
         "THEN", Discard

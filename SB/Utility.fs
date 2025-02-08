@@ -16,6 +16,7 @@ type NodeKind =
     | BinaryExpr
     | Body
     | CallExpr
+    | DefFunc
     | Dim
     | EndDef // TODO create node for
     | EndIf
