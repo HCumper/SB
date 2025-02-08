@@ -21,20 +21,22 @@ type NodeKind =
     | EndDef // TODO create node for
     | EndIf
     | EndFor
-    | Exitstmt
     | EndRepeat
+    | ErrorNode
+    | Exitstmt
     | Expression
     | For
     | ID
     | If
+    | FuncDef
     | Funchdr
     | Function
+    | FunctionName
     | Identifier
     | IdentifierOnly
     | Implicit
     | Line
     | LineNumber
-    | Loc
     | Local
     | Nothing
     | NumberLiteral
