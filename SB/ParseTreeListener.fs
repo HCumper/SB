@@ -20,21 +20,34 @@ let typedBehaviors: IDictionary<Type, NodeBehavior> =
     dict [
         (typeof<SBParser.AssignContext>, ProduceNameOnly NodeKind.Assignment)
         (typeof<SBParser.AssigntoContext>, Discard)
-        (typeof<SBParser.BinaryContext>, BubbleUp)
+        (typeof<SBParser.BinaryContext>, ProduceNameOnly NodeKind.BinaryExpr)
+        (typeof<SBParser.ComparisonContext>, ProduceNameOnly NodeKind.Comparison)
+        (typeof<SBParser.DimContext>, Produce NodeKind.Dim)
         (typeof<SBParser.EndDefContext>, Discard)
+        (typeof<SBParser.EndIfContext>, Discard)
+        (typeof<SBParser.EndForContext>, Discard)
+        (typeof<SBParser.EndRepeatContext>, Discard)
+        (typeof<SBParser.ExitstmtContext>, Produce NodeKind.Exitstmt)
         (typeof<SBParser.ExprContext>, BubbleUp)
+        (typeof<SBParser.ForloopContext>, ProduceNameOnly NodeKind.Forloop)
         (typeof<SBParser.FuncContext>, ProduceNameOnly NodeKind.Function)
         (typeof<SBParser.FunchdrContext>, BubbleUp)
         (typeof<SBParser.IdentifierContext>, BubbleUp)
+        (typeof<SBParser.IfContext>, ProduceNameOnly NodeKind.If)
+        (typeof<SBParser.ImplicitContext>, Produce NodeKind.Implicit)
         (typeof<SBParser.LineContext>, BubbleUp)
         (typeof<SBParser.LineNumberContext>, Discard)
         (typeof<SBParser.LocalContext>, Produce NodeKind.Local)
         (typeof<SBParser.ParametersContext>, ProduceNameOnly NodeKind.Parameters)
+        (typeof<SBParser.ParenlistContext>, BubbleUp)
         (typeof<SBParser.ParenthesizedlistContext>, BubbleUp)
         (typeof<SBParser.PrimaryContext>, BubbleUp)
-        (typeof<SBParser.ProcContext>, ProduceNameOnly NodeKind.Procedure)
+        (typeof<SBParser.ProcContext>, ProduceNameOnly NodeKind.ProcedureDefinition)
+        (typeof<SBParser.ProcFnCallContext>, ProduceNameOnly NodeKind.ProcFnCall)
         (typeof<SBParser.ProchdrContext>, BubbleUp)
         (typeof<SBParser.ProgramContext>, ProduceNameOnly Program)
+        (typeof<SBParser.RemarkContext>, Produce NodeKind.Remark)
+        (typeof<SBParser.RepeatContext>, Discard)
         (typeof<SBParser.SeparatorContext>, Discard)
         (typeof<SBParser.StmtlistContext>, BubbleUp)
         (typeof<SBParser.UnaryContext>, BubbleUp)
@@ -63,7 +76,6 @@ let typedBehaviors: IDictionary<Type, NodeBehavior> =
         // "REFERENCE155", Produce NodeKind.Reference
         // "PROC", Produce NodeKind.Procedure
         // "FORLOOP", Produce NodeKind.For
-        // "REPEAT", Produce NodeKind.Repeat
         // "IF", Produce NodeKind.If
         // "LONGSELECT", Produce NodeKind.Unknown   // No corresponding DU value; using Unknown
         // "ONSELECT", Produce NodeKind.Unknown      // No corresponding DU value; using Unknown
@@ -79,26 +91,32 @@ let typedBehaviors: IDictionary<Type, NodeBehavior> =
 let terminalBehaviors: IDictionary<string, NodeBehavior> =
     dict [
         "COMMA", Discard
+        "COMMENT", Discard
         "DEFFUNC", Discard
         "DEFPROC", Discard
+        "DIMENSION", Discard
         "ENDDEF", Discard
-        "ENDFOR", Discard
+        "ENDREPEAT", Discard
         "EOF", Discard
         "EQUAL", Discard
         "FOR", Discard
         "ID", Produce NodeKind.ID
+        "IF", Discard
+        "IMPLIC", Discard
         "INTEGER", Produce NodeKind.NumberLiteral
         "LEFTPAREN", Discard
         "LOCAL", Discard
         "NEWLINE", Discard
+//        "PARENTHESIZEDLIST", Produce NodeKind.ParenthesizedList
+        "REPEAT", ProduceNameOnly NodeKind.Repeat
         "RIGHTPAREN", Discard
         "TO", Discard
+        "EXIT", Discard
         // "IDENTIFIER", Produce NodeKind.Identifier
         // "NUMBER", Produce NodeKind.NumberLiteral
         "STRING", Produce NodeKind.StringLiteral
         //
         // "FUNCTION", ProduceNameOnly NodeKind.Function
-        // "COMMENT", Discard
         // "WS", Discard
         //
         // // Additional keywords and punctuation
@@ -117,20 +135,18 @@ let terminalBehaviors: IDictionary<string, NodeBehavior> =
         // "ON", ProduceNameOnly NodeKind.Reference     // Approximate mapping
         // "NEXT", Discard                              // Could also be mapped to Unknown if needed
         // "STEP", Discard
-        // "REPEAT", ProduceNameOnly NodeKind.Repeat
         // "EXIT", ProduceNameOnly NodeKind.Exitstmt
         // "UNTIL", Discard
-        // "ENDREPEAT", Discard
         //
         // Punctuation and operators (all discarded)
         "COLON", Discard
         "SEMI", Discard
-        "PLUS", Discard
-        "MINUS", Discard
-        "MULTIPLY", Discard
-        "DIVIDE", Discard
-        "MOD", Discard
-        "DIV", Discard
+        "PLUS", Produce NodeKind.Plus
+        "MINUS", Produce NodeKind.Minus
+        "MULTIPLY", Produce NodeKind.Multiply
+        "DIVIDE", Produce NodeKind.Divide
+        "MOD", Produce NodeKind.Mod
+        "DIV", Produce NodeKind.Div
         "AND", Discard
         "OR", Discard
         "XOR", Discard
@@ -142,6 +158,14 @@ let terminalBehaviors: IDictionary<string, NodeBehavior> =
         "QUESTION", Discard
         "POINT", Discard
         "BANG", Discard
+        "GREATER", Discard
+        "GREATEREQUAL", Discard
+        "LESS", Discard
+        "LESSEQUAL", Discard
+        "THEN", Discard
+        "ELSE", Discard
+        "ENDFOR", Discard
+        "ENDIF", Discard
     ]
 
 
@@ -175,12 +199,11 @@ type ASTBuildingVisitor() =
     override this.VisitChildren(ruleNode: IRuleNode) =
         // 1) Collect child results in a functional style, no mutables:
         let childResults =
-            [ for i in 0 .. ruleNode.ChildCount - 1 do
-                let child = ruleNode.GetChild(i)
-                // Each child.Accept(this) returns ASTNode list
-                yield! child.Accept(this)
-            ]
-            // The yield! splices each child's ASTNode list into the final collection
+            [0 .. ruleNode.ChildCount - 1]
+            |> List.collect (fun i ->
+                 let child = ruleNode.GetChild(i)
+                 child.Accept(this)
+               )
 
         // 2) Identify the rule name
         let ruleIndex = ruleNode.RuleContext.RuleIndex
@@ -204,7 +227,7 @@ type ASTBuildingVisitor() =
 
         | ProduceNameOnly kind ->
             // Produce a new AST node containing all child results but no content
-            [ createAstNode kind ("would be " + content) pos childResults ]
+            [ createAstNode kind ("") pos childResults ]  // "would be " + content
 
         | Discard ->
             // Discard node and children

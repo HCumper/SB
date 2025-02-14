@@ -16,7 +16,7 @@ stmt :
 	| Refer unparenthesizedlist															#Reference155
 	| prochdr line* lineNumber? endDef ID?												#Proc
 	| funchdr line* lineNumber? endDef ID?		 										#Func
-    | For ID equals expr To expr (Step expr)?
+    | For ID assignto expr To expr (Step expr)?
         (
           // Long form with remark
           Colon Comment Newline line* lineNumber? endFor ID?
@@ -29,7 +29,7 @@ stmt :
         )
          #Forloop
                  
-    | Repeat significantIdentifier 
+    | Repeat identifier 
       ( Colon stmtlist                                    // Short form
       | Newline line* lineNumber? endRepeat ID?           // Long form
       )                                                                                 #Repeat
@@ -45,8 +45,7 @@ stmt :
 	| Next ID																			#Nextstmt
 	| Exit ID																			#Exitstmt
 	| identifier (parenthesizedlist)? assignto expr                                     #Assign
-	| Keyword (unparenthesizedlist)?										    		#Keyword
-	| ID (unparenthesizedlist)?															#ProcCall
+	| ID (unparenthesizedlist | parenthesizedlist)?	                					#ProcFnCall
 	| identifier																		#IdentifierOnly
 	;
 
@@ -62,7 +61,6 @@ separator : Comma | Bang | Semi | To;
 constexpr : Integer | Real | String | ID;
 rangeexpr : constexpr To constexpr | constexpr;
 unaryTerminator : (Minus Integer | Minus Real | Minus identifier);
-significantIdentifier : identifier;
 
 lineNumber : Integer;
 endFor : EndFor;
@@ -90,7 +88,7 @@ endSelect : EndSelect;
     Relies on Antlr's precedence rules to handle the precedence of the operators
 */
 expr
-    : LeftParen expr RightParen                                                         #Parenthesized
+    : LeftParen expr RightParen                                                         #Parenlist
     | expr Amp expr                                                                     #Binary //Concatenation
     | expr (Plus | Minus) expr                                                          #Binary //Add/Subtract
     | expr (Multiply | Divide | Mod | Div) expr                                         #Binary //Multiply/Divide
@@ -177,7 +175,6 @@ Newline : (( '\r' '\n') |   '\n');
 Let : 'LET' -> skip;
 Comment	:  'REMark' ~( '\r' | '\n' )*;
 
-Keyword : 'PRINT';
 ID : LETTER ([0-9] | [A-Za-z] | '_')* ('$'|'%')?;
 
 Integer : DIGIT+;

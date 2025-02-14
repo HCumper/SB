@@ -16,16 +16,21 @@ type NodeKind =
     | BinaryExpr
     | Body
     | CallExpr
+    | Comment
+    | Comparison
     | DefFunc
     | Dim
-    | EndDef // TODO create node for
+    | Divide
+    | Mod
+    | Div
+    | EndDef
     | EndIf
     | EndFor
     | EndRepeat
     | ErrorNode
     | Exitstmt
     | Expression
-    | For
+    | Forloop
     | ID
     | If
     | FuncDef
@@ -38,16 +43,19 @@ type NodeKind =
     | Line
     | LineNumber
     | Local
+    | Minus
+    | Multiply
     | Nothing
     | NumberLiteral
     | Operator
     | Parameters
-    | ParenthesizedList
+    | Parenlist
+    | Plus
     | Primary
-    | Procedure
-    | ProcFnCall
+    | ProcedureDefinition
     | Prochdr
     | Proc
+    | ProcFnCall
     | Program
     | Reference
     | Remark
@@ -63,7 +71,7 @@ type NodeKind =
     | Value
     | UnaryExpr    
     | Unknown
-    | UnparenthesizedList
+    | Unparenthesizedlist
 
 /// Represents a node in the abstract syntax tree (AST)
 type ASTNode = {
