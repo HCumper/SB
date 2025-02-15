@@ -7,7 +7,7 @@
 
     <ItemGroup>
         <Compile Include="Utility.fs" />
-        <Compile Include="ParseTreeListener.fs" />
+        <Compile Include="ParseTreeVisitor.fs" />
         <Compile Include="Program.fs" />
     </ItemGroup>
 

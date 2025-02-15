@@ -44,7 +44,7 @@ let rec treeFilter predicate node =
 /// Walks down a parse-tree node to produce a `SubTree`.
 /// This is the main dispatcher that routes parse-tree contexts to the appropriate AST construction function.
 let rec walkDown (context: IParseTree)=
-    printfn $"Processing Kind: %A{context.Kind}"
+//    printfn $"Processing Kind: %A{context.Kind}"
 
     match context.Kind with
     | NodeKind.Assignment            -> translateAssignment context

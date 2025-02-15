@@ -6,56 +6,46 @@ open Antlr4.Runtime
 open FSharpPlus
 open FSharpPlus.Data
 
-/// Types of tokens used in the AST
-/// It is homogenous with normalized children
+// ----------------------------------------------------------------
+// 1. Types for your AST and behaviors
+// ----------------------------------------------------------------
 type NodeKind =
-    | Any   // Never assigned to a node, for pattern matching only
+    | Any   // For pattern matching only
     | ArrayOrFunctionCall
     | Assignment
     | AssignmentTarget
     | BinaryExpr
     | Body
     | CallExpr
-    | Comment
-    | Comparison
-    | DefFunc
     | Dim
-    | Divide
-    | Mod
-    | Div
-    | EndDef
+    | EndDef // TODO: create node for this
     | EndIf
     | EndFor
-    | EndRepeat
-    | ErrorNode
     | Exitstmt
+    | EndRepeat
     | Expression
-    | Forloop
+    | For
     | ID
     | If
-    | FuncDef
     | Funchdr
     | Function
-    | FunctionName
     | Identifier
     | IdentifierOnly
     | Implicit
     | Line
     | LineNumber
+    | Loc
     | Local
-    | Minus
-    | Multiply
     | Nothing
     | NumberLiteral
     | Operator
     | Parameters
-    | Parenlist
-    | Plus
+    | ParenthesizedList
     | Primary
-    | ProcedureDefinition
+    | Procedure
+    | ProcFnCall
     | Prochdr
     | Proc
-    | ProcFnCall
     | Program
     | Reference
     | Remark
@@ -71,7 +61,13 @@ type NodeKind =
     | Value
     | UnaryExpr    
     | Unknown
-    | Unparenthesizedlist
+    | UnparenthesizedList
+    | Plus
+    | Minus
+    | Multiply
+    | Divide
+    | Mod
+    | Div
 
 /// Represents a node in the abstract syntax tree (AST)
 type ASTNode = {

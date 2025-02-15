@@ -161,7 +161,7 @@
 1690       IF b(k) >= temp : EXIT inc_k
 1700     END REPeat inc_k
 1710     REPeat dec_j
-1720       j = j - 1
+1720       jx = jx - 1
 1730       REMark conversely we don't need a 'guaranteed less than' value
 1740       REMark at the start of the array as the sorting process does
 1750       REMark this for us anyway

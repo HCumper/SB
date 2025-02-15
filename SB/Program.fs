@@ -6,7 +6,7 @@ open Antlr4.Runtime
 open FSharpPlus
 open FSharpPlus.Control
 open Utility
-open ParseTreeListener
+open ParseTreeVisitor
 open Antlr4.Runtime.Tree
 
     type Configuration = {
@@ -62,7 +62,7 @@ open Antlr4.Runtime.Tree
             File.Delete config.OutputFile
             use writer = new StreamWriter(config.OutputFile)
             // Actual generation would go here
-            printAST "  " ast |> writer.WriteLine
+          //  printAST "  " ast |> writer.WriteLine
             return ()
         with ex ->
             return! Error (IOError ex.Message) }
