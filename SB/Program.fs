@@ -8,6 +8,11 @@ open FSharpPlus.Control
 open Utility
 open ParseTreeVisitor
 open Antlr4.Runtime.Tree
+open System.IO
+open Antlr4.Runtime
+open Utility
+open SymbolTableManager
+open SemanticAnalyzer
 
     type Configuration = {
         InputFile: string
@@ -19,6 +24,7 @@ open Antlr4.Runtime.Tree
         | FileNotFound of string
         | ParseError of string
         | ASTConstructionError of string
+        | SymbolTablePopulationError of string
         | IOError of string
         | InvalidArguments of string
 
@@ -42,20 +48,28 @@ open Antlr4.Runtime.Tree
         | :? FileNotFoundException -> return! Error (FileNotFound config.InputFile)
         | ex -> return! Error (ParseError ex.Message) }
 
-    let processToAST (parseTree, inputStream) : Result<ASTNode, ProcessingError> = result {
-        try
-            let convertTreeToAst (parseTree: IParseTree) : ASTNode list =
-                let visitor = ASTBuildingVisitor()
-                parseTree.Accept(visitor)  // Start the visiting process
+    let processToAST (parseTree, inputStream) : Result<ASTNode, ProcessingError> = 
+        result {
+            try
+                let convertTreeToAst (parseTree: IParseTree) : ASTNode list =
+                    let visitor = ASTBuildingVisitor()
+                    parseTree.Accept(visitor)  // Start the visiting process
+                let ast = convertTreeToAst parseTree
+                prettyPrintAst (List.head ast) 4 |> Console.WriteLine
+                return! Ok (head ast)
+            with ex ->
+                return! Error (ASTConstructionError ex.Message) 
+        }
 
-//            let listener = ASTBuilderListener()
-//            let walker = ParseTreeWalker()
-            let ast = convertTreeToAst parseTree
-//            let (extractedAst: ASTNode) = listener.GetAST()
-            prettyPrintAst (List.head ast) 4 |> Console.WriteLine
-            return! Ok (head ast)
-        with ex ->
-            return! Error (ASTConstructionError ex.Message) }
+    let semanticAnalysis astTree : Result<(ASTNode * SymbolTable<Symbol>), ProcessingError> = 
+        result {
+            try
+                let primedSymbolTable = prePopulateSymbolTable astTree  // Populate the symbol table with keywords
+                let finalSymbolTable = populateSymbolTable astTree primedSymbolTable  // Walk the AST and add symbols 
+                return! Ok (astTree, finalSymbolTable)
+            with ex ->
+                return! Error (ASTConstructionError ex.Message) 
+        }
 
     let generateOutput config ast = result {
         try
@@ -99,6 +113,7 @@ let main argv =
         let! config = parseArguments argv
         let! parseTree = parseFile config
         let! ast = processToAST parseTree
+        let! semanticAnalysisResult = semanticAnalysis ast
         logDiagnostics config parseTree ast
         do! generateOutput config ast
         return 0

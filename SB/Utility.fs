@@ -5,6 +5,7 @@ open System
 open Antlr4.Runtime
 open FSharpPlus
 open FSharpPlus.Data
+open SymbolTableManager
 
 // ----------------------------------------------------------------
 // 1. Types for your AST and behaviors
@@ -69,6 +70,20 @@ type NodeKind =
     | Mod
     | Div
 
+type SymbolType =
+    | Variable of string
+    | Function of string * string list  // Function with a return type and argument types
+    | Constant of string
+    | TypeDefinition of string
+    | Keyword of string
+
+type Symbol = {
+    Name: string               // Symbol name
+    SymbolKind: SymbolType     // Type of the symbol (Variable, Function, etc.)
+    Scope: string              // Scope (e.g., "global", "local")
+    Value: obj option          // Value if it’s a constant or initialized variable
+    LineNumber: int option     // Line number where it's defined (optional)
+}
 /// Represents a node in the abstract syntax tree (AST)
 type ASTNode = {
     TokenType: NodeKind
@@ -101,11 +116,15 @@ let getTypeFromAnnotation (name: string) =
     | '$' -> name.Substring(0, len), SBParser.String
     | _ -> name, SBParser.Real
 
+let rec foldTree (f: 'State -> ASTNode -> 'State) (state: 'State) (node: ASTNode) : 'State =
+    let newState = f state node
+    List.fold (foldTree f) newState node.Children
+
 /// Get the children of a context as an F# list of Antlr nodes
 let gatherChildren (context: IParseTree) =
     [ for index in 0 .. context.ChildCount - 1 do yield context.GetChild(index) ]
 
-/// Get the children of a context as an F# list of FS nodes
+// Get the children of a context as an F# list of FS nodes
 // let gatherFSChildren (context: FSParseTree) =
 //     context.Children
 
@@ -174,7 +193,14 @@ type StateBuilder() =
         fun state -> ((), state)
     
     member _.Delay(f: unit -> State<'s, 'a>) : State<'s, 'a> = f()
-
+     member _.For(sequence: seq<'T>, body: 'T -> State<'S, unit>) : State<'S, unit> =
+            fun s ->
+                let mutable s' = s
+                for x in sequence do
+                    let (_, newState) = body x s'
+                    s' <- newState
+                ((), s')
+                
 // Instantiate the builder.
 let state = StateBuilder()
 
