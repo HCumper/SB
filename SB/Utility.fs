@@ -120,17 +120,32 @@ type ParameterMechanismType =
     | Value
     | Reference
 
-/// <summary>
-/// Represents an entry in the symbol table.
-/// </summary>
-type Symbol = {
-    Name: string               // Symbol name.
-    SymbolKind: NodeKind       // Type of the symbol (Variable, Function, etc.).
-    Value: obj option          // Value if it’s a constant or initialized variable.
+/// Fields common to all symbols
+type CommonSymbol = {
+    Name: string
+    SymbolKind: NodeKind
     Category: CategoryType
-    Position: int * int        // Position in source (line, column).
-    ParameterMechanism: ParameterMechanismType option
+    Position: int * int
 }
+
+/// Define a record type for function parameters
+type ParameterSymbol = {
+    Common: CommonSymbol
+    ParameterMechanism: ParameterMechanismType
+}
+
+/// Define a record type for arrays
+type ArraySymbol = {
+    Common: CommonSymbol
+    Dimensions: int list
+}
+
+/// Use the record types inside the DU
+type Symbol =
+    | Common of CommonSymbol
+    | Parameter of ParameterSymbol
+    | Array of ArraySymbol
+//  | value?    
 
 /// <summary>
 /// Active pattern to simplify type identification based on SBParser types.

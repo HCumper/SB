@@ -27,32 +27,26 @@
 
     /// Helper: update a given scope with a new symbol (or update an existing symbol)
     /// and then rebuild the symbol table by prepending the updated scope to the rest.
-    let private updateScope (mode: SymbolAddMode) (key: string) (value: 'T) (scope: Scope<'T>) (rest: SymbolTable<'T>) : SymbolTable<'T> =
-        let newScope =
-            if Map.containsKey key scope.Symbols then
-                match mode with
-                | Overwrite -> { scope with Symbols = Map.add key value scope.Symbols }
-                | Skip -> scope
-            else
-                { scope with Symbols = Map.add key value scope.Symbols }
-        newScope :: rest
+    let private addSymbolToScopeHelper (mode: SymbolAddMode) (key: string) (value: 'T) (scope: Scope<'T>) : Scope<'T> =
+        if Map.containsKey key scope.Symbols then
+            match mode with
+            | Overwrite -> { scope with Symbols = Map.add key value scope.Symbols }
+            | Skip -> scope
+        else
+            { scope with Symbols = Map.add key value scope.Symbols }
 
     /// Add a symbol to the current (innermost) scope.
-    let addSymbol (mode: SymbolAddMode) (key: string) (value: 'T) (table: SymbolTable<'T>) : SymbolTable<'T> option =
+    let addSymbolToCurrentScope (mode: SymbolAddMode) (key: string) (value: 'T) (table: SymbolTable<'T>) : SymbolTable<'T> =
         match table with
-        | [] -> None
-        | currentScope :: rest ->
-            Some (updateScope mode key value currentScope rest)
+        | currentScope :: rest -> (addSymbolToScopeHelper mode key value currentScope) :: rest
 
-    /// Add a symbol to the global (outermost) scope.
-    let addSymbolToGlobal (mode: SymbolAddMode) (key: string) (value: 'T) (table: SymbolTable<'T>) : SymbolTable<'T> option =
-        match table with
-        | [] -> None
-        | lst ->
-            // Global scope is the last element of the list.
-            let globalScope: Scope<'T> = List.last lst
-            let rest: SymbolTable<'T> = List.take (List.length lst - 1) lst
-            Some (updateScope mode key value globalScope rest)
+    let addSymbolToGlobalScope (mode: SymbolAddMode) (key: string) (value: 'T) (table: SymbolTable<'T>) : SymbolTable<'T> =
+        match (List.rev table) with
+        | globalScope :: rest ->
+        addSymbolToScopeHelper mode key value globalScope :: rest
+        |> List.rev
+
+    
 
     /// Lookup a symbol by key in the stacked scopes.
     /// The search starts from the innermost scope and proceeds outward.
