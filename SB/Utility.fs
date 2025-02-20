@@ -1,15 +1,40 @@
 ﻿module Utility
 
-open Antlr4.Runtime.Tree
 open System
+open System.IO
+open System.Text
 open Antlr4.Runtime
+open Antlr4.Runtime.Tree
 open FSharpPlus
 open FSharpPlus.Data
-open SymbolTableManager
 
-// ----------------------------------------------------------------
-// 1. Types for your AST and behaviors
-// ----------------------------------------------------------------
+/// <summary>
+/// Represents the category of a symbol in the symbol table.
+/// Broader than NodeKind.
+/// </summary>
+type CategoryType =
+    | Variable    // A standard variable.
+    | Dim         // A DIM declaration (often for arrays or fixed storage).
+    | Procedure   // A procedure declaration.
+    | Function    // A function declaration.
+    | Keyword     // A reserved keyword.
+    | Array       // Specifically for array declarations.
+    | Constant    // A constant value.
+    | Unknown     // Fallback for symbols that don't match any known category.
+
+/// <summary>
+/// Represents possible symbol types.
+/// </summary>
+type SymbolType =
+    | Variable of string
+    | Function of string * string list  // Function with a return type and argument types
+    | Constant of string
+    | TypeDefinition of string
+    | Keyword of string
+
+/// <summary>
+/// Types for AST nodes and corresponding grammar rule behaviors.
+/// </summary>
 type NodeKind =
     | Any   // For pattern matching only
     | ArrayOrFunctionCall
@@ -19,11 +44,11 @@ type NodeKind =
     | Body
     | CallExpr
     | Dim
-    | EndDef // TODO: create node for this
+    | EndDef
     | EndIf
     | EndFor
-    | Exitstmt
     | EndRepeat
+    | Exitstmt
     | Expression
     | For
     | ID
@@ -70,21 +95,9 @@ type NodeKind =
     | Mod
     | Div
 
-type SymbolType =
-    | Variable of string
-    | Function of string * string list  // Function with a return type and argument types
-    | Constant of string
-    | TypeDefinition of string
-    | Keyword of string
-
-type Symbol = {
-    Name: string               // Symbol name
-    SymbolKind: SymbolType     // Type of the symbol (Variable, Function, etc.)
-    Scope: string              // Scope (e.g., "global", "local")
-    Value: obj option          // Value if it’s a constant or initialized variable
-    LineNumber: int option     // Line number where it's defined (optional)
-}
-/// Represents a node in the abstract syntax tree (AST)
+/// <summary>
+/// Represents a node in the abstract syntax tree (AST).
+/// </summary>
 type ASTNode = {
     TokenType: NodeKind
     Value: string
@@ -92,7 +105,36 @@ type ASTNode = {
     Children: ASTNode list
 }
 
-/// Active pattern to simplify type identification
+/// <summary>
+/// A scope holds a name and an immutable map of symbols.
+/// </summary>
+type Scope<'T> = {
+    Name: string
+    Symbols: Map<string, 'T>
+}
+
+/// <summary>
+/// Represents how a parameter is passed to a function or procedure.
+/// </summary>
+type ParameterMechanismType =
+    | Value
+    | Reference
+
+/// <summary>
+/// Represents an entry in the symbol table.
+/// </summary>
+type Symbol = {
+    Name: string               // Symbol name.
+    SymbolKind: NodeKind       // Type of the symbol (Variable, Function, etc.).
+    Value: obj option          // Value if it’s a constant or initialized variable.
+    Category: CategoryType
+    Position: int * int        // Position in source (line, column).
+    ParameterMechanism: ParameterMechanismType option
+}
+
+/// <summary>
+/// Active pattern to simplify type identification based on SBParser types.
+/// </summary>
 let (|StringType|IntegerType|RealType|VoidType|) code =
     match code with
     | SBParser.String -> StringType
@@ -100,7 +142,9 @@ let (|StringType|IntegerType|RealType|VoidType|) code =
     | SBParser.Real -> RealType
     | _ -> VoidType
 
-/// Convert SBParser type to string
+/// <summary>
+/// Converts an SBParser type to its corresponding string representation.
+/// </summary>
 let identifyType code =
     match code with
     | StringType -> "string"
@@ -108,106 +152,93 @@ let identifyType code =
     | RealType -> "float"
     | VoidType -> "void"
 
-/// Returns variable name and type from annotated name
-let getTypeFromAnnotation (name: string) =
+/// <summary>
+/// Extracts the variable name and its type from an annotated name.
+/// </summary>
+let getTypeFromAnnotation (name: string) : string * _ =
     let len = name.Length - 1
     match name[len] with
     | '%' -> name.Substring(0, len), SBParser.Integer
     | '$' -> name.Substring(0, len), SBParser.String
     | _ -> name, SBParser.Real
 
-let rec foldTree (f: 'State -> ASTNode -> 'State) (state: 'State) (node: ASTNode) : 'State =
-    let newState = f state node
-    List.fold (foldTree f) newState node.Children
-
-/// Get the children of a context as an F# list of Antlr nodes
-let gatherChildren (context: IParseTree) =
+/// <summary>
+/// Gets the children of an IParseTree context as an F# list.
+/// </summary>
+let gatherChildren (context: IParseTree) : IParseTree list =
     [ for index in 0 .. context.ChildCount - 1 do yield context.GetChild(index) ]
 
-// Get the children of a context as an F# list of FS nodes
-// let gatherFSChildren (context: FSParseTree) =
-//     context.Children
-
-/// Map over an Antlr list with a mapping function
-let mapAntlrList (mappingFunction: IParseTree -> 'b) (inputList: Collections.Generic.IList<IParseTree>) =
+/// <summary>
+/// Maps over an Antlr list with a provided mapping function.
+/// </summary>
+let mapAntlrList (mappingFunction: IParseTree -> 'b) (inputList: Collections.Generic.IList<IParseTree>) : 'b list =
     [ for item in inputList do yield mappingFunction item ]
 
-/// Copy an Antlr list to an F# list non-destructively
-let copyAntlrList (parentNode: Collections.Generic.IList<IParseTree>) =
+/// <summary>
+/// Copies an Antlr list to an F# list non-destructively.
+/// </summary>
+let copyAntlrList (parentNode: Collections.Generic.IList<IParseTree>) : IParseTree list =
     mapAntlrList id parentNode
 
+/// <summary>
 /// Helper function to create an ASTNode.
-let createAstNode (tokenType: NodeKind) (value: string) (position: int * int) (children: ASTNode list)=
-    {
-        TokenType = tokenType
-        Value = value
-        Position = position
-        Children = children
-    }
+/// </summary>
+let createAstNode (tokenType: NodeKind) (value: string) (position: int * int) (children: ASTNode list) : ASTNode =
+    { TokenType = tokenType; Value = value; Position = position; Children = children }
 
-/// Pretty-print an AST node and all its descendants.
-/// `indent` is the current indentation level in spaces.
+/// <summary>
+/// Recursively pretty-prints an AST node and its descendants with indentation.
+/// </summary>
 let rec prettyPrintAst (node: ASTNode) (indent: int) : string =
-    // Generate indentation
     let padding = String.replicate indent " "
-
-    // Build a line for the current node
-    let currentLine =
-        sprintf "%s- %A (\"%s\", pos=%A)\n"
-            padding
-            node.TokenType
-            node.Value
-            node.Position
-
-    // Recursively pretty-print children, increasing the indentation
-    let childLines =
-        node.Children
-        |> List.map (fun child -> prettyPrintAst child (indent + 2))
-        |> String.concat ""
-
-    // Combine current line with all child lines
+    let currentLine = sprintf "%s- %A (\"%s\", pos=%A)\n" padding node.TokenType node.Value node.Position
+    let childLines = node.Children |> List.map (fun child -> prettyPrintAst child (indent + 2)) |> String.concat ""
     currentLine + childLines
 
-/// Entry point if you want a convenience function that starts at 0 indent
+/// <summary>
+/// Pretty-prints an AST starting from the root node.
+/// </summary>
 let prettyPrintAstRoot (root: ASTNode) : string =
     prettyPrintAst root 0
+
 ///////////////////////////////////////////////////////
 // Monads
 ///////////////////////////////////////////////////////
-// Define the State monad type: a function from state 's to a result 'a and a new state 's.
+
+/// <summary>
+/// Represents the State monad: a function from state 's to a result 'a and a new state 's.
+/// </summary>
 type State<'s, 'a> = 's -> 'a * 's
 
-// Define a computation expression builder for the State monad.
+/// <summary>
+/// Computation expression builder for the State monad.
+/// </summary>
 type StateBuilder() =
     member _.Bind(x: State<'s, 'a>, f: 'a -> State<'s, 'b>) : State<'s, 'b> =
         fun state ->
             let (result, newState) = x state
             f result newState
-    
     member _.Return(x: 'a) : State<'s, 'a> =
         fun state -> (x, state)
-    
     member _.ReturnFrom(x: State<'s, 'a>) : State<'s, 'a> = x
-    
     member _.Zero() : State<'s, unit> =
         fun state -> ((), state)
-    
     member _.Delay(f: unit -> State<'s, 'a>) : State<'s, 'a> = f()
-     member _.For(sequence: seq<'T>, body: 'T -> State<'S, unit>) : State<'S, unit> =
-            fun s ->
-                let mutable s' = s
-                for x in sequence do
-                    let (_, newState) = body x s'
-                    s' <- newState
-                ((), s')
-                
-// Instantiate the builder.
+    member _.For(sequence: seq<'T>, body: 'T -> State<'s, unit>) : State<'s, unit> =
+        fun s ->
+            let mutable s' = s
+            for x in sequence do
+                let (_, newState) = body x s'
+                s' <- newState
+            ((), s')
+
+/// Instantiate the State computation builder.
 let state = StateBuilder()
 
-// Helper function to get the current state.
+/// Helper function to get the current state.
 let get : State<'s, 's> = fun s -> (s, s)
 
-// Helper function to update (or "put") a new state.
+/// Helper function to update the state.
 let put newState : State<'s, unit> = fun _ -> ((), newState)
 /// Symbol Table builder
 
@@ -351,47 +382,48 @@ let rec printAST (indent: string) (node: ASTNode) =
   //   | Empty -> 
   //       { TokenType = Unknown; Content = ""; Position = (0, 0); Children = [] }  // Default empty ASTNode
 
-// Computation Expressions omitted by FSharPlus
+///////////////////////////////////////////////////////
+// Result Monad (Computation Expression)
+///////////////////////////////////////////////////////
 
-open FSharpPlus
-open FSharpPlus.Data
+/// <summary>
+/// Computation expression builder for Result<'T, 'E>.
+/// </summary>
+type ResultBuilder() =
+    member _.Return(x) : Result<'T, 'E> = Ok x
+    member _.ReturnFrom(m: Result<'T, 'E>) = m
+    member _.Bind(m: Result<'T, 'E>, f: 'T -> Result<'U, 'E>) : Result<'U, 'E> =
+        Result.bind f m
+    member _.Zero() : Result<unit, 'E> = Ok ()
+    member _.Combine(m: Result<'T, 'E>, f: unit -> Result<'U, 'E>) : Result<'U, 'E> =
+        match m with
+        | Ok _ -> f ()
+        | Error e -> Error e
+    member _.Delay(f: unit -> Result<'T, 'E>) = f
+    member _.Run(f: unit -> Result<'T, 'E>) = f ()
+    member _.TryWith(m: unit -> Result<'T, 'E>, handler: exn -> Result<'T, 'E>) =
+        try m () with e -> handler e
+    member _.TryFinally(m: unit -> Result<'T, 'E>, compensation: unit -> unit) =
+        try m () finally compensation ()
+    member _.Using(resource: #IDisposable, body: #IDisposable -> Result<'T, 'E>) =
+        try body resource finally resource.Dispose()
+    member _.While(condition: unit -> bool, body: unit -> Result<unit, 'E>) =
+        let rec loop () =
+            if condition () then
+                match body () with
+                | Ok () -> loop ()
+                | Error e -> Error e
+            else Ok ()
+        loop ()
+    member _.For(sequence: seq<'T>, body: 'T -> Result<unit, 'E>) =
+        let rec loop seq =
+            match Seq.tryHead seq with
+            | None -> Ok ()
+            | Some x ->
+                match body x with
+                | Ok () -> loop (Seq.tail seq)
+                | Error e -> Error e
+        loop sequence
 
-    /// Computation expression builder for Result<'T, 'E>
-    type ResultBuilder() =
-        member _.Return(x) : Result<'T, 'E> = Ok x
-        member _.ReturnFrom(m: Result<'T, 'E>) = m
-        member _.Bind(m: Result<'T, 'E>, f: 'T -> Result<'U, 'E>) : Result<'U, 'E> =
-            Result.bind f m
-        member _.Zero() : Result<unit, 'E> = Ok ()
-        member _.Combine(m: Result<'T, 'E>, f: unit -> Result<'U, 'E>) : Result<'U, 'E> =
-            match m with
-            | Ok _ -> f ()
-            | Error e -> Error e
-        member _.Delay(f: unit -> Result<'T, 'E>) = f
-        member _.Run(f: unit -> Result<'T, 'E>) = f ()
-        member _.TryWith(m: unit -> Result<'T, 'E>, handler: exn -> Result<'T, 'E>) =
-            try m () with e -> handler e
-        member _.TryFinally(m: unit -> Result<'T, 'E>, compensation: unit -> unit) =
-            try m () finally compensation ()
-        member _.Using(resource: #IDisposable, body: #IDisposable -> Result<'T, 'E>) =
-            try body resource finally resource.Dispose()
-        member _.While(condition: unit -> bool, body: unit -> Result<unit, 'E>) =
-            let rec loop () =
-                if condition () then
-                    match body () with
-                    | Ok () -> loop ()
-                    | Error e -> Error e
-                else Ok ()
-            loop ()
-        member _.For(sequence: seq<'T>, body: 'T -> Result<unit, 'E>) =
-            let rec loop seq =
-                match Seq.tryHead seq with
-                | None -> Ok ()
-                | Some x ->
-                    match body x with
-                    | Ok () -> loop (Seq.tail seq)
-                    | Error e -> Error e
-            loop sequence
-
-    /// Instantiate the builder
-    let result = ResultBuilder()
+/// Instantiate the Result computation builder.
+let result = ResultBuilder()

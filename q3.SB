@@ -1,3 +1,5 @@
+140 DIM a(10001)
+150 DIM b(10001)
 10 temp = b((c+e))
 100 CLS
 110 TURBO_repfil

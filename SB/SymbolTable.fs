@@ -11,7 +11,7 @@ type CategoryType =
     | Variable
     | Implicit
     | Local
-
+table = {FSharpList<SymbolTableManager.Scope<Utility.Symbol>>} Length = 1 Explore
 type ParameterPassingMethod =
     | Value
     | Reference

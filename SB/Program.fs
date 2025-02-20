@@ -65,7 +65,7 @@ open SemanticAnalyzer
         result {
             try
                 let primedSymbolTable = prePopulateSymbolTable astTree  // Populate the symbol table with keywords
-                let finalSymbolTable = populateSymbolTable astTree primedSymbolTable  // Walk the AST and add symbols 
+                let finalSymbolTable = addToTable Overwrite primedSymbolTable  astTree  // Walk the AST and add symbols 
                 return! Ok (astTree, finalSymbolTable)
             with ex ->
                 return! Error (ASTConstructionError ex.Message) 

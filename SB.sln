@@ -7,8 +7,6 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution 
 	ProjectSection(SolutionItems) = preProject
 		q3.SB = q3.SB
 		SBLib\SB.g4 = SBLib\SB.g4
-		SB\SymbolTable.fs = SB\SymbolTable.fs
-		SB\SymbolTableBuilder.fs = SB\SymbolTableBuilder.fs
 	EndProjectSection
 EndProject
 Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "SB", "SB\SB.fsproj", "{EA794B75-4328-4042-8D26-4E76B6B59706}"

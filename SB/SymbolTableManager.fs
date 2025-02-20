@@ -1,15 +1,12 @@
 ﻿module SymbolTableManager
 
+    open Utility
+    
     /// The mode used when adding a symbol.
     type SymbolAddMode =
         | Overwrite
         | Skip
 
-    /// A scope holds a name and an immutable map of symbols.
-    type Scope<'T> = {
-        Name: string
-        Symbols: Map<string, 'T>
-    }
 
     /// A symbol table is a stack (list) of scopes; the head is the innermost/current scope.
     type SymbolTable<'T> = Scope<'T> list
@@ -18,7 +15,7 @@
     let empty : SymbolTable<'T> = []
 
     /// Push a new scope (with the given name) onto the symbol table.
-    let pushScope (name: string) (table: SymbolTable<'T>) : SymbolTable<'T> =
+    let pushScope (name: string) (table: SymbolTable<Symbol>) : SymbolTable<Symbol> =
         { Name = name; Symbols = Map.empty } :: table
 
     /// Pop the current (innermost) scope from the symbol table.
@@ -28,27 +25,34 @@
         | [] -> None
         | _::rest -> Some rest
 
-    /// Add a symbol to the current scope.
-    /// - If the symbol already exists and mode is Overwrite, its value is updated.
-    /// - If it exists and mode is Skip, the table is left unchanged.
-    /// Returns None if there is no current scope.
+    /// Helper: update a given scope with a new symbol (or update an existing symbol)
+    /// and then rebuild the symbol table by prepending the updated scope to the rest.
+    let private updateScope (mode: SymbolAddMode) (key: string) (value: 'T) (scope: Scope<'T>) (rest: SymbolTable<'T>) : SymbolTable<'T> =
+        let newScope =
+            if Map.containsKey key scope.Symbols then
+                match mode with
+                | Overwrite -> { scope with Symbols = Map.add key value scope.Symbols }
+                | Skip -> scope
+            else
+                { scope with Symbols = Map.add key value scope.Symbols }
+        newScope :: rest
+
+    /// Add a symbol to the current (innermost) scope.
     let addSymbol (mode: SymbolAddMode) (key: string) (value: 'T) (table: SymbolTable<'T>) : SymbolTable<'T> option =
         match table with
-        | [] -> None  // No current scope available.
+        | [] -> None
         | currentScope :: rest ->
-            let exists = Map.containsKey key currentScope.Symbols
-            match exists, mode with
-            | true, Overwrite ->
-                let newSymbols = Map.add key value currentScope.Symbols
-                let newScope = { currentScope with Symbols = newSymbols }
-                Some (newScope :: rest)
-            | true, Skip ->
-                // Do nothing; return the original table.
-                Some table
-            | false, _ ->
-                let newSymbols = Map.add key value currentScope.Symbols
-                let newScope = { currentScope with Symbols = newSymbols }
-                Some (newScope :: rest)
+            Some (updateScope mode key value currentScope rest)
+
+    /// Add a symbol to the global (outermost) scope.
+    let addSymbolToGlobal (mode: SymbolAddMode) (key: string) (value: 'T) (table: SymbolTable<'T>) : SymbolTable<'T> option =
+        match table with
+        | [] -> None
+        | lst ->
+            // Global scope is the last element of the list.
+            let globalScope: Scope<'T> = List.last lst
+            let rest: SymbolTable<'T> = List.take (List.length lst - 1) lst
+            Some (updateScope mode key value globalScope rest)
 
     /// Lookup a symbol by key in the stacked scopes.
     /// The search starts from the innermost scope and proceeds outward.
