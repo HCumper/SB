@@ -11,7 +11,7 @@ type CategoryType =
     | Variable
     | Implicit
     | Local
-table = {FSharpList<SymbolTableManager.Scope<Utility.Symbol>>} Length = 1 Explore
+//table = {FSharpList<SymbolTableManager.Scope<Utility.Symbol>>} Length = 1 Explore
 type ParameterPassingMethod =
     | Value
     | Reference
@@ -27,13 +27,13 @@ type Symbol =
       Type: int
       ParameterMechanism: ParameterPassingMethod }
 
-type State =
-    { symTab: Map<Key, Symbol>
-      references: string Set
-      errorList: string list
-      currentScope: string
-      outputProcFn: string
-      outputGlobal: string }
+// type State =
+//     { symTab: Map<Key, Symbol>
+//       references: string Set
+//       errorList: string list
+//       currentScope: string
+//       outputProcFn: string
+//       outputGlobal: string }
 
 exception MyError of string
 

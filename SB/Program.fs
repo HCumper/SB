@@ -61,11 +61,11 @@ open SemanticAnalyzer
                 return! Error (ASTConstructionError ex.Message) 
         }
 
-    let semanticAnalysis astTree : Result<(ASTNode * SymbolTable<Symbol>), ProcessingError> = 
+    let semanticAnalysis astTree : Result<(ASTNode * SymbolTable), ProcessingError> = 
         result {
             try
                 let primedSymbolTable = prePopulateSymbolTable astTree  // Populate the symbol table with keywords
-                let finalSymbolTable = addToTable Overwrite primedSymbolTable  astTree  // Walk the AST and add symbols 
+                let finalSymbolTable = addToTable Overwrite primedSymbolTable  astTree globalScope  // Walk the AST and add symbols 
                 return! Ok (astTree, finalSymbolTable)
             with ex ->
                 return! Error (ASTConstructionError ex.Message) 

@@ -110,7 +110,7 @@ type ASTNode = {
 /// </summary>
 type Scope<'T> = {
     Name: string
-    Symbols: Map<string, 'T>
+    Symbols: Map<string, 'T>  // symbol name to symbol
 }
 
 /// <summary>
@@ -129,12 +129,14 @@ type CommonSymbol = {
 }
 
 /// Define a record type for function parameters
+/// Does not contain parameters
 type ParameterSymbol = {
     Common: CommonSymbol
     ParameterMechanism: ParameterMechanismType
 }
 
 /// Define a record type for arrays
+/// Containes dimensions
 type ArraySymbol = {
     Common: CommonSymbol
     Dimensions: int list
@@ -146,6 +148,17 @@ type Symbol =
     | Parameter of ParameterSymbol
     | Array of ArraySymbol
 //  | value?    
+
+/// Functions
+
+let globalScope = "~Global"
+
+/// Function to extract the symbol name from a symbol
+let getSymbolName (symbol: Symbol) : string =
+    match symbol with
+    | Common sym -> sym.Name
+    | Parameter param -> param.Common.Name
+    | Array arr -> arr.Common.Name
 
 /// <summary>
 /// Active pattern to simplify type identification based on SBParser types.

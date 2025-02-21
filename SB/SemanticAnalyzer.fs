@@ -3,6 +3,7 @@
 open Utility
 open SymbolTableManager
 
+/// List of keywords used to pre-populate the symbol table.
 let keywords =
     [ "DEFine PROCedure"
       "DEFine FuNction"
@@ -119,6 +120,9 @@ let keywords =
       "TIME"
       "DATE"
       "SHELL" ]
+    
+/// Create each kind of symbol.
+/// Creates a simple (base) symbol.
 
 /// Helper to create the shared CommonSymbol record.
 let private baseSymbol
@@ -131,9 +135,8 @@ let private baseSymbol
       SymbolKind = symbolKind
       Category = category
       Position = position }
-
+    
 /// Create each kind of symbol.
-/// Creates a simple (base) symbol.
 let createCommonSymbol (name: string) (symbolKind: NodeKind) (category: CategoryType) (position: int * int) : Symbol =
     Common(baseSymbol name symbolKind category position)
 
@@ -160,75 +163,63 @@ let createArraySymbol
     Array
         { Common = baseSymbol name symbolKind category position
           Dimensions = dimensions }
-
-let prePopulateSymbolTable (astTree: ASTNode) : SymbolTable<Symbol> =
-    let emptyTable: SymbolTable<Symbol> = SymbolTable.Empty
-    let tableWithGlobalScope: SymbolTable<Symbol> = pushScope "~Global" emptyTable
-
-    // Fold over the list of keywords (which is a string list)
+        
+/// Pre-populate the symbol table with the list of keywords.
+/// The global scope is used (via the constant 'globalScope').
+let prePopulateSymbolTable (astTree: ASTNode) : SymbolTable =
+    let emptyTable : SymbolTable = Map.empty
+    let tableWithGlobalScope : SymbolTable = pushScopeToTable globalScope emptyTable
     List.fold
-        (fun (table: SymbolTable<Symbol>) (keyWord: string) ->
-            // Call createSymbol with the key (string) and then the symbol record.
+        (fun (table: SymbolTable) (keyWord: string) ->
+            // Create a symbol for the keyword and add it to the global scope.
             let newSymbol = createCommonSymbol keyWord Proc CategoryType.Procedure (0, 0)
-            addSymbolToGlobalScope Overwrite keyWord newSymbol table
+            addSymbolToNamedScope Overwrite newSymbol globalScope table
         )
         tableWithGlobalScope
         keywords
 
-
-(* There are 7 ways to create a new symbol
-    Dim
-    Local
-    Implicit
-    assignment to it
-    use as control variable in for loop
-    
-    all but assignment take variable length parameter lists
-    
-    and 2 ways to create a new scope
-    Define Procedure
-    Define Function
-*)
-
+/// Recursively update the symbol table based on an AST.
+/// The function takes the current table, an AST node, and the current scope name,
+/// then updates the table according to the node's TokenType.
 let rec addToTable 
     (mode: SymbolAddMode) 
-    (table: SymbolTable<Symbol>) // all scopes
-    (node: ASTNode) // to track position in AST
-    : SymbolTable<Symbol> =
+    (table: SymbolTable)   // all scopes
+    (node: ASTNode)        // current AST node
+    (incomingScopeName: string)    // current scope name
+    : SymbolTable =
     
     // Update the symbol table for the current node.
-    let updatedTable: SymbolTable<Symbol> =
+    let (updatedTable, outgoingScopeName) : (SymbolTable * string) =
         match node.TokenType with
         | Procedure
         | Function ->
-            // Push a new scope using the first child's value which is the name
-            pushScope node.Children.Head.Value table
-
-        | Dim ->
-            // Ensure node.Children has elements before calling List.tail.
-            if List.isEmpty node.Children then table
+            // If there is at least one child, push a new scope using the first child's value.
+            if node.Children <> [] then
+                (pushScopeToTable node.Children.Head.Value table, node.Children.Head.Value)
             else
-                // Convert array sizes from AST nodes to integer values.
-                let arraySizes: int list = 
+                (table, incomingScopeName)
+        | Dim ->
+            if List.isEmpty node.Children then 
+                (table, incomingScopeName)
+            else
+                // Convert array sizes from AST nodes (children after the first) to integer values.
+                let arraySizes : int list = 
                     node.Children.Tail
                     |> List.choose (fun n ->
                         try Some (int n.Value)
                         with _ -> None)
-                
-                // Create an array symbol (assuming createArraySymbol returns an updated table).
-                // The function 'createArraySymbol' is assumed to take:
-                // (name: string) (tokenType: NodeKind) (category: CategoryType) (position: int * int)
-                // (dimensions: int list) (table: SymbolTable<Symbol>) : SymbolTable<Symbol>
-                let newSymbol = createArraySymbol node.Children.Head.Value Dim CategoryType.Variable (0, 0) arraySizes
-                addSymbolToCurrentScope Overwrite node.Value newSymbol table 
-
-        | _ -> table  // Return unchanged table for other cases.
-        
-    // Process all child nodes recursively, folding the table.
+                // Create an array symbol.
+                let newSymbol : Symbol =
+                    createArraySymbol node.Children.Head.Value Dim CategoryType.Variable (0, 0) arraySizes
+                // Update the scope (identified by incomingScopeName) with the new symbol.
+                let newTable : SymbolTable =
+                    addSymbolToNamedScope Overwrite newSymbol incomingScopeName table
+                (newTable, incomingScopeName)
+        | _ ->
+            (table, incomingScopeName)
+    
+    // Recursively process all child nodes, folding the updated table.
     node.Children
-    |> List.fold (fun (acc: SymbolTable<Symbol>) (child: ASTNode) ->
-            // Here we choose Overwrite mode for child symbols.
-            addToTable Overwrite acc child)
+    |> List.fold (fun (acc: SymbolTable) (child: ASTNode) ->
+            addToTable Overwrite acc child outgoingScopeName)
        updatedTable
-       
-
