@@ -10,7 +10,7 @@ open Utility
 open ParseTreeVisitor
 open SymbolTableManager
 open SemanticAnalyzer
-open MyState
+open Monads.MyState
 
 /// Configuration for the compiler.
 type Configuration = {
@@ -29,8 +29,8 @@ type ProcessingError =
     | InvalidArguments of string
 
 let parseArguments = function
-    | [| input; output |] -> Ok { InputFile = input; OutputFile = output; Verbose = false }
-    | args -> Error (InvalidArguments $"Expected 2 arguments but got %d{args.Length}")
+    | [| input; output |] -> {InputFile = input; OutputFile = output; Verbose = false}
+    | args -> {InputFile = "input"; OutputFile = "output"; Verbose = false}
 
 let private createLexer (input: AntlrInputStream) =
     let factory = CommonTokenFactory() :> ITokenFactory
@@ -66,7 +66,7 @@ let semanticAnalysisState (astTree: ASTNode) : MyState<SymbolTable, ASTNode> = s
     // Retrieve current symbol table.
     let! oldTable = getState
     // Pre-populate with keywords.
-    let table = prePopulateSymbolTable astTree oldTable
+    let table = prePopulateSymbolTable oldTable
     do! putState table
     // Retrieve updated table.
     let! table = getState
