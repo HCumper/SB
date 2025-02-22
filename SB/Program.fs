@@ -6,11 +6,84 @@ open Antlr4.Runtime.Tree
 open Antlr4.Runtime
 open FSharpPlus
 open FSharpPlus.Data
+//open Monads
 open Utility
 open ParseTreeVisitor
 open SymbolTableManager
 open SemanticAnalyzer
-open Monads.MyState
+//open Monads.MyState
+//open StateResult
+
+
+
+
+
+
+/// A function: oldState -> (newState, Result<Value, Error>)
+//type StateResult<'S,'T,'E> = 'S -> (Result<'T,'E> * 'S)
+type StateResult<'S, 'T, 'E> = 'S -> 'S * Result<'T, 'E>
+
+// let run (st: StateResult<'S, 'T, 'Error>) (init: 'S) : (Result<'T, 'Error> * 'S) =
+//         st init
+let run (comp: StateResult<'S,'T,'E>) (init: 'S) : ('S * Result<'T,'E>) =
+    comp init
+
+/// Our builder to support "monadic" syntax
+type StateResultBuilder<'S, 'E>() =
+
+    member _.Return(x : 'T) : StateResult<'S,'T,'E> =
+        fun state -> (state, Ok x)
+
+    member _.ReturnFrom(m : StateResult<'S,'T,'E>) : StateResult<'S,'T,'E> =
+        m
+
+    /// Bind for StateResult<'S,'T1,'E>
+    member _.Bind
+        (m : StateResult<'S,'T1,'E>,
+         f : 'T1 -> StateResult<'S,'T2,'E>) : StateResult<'S,'T2,'E> =
+        fun oldState ->
+            let (newState, result) = m oldState
+            match result with
+            | Error err -> (newState, Error err)    // short-circuits
+            | Ok value  -> f value newState
+
+    /// Overload for binding a pure Result<'T,'E> into StateResult
+    member this.Bind
+        (r : Result<'T,'E>,
+         f : 'T -> StateResult<'S,'U,'E>) : StateResult<'S,'U,'E> =
+        fun st ->
+            match r with
+            | Error e -> (st, Error e)
+            | Ok v    -> (this.Bind (this.Return v, f)) st
+
+    member _.Zero() : StateResult<'S, unit, 'E> =
+        fun st -> (st, Ok ())
+
+    /// Utility: get current state
+    member _.GetState() : StateResult<'S,'S,'E> =
+        fun st -> (st, Ok st)
+
+    /// Utility: set current state
+    member _.PutState(newSt : 'S) : StateResult<'S, unit, 'E> =
+        fun _ -> (newSt, Ok ())
+
+/// Create a single instance of the builder
+let stateResult<'S,'E> = StateResultBuilder<'S,'E>()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 /// Configuration for the compiler.
 type Configuration = {
@@ -60,21 +133,21 @@ let processToAST (parseTree, inputStream) : ASTNode =
     Console.WriteLine(prettyPrintAst (List.head ast) 4)
     List.head ast
 
-/// A monadic semantic analysis using the state monad.
+/// A monadic semantic analysis using the stateResult monad.
 /// It pre-populates the symbol table and then walks the AST to add user-defined symbols.
-let semanticAnalysisState (astTree: ASTNode) : MyState<SymbolTable, ASTNode> = state {
-    // Retrieve current symbol table.
-    let! oldTable = getState
-    // Pre-populate with keywords.
-    let table = prePopulateSymbolTable oldTable
-    do! putState table
-    // Retrieve updated table.
-    let! table = getState
-    // Walk the AST and add user symbols.
-    let table = addToTable Overwrite table astTree globalScope
-    do! putState table
-    // Return the AST (unchanged).
-    return astTree
+/// We want to produce 'SymbolTable' on success and short-circuit on error:
+let semanticAnalysisState 
+    (astTree: ASTNode) 
+    : StateResult<SymbolTable, SymbolTable, string> // for instance
+    = stateResult {
+
+    let! emptyTable = stateResult.GetState()      // emptyTable : SymbolTable
+    let tableWithKeywords = prePopulateSymbolTable emptyTable
+    let fullyPopulateTable = 
+        addToTable Overwrite tableWithKeywords astTree globalScope
+    do! stateResult.PutState fullyPopulateTable
+    // Now 'return' expects a 'SymbolTable', which the monad wraps as 'Ok SymbolTable'
+    return fullyPopulateTable
 }
 
 /// Generates output (e.g. writing the AST to a file).
@@ -95,8 +168,12 @@ let logDiagnostics (config: Configuration) (parseTree, _) (ast: ASTNode) =
         Console.WriteLine("\nTransformed AST:")
 
 /// Runs semantic analysis using the state monad, starting from an initial symbol table.
-let runSemanticAnalysis (ast: ASTNode) (initialTable: SymbolTable) : ASTNode * SymbolTable =
-    run (semanticAnalysisState ast) initialTable
+// let runSemanticAnalysis (ast: ASTNode) (initialTable: SymbolTable) : ASTNode * SymbolTable =
+//     run (semanticAnalysisState ast) initialTable
+    
+let runSemanticAnalysis (ast: ASTNode) (initialTable: SymbolTable)  =
+    let (finalState, result) = run (semanticAnalysisState ast) initialTable
+    (result, finalState)
 
 [<EntryPoint>]
 let main argv =
@@ -104,9 +181,19 @@ let main argv =
         let config = parseArguments argv
         let parseTree = parseFile config
         let ast = processToAST parseTree
-        let (finalAst, finalTable) = runSemanticAnalysis ast Map.empty
-        logDiagnostics config parseTree ast
-        generateOutput config ast
+        let emptyTable = emptySymbolTable
+        let (result, finalTable) = runSemanticAnalysis ast emptyTable
+
+        // match result with
+        // | Ok finalAst ->
+        //     logDiagnostics config parseTree ast
+        //     generateOutput config finalAst
+        //     0
+        // | Error err ->
+        //     Console.Error.WriteLine(sprintf "Semantic analysis failed: %A" err)
+        //     1
+        // logDiagnostics config parseTree ast
+        // generateOutput config ast
         0
     with ex ->
         Console.Error.WriteLine(ex.Message)

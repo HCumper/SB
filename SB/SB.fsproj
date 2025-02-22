@@ -9,7 +9,7 @@
         <Compile Include="Utility.fs" />
         <Compile Include="SymbolTableManager.fs" />
         <Compile Include="ParseTreeVisitor.fs" />
-        <Compile Include="MyState.fs" />
+        <Compile Include="Monads.fs" />
         <Compile Include="SemanticAnalyzer.fs" />
         <Compile Include="Program.fs" />
     </ItemGroup>

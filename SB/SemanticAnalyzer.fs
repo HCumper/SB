@@ -168,7 +168,7 @@ let createArraySymbol
         
 /// Pre-populate the symbol table with the list of keywords.
 /// The global scope is used (via the constant 'globalScope').
-let prePopulateSymbolTable (astTree: ASTNode) (oldTable: SymbolTable): SymbolTable =
+let prePopulateSymbolTable (oldTable: SymbolTable): SymbolTable =
     let tableWithGlobalScope : SymbolTable = pushScopeToTable globalScope oldTable
     List.fold
         (fun (table: SymbolTable) (keyWord: string) ->
