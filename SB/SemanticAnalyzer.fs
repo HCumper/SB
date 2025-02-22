@@ -130,15 +130,17 @@ let private baseSymbol
     (symbolKind: NodeKind)
     (category: CategoryType)
     (position: int * int)
+    (evaluatedType: SBTypes)
     : CommonSymbol =
     { Name = name
       SymbolKind = symbolKind
+      EvaluatedType = evaluatedType
       Category = category
       Position = position }
     
 /// Create each kind of symbol.
 let createCommonSymbol (name: string) (symbolKind: NodeKind) (category: CategoryType) (position: int * int) : Symbol =
-    Common(baseSymbol name symbolKind category position)
+    Common(baseSymbol name symbolKind category position Unknown)
 
 /// Creates a parameter symbol with a specified parameter passing mechanism.
 let createParameterSymbol
@@ -149,7 +151,7 @@ let createParameterSymbol
     (parameterMechanism: ParameterMechanismType)
     : Symbol =
     Parameter
-        { Common = baseSymbol name symbolKind category position
+        { Common = baseSymbol name symbolKind category position Unknown
           ParameterMechanism = parameterMechanism }
 
 /// Creates an array symbol with a list of dimensions.
@@ -161,14 +163,13 @@ let createArraySymbol
     (dimensions: int list)
     : Symbol =
     Array
-        { Common = baseSymbol name symbolKind category position
+        { Common = baseSymbol name symbolKind category position Unknown
           Dimensions = dimensions }
         
 /// Pre-populate the symbol table with the list of keywords.
 /// The global scope is used (via the constant 'globalScope').
-let prePopulateSymbolTable (astTree: ASTNode) : SymbolTable =
-    let emptyTable : SymbolTable = Map.empty
-    let tableWithGlobalScope : SymbolTable = pushScopeToTable globalScope emptyTable
+let prePopulateSymbolTable (astTree: ASTNode) (oldTable: SymbolTable): SymbolTable =
+    let tableWithGlobalScope : SymbolTable = pushScopeToTable globalScope oldTable
     List.fold
         (fun (table: SymbolTable) (keyWord: string) ->
             // Create a symbol for the keyword and add it to the global scope.
@@ -210,11 +211,17 @@ let rec addToTable
                         with _ -> None)
                 // Create an array symbol.
                 let newSymbol : Symbol =
-                    createArraySymbol node.Children.Head.Value Dim CategoryType.Variable (0, 0) arraySizes
+                    createArraySymbol node.Children.Head.Value Dim CategoryType.Variable node.Position arraySizes
                 // Update the scope (identified by incomingScopeName) with the new symbol.
                 let newTable : SymbolTable =
                     addSymbolToNamedScope Overwrite newSymbol incomingScopeName table
                 (newTable, incomingScopeName)
+        | ID ->
+            let newSymbol : Symbol =
+                createCommonSymbol node.Value ID CategoryType.Variable node.Position
+            let newTable : SymbolTable =
+                addSymbolToNamedScope Overwrite newSymbol incomingScopeName table
+            (newTable, incomingScopeName)
         | _ ->
             (table, incomingScopeName)
     

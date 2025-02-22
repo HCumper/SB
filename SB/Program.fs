@@ -2,120 +2,112 @@
 
 open System
 open System.IO
+open Antlr4.Runtime.Tree
 open Antlr4.Runtime
 open FSharpPlus
-open FSharpPlus.Control
+open FSharpPlus.Data
 open Utility
 open ParseTreeVisitor
-open Antlr4.Runtime.Tree
-open System.IO
-open Antlr4.Runtime
-open Utility
 open SymbolTableManager
 open SemanticAnalyzer
+open MyState
 
-    type Configuration = {
-        InputFile: string
-        OutputFile: string
-        Verbose: bool
-    }
+/// Configuration for the compiler.
+type Configuration = {
+    InputFile: string
+    OutputFile: string
+    Verbose: bool
+}
 
-    type ProcessingError =
-        | FileNotFound of string
-        | ParseError of string
-        | ASTConstructionError of string
-        | SymbolTablePopulationError of string
-        | IOError of string
-        | InvalidArguments of string
+// Not currently used
+type ProcessingError =
+    | FileNotFound of string
+    | ParseError of string
+    | ASTConstructionError of string
+    | SymbolTablePopulationError of string
+    | IOError of string
+    | InvalidArguments of string
 
-    let parseArguments = function
-        | [| input; output |] -> Ok { InputFile = input; OutputFile = output; Verbose = false }
-        | args -> Error (InvalidArguments $"Expected 2 arguments but got %d{args.Length}")
+let parseArguments = function
+    | [| input; output |] -> Ok { InputFile = input; OutputFile = output; Verbose = false }
+    | args -> Error (InvalidArguments $"Expected 2 arguments but got %d{args.Length}")
 
-    let private createLexer (input: AntlrInputStream) =
-        let factory = CommonTokenFactory() :> ITokenFactory
-        SBLexer(input, TokenFactory = factory)
+let private createLexer (input: AntlrInputStream) =
+    let factory = CommonTokenFactory() :> ITokenFactory
+    SBLexer(input, TokenFactory = factory)
 
-    let parseFile config = result {
-        try
-            use reader = File.OpenText(config.InputFile)
-            let inputStream = AntlrInputStream(reader)
-            let lexer = createLexer inputStream
-            let tokenStream = CommonTokenStream(lexer)
-            let parser = SBParser(tokenStream)
-            return (parser.program(), inputStream)
-        with
-        | :? FileNotFoundException -> return! Error (FileNotFound config.InputFile)
-        | ex -> return! Error (ParseError ex.Message) }
+/// Parses the file specified in the configuration.
+/// Returns a tuple of (parse tree, input stream).
+let parseFile (config: Configuration) : (IParseTree * AntlrInputStream) =
+    try
+        use reader = File.OpenText(config.InputFile)
+        let inputStream = AntlrInputStream(reader)
+        let lexer = createLexer inputStream
+        let tokenStream = CommonTokenStream(lexer)
+        let parser = SBParser(tokenStream)
+        (parser.program(), inputStream)
+    with
+    | :? FileNotFoundException -> failwith (sprintf "FileNotFound: %s" config.InputFile)
+    | ex -> failwith (sprintf "ParseError: %s" ex.Message)
 
-    let processToAST (parseTree, inputStream) : Result<ASTNode, ProcessingError> = 
-        result {
-            try
-                let convertTreeToAst (parseTree: IParseTree) : ASTNode list =
-                    let visitor = ASTBuildingVisitor()
-                    parseTree.Accept(visitor)  // Start the visiting process
-                let ast = convertTreeToAst parseTree
-                prettyPrintAst (List.head ast) 4 |> Console.WriteLine
-                return! Ok (head ast)
-            with ex ->
-                return! Error (ASTConstructionError ex.Message) 
-        }
+/// Processes the parse tree to build an AST.
+/// Prints the initial AST and returns its root.
+let processToAST (parseTree, inputStream) : ASTNode =
+    let convertTreeToAst (parseTree: IParseTree) : ASTNode list =
+        let visitor = ASTBuildingVisitor()
+        parseTree.Accept(visitor)  // Start visiting
+    let ast = convertTreeToAst parseTree
+    Console.WriteLine(prettyPrintAst (List.head ast) 4)
+    List.head ast
 
-    let semanticAnalysis astTree : Result<(ASTNode * SymbolTable), ProcessingError> = 
-        result {
-            try
-                let primedSymbolTable = prePopulateSymbolTable astTree  // Populate the symbol table with keywords
-                let finalSymbolTable = addToTable Overwrite primedSymbolTable  astTree globalScope  // Walk the AST and add symbols 
-                return! Ok (astTree, finalSymbolTable)
-            with ex ->
-                return! Error (ASTConstructionError ex.Message) 
-        }
+/// A monadic semantic analysis using the state monad.
+/// It pre-populates the symbol table and then walks the AST to add user-defined symbols.
+let semanticAnalysisState (astTree: ASTNode) : MyState<SymbolTable, ASTNode> = state {
+    // Retrieve current symbol table.
+    let! oldTable = getState
+    // Pre-populate with keywords.
+    let table = prePopulateSymbolTable astTree oldTable
+    do! putState table
+    // Retrieve updated table.
+    let! table = getState
+    // Walk the AST and add user symbols.
+    let table = addToTable Overwrite table astTree globalScope
+    do! putState table
+    // Return the AST (unchanged).
+    return astTree
+}
 
-    let generateOutput config ast = result {
-        try
-            File.Delete config.OutputFile
-            use writer = new StreamWriter(config.OutputFile)
-            // Actual generation would go here
-          //  printAST "  " ast |> writer.WriteLine
-            return ()
-        with ex ->
-            return! Error (IOError ex.Message) }
+/// Generates output (e.g. writing the AST to a file).
+let generateOutput (config: Configuration) (ast: ASTNode) =
+    File.Delete config.OutputFile
+    use writer = new StreamWriter(config.OutputFile)
+    // For example, write the pretty-printed AST.
+    writer.WriteLine(prettyPrintAst ast 0)
+    ()
 
-    let logDiagnostics config (parseTree, _) ast =
-        if config.Verbose then
-            Console.WriteLine("ANTLR Parse Tree:")
-            Console.WriteLine(parseTree.ToString())
-            Console.WriteLine("\nInitial AST:")
-            printAST "  " ast |> Console.WriteLine
-            Console.WriteLine("\nTransformed AST:")
-//            transformedTree ast |> printAST "  " |> Console.WriteLine
+/// Logs diagnostic information if verbose output is enabled.
+let logDiagnostics (config: Configuration) (parseTree, _) (ast: ASTNode) =
+    if config.Verbose then
+        Console.WriteLine("ANTLR Parse Tree:")
+        Console.WriteLine(parseTree.ToString())
+        Console.WriteLine("\nInitial AST:")
+        printAST "  " ast |> Console.WriteLine
+        Console.WriteLine("\nTransformed AST:")
+
+/// Runs semantic analysis using the state monad, starting from an initial symbol table.
+let runSemanticAnalysis (ast: ASTNode) (initialTable: SymbolTable) : ASTNode * SymbolTable =
+    run (semanticAnalysisState ast) initialTable
 
 [<EntryPoint>]
 let main argv =
-    let handleError = function
-        | InvalidArguments msg ->
-            Console.Error.WriteLine $"Argument error: %s{msg}"
-            1
-        | FileNotFound path ->
-            Console.Error.WriteLine $"File not found: %s{path}"
-            2
-        | ParseError msg ->
-            Console.Error.WriteLine $"Parse error: %s{msg}"
-            3
-        | ASTConstructionError msg ->
-            Console.Error.WriteLine $"AST construction failed: %s{msg}"
-            4
-        | IOError msg ->
-            Console.Error.WriteLine $"I/O error: %s{msg}"
-            5
-
-    result {
-        let! config = parseArguments argv
-        let! parseTree = parseFile config
-        let! ast = processToAST parseTree
-        let! semanticAnalysisResult = semanticAnalysis ast
+    try
+        let config = parseArguments argv
+        let parseTree = parseFile config
+        let ast = processToAST parseTree
+        let (finalAst, finalTable) = runSemanticAnalysis ast Map.empty
         logDiagnostics config parseTree ast
-        do! generateOutput config ast
-        return 0
-    }
-    |> Result.either id handleError     
+        generateOutput config ast
+        0
+    with ex ->
+        Console.Error.WriteLine(ex.Message)
+        1

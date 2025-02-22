@@ -120,10 +120,17 @@ type ParameterMechanismType =
     | Value
     | Reference
 
+type SBTypes =
+    | String
+    | Integer
+    | Real
+    | Unknown
+    
 /// Fields common to all symbols
 type CommonSymbol = {
     Name: string
     SymbolKind: NodeKind
+    EvaluatedType: SBTypes
     Category: CategoryType
     Position: int * int
 }
@@ -223,12 +230,10 @@ let rec prettyPrintAst (node: ASTNode) (indent: int) : string =
     let childLines = node.Children |> List.map (fun child -> prettyPrintAst child (indent + 2)) |> String.concat ""
     currentLine + childLines
 
-/// <summary>
-/// Pretty-prints an AST starting from the root node.
-/// </summary>
-let prettyPrintAstRoot (root: ASTNode) : string =
-    prettyPrintAst root 0
-
+let rec printAST (indent: string) (node: ASTNode) =
+    printfn $"%s{indent}{node.TokenType}: \"%s{node.Value}\""
+    node.Children |> List.iter (printAST (indent + "  "))
+        
 ///////////////////////////////////////////////////////
 // Monads
 ///////////////////////////////////////////////////////
@@ -392,24 +397,6 @@ let rec replacePattern (pattern: ASTPattern) (replacementTemplate: ASTNode) (nod
     else
         { node with Children = List.map (replacePattern pattern replacementTemplate) node.Children }
 
-let rec printAST (indent: string) (node: ASTNode) =
-    printfn $"%s{indent}{node.TokenType}: \"%s{node.Value}\""
-    node.Children |> List.iter (printAST (indent + "  "))
-        
-/// Intermediate union type to represent partial results when translating parse-tree nodes.
-// type SubTree =
-//     | AstNode of ASTNode
-//     | Children of ASTNode list
-//     | Empty
-    
-  // let subTreeToASTNode (subTree: SubTree) : ASTNode =
-  //   match subTree with
-  //   | AstNode ast -> ast  // Directly return ASTNode
-  //   | Children children -> 
-  //       { TokenType = Unknown; Content = ""; Position = (0, 0); Children = children }  // Create a new ASTNode with children
-  //   | Empty -> 
-  //       { TokenType = Unknown; Content = ""; Position = (0, 0); Children = [] }  // Default empty ASTNode
-
 ///////////////////////////////////////////////////////
 // Result Monad (Computation Expression)
 ///////////////////////////////////////////////////////
@@ -455,3 +442,4 @@ type ResultBuilder() =
 
 /// Instantiate the Result computation builder.
 let result = ResultBuilder()
+
