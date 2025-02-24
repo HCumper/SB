@@ -8,15 +8,6 @@ type SymbolAddMode =
     | Overwrite
     | Skip
 
-/// A symbol table is a map of scopes, i.e. a map of maps.
-/// Since SB does not have blocks, all functions and procedures are global,
-/// so the symbol table has only a root and single-level branches.
-/// The global scope is identified by the name stored in a constant.
-type SymbolTable = Map<string, Scope<Symbol>>
-
-/// Global scope constant.
-let globalScope = "~Global"
-
 /// Get the name from a symbol.
 let getNameFromSymbol (symbol: Symbol) : string =
     match symbol with

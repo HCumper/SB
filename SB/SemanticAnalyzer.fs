@@ -2,6 +2,8 @@
 
 open Utility
 open SymbolTableManager
+open Monads.State
+open FSharpPlus.Data
 
 /// List of keywords used to pre-populate the symbol table.
 let keywords =
@@ -120,9 +122,6 @@ let keywords =
       "TIME"
       "DATE"
       "SHELL" ]
-    
-/// Create each kind of symbol.
-/// Creates a simple (base) symbol.
 
 /// Helper to create the shared CommonSymbol record.
 let private baseSymbol
@@ -137,10 +136,10 @@ let private baseSymbol
       EvaluatedType = evaluatedType
       Category = category
       Position = position }
-    
-/// Create each kind of symbol.
+
+/// Create a simple (base) symbol.
 let createCommonSymbol (name: string) (symbolKind: NodeKind) (category: CategoryType) (position: int * int) : Symbol =
-    Common(baseSymbol name symbolKind category position Unknown)
+    Common (baseSymbol name symbolKind category position Unknown)
 
 /// Creates a parameter symbol with a specified parameter passing mechanism.
 let createParameterSymbol
@@ -150,9 +149,8 @@ let createParameterSymbol
     (position: int * int)
     (parameterMechanism: ParameterMechanismType)
     : Symbol =
-    Parameter
-        { Common = baseSymbol name symbolKind category position Unknown
-          ParameterMechanism = parameterMechanism }
+    Parameter { Common = baseSymbol name symbolKind category position Unknown
+                ParameterMechanism = parameterMechanism }
 
 /// Creates an array symbol with a list of dimensions.
 let createArraySymbol
@@ -162,71 +160,82 @@ let createArraySymbol
     (position: int * int)
     (dimensions: int list)
     : Symbol =
-    Array
-        { Common = baseSymbol name symbolKind category position Unknown
-          Dimensions = dimensions }
-        
-/// Pre-populate the symbol table with the list of keywords.
-/// The global scope is used (via the constant 'globalScope').
-let prePopulateSymbolTable (oldTable: SymbolTable): SymbolTable =
-    let tableWithGlobalScope : SymbolTable = pushScopeToTable globalScope oldTable
-    List.fold
-        (fun (table: SymbolTable) (keyWord: string) ->
-            // Create a symbol for the keyword and add it to the global scope.
-            let newSymbol = createCommonSymbol keyWord Proc CategoryType.Procedure (0, 0)
-            addSymbolToNamedScope Overwrite newSymbol globalScope table
-        )
-        tableWithGlobalScope
-        keywords
+    Array { Common = baseSymbol name symbolKind category position Unknown
+            Dimensions = dimensions }
+
+/// Pre-populate the symbol table with keywords, updating the ProcessingState.
+let prePopulateSymbolTable (oldState: ProcessingState) : ProcessingState =
+    let tableWithGlobalScope: SymbolTable = pushScopeToTable globalScope oldState.SymTab
+    let newSymTab =
+        List.fold
+            (fun (table: SymbolTable) (keyWord: string) ->
+                let newSymbol = createCommonSymbol keyWord Proc CategoryType.Procedure (0, 0)
+                addSymbolToNamedScope Overwrite newSymbol globalScope table)
+            tableWithGlobalScope
+            keywords
+    { oldState with SymTab = newSymTab }
 
 /// Recursively update the symbol table based on an AST.
-/// The function takes the current table, an AST node, and the current scope name,
-/// then updates the table according to the node's TokenType.
+/// The function now takes an AST node as parameter and returns a stateful computation
+/// that produces unit.
 let rec addToTable 
     (mode: SymbolAddMode) 
-    (table: SymbolTable)   // all scopes
-    (node: ASTNode)        // current AST node
-    (incomingScopeName: string)    // current scope name
-    : SymbolTable =
-    
-    // Update the symbol table for the current node.
-    let (updatedTable, outgoingScopeName) : (SymbolTable * string) =
-        match node.TokenType with
-        | Procedure
-        | Function ->
-            // If there is at least one child, push a new scope using the first child's value.
-            if node.Children <> [] then
-                (pushScopeToTable node.Children.Head.Value table, node.Children.Head.Value)
-            else
-                (table, incomingScopeName)
-        | Dim ->
-            if List.isEmpty node.Children then 
-                (table, incomingScopeName)
-            else
-                // Convert array sizes from AST nodes (children after the first) to integer values.
-                let arraySizes : int list = 
-                    node.Children.Tail
-                    |> List.choose (fun n ->
-                        try Some (int n.Value)
-                        with _ -> None)
-                // Create an array symbol.
-                let newSymbol : Symbol =
-                    createArraySymbol node.Children.Head.Value Dim CategoryType.Variable node.Position arraySizes
-                // Update the scope (identified by incomingScopeName) with the new symbol.
-                let newTable : SymbolTable =
-                    addSymbolToNamedScope Overwrite newSymbol incomingScopeName table
+    (node: ASTNode) 
+    (incomingScopeName: string)
+    : State<ProcessingState, unit> =
+    state {
+        let! initialState = getState
+        let currentTable = initialState.SymTab
+        let currentNode = node
+        let incomingScopeName = incomingScopeName
+
+        let (updatedTable, outgoingScopeName) =
+            match currentNode.TokenType with
+            | Procedure
+            | Function ->
+                if currentNode.Children <> [] then
+                    let newScope = currentNode.Children.Head.Value
+                    (pushScopeToTable newScope currentTable, newScope)
+                else
+                    (currentTable, incomingScopeName)
+            | Dim ->
+                if List.isEmpty currentNode.Children then
+                    (currentTable, incomingScopeName)
+                else
+                    let arraySizes =
+                        currentNode.Children.Tail
+                        |> List.choose (fun n -> try Some (int n.Value) with _ -> None)
+                    let newSymbol =
+                        createArraySymbol currentNode.Children.Head.Value Dim CategoryType.Variable currentNode.Position arraySizes
+                    let newTable = addSymbolToNamedScope Overwrite newSymbol globalScope currentTable
+                    (newTable, incomingScopeName)
+            | ID ->
+                let newSymbol = createCommonSymbol currentNode.Value ID CategoryType.Variable currentNode.Position
+                let newTable = addSymbolToNamedScope Overwrite newSymbol incomingScopeName currentTable
                 (newTable, incomingScopeName)
-        | ID ->
-            let newSymbol : Symbol =
-                createCommonSymbol node.Value ID CategoryType.Variable node.Position
-            let newTable : SymbolTable =
-                addSymbolToNamedScope Overwrite newSymbol incomingScopeName table
-            (newTable, incomingScopeName)
-        | _ ->
-            (table, incomingScopeName)
-    
-    // Recursively process all child nodes, folding the updated table.
-    node.Children
-    |> List.fold (fun (acc: SymbolTable) (child: ASTNode) ->
-            addToTable Overwrite acc child outgoingScopeName)
-       updatedTable
+            | Parameters ->
+                let newState = { initialState with InParameterList = true }
+                let newSymbol = createParameterSymbol currentNode.Value Parameters CategoryType.Variable currentNode.Position ParameterMechanismType.Value
+                let newTable = addSymbolToNamedScope Overwrite newSymbol incomingScopeName currentTable
+                (newTable, incomingScopeName)
+            | _ -> (currentTable, incomingScopeName)
+
+        let updatedState = { initialState with SymTab = updatedTable }
+        do! putState updatedState
+
+        // Process children: we define a helper that folds over the children.
+        let processChildren (children: ASTNode list) (scopeName: string) : State<ProcessingState, unit> =
+            // Fold over children; for each child, process it using addToTable.
+            List.foldBack (fun child acc -> 
+                state {
+                    do! addToTable Overwrite child scopeName
+                    do! acc
+                }) children (state { return () })
+        do! processChildren currentNode.Children outgoingScopeName
+
+        // If finishing a Parameters block, reset the InParameterList flag.
+        if currentNode.TokenType = Parameters then
+            do! putState { updatedState with InParameterList = false }
+
+        return ()
+    }

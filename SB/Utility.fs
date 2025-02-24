@@ -7,6 +7,7 @@ open Antlr4.Runtime
 open Antlr4.Runtime.Tree
 open FSharpPlus
 open FSharpPlus.Data
+open Serilog
 
 /// <summary>
 /// Represents the category of a symbol in the symbol table.
@@ -125,6 +126,7 @@ type SBTypes =
     | Integer
     | Real
     | Unknown
+    | Void  // For procedures
     
 /// Fields common to all symbols
 type CommonSymbol = {
@@ -143,7 +145,7 @@ type ParameterSymbol = {
 }
 
 /// Define a record type for arrays
-/// Containes dimensions
+/// Contains dimensions
 type ArraySymbol = {
     Common: CommonSymbol
     Dimensions: int list
@@ -154,7 +156,24 @@ type Symbol =
     | Common of CommonSymbol
     | Parameter of ParameterSymbol
     | Array of ArraySymbol
-//  | value?    
+
+/// A symbol table is a map of scopes, i.e. a map of maps.
+/// Since SB does not have blocks, all functions and procedures are global,
+/// so the symbol table has only a root and single-level branches.
+/// The global scope is identified by the name stored in a constant.
+type SymbolTable = Map<string, Scope<Symbol>>
+
+/// The state hidden in the state monad
+type ProcessingState = {
+    Ast: ASTNode //The latest AST
+    SymTab: SymbolTable //The latest symbol table
+    CurrentScope: string //Cope currently being processed
+    InParameterList: bool //True if currently processing a parameter list so IDs become ParameterSymbols
+    ImplicitInts: Set<string> // names declared as IMPLICIT% which will be needed for type analysis and applies retroactively
+    ImplicitStrings: Set<string>
+    Errors: string list //Collection of error message so far
+    Logger: Core.Logger //Read only Serilog logger
+}
 
 /// Functions
 
@@ -233,124 +252,7 @@ let rec prettyPrintAst (node: ASTNode) (indent: int) : string =
 let rec printAST (indent: string) (node: ASTNode) =
     printfn $"%s{indent}{node.TokenType}: \"%s{node.Value}\""
     node.Children |> List.iter (printAST (indent + "  "))
-        
-///////////////////////////////////////////////////////
-// Monads
-///////////////////////////////////////////////////////
-
-/// <summary>
-/// Represents the State monad: a function from state 's to a result 'a and a new state 's.
-/// </summary>
-type State<'s, 'a> = 's -> 'a * 's
-
-/// <summary>
-/// Computation expression builder for the State monad.
-/// </summary>
-type StateBuilder() =
-    member _.Bind(x: State<'s, 'a>, f: 'a -> State<'s, 'b>) : State<'s, 'b> =
-        fun state ->
-            let (result, newState) = x state
-            f result newState
-    member _.Return(x: 'a) : State<'s, 'a> =
-        fun state -> (x, state)
-    member _.ReturnFrom(x: State<'s, 'a>) : State<'s, 'a> = x
-    member _.Zero() : State<'s, unit> =
-        fun state -> ((), state)
-    member _.Delay(f: unit -> State<'s, 'a>) : State<'s, 'a> = f()
-    member _.For(sequence: seq<'T>, body: 'T -> State<'s, unit>) : State<'s, unit> =
-        fun s ->
-            let mutable s' = s
-            for x in sequence do
-                let (_, newState) = body x s'
-                s' <- newState
-            ((), s')
-
-/// Instantiate the State computation builder.
-let state = StateBuilder()
-
-/// Helper function to get the current state.
-let get : State<'s, 's> = fun s -> (s, s)
-
-/// Helper function to update the state.
-let put newState : State<'s, unit> = fun _ -> ((), newState)
-/// Symbol Table builder
-
-// let updateStateWithSymbol (symbol: Symbol) (state: State) : State =
-//     { state with symTab =  state.symTab.Add({ Name = symbol.Name; Scope = symbol.Scope }, symbol) }
-//     
-/// A stateful computation that processes one IParseTree node.
-/// It extracts the term from the node, creates a Symbol using the current state's scope,
-/// updates the state with that Symbol, and finally returns the Symbol.
-// let processNode (node: IParseTree) dataType category : State<State, Symbol> =
-//     state {
-//         // Use pattern matching to safely cast the node to the expected type.
-//         let term =
-//             match node with
-//             | :? SBParser.TermContext as termCtx ->
-//                 // Assuming the term is in the first child.
-//                 termCtx.children[0].GetText()
-//             | _ ->
-//                 failwith "Unexpected node type; expected SBParser.TermContext."
-//                 
-//         // Retrieve the current state.
-//         let! currentState = get
-//         
-//         // Create a new Symbol using the current state's scope.
-//         let symbol = {
-//             Name = term
-//             Scope = currentState.currentScope
-//             Category = category
-//             Type = dataType
-//             ParameterMechanism = Inapplicable
-//         }
-//         
-//         // Update the state with the new symbol.
-//         do! put (updateStateWithSymbol symbol currentState)
-//         
-//         // Return the symbol as the result of this computation.
-//         return symbol
-//     }
-
-// no longer used
-/// Processes a list of IParseTree nodes, threading state through each operation,
-/// and returns the final state after all nodes have been processed.
-// let mapIter (nodes: IParseTree list) (initialState: State) dataType category : State =
-//     // Traverse the list, applying the stateful processNode function to each node.
-//     let computation : State<State, Symbol list> =
-//         traverse (fun node -> processNode node dataType category) nodes
-//         
-//     // Run the computation with the provided initial state.
-//     let (_symbols, finalState) = State.run computation initialState
-//     
-//     // Return the final state.
-//     finalState
-
-/// Map while propagating state forward between operations on each element using an Antlr list of nodes
-// let rec mapIter (paramList: IParseTree list) (state: State) dataType category =
-//     paramList |> List.fold (fun state head ->
-//         let term = (head :?> SBParser.TermContext).children.[0].GetText()
-//         let symbol = {
-//             Name = term
-//             Scope = state.currentScope
-//             Category = category
-//             Type = dataType
-//             ParameterMechanism = Inapplicable
-//         }
-//         set symbol state
-//     ) state
-
-/// Map while propagating state forward between operations on each element using an F# list of values
-// let rec mapStringIter (paramList: string list) (state: State) dataType category =
-//     paramList |> List.fold (fun state head ->
-//         let symbol = {
-//             Name = head
-//             Scope = state.currentScope
-//             Category = category
-//             Type = dataType
-//             ParameterMechanism = Inapplicable
-//         }
-//         set symbol state
-//     ) state
+       
 
 /// Replace subtree in AST
 /// Tree pattern matching
