@@ -12,7 +12,6 @@ type SymbolAddMode =
 let getNameFromSymbol (symbol: Symbol) : string =
     match symbol with
     | Common s -> s.Name
-    | Parameter s -> s.Common.Name
     | Array s -> s.Common.Name
 
 /// Create an empty symbol table.

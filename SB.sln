@@ -7,6 +7,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution 
 	ProjectSection(SolutionItems) = preProject
 		q3.SB = q3.SB
 		SBLib\SB.g4 = SBLib\SB.g4
+		SB\bin\Debug\net9.0\appsettings.json = SB\bin\Debug\net9.0\appsettings.json
 	EndProjectSection
 EndProject
 Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "SB", "SB\SB.fsproj", "{EA794B75-4328-4042-8D26-4E76B6B59706}"
@@ -14,6 +15,8 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SBLib", "SBLib\SBLib.csproj", "{4C94014F-7DC1-4F30-9908-9D260B92DE26}"
 EndProject
 Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "TestBed", "TestBed\TestBed.fsproj", "{DA21D9E0-C5FC-45EC-A777-5BE324A6DDB0}"
+EndProject
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Runtime", "Runtime\Runtime.fsproj", "{D24FC1C9-5FFA-447C-9547-BB403AC1AB35}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -33,6 +36,10 @@ Global
 		{DA21D9E0-C5FC-45EC-A777-5BE324A6DDB0}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{DA21D9E0-C5FC-45EC-A777-5BE324A6DDB0}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{DA21D9E0-C5FC-45EC-A777-5BE324A6DDB0}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D24FC1C9-5FFA-447C-9547-BB403AC1AB35}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D24FC1C9-5FFA-447C-9547-BB403AC1AB35}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D24FC1C9-5FFA-447C-9547-BB403AC1AB35}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D24FC1C9-5FFA-447C-9547-BB403AC1AB35}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

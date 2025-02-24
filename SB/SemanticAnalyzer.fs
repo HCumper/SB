@@ -141,17 +141,6 @@ let private baseSymbol
 let createCommonSymbol (name: string) (symbolKind: NodeKind) (category: CategoryType) (position: int * int) : Symbol =
     Common (baseSymbol name symbolKind category position Unknown)
 
-/// Creates a parameter symbol with a specified parameter passing mechanism.
-let createParameterSymbol
-    (name: string)
-    (symbolKind: NodeKind)
-    (category: CategoryType)
-    (position: int * int)
-    (parameterMechanism: ParameterMechanismType)
-    : Symbol =
-    Parameter { Common = baseSymbol name symbolKind category position Unknown
-                ParameterMechanism = parameterMechanism }
-
 /// Creates an array symbol with a list of dimensions.
 let createArraySymbol
     (name: string)
@@ -215,7 +204,7 @@ let rec addToTable
                 (newTable, incomingScopeName)
             | Parameters ->
                 let newState = { initialState with InParameterList = true }
-                let newSymbol = createParameterSymbol currentNode.Value Parameters CategoryType.Variable currentNode.Position ParameterMechanismType.Value
+                let newSymbol = createCommonSymbol currentNode.Value Parameters CategoryType.Variable currentNode.Position
                 let newTable = addSymbolToNamedScope Overwrite newSymbol incomingScopeName currentTable
                 (newTable, incomingScopeName)
             | _ -> (currentTable, incomingScopeName)

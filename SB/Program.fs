@@ -36,17 +36,35 @@ type ProcessingError =
 type ParseError =
     | FileNotFound of string
     | ParseError of string
-    
-/// 1. Parse the command-line arguments into a Configuration
-let parseArguments = function
-    | [| input; output; verbose |] ->
-        { InputFile = input; OutputFile = output; Verbose = (Boolean.Parse verbose) }
-    | _ ->
-        // Fallback if missing args
-        { InputFile = "input"
-          OutputFile = "output"
-          Verbose = false }
 
+/// ----------------------------------
+/// 1. Get configuration
+/// ----------------------------------
+let private buildConfig () =
+    ConfigurationBuilder()
+        .SetBasePath(System.IO.Directory.GetCurrentDirectory())  // Ensure the working directory is correct
+        .AddJsonFile("appsettings.json", optional = false, reloadOnChange = true)  // Load JSON config
+        .Build()
+
+let private configureLogger (config: IConfiguration) =
+    LoggerConfiguration()
+        .ReadFrom.Configuration(config)  // Load Serilog settings from appsettings.json
+        .CreateLogger()
+
+let private getSettings argv =
+    let configSettings = buildConfig()  // Read from configuration file
+    let appName = configSettings.GetValue<string>("ApplicationName")
+    let inputFileName = configSettings.GetValue<string>("InputFile")
+    let outputFileName = configSettings.GetValue<string>("OutputFile")
+    let verbosityLevel = configSettings.GetValue<bool>("Verbose")
+    let (log: Core.Logger) = configureLogger configSettings  // Configure Serilog
+    
+    match argv with
+    | [| input; output; verbose |] ->
+        {| inputFileName = input; outputFileName = output; verbose =  (Boolean.Parse (verbose: string)); appName = appName; logger = log |} 
+    | _ ->
+        {| inputFileName = inputFileName; outputFileName = outputFileName; verbose = verbosityLevel; appName = appName; logger = log |} 
+    
 /// ----------------------------------
 /// 2. Parsing
 /// ----------------------------------
@@ -55,31 +73,27 @@ let private createLexer (input: AntlrInputStream) =
     SBLexer(input, TokenFactory = factory)
 
 /// Parse file into (IParseTree, AntlrInputStream)
-
-let parseFile (config: Configuration) : Result<IParseTree * AntlrInputStream, ParseError> =
-    if not (File.Exists(config.InputFile)) then
-        Error (FileNotFound config.InputFile)
-    else
-        try
-            use reader = File.OpenText(config.InputFile)
-            let inputStream = AntlrInputStream(reader)
-            let lexer = createLexer inputStream
-            let tokenStream = CommonTokenStream(lexer)
-            let parser = SBParser(tokenStream)
-            Ok (parser.program(), inputStream)
-        with
-        | ex -> Error (ParseError ex.Message)
+let parseFile (inputFileName: string): Result<IParseTree * AntlrInputStream, ParseError> =
+    try
+        use reader = File.OpenText(inputFileName)
+        let inputStream = AntlrInputStream(reader)
+        let lexer = createLexer inputStream
+        let tokenStream = CommonTokenStream(lexer)
+        let parser = SBParser(tokenStream)
+        Ok (parser.program(), inputStream)
+    with
+    | ex -> Error (ParseError ex.Message)
         
 /// ----------------------------------
 /// 3. AST Construction
 /// ----------------------------------
-let processToAST ((tree: IParseTree), _inputStream) log (config: Configuration) : ASTNode =
+let processToAST ((tree: IParseTree), _inputStream) log verbose : ASTNode =
     let visitor = ASTBuildingVisitor()
     let astNodes = tree.Accept(visitor)   // returns ASTNode list
     let astRoot  = List.head astNodes
 
     // Print the AST in a simple way
-    if config.Verbose then Console.WriteLine(prettyPrintAst astRoot 4)
+    if verbose then Console.WriteLine(prettyPrintAst astRoot 4)
     astRoot
 
 /// ----------------------------------
@@ -91,7 +105,7 @@ let semanticAnalysisState : State<ProcessingState, ProcessingState> =
         let! currentState = getState
         let prePopulatedState = prePopulateSymbolTable currentState
         do! putState prePopulatedState
-        let! updatedState = addToTable Overwrite currentState.Ast currentState.CurrentScope
+        do! addToTable Overwrite currentState.Ast currentState.CurrentScope
         let! finalState = getState
         // do! putState updatedState
         return finalState
@@ -134,51 +148,30 @@ let logDiagnostics (config: Configuration) (parseTree, _) (ast: ASTNode) =
         printAST "  " ast |> Console.WriteLine
         Console.WriteLine("\nTransformed AST:") // if you had transformations
 
-let buildConfig () =
-    ConfigurationBuilder()
-        .SetBasePath(System.IO.Directory.GetCurrentDirectory())  // Ensure the working directory is correct
-        .AddJsonFile("appsettings.json", optional = false, reloadOnChange = true)  // Load JSON config
-        .Build()
-
-let configureLogger (config: IConfiguration) =
-    LoggerConfiguration()
-        .ReadFrom.Configuration(config)  // Load Serilog settings from appsettings.json
-        .CreateLogger()
-
+    
 /// ----------------------------------
 /// 6. Main Entry
 /// ----------------------------------
 [<EntryPoint>]
 let main argv =
     try
-        let configSettings = (buildConfig ())
-  // Load appsettings.json
-        let (log: Core.Logger) = configureLogger configSettings  // Configure Serilog
-        let appName = configSettings.GetValue<string>("ApplicationName")
-        log.Information("Starting application: {ApplicationName}", appName)
-        
+        let settings = getSettings argv
         // The transpiler pipeline
-        let config = parseArguments argv
-        match parseFile config with
-        | Ok (parseTree, inputStream) ->
-            if config.Verbose then printfn "Parsing succeeded."
-        | Error (FileNotFound fileName) ->
-            printfn $"Error: File '%s{fileName}' not found."
-            exit 1
-        | Error (ParseError errorMsg) ->
-            printfn $"Parsing failed with error: %s{errorMsg}"
-            exit 1
-        
         let parseTree, stream =
-            match parseFile config with
-            | Ok (tree, stream) -> tree, stream
-            | Error err -> 
-                log.Fatal("Parsing failed: {errorMsg}", err)
-                Console.Error.WriteLine $"Parsing failed: %A{err}"
+            match parseFile settings.inputFileName with
+            | Ok (parseTree, inputStream) ->
+                if settings.verbose then printfn "Parsing succeeded."
+                parseTree, inputStream
+            | Error (FileNotFound fileName) ->
+                printfn $"Error: File '%s{fileName}' not found."
                 exit 1
-        let ast = processToAST (parseTree, stream) log (configSettings.Get<Configuration>())
+            | Error (ParseError errorMsg) ->
+                printfn $"Parsing failed with error: %s{errorMsg}"
+                exit 1
+        
+        let ast = processToAST (parseTree, stream) log settings.verbose
         let newState =
-            match runSemanticAnalysis ast log with
+            match runSemanticAnalysis ast settings.logger with
             | (_, returnedState) -> returnedState
 
         // If success, generate code; if error, report
@@ -192,7 +185,7 @@ let main argv =
         //     log.Fatal("Semantic analysis failed: {errorMsg}", errMsg)
         //     Console.Error.WriteLine(sprintf "Semantic analysis failed: %A" errMsg)
         //     ()
-        log.Information("Application shutting down.")
+        settings.logger.Information("Application shutting down.")
         0
     with ex ->
         Console.Error.WriteLine(ex.Message)

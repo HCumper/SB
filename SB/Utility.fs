@@ -114,13 +114,6 @@ type Scope<'T> = {
     Symbols: Map<string, 'T>  // symbol name to symbol
 }
 
-/// <summary>
-/// Represents how a parameter is passed to a function or procedure.
-/// </summary>
-type ParameterMechanismType =
-    | Value
-    | Reference
-
 type SBTypes =
     | String
     | Integer
@@ -137,13 +130,6 @@ type CommonSymbol = {
     Position: int * int
 }
 
-/// Define a record type for function parameters
-/// Does not contain parameters
-type ParameterSymbol = {
-    Common: CommonSymbol
-    ParameterMechanism: ParameterMechanismType
-}
-
 /// Define a record type for arrays
 /// Contains dimensions
 type ArraySymbol = {
@@ -152,9 +138,9 @@ type ArraySymbol = {
 }
 
 /// Use the record types inside the DU
+/// There is no ParameterSymbol, but we can use CommonSymbol as the parameter passing mechanism in unknowable at compile time
 type Symbol =
     | Common of CommonSymbol
-    | Parameter of ParameterSymbol
     | Array of ArraySymbol
 
 /// A symbol table is a map of scopes, i.e. a map of maps.
@@ -183,7 +169,6 @@ let globalScope = "~Global"
 let getSymbolName (symbol: Symbol) : string =
     match symbol with
     | Common sym -> sym.Name
-    | Parameter param -> param.Common.Name
     | Array arr -> arr.Common.Name
 
 /// <summary>
