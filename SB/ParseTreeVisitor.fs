@@ -6,6 +6,9 @@ open System
 open System.Collections.Generic
 open Utility
 
+// ----------------------------------------------------------------
+// 1. Types for Behavior
+// ----------------------------------------------------------------
 
 type NodeBehavior =
     | Produce of NodeKind
@@ -15,10 +18,10 @@ type NodeBehavior =
     | BubbleUp
 
 // ----------------------------------------------------------------
-// 2. Rationalized Known Behaviors
+// 2. Known Behaviors for Parser Rules and Tokens
 // ----------------------------------------------------------------
 
-/// Dictionary keyed by the context type (using SBParser context types)
+/// A dictionary keyed by the rule context type, mapping to a NodeBehavior
 let typedBehaviors: IDictionary<Type, NodeBehavior> =
     dict [
         (typeof<SBParser.AssignContext>, ProduceNameOnly NodeKind.Assignment)
@@ -55,42 +58,9 @@ let typedBehaviors: IDictionary<Type, NodeBehavior> =
         (typeof<SBParser.StmtlistContext>, BubbleUp)
         (typeof<SBParser.UnaryContext>, BubbleUp)
         (typeof<SBParser.UnparenthesizedlistContext>, BubbleUp)
-        // Retained commented-out alternatives:
-        // ("ASSIGNTO", Discard)
-        // ("ENDDEF", Discard)
-        // ("EXPR", BubbleUp)
-        // ("FUNC", BubbleUp)
-        // ("FUNCDEF", ProduceNameOnly NodeKind.Function)
-        // ("FUNCHDR", ProduceNameOnly NodeKind.Funchdr)
-        // ("IDENTIFIER", Produce NodeKind.Identifier)
-        // ("LINE", BubbleUp)
-        // ("LINENUMBER", Discard)
-        // ("PARENTHESIZEDLIST", ProduceNameOnly NodeKind.ParenthesizedList)
-        // ("PROGRAM", ProduceNameOnly NodeKind.Program)
-        // ("SEPARATOR", Discard)
-        // ("STMTLIST", BubbleUp)
-        // ("STMT", BubbleUp)
-        // Standard rules:
-        // ("TERMINALNODE", Produce NodeKind.TerminalNodeImpl)
-        // ("PARAMETERS", ProduceNameOnly NodeKind.Parameters)
-        // SB-specific constructs:
-        // ("DIM", Produce NodeKind.Dim)
-        // ("IMPLICIT", Produce NodeKind.Implicit)
-        // ("REFERENCE155", Produce NodeKind.Reference)
-        // ("PROC", Produce NodeKind.Procedure)
-        // ("FORLOOP", Produce NodeKind.For)
-        // ("IF", Produce NodeKind.If)
-        // ("LONGSELECT", Produce NodeKind.Unknown)
-        // ("ONSELECT", Produce NodeKind.Unknown)
-        // ("NEXTSTMT", Produce NodeKind.Unknown)
-        // ("EXITSTMT", Produce NodeKind.Exitstmt)
-        // ("PROCCALL", Produce NodeKind.ProcFnCall)
-        // ("IDENTIFIERONLY", Produce NodeKind.IdentifierOnly)
-        // ("FUNC", BubbleUp)
     ]
 
-/// Dictionary of terminal behaviors keyed by token type string.
-/// Retained commented-out alternatives are left as comments.
+/// Dictionary of terminal behaviors keyed by the token type name (string)
 let terminalBehaviors: IDictionary<string, NodeBehavior> =
     dict [
         "COMMA", Discard
@@ -103,41 +73,18 @@ let terminalBehaviors: IDictionary<string, NodeBehavior> =
         "EOF", Discard
         "EQUAL", Discard
         "FOR", Discard
-        "ID", Produce NodeKind.ID
+        "ID", Discard
         "IF", Discard
         "IMPLIC", Discard
         "INTEGER", Produce NodeKind.NumberLiteral
         "LEFTPAREN", Discard
         "LOCAL", Discard
         "NEWLINE", Discard
-        // "PARENTHESIZEDLIST", Produce NodeKind.ParenthesizedList
         "REPEAT", Discard
         "RIGHTPAREN", Discard
         "TO", Discard
         "EXIT", Discard
-        // "IDENTIFIER", Produce NodeKind.Identifier
-        // "NUMBER", Produce NodeKind.NumberLiteral
         "STRING", Produce NodeKind.StringLiteral
-        // "FUNCTION", ProduceNameOnly NodeKind.Function
-        // "WS", Discard
-        // Additional keywords and punctuation:
-        // "REFERENCE", ProduceNameOnly NodeKind.Reference
-        // "IMPLICIT", ProduceNameOnly NodeKind.Implicit
-        // "LOCAL", ProduceNameOnly NodeKind.Local
-        // "DIM", ProduceNameOnly NodeKind.Dim
-        // "DEFPROC", Discard
-        // "DEFFUNC", Discard
-        // "IF", ProduceNameOnly NodeKind.If
-        // "ELSE", ProduceNameOnly NodeKind.Unknown
-        // "THEN", Discard
-        // "ENDIF", Produce NodeKind.EndIf
-        // "SELECT", ProduceNameOnly NodeKind.Unknown
-        // "ENDSELECT", Discard
-        // "ON", ProduceNameOnly NodeKind.Reference
-        // "NEXT", Discard
-        // "STEP", Discard
-        // "EXIT", ProduceNameOnly NodeKind.Exitstmt
-        // "UNTIL", Discard
         "COLON", Discard
         "SEMI", Discard
         "PLUS", Produce NodeKind.Plus
@@ -171,107 +118,142 @@ let terminalBehaviors: IDictionary<string, NodeBehavior> =
 // 3. Helper Functions
 // ----------------------------------------------------------------
 
-/// Retrieves the first and last token positions (line, column) for a rule node.
+/// Retrieves the (line, column) for the first token in a rule node
 let getPosition (ruleNode: IRuleNode) : int * int =
     let rec findFirstToken (node: IParseTree) =
         match node with
-        | :? ITerminalNode as terminal -> Some terminal.Symbol
+        | :? ITerminalNode as t -> Some t.Symbol
         | _ when node.ChildCount > 0 -> findFirstToken (node.GetChild(0))
         | _ -> None
+
     let rec findLastToken (node: IParseTree) =
         match node with
-        | :? ITerminalNode as terminal -> Some terminal.Symbol
+        | :? ITerminalNode as t -> Some t.Symbol
         | _ when node.ChildCount > 0 -> findLastToken (node.GetChild(node.ChildCount - 1))
         | _ -> None
+
     match findFirstToken ruleNode, findLastToken ruleNode with
     | Some first, Some _ -> (first.Line, first.Column)
-    | _ -> (0, 0) // Fallback if tokens not found
+    | _ -> (0, 0)
 
-/// Helper for handling identifier-specific behavior.
-let handleIdentifierBehavior (childResults: ASTNode list) (pos: int * int) : ASTNode list =
-    let idNodeOpt = childResults |> List.tryFind (fun c -> c.TokenType = NodeKind.ID)
-    let otherChildren = childResults |> List.filter (fun c -> c.TokenType <> NodeKind.ID)
-    match idNodeOpt with
-    | Some idNode ->
-        match otherChildren with
-        | [] ->
-            [ createAstNode NodeKind.Identifier "" pos [ idNode ] ]
-        | [ singleExpr ] ->
-            [ createAstNode NodeKind.ArrayOrFunctionCall "" pos [ idNode; singleExpr ] ]
-        | multiple ->
-            [ createAstNode NodeKind.ProcFnCall "" pos (idNode :: multiple) ]
-    | None ->
-        [ createAstNode NodeKind.Identifier "" pos childResults ]
+/// Handle the creation of a ProcFnCall node specifically
+let handleProcFnCallBehavior (children: ASTNode list) (pos: int * int) (ruleNode: IRuleNode) =
+    // Suppose the first child is the procedure name, the rest are arguments
+    match children with
+    | [] ->
+        // No children => just a fallback
+        [ createAstNode NodeKind.ProcFnCall (ruleNode.GetText()) pos [] ]
+    | first :: args ->
+        [ createAstNode NodeKind.ProcFnCall first.Value pos args ]
+
+/// Basic identifier handling
+let handleIdentifierBehavior (children: ASTNode list) (pos: int * int) (ruleNode: IRuleNode) =
+    // If we want to see if there's something like array indexing or function call
+    let idText = ruleNode.GetText()
+    match children with
+    | [] ->
+        // Just "identifier" with no sub-expressions
+        [ createAstNode NodeKind.Identifier idText pos [] ]
+    | [single] ->
+        // Possibly an array or function reference
+        [ createAstNode NodeKind.ArrayOrFunctionCall idText pos [single] ]
+    | multiple ->
+        // fallback scenario
+        [ createAstNode NodeKind.Identifier idText pos multiple ]
 
 // ----------------------------------------------------------------
-// 4. ASTBuildingVisitor Implementation
+// 4. The ASTBuildingVisitor Implementation
 // ----------------------------------------------------------------
 
 type ASTBuildingVisitor() =
     inherit SBBaseVisitor<ASTNode list>()
 
     override this.VisitChildren(ruleNode: IRuleNode) =
-        // Collect children using list comprehension
+        // 1) Collect child results
         let childResults =
-            [0 .. ruleNode.ChildCount - 1]
-            |> List.collect (fun i -> ruleNode.GetChild(i).Accept(this))
-        // Retrieve rule information
+            [ for i in 0 .. ruleNode.ChildCount - 1 do
+                yield! ruleNode.GetChild(i).Accept(this) ]
+
+        // 2) Determine context info
         let ruleIndex = ruleNode.RuleContext.RuleIndex
-        let content = ruleNode.GetText()
-        let ruleName = SBParser.ruleNames.[ruleIndex]
         let ctxType = ruleNode.RuleContext.GetType()
+        let content = ruleNode.GetText()
+        let position = getPosition ruleNode
+
+        // 3) Look up typed behavior
         let behavior =
             match typedBehaviors.TryGetValue(ctxType) with
             | true, b -> b
             | false, _ -> Produce NodeKind.Unknown
-        let pos = getPosition ruleNode
-        // Apply behavior
+
+        // 4) Apply the behavior
         match behavior with
         | Produce kind ->
-            [ createAstNode kind content pos childResults ]
+            [ createAstNode kind content position childResults ]
+
         | ProduceNameOnly kind ->
+            // Special-case handling for some rules:
             if ctxType = typeof<SBParser.IdentifierContext> then
-                handleIdentifierBehavior childResults pos
+                handleIdentifierBehavior childResults position ruleNode
+            elif ctxType = typeof<SBParser.ProcFnCallContext> then
+                handleProcFnCallBehavior childResults position ruleNode
             else
-                [ createAstNode kind "" pos childResults ]
+                [ createAstNode kind "" position childResults ]
+
         | ProduceNameOnlyWithOperator kind ->
+            // e.g. for BinaryContext with an operator
             let operatorNodeOpt =
                 childResults
                 |> List.tryFind (fun c ->
                     match c.TokenType with
-                    | NodeKind.Plus | NodeKind.Minus | NodeKind.Multiply
-                    | NodeKind.Divide | NodeKind.Mod | NodeKind.Div -> true
+                    | NodeKind.Plus
+                    | NodeKind.Minus
+                    | NodeKind.Multiply
+                    | NodeKind.Divide
+                    | NodeKind.Mod
+                    | NodeKind.Div -> true
                     | _ -> false)
             let operatorText =
-                operatorNodeOpt |> Option.map (fun op -> op.Value) |> Option.defaultValue "unknown-op"
+                operatorNodeOpt
+                |> Option.map (fun op -> op.Value)
+                |> Option.defaultValue "unknown-op"
+
             let filteredChildren =
                 match operatorNodeOpt with
-                | Some op -> childResults |> List.filter (fun c -> c <> op)
+                | Some op -> childResults |> List.filter ((<>) op)
                 | None -> childResults
-            [ createAstNode kind operatorText pos filteredChildren ]
+
+            [ createAstNode kind operatorText position filteredChildren ]
+
         | Discard ->
             []
+
         | BubbleUp ->
             childResults
 
     override this.VisitTerminal(terminalNode: ITerminalNode) =
         let symbol = terminalNode.Symbol
-        let tokenType = SBLexer.DefaultVocabulary.GetSymbolicName(symbol.Type).ToUpper()
-        match terminalBehaviors.TryGetValue(tokenType) with
-        | (true, Produce kind) ->
+        let tokenName = SBLexer.DefaultVocabulary.GetSymbolicName(symbol.Type).ToUpper()
+
+        match terminalBehaviors.TryGetValue(tokenName) with
+        | true, Produce kind ->
             [ createAstNode kind symbol.Text (symbol.Line, symbol.Column) [] ]
-        | (true, ProduceNameOnly kind) ->
+
+        | true, ProduceNameOnly kind ->
             [ createAstNode kind "" (symbol.Line, symbol.Column) [] ]
-        | (true, Discard) ->
+
+        | true, Discard ->
             []
+
         | _ ->
+            // Fallback for unhandled tokens
             [ createAstNode NodeKind.Unknown symbol.Text (symbol.Line, symbol.Column) [] ]
 
     override this.VisitErrorNode(errorNode: IErrorNode) =
         [ createAstNode NodeKind.Unknown (errorNode.ToString()) (0, 0) [] ]
 
 // ----------------------------------------------------------------
-// 5. Convert a Parse Tree (Root) to an AST
+// 5. Converting a Parse Tree to an AST
 // ----------------------------------------------------------------
 
 let convertTreeToAst (parseTree: IParseTree) : ASTNode list =

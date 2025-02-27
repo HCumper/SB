@@ -175,7 +175,7 @@ let main argv =
             | (_, returnedState) -> returnedState
 
         // If success, generate code; if error, report
-        // match newState with
+        // match newState w
         // | Ok finalTable ->
         //     // For demonstration, finalTable is generate code
         //     logDiagnostics config parseTree ast

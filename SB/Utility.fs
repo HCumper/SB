@@ -73,6 +73,7 @@ type NodeKind =
     | ProcFnCall
     | Prochdr
     | Proc
+    | ProcName
     | Program
     | Reference
     | Remark
