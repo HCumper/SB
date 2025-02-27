@@ -57,8 +57,8 @@ let addSymbolToNamedScope
 /// Pretty print the contents of the entire symbol table.
 let printSymbolTable (symbolTable: SymbolTable) =
     symbolTable |> Map.iter (fun scopeName scope ->
-        printfn "Scope: %s" scopeName
+        printfn $"Scope: %s{scopeName}"
         scope.Symbols |> Map.iter (fun symbolName symbol ->
-            printfn "  Symbol: %s -> %A" symbolName symbol
+            printfn $"  Symbol: %s{symbolName} -> %A{symbol}"
         )
     )

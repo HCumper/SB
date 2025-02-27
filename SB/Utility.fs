@@ -22,6 +22,8 @@ type CategoryType =
     | Array       // Specifically for array declarations.
     | Constant    // A constant value.
     | Unknown     // Fallback for symbols that don't match any known category.
+    | Parameter  // A parameter in a function or procedure.
+    | Local      // A local variable within a scope.
 
 /// <summary>
 /// Represents possible symbol types.
@@ -52,10 +54,12 @@ type NodeKind =
     | Exitstmt
     | Expression
     | For
+    | FunctionDefinition
     | ID
     | If
     | Funchdr
     | Function
+    | FunctionCall
     | Identifier
     | IdentifierOnly
     | Implicit
@@ -70,9 +74,9 @@ type NodeKind =
     | ParenthesizedList
     | Primary
     | Procedure
-    | ProcFnCall
+    | ProcedureCall
+    | ProcedureDefinition
     | Prochdr
-    | Proc
     | ProcName
     | Program
     | Reference

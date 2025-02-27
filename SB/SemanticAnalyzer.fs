@@ -158,7 +158,7 @@ let prePopulateSymbolTable (oldState: ProcessingState) : ProcessingState =
     let newSymTab =
         List.fold
             (fun (table: SymbolTable) (keyWord: string) ->
-                let newSymbol = createCommonSymbol keyWord Proc CategoryType.Procedure (0, 0)
+                let newSymbol = createCommonSymbol keyWord ProcedureDefinition CategoryType.Keyword (0, 0)
                 addSymbolToNamedScope Overwrite newSymbol globalScope table)
             tableWithGlobalScope
             keywords
@@ -176,14 +176,21 @@ let rec addToTable
         let! initialState = getState
         let currentTable = initialState.SymTab
         let currentNode = node
-        let incomingScopeName = incomingScopeName
 
         let (updatedTable, outgoingScopeName) =
             match currentNode.TokenType with
-            | Procedure
-            | Function ->
+            | ProcedureCall ->
+                let newSymbol = createCommonSymbol currentNode.Value ProcedureCall CategoryType.Procedure currentNode.Position
+                let newTable = addSymbolToNamedScope Overwrite newSymbol incomingScopeName currentTable
+                (newTable, incomingScopeName)
+            | FunctionCall  -> 
+                let newSymbol = createCommonSymbol currentNode.Value FunctionCall CategoryType.Function currentNode.Position
+                let newTable = addSymbolToNamedScope Overwrite newSymbol incomingScopeName currentTable
+                (newTable, incomingScopeName)
+            | ProcedureDefinition
+            | FunctionDefinition ->
                 if currentNode.Children <> [] then
-                    let newScope = currentNode.Children.Head.Value
+                    let newScope = currentNode.Value
                     (pushScopeToTable newScope currentTable, newScope)
                 else
                     (currentTable, incomingScopeName)
@@ -198,13 +205,18 @@ let rec addToTable
                         createArraySymbol currentNode.Children.Head.Value Dim CategoryType.Variable currentNode.Position arraySizes
                     let newTable = addSymbolToNamedScope Overwrite newSymbol globalScope currentTable
                     (newTable, incomingScopeName)
-            | ID ->
+            | Identifier ->
                 let newSymbol = createCommonSymbol currentNode.Value ID CategoryType.Variable currentNode.Position
                 let newTable = addSymbolToNamedScope Overwrite newSymbol incomingScopeName currentTable
                 (newTable, incomingScopeName)
             | Parameters ->
                 let newState = { initialState with InParameterList = true }
-                let newSymbol = createCommonSymbol currentNode.Value Parameters CategoryType.Variable currentNode.Position
+                let newSymbol = createCommonSymbol currentNode.Value Parameters CategoryType.Parameter currentNode.Position
+                let newTable = addSymbolToNamedScope Overwrite newSymbol incomingScopeName currentTable
+                (newTable, incomingScopeName)
+            | Local ->
+                let newState = { initialState with InParameterList = true }
+                let newSymbol = createCommonSymbol currentNode.Value Parameters CategoryType.Local currentNode.Position
                 let newTable = addSymbolToNamedScope Overwrite newSymbol incomingScopeName currentTable
                 (newTable, incomingScopeName)
             | _ -> (currentTable, incomingScopeName)

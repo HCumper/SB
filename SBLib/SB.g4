@@ -1,6 +1,6 @@
 grammar SB;
 
-program : line+ EOF;
+program : line+ (Newline)* EOF;
 
 line :
 	lineNumber? stmtlist? Newline
@@ -14,8 +14,8 @@ stmt :
 	| Local unparenthesizedlist															#Local
 	| Implic unparenthesizedlist														#Implicit
 	| Refer unparenthesizedlist															#Reference155
-	| prochdr line* lineNumber? endDef ID?												#Proc
-	| funchdr line* lineNumber? endDef ID?		 										#Func
+	| prochdr line* lineNumber? EndDef ID?												#ProcedureDefinition
+	| funchdr line* lineNumber? EndDef ID?		 										#FunctionDefinition
     | For ID assignto expr To expr (Step expr)?
         (
           // Long form with remark
@@ -45,14 +45,15 @@ stmt :
 	| Next ID																			#Nextstmt
 	| Exit ID																			#Exitstmt
 	| identifier (parenthesizedlist)? assignto expr                                     #Assign
-	| ID (unparenthesizedlist | parenthesizedlist)?	                					#ProcFnCall
+	| ID (unparenthesizedlist | parenthesizedlist)?	                					#ProcedureCall
+	| expr assignto ID (unparenthesizedlist | parenthesizedlist)?	                	#FunctionCall
 	| identifier																		#IdentifierOnly
 	;
 
 assignto: '=';
 equals: '=';
-prochdr : DefProc ID parameters parenthesizedlist? Newline;
-funchdr : DefFunc ID parameters parenthesizedlist? Newline;
+prochdr : DefProc ID parameters parenthesizedlist?;
+funchdr : DefFunc ID parameters parenthesizedlist?;
 identifier : ID (parenthesizedlist)?;
 parameters : (parenthesizedlist)?;
 parenthesizedlist :	LeftParen expr (separator expr)* RightParen;

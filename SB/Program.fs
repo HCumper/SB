@@ -107,7 +107,7 @@ let semanticAnalysisState : State<ProcessingState, ProcessingState> =
         do! putState prePopulatedState
         do! addToTable Overwrite currentState.Ast currentState.CurrentScope
         let! finalState = getState
-        // do! putState updatedState
+        do! putState finalState
         return finalState
     }
 
@@ -174,6 +174,7 @@ let main argv =
             match runSemanticAnalysis ast settings.logger with
             | (_, returnedState) -> returnedState
 
+        printSymbolTable newState.SymTab
         // If success, generate code; if error, report
         // match newState w
         // | Ok finalTable ->
