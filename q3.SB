@@ -1,7 +1,7 @@
 10 DEFine PROCedure main (paramtype)
 20 LOCal nxx, txx$, now, finished
 30 END DEFine
-130 IMPLICIT% a, b
+130 IMPLICIT% azz, bzz
 210 quicksort 1,noooooo
 10 temp = b((c+e))
 100 CLS

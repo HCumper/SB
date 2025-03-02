@@ -87,7 +87,6 @@ let terminalBehaviors: IDictionary<string, NodeBehavior> =
         "FOR", Discard
         "ID", Discard
         "IF", Discard
-        "IMPLIC", Discard
         "INTEGER", Produce NodeKind.NumberLiteral
         "LEFTPAREN", Discard
         "LOCAL", Discard
@@ -188,17 +187,13 @@ let handleImplicitBehavior (children: ASTNode list) (pos: int * int) (ruleNode: 
         let txt = ruleNode.GetChild(0).GetText()
         if String.IsNullOrEmpty(txt) then ""
         else string (txt.[txt.Length - 1])
-    [ createAstNode NodeKind.Implicit decorator pos children ]
+    let _::tl = children
+    [ createAstNode NodeKind.Implicit decorator pos tl ]
 
 /// Optionally handle a parameters node
 let handleParametersBehavior (children: ASTNode list) (pos: int * int) (ruleNode: IRuleNode) =
-    // The last char in the first child's text might be '%' or '$'
-    let decorator =
-        let txt = ruleNode.GetChild(0).GetText()
-        if String.IsNullOrEmpty(txt) then ""
-        else string (txt.[txt.Length - 1])
-    [ createAstNode NodeKind.Implicit decorator pos children ]
-// set mode so if it looks like an ID ake it a parameter
+    [ createAstNode NodeKind.Parameters "" pos children ]
+// set mode so if it looks like an ID make it a parameter
 /// Basic identifier handling (could be array indexing or function usage)
 let handleIdentifierBehavior (children: ASTNode list) (pos: int * int) (ruleNode: IRuleNode) =
     let idText = ruleNode.GetText()

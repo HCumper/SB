@@ -187,6 +187,12 @@ let rec addToTable
                 let newSymbol = createCommonSymbol currentNode.Value FunctionCall CategoryType.Function currentNode.Position
                 let newTable = addSymbolToNamedScope Overwrite newSymbol incomingScopeName currentTable
                 (newTable, incomingScopeName)
+            | Implicit ->
+                // The implicit variables are immediate children of the currentNode
+                List.iter (fun n -> n) currentNode.Children
+                let newSymbol = createCommonSymbol currentNode.Value FunctionCall CategoryType.Function currentNode.Position
+                let newTable = addSymbolToNamedScope Overwrite newSymbol incomingScopeName currentTable
+                (newTable, incomingScopeName)
             | ProcedureDefinition
             | FunctionDefinition ->
                 if currentNode.Children <> [] then
@@ -216,7 +222,7 @@ let rec addToTable
                 (newTable, incomingScopeName)
             | Local ->
                 let newState = { initialState with InParameterList = true }
-                let newSymbol = createCommonSymbol currentNode.Value Parameters CategoryType.Local currentNode.Position
+                let newSymbol = createCommonSymbol currentNode.Children[0].Value Local CategoryType.Local currentNode.Position
                 let newTable = addSymbolToNamedScope Overwrite newSymbol incomingScopeName currentTable
                 (newTable, incomingScopeName)
             | _ -> (currentTable, incomingScopeName)
