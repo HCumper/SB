@@ -24,6 +24,8 @@ type CategoryType =
     | Unknown     // Fallback for symbols that don't match any known category.
     | Parameter  // A parameter in a function or procedure.
     | Local      // A local variable within a scope.
+    | String
+    | Integer
 
 /// <summary>
 /// Represents possible symbol types.

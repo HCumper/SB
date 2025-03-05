@@ -14,6 +14,7 @@ open Utility
 open ParseTreeVisitor
 open SymbolTableManager
 open SemanticAnalyzer
+open TypeAnalyzer
 open Monads.State
 
 /// ----------------------------------
@@ -105,12 +106,13 @@ let semanticAnalysisState : State<ProcessingState, ProcessingState> =
         let! currentState = getState
         let prePopulatedState = prePopulateSymbolTable currentState
         do! putState prePopulatedState
-        do! addToTable Overwrite currentState.Ast currentState.CurrentScope
+        do! addToTable Overwrite currentState.Ast currentState
+        let! stateWithSymbols = getState
+        do! analyzeTypes stateWithSymbols
         let! finalState = getState
-        do! putState finalState
-        return finalState
+        do! putState stateWithSymbols
+        return stateWithSymbols
     }
-
 
 /// Run the semantic analysis, returning (Result<SymbolTable,string>, SymbolTable)
 let runSemanticAnalysis (astRoot: ASTNode) (logger: Core.Logger) =

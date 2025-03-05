@@ -5,123 +5,21 @@ open SymbolTableManager
 open Monads.State
 open FSharpPlus.Data
 
-/// List of keywords used to pre-populate the symbol table.
-let keywords =
-    [ "DEFine PROCedure"
-      "DEFine FuNction"
-      "END DEFine"
-      "RETurn"
-      "LOCAL"
-      "GLOBAL"
-      "EXTERNAL"
-      "REMark"
-      "REM"
-      "IF"
-      "THEN"
-      "ELSE"
-      "SELect ON"
-      "WHEN"
-      "END SELect"
-      "REPeat"
-      "UNTIL"
-      "LOOP"
-      "EXIT"
-      "FOR"
-      "TO"
-      "STEP"
-      "NEXT"
-      "WHILE"
-      "END WHILE"
-      "GO TO"
-      "GO SUB"
-      "RETURN"
-      "ON ERROR"
-      "ON"
-      "TRON"
-      "TROFF"
-      "INPUT"
-      "PRINT"
-      "LIST"
-      "LLIST"
-      "LPRINT"
-      "CLS"
-      "INK"
-      "PAPER"
-      "BORDER"
-      "AT"
-      "WINDOW"
-      "FORMAT"
-      "CURSOR ON"
-      "CURSOR OFF"
-      "OPEN"
-      "CLOSE"
-      "DELETE"
-      "RENAME"
-      "DIR"
-      "COPY"
-      "MOVE"
-      "BACKUP"
-      "MERGE"
-      "SAVE"
-      "LOAD"
-      "LRUN"
-      "RUN"
-      "NEW"
-      "APPEND"
-      "PRINT"
-      "INPUT"
-      "DIM"
-      "DATA"
-      "READ"
-      "RESTORE"
-      "LET"
-      "STR$"
-      "VAL"
-      "CHR$"
-      "ASC"
-      "LEN"
-      "LEFT$"
-      "RIGHT$"
-      "MID$"
-      "INSTR"
-      "REPL$"
-      "ABS"
-      "SGN"
-      "SQR"
-      "EXP"
-      "LOG"
-      "ASIN"
-      "ACOS"
-      "ATAN"
-      "SIN"
-      "COS"
-      "TAN"
-      "INT"
-      "RND"
-      "ROUND"
-      "MOD"
-      "AND"
-      "OR"
-      "NOT"
-      "XOR"
-      "ALLOCATE"
-      "DEALLOCATE"
-      "PEEK"
-      "POKE"
-      "SYSVAR"
-      "SAVEMEM"
-      "LOADMEM"
-      "DRAW"
-      "POINT"
-      "CIRCLE"
-      "PALETTE"
-      "BEEP"
-      "STOP"
-      "PAUSE"
-      "WAIT"
-      "TIME"
-      "DATE"
-      "SHELL" ]
+/// Alphabetically sorted list of keywords for pre-populating the symbol table.
+let keywords = 
+  [ "ABS"; "ACOS"; "ALLOCATE"; "AND"; "APPEND"; "ASC"; "ASIN"; "AT"; "ATAN"; 
+    "BEEP"; "BACKUP"; "BORDER"; "CIRCLE"; "CLS"; "CLOSE"; "COPY"; "COS"; 
+    "CURSOR OFF"; "CURSOR ON"; "DATA"; "DATE"; "DEALLOCATE"; "DEFine FuNction"; 
+    "DEFine PROCedure"; "DELETE"; "DIM"; "DIR"; "DRAW"; "END DEFine"; 
+    "END SELect"; "END WHILE"; "EXP"; "EXTERNAL"; "FORMAT"; "FOR"; "GLOBAL"; 
+    "GO SUB"; "GO TO"; "IF"; "INK"; "INPUT"; "INSTR"; "INT"; "LEFT$"; "LET"; 
+    "LEN"; "LIST"; "LOAD"; "LOADMEM"; "LOCAL"; "LOG"; "LOOP"; "LPRINT"; "LRUN"; 
+    "MOD"; "MID$"; "MOVE"; "NEW"; "NEXT"; "NOT"; "ON"; "ON ERROR"; "OR"; 
+    "PALETTE"; "PAPER"; "PAUSE"; "PEEK"; "PI"; "POINT"; "POKE"; "PRINT"; 
+    "REMark"; "REM"; "REPEAT"; "RESTORE"; "RETURN"; "RETurn"; "REPL$"; "RIGHT$"; 
+    "RND"; "ROUND"; "RUN"; "SAVE"; "SAVEMEM"; "SELect ON"; "SHELL"; "SGN"; 
+    "SIN"; "STEP"; "STOP"; "STR$"; "SYSVAR"; "TAN"; "THEN"; "TIME"; "TO"; 
+    "TRON"; "TROFF"; "UNTIL"; "VAL"; "WAIT"; "WHEN"; "WHILE"; "WINDOW"; "XOR" ]
 
 /// Helper to create the shared CommonSymbol record.
 let private baseSymbol
@@ -164,84 +62,181 @@ let prePopulateSymbolTable (oldState: ProcessingState) : ProcessingState =
             keywords
     { oldState with SymTab = newSymTab }
 
-/// Recursively update the symbol table based on an AST.
-/// The function now takes an AST node as parameter and returns a stateful computation
-/// that produces unit.
-let rec addToTable 
-    (mode: SymbolAddMode) 
-    (node: ASTNode) 
-    (incomingScopeName: string)
-    : State<ProcessingState, unit> =
-    state {
-        let! initialState = getState
-        let currentTable = initialState.SymTab
-        let currentNode = node
+/// Helper: update the state's implicit sets (integers or strings) based on a list of newly created symbols.
+let private updateImplicitSets
+    (implicitCat: CategoryType)
+    (symbols: Symbol list)
+    (currentState: ProcessingState)
+    : ProcessingState =
 
-        let (updatedTable, outgoingScopeName) =
-            match currentNode.TokenType with
+    // Convert each symbol to its name, build a set
+    let names =
+        symbols
+        |> List.map getSymbolName
+        |> Set.ofList
+
+    match implicitCat with
+    | CategoryType.Integer ->
+        let newInts = Set.union names currentState.ImplicitInts
+        { currentState with ImplicitInts = newInts }
+
+    | CategoryType.String ->
+        let newStrs = Set.union names currentState.ImplicitStrings
+        { currentState with ImplicitStrings = newStrs }
+
+    | _ ->
+        currentState
+        
+/// Recursively update the symbol table based on an AST node,
+/// returning a 'State<ProcessingState, unit>' computation.
+let rec addToTable
+    (mode: SymbolAddMode)
+    (node: ASTNode)
+    (incomingState: ProcessingState)
+    : State<ProcessingState, unit> =
+
+    state {
+        // 1) Grab the current state from the State monad
+        let! currentState = getState
+        let currentTable  = currentState.SymTab
+        let scopeName     = incomingState.CurrentScope
+
+        // 2) Decide how to handle this AST node
+        let (updatedTable, outgoingScope, possiblyUpdatedState) =
+            match node.TokenType with
             | ProcedureCall ->
-                let newSymbol = createCommonSymbol currentNode.Value ProcedureCall CategoryType.Procedure currentNode.Position
-                let newTable = addSymbolToNamedScope Overwrite newSymbol incomingScopeName currentTable
-                (newTable, incomingScopeName)
-            | FunctionCall  -> 
-                let newSymbol = createCommonSymbol currentNode.Value FunctionCall CategoryType.Function currentNode.Position
-                let newTable = addSymbolToNamedScope Overwrite newSymbol incomingScopeName currentTable
-                (newTable, incomingScopeName)
+                // e.g. 'quicksort 1,n'
+                let sym =
+                    createCommonSymbol
+                        node.Value
+                        ProcedureCall
+                        CategoryType.Procedure
+                        node.Position
+                let tbl =
+                    addSymbolToNamedScope Overwrite sym scopeName currentTable
+                (tbl, scopeName, currentState)
+
+            | FunctionCall ->
+                // e.g. 'someFunc(...)'
+                let sym =
+                    createCommonSymbol
+                        node.Value
+                        FunctionCall
+                        CategoryType.Function
+                        node.Position
+                let tbl =
+                    addSymbolToNamedScope Overwrite sym scopeName currentTable
+                (tbl, scopeName, currentState)
+
             | Implicit ->
-                // The implicit variables are immediate children of the currentNode
-                List.iter (fun n -> n) currentNode.Children
-                let newSymbol = createCommonSymbol currentNode.Value FunctionCall CategoryType.Function currentNode.Position
-                let newTable = addSymbolToNamedScope Overwrite newSymbol incomingScopeName currentTable
-                (newTable, incomingScopeName)
+                // Deduce int vs. string from node.Value
+                let implicitCat =
+                    if node.Value.Contains("%") then CategoryType.Integer
+                    elif node.Value.Contains("$") then CategoryType.String
+                    else CategoryType.Variable
+
+                // Create a symbol for each child
+                let implicitSyms =
+                    node.Children
+                    |> List.map (fun c ->
+                        createCommonSymbol c.Value Implicit implicitCat c.Position
+                    )
+
+                // Add them all to the table
+                let tbl =
+                    implicitSyms
+                    |> List.fold (fun acc sym -> addSymbolToNamedScope Overwrite sym scopeName acc) currentTable
+
+                // Possibly update state sets
+                let newState = updateImplicitSets implicitCat implicitSyms currentState
+
+                (tbl, scopeName, newState)
+
             | ProcedureDefinition
             | FunctionDefinition ->
-                if currentNode.Children <> [] then
-                    let newScope = currentNode.Value
-                    (pushScopeToTable newScope currentTable, newScope)
+                // If there's a name, push a scope
+                if node.Children.Length > 0 then
+                    let nameOfScope = node.Value
+                    let tbl = pushScopeToTable nameOfScope currentTable
+                    (tbl, nameOfScope, currentState)
                 else
-                    (currentTable, incomingScopeName)
-            | Dim ->
-                if List.isEmpty currentNode.Children then
-                    (currentTable, incomingScopeName)
-                else
-                    let arraySizes =
-                        currentNode.Children.Tail
-                        |> List.choose (fun n -> try Some (int n.Value) with _ -> None)
-                    let newSymbol =
-                        createArraySymbol currentNode.Children.Head.Value Dim CategoryType.Variable currentNode.Position arraySizes
-                    let newTable = addSymbolToNamedScope Overwrite newSymbol globalScope currentTable
-                    (newTable, incomingScopeName)
-            | Identifier ->
-                let newSymbol = createCommonSymbol currentNode.Value ID CategoryType.Variable currentNode.Position
-                let newTable = addSymbolToNamedScope Overwrite newSymbol incomingScopeName currentTable
-                (newTable, incomingScopeName)
-            | Parameters ->
-                let newState = { initialState with InParameterList = true }
-                let newSymbol = createCommonSymbol currentNode.Value Parameters CategoryType.Parameter currentNode.Position
-                let newTable = addSymbolToNamedScope Overwrite newSymbol incomingScopeName currentTable
-                (newTable, incomingScopeName)
-            | Local ->
-                let newState = { initialState with InParameterList = true }
-                let newSymbol = createCommonSymbol currentNode.Children[0].Value Local CategoryType.Local currentNode.Position
-                let newTable = addSymbolToNamedScope Overwrite newSymbol incomingScopeName currentTable
-                (newTable, incomingScopeName)
-            | _ -> (currentTable, incomingScopeName)
+                    (currentTable, scopeName, currentState)
 
-        let updatedState = { initialState with SymTab = updatedTable }
+            | Dim ->
+                // e.g. 'DIM a(100,200)'
+                match node.Children with
+                | [] ->
+                    (currentTable, scopeName, currentState)
+                | head :: tail ->
+                    let arraySizes =
+                        tail
+                        |> List.choose (fun x ->
+                            try Some (int x.Value) with _ -> None
+                        )
+                    let arrSym =
+                        createArraySymbol head.Value Dim CategoryType.Variable node.Position arraySizes
+                    // Usually array is in global scope
+                    let tbl = addSymbolToNamedScope Overwrite arrSym globalScope currentTable
+                    (tbl, scopeName, currentState)
+
+            | Identifier ->
+                // e.g. 'someVar'
+                let sym =
+                    createCommonSymbol
+                        node.Value
+                        ID
+                        CategoryType.Variable
+                        node.Position
+                let tbl = addSymbolToNamedScope Overwrite sym scopeName currentTable
+                (tbl, scopeName, currentState)
+
+            | Parameters ->
+                // Mark that we are in a parameter list
+                let newSt = { currentState with InParameterList = true }
+                let sym =
+                    createCommonSymbol
+                        node.Value
+                        Parameters
+                        CategoryType.Parameter
+                        node.Position
+                let tbl = addSymbolToNamedScope Overwrite sym scopeName currentTable
+                (tbl, scopeName, newSt)
+
+            | Local ->
+                // e.g. 'LOCal something'
+                let newSt = { currentState with InParameterList = true }
+                let localName = node.Children.[0].Value
+                let sym =
+                    createCommonSymbol
+                        localName
+                        Local
+                        CategoryType.Local
+                        node.Position
+                let tbl = addSymbolToNamedScope Overwrite sym scopeName currentTable
+                (tbl, scopeName, newSt)
+
+            | _ ->
+                // No special logic
+                (currentTable, scopeName, currentState)
+
+        // 3) Merge changes back into the state
+        let updatedState = { possiblyUpdatedState with SymTab = updatedTable }
         do! putState updatedState
 
-        // Process children: we define a helper that folds over the children.
-        let processChildren (children: ASTNode list) (scopeName: string) : State<ProcessingState, unit> =
-            // Fold over children; for each child, process it using addToTable.
-            List.foldBack (fun child acc -> 
+        // 4) Recurse into the node's children
+        let rec processKids (kids: ASTNode list) : State<ProcessingState, unit> =
+            match kids with
+            | [] -> state { return () }
+            | head :: tail ->
                 state {
-                    do! addToTable Overwrite child scopeName
-                    do! acc
-                }) children (state { return () })
-        do! processChildren currentNode.Children outgoingScopeName
+                    do! addToTable Overwrite head updatedState
+                    do! processKids tail
+                }
 
-        // If finishing a Parameters block, reset the InParameterList flag.
-        if currentNode.TokenType = Parameters then
+        do! processKids node.Children
+
+        // 5) If we just finished 'Parameters', revert InParameterList
+        if node.TokenType = Parameters then
             do! putState { updatedState with InParameterList = false }
 
         return ()

@@ -11,6 +11,7 @@
         <Compile Include="ParseTreeVisitor.fs" />
         <Compile Include="Monads.fs" />
         <Compile Include="SemanticAnalyzer.fs" />
+        <Compile Include="TypeAnalyzer.fs" />
         <Compile Include="Program.fs" />
         <Content Include="bin\Debug\net9.0\appsettings.json" />
     </ItemGroup>

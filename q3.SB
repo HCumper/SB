@@ -6,6 +6,7 @@
 10 temp = b((c+e))
 100 CLS
 110 TURBO_repfil
+25 IMPLICIT$ a$, b$
 120 sorts=0:partitions=0
 130 IMPLICIT% a, b
 140 DIM a(10001)
