@@ -18,10 +18,11 @@ public static class TestPrograms
     public static string CalledFunction()
     {
 //        pushFrame();
-        var y = lookupVar("myString");
-        var temp = y.Value.value as StringValue;
+//        var y = lookupVar("myString");
+//        var temp = y.Value.value as StringValue;
   //      popFrame();
-        return temp.Text + temp.Text;
+  var temp = getString("myString");
+    return temp + temp;
     }
 
 }

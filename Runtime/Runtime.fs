@@ -193,6 +193,16 @@ let callFunction
     body()
     popFrame ()
     
+let getInt (value: string) : int =
+    (lookupVar(value).Value.value :?> IntegerValue).N
+    
+let getString (value: string) : string =
+    (lookupVar(value).Value.value :?> StringValue).Text
+    
+let getFloat (value: string) : float =
+    (lookupVar(value).Value.value :?> RealValue).R
+    
+    
 // ---------------------------------------------------------------------------
 // Example usage (uncomment to test in a project):
 (*
