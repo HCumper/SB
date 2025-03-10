@@ -108,9 +108,8 @@ let semanticAnalysisState : State<ProcessingState, ProcessingState> =
         do! putState prePopulatedState
         do! addToTable Overwrite currentState.Ast currentState
         let! stateWithSymbols = getState
-        do! analyzeTypes stateWithSymbols
-        let! finalState = getState
-        do! putState stateWithSymbols
+        let finalState = fillImplicitTypesAndModifyNamesInState stateWithSymbols
+        do! putState finalState
         return stateWithSymbols
     }
 
