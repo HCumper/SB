@@ -2,10 +2,220 @@
 
 open Antlr4.Runtime
 open Antlr4.Runtime.Tree
-open SB
-open SymbolTable
+open SymbolTableManager
 open Utility
+open Antlr4.StringTemplate
 
+// ---------------------------------------------------------
+// 2. Utility function: get or guess C# type from SBTypes
+// ---------------------------------------------------------
+// Build a TemplateGroup
+
+create function to setup this value
+let templateGroup stTemplateGroupFile =
+    TemplateGroupFile(stTemplateGroupFile)
+
+let sbTypeToCSharp (sbType: SBTypes) =
+    match sbType with
+    | SBTypes.String  -> "string"
+    | SBTypes.Integer -> "int"
+    | SBTypes.Real    -> "double"
+    | SBTypes.Void    -> "void"
+    | SBTypes.Unknown -> "object"  // fallback
+
+// ---------------------------------------------------------
+// 3. Expressions: Convert ASTNode -> string (via templates)
+// ---------------------------------------------------------
+let rec astNodeToExpression (st: SymbolTable) (node: ASTNode) : string =
+    match node.TokenType with
+    | NumberLiteral ->
+        // e.g., node.Value = "123"
+        let tmpl = templateGroup.GetInstanceOf("exprNumber")
+        tmpl.Add("num", node.Value)
+        tmpl.Render()
+
+    | StringLiteral ->
+        let tmpl = templateGroup.GetInstanceOf("exprString")
+        tmpl.Add("txt", node.Value)
+        tmpl.Render()
+
+    | Identifier ->
+        let tmpl = templateGroup.GetInstanceOf("exprIdentifier")
+        tmpl.Add("id", node.Value)
+        tmpl.Render()
+
+    | BinaryExpr ->
+        // e.g. node.Value might be "+", "-", "*", "/"
+        // node.Children = [ left; right ], node.Value = operator 
+        if node.Children.Length = 2 then
+            let left = astNodeToExpression st node.Children.[0]
+            let right = astNodeToExpression st node.Children.[1]
+            let opToken = node.Value
+            let tmpl = templateGroup.GetInstanceOf("exprBinary")
+            tmpl.Add("left", left)
+            tmpl.Add("op", opToken)
+            tmpl.Add("right", right)
+            tmpl.Render()
+        else
+            let tmpl = templateGroup.GetInstanceOf("exprUnrecognized")
+            tmpl.Add("kind", "BinaryExpr (invalid children)")
+            tmpl.Render()
+
+    | CallExpr
+    | ProcedureCall
+    | FunctionCall ->
+        // node.Value = function name, node.Children = arguments
+        let tmpl = templateGroup.GetInstanceOf("exprCall")
+        tmpl.Add("name", node.Value)
+        // Recursively build child expression arguments
+        let argExprs =
+            node.Children
+            |> List.map (astNodeToExpression st)
+        tmpl.Add("args", argExprs)
+        tmpl.Render()
+
+    | _ ->
+        let tmpl = templateGroup.GetInstanceOf("exprUnrecognized")
+        tmpl.Add("kind", node.TokenType.ToString())
+        tmpl.Render()
+
+// ---------------------------------------------------------
+// 4. Statements: Convert ASTNode -> string (via templates)
+// ---------------------------------------------------------
+let rec astNodeToStatement (st: SymbolTable) (node: ASTNode) : string =
+    match node.TokenType with
+    | Assignment ->
+        // node.Children = [ target, value ]
+        if node.Children.Length = 2 then
+            let targetStr = astNodeToExpression st node.Children.[0]
+            let valueStr  = astNodeToExpression st node.Children.[1]
+            let tmpl = templateGroup.GetInstanceOf("stmtAssignment")
+            tmpl.Add("target", targetStr)
+            tmpl.Add("value", valueStr)
+            tmpl.Render()
+        else
+            "// Invalid assignment structure"
+
+    | Exitstmt ->
+        // "break;"
+        templateGroup.GetInstanceOf("stmtBreak").Render()
+
+    | Return ->
+        // if single child => return <expr>;
+        if node.Children.Length = 1 then
+            let exprStr = astNodeToExpression st node.Children.[0]
+            let tmpl = templateGroup.GetInstanceOf("stmtReturn")
+            tmpl.Add("expr", exprStr)
+            tmpl.Render()
+        else
+            // "return;"
+            let tmpl = templateGroup.GetInstanceOf("stmtReturn")
+            // no expr
+            tmpl.Render()
+
+    | Remark ->
+        // turn into a comment
+        let tmpl = templateGroup.GetInstanceOf("stmtComment")
+        tmpl.Add("text", node.Value)
+        tmpl.Render()
+
+    // If this node is effectively an expression statement (call with no assignment)
+    | FunctionCall
+    | ProcedureCall
+    | CallExpr ->
+        let callStr = astNodeToExpression st node
+        let tmpl = templateGroup.GetInstanceOf("stmtExpression")
+        tmpl.Add("expr", callStr)
+        tmpl.Render()
+
+    | _ ->
+        // fallback
+        let tmpl = templateGroup.GetInstanceOf("stmtUnrecognized")
+        tmpl.Add("kind", node.TokenType.ToString())
+        tmpl.Render()
+
+// ---------------------------------------------------------
+// 5. Generate a method from a FunctionDefinition/ProcedureDefinition
+// ---------------------------------------------------------
+let generateMethodSyntax (state: ProcessingState) (definitionNode: ASTNode) : string =
+    let st = state.SymTab
+    let methodName = definitionNode.Value
+
+    // Distinguish function vs procedure for the return type
+    let returnType =
+        match definitionNode.TokenType with
+        | FunctionDefinition -> SBTypes.Integer // or fetch from symbol table
+        | ProcedureDefinition -> SBTypes.Void
+        | _ -> SBTypes.Void
+
+    // Gather body statements (look for Body or StmtList child, etc.)
+    let bodyStmts =
+        definitionNode.Children
+        |> List.collect (fun child ->
+            match child.TokenType with
+            | Body
+            | StmtList ->
+                child.Children |> List.map (astNodeToStatement st)
+            | _ -> []
+        )
+    
+    // Prepare the method template
+    let tmpl = templateGroup.GetInstanceOf("methodDef")
+    tmpl.Add("modifiers", "public")
+    tmpl.Add("returnType", sbTypeToCSharp returnType)
+    tmpl.Add("name", methodName)
+    tmpl.Add("parameters", "")      // skipping for brevity
+    tmpl.Add("bodyLines", bodyStmts)
+    tmpl.Render()
+
+// ---------------------------------------------------------
+// 6. Build a class from all procedure/function definitions
+// ---------------------------------------------------------
+let buildClassFromAst (state: ProcessingState) (root: ASTNode) : string =
+    let className = "GeneratedProgram"
+
+    // Filter child nodes that are function/procedure definitions
+    let methodNodes =
+        root.Children
+        |> List.filter (fun c ->
+            c.TokenType = ProcedureDefinition
+            || c.TokenType = FunctionDefinition
+        )
+
+    // Generate each method as a string
+    let methodStrings =
+        methodNodes
+        |> List.map (generateMethodSyntax state)
+
+    // Fill the class template
+    let classTmpl = templateGroup.GetInstanceOf("classDef")
+    classTmpl.Add("modifiers", "public")
+    classTmpl.Add("className", className)
+    classTmpl.Add("members", methodStrings)
+    classTmpl.Render()
+
+// ---------------------------------------------------------
+// 7. Top-level function to produce final C# code as string
+// ---------------------------------------------------------
+let generateCSharp (state: ProcessingState) : string =
+    let classString = buildClassFromAst state state.Ast
+    
+    // Wrap in a namespace
+    let nsTmpl = templateGroup.GetInstanceOf("namespaceDef")
+    nsTmpl.Add("nsName", "MyNamespace")
+    nsTmpl.Add("content", classString)
+    nsTmpl.Render()
+
+
+
+
+
+
+
+
+
+
+(*
 let outputCs translation (state: State) =
     match state.currentScope with
     | globalScope -> { state with outputProcFn = state.outputProcFn + translation }
@@ -330,3 +540,4 @@ and private genProcFunc context state =
 
 // top level only
 let walkTreeRoot (context: ParserRuleContext) (state: State) = WalkDown context state
+*)

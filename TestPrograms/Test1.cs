@@ -22,6 +22,9 @@ public static class TestPrograms
 //        var temp = y.Value.value as StringValue;
   //      popFrame();
   var temp = getString("myString");
+  temp = "potato";
+  putString("myString", temp);
+  var v = getString("myString");
     return temp + temp;
     }
 

@@ -1,6 +1,7 @@
 ﻿module Runtime
 
 open System.Threading
+open System.Xml
 
 (* Presents an interface
 type IRuntime =
@@ -193,16 +194,41 @@ let callFunction
     body()
     popFrame ()
     
-let getInt (value: string) : int =
-    (lookupVar(value).Value.value :?> IntegerValue).N
+let getInt (name: string) : int =
+    (lookupVar(name).Value.value :?> IntegerValue).N
     
-let getString (value: string) : string =
-    (lookupVar(value).Value.value :?> StringValue).Text
+let getString (name: string) : string =
+    (lookupVar(name).Value.value :?> StringValue).Text
     
-let getFloat (value: string) : float =
-    (lookupVar(value).Value.value :?> RealValue).R
+let getFloat (name: string) : float =
+    (lookupVar(name).Value.value :?> RealValue).R
     
-    
+let putInt (name: string) (value: int) : int =
+    match lookupVar name with
+    | Some cell -> 
+        cell.value <- Value.Integer(value)
+        value
+    | None ->
+        declareLocal name (Value.Integer(value))
+        value
+
+let putString (name: string) (value: string) : string =
+    match lookupVar name with
+    | Some cell -> 
+        cell.value <- Value.String(value)
+        value
+    | None ->
+        declareLocal name (Value.String(value))
+        value
+
+let putFloat (name: string) (value: float) : float =
+    match lookupVar name with
+    | Some cell -> 
+        cell.value <- Value.Real(value)
+        value
+    | None ->
+        declareLocal name (Value.Real(value))
+        value    
 // ---------------------------------------------------------------------------
 // Example usage (uncomment to test in a project):
 (*

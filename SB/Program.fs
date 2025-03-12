@@ -7,7 +7,6 @@ open Serilog
 open Antlr4.Runtime
 open Antlr4.Runtime.Tree
 
-open FSharpPlus
 open FSharpPlus.Data
 
 open Utility
@@ -16,6 +15,7 @@ open SymbolTableManager
 open SemanticAnalyzer
 open TypeAnalyzer
 open Monads.State
+open CodeGenerator
 
 /// ----------------------------------
 /// 1. Compiler Configuration
@@ -56,16 +56,17 @@ let private getSettings argv =
     let configSettings = buildConfig()  // Read from configuration file
     let appName = configSettings.GetValue<string>("ApplicationName")
     let inputFileName = configSettings.GetValue<string>("InputFile")
+    let templatesFileName = configSettings.GetValue<string>("TemplatesFile")
     let outputFileName = configSettings.GetValue<string>("OutputFile")
     let verbosityLevel = configSettings.GetValue<bool>("Verbose")
     let (log: Core.Logger) = configureLogger configSettings  // Configure Serilog
     
     match argv with
     | [| input; output; verbose |] ->
-        {| inputFileName = input; outputFileName = output; verbose =  (Boolean.Parse (verbose: string)); appName = appName; logger = log |} 
+        {| inputFileName = input; outputFileName = output; templateFileName = templatesFileName; verbose =  (Boolean.Parse (verbose: string)); appName = appName; logger = log |} 
     | _ ->
-        {| inputFileName = inputFileName; outputFileName = outputFileName; verbose = verbosityLevel; appName = appName; logger = log |} 
-    
+        {| inputFileName = inputFileName; outputFileName = outputFileName; templateFileName = templatesFileName; verbose = verbosityLevel; appName = appName; logger = log |}
+            
 /// ----------------------------------
 /// 2. Parsing
 /// ----------------------------------
@@ -155,7 +156,7 @@ let logDiagnostics (config: Configuration) (parseTree, _) (ast: ASTNode) =
 /// ----------------------------------
 [<EntryPoint>]
 let main argv =
-    try
+//    try
         let settings = getSettings argv
         // The transpiler pipeline
         let parseTree, stream =
@@ -175,20 +176,24 @@ let main argv =
             match runSemanticAnalysis ast settings.logger with
             | (_, returnedState) -> returnedState
 
-        printSymbolTable newState.SymTab
-        // If success, generate code; if error, report
-        // match newState w
-        // | Ok finalTable ->
-        //     // For demonstration, finalTable is generate code
-        //     logDiagnostics config parseTree ast
-        //     generateOutput config ast
-        //     ()
-        // | Error errMsg ->
-        //     log.Fatal("Semantic analysis failed: {errorMsg}", errMsg)
-        //     Console.Error.WriteLine(sprintf "Semantic analysis failed: %A" errMsg)
-        //     ()
-        settings.logger.Information("Application shutting down.")
-        0
-    with ex ->
-        Console.Error.WriteLine(ex.Message)
+//        printSymbolTable newState.SymTab
+        
+        let CSHarpProgram = generateCSharp newState, settings.templateFileName
+        
+    //     If success, generate code
+    //     if error, report
+    //     match newState w
+    //     | Ok finalTable ->
+    //         // For demonstration, finalTable is generate code
+    //         logDiagnostics config parseTree ast
+    //         generateOutput config ast
+    //         ()
+    //     | Error errMsg ->
+    //         log.Fatal("Semantic analysis failed: {errorMsg}", errMsg)
+    //         Console.Error.WriteLine(sprintf "Semantic analysis failed: %A" errMsg)
+    //         ()
+    //     settings.logger.Information("Application shutting down.")
+    //     0
+    // with ex ->
+//        Console.Error.WriteLine(ex.Message)
         1

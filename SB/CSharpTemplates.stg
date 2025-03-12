@@ -1,0 +1,28 @@
+﻿delimiters "<", ">" 
+
+// =================== EXPRESSIONS =====================
+exprNumber(num) ::= "<num>"
+exprString(txt) ::= "\"<txt>\""
+exprIdentifier(id) ::= "<id>"
+exprBinary(left, op, right) ::= "<left> <op> <right>"
+exprCall(name, args) ::= "<name>(<args; separator=\", \">)"
+exprUnrecognized(kind) ::= "/*Unrecognized expr <kind>*/"
+
+// =================== STATEMENTS ======================
+stmtAssignment(target, value) ::= "<target> = <value>;"
+stmtBreak() ::= "break;"
+stmtReturn(expr) ::= "return <expr>;"
+stmtComment(text) ::= "// <text>"
+stmtExpression(expr) ::= "<expr>;"
+stmtUnrecognized(kind) ::= "// Unhandled statement <kind>"
+
+// =================== METHOD & CLASS ===================
+methodDef(modifiers, returnType, name, parameters, bodyLines) ::= 
+  "<modifiers> <returnType> <name>(<parameters>) {\n<bodyLines; separator=\"\n\">\n}"
+
+classDef(modifiers, className, members) ::= 
+  "<modifiers> class <className> {\n<members; separator=\"\n\">\n}"
+
+// =================== NAMESPACE ========================
+namespaceDef(nsName, content) ::= 
+  "namespace <nsName> {\n<content>\n}"
