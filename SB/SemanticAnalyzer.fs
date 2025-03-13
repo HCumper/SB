@@ -155,7 +155,7 @@ let rec addToTable
 
             | Local ->
                 let newSt = { currentState with InParameterList = true }
-                let localName = node.Children.[0].Value
+                let localName = node.Children[0].Value
                 let sym =
                     createCommonSymbol localName Local CategoryType.Local node.Position
                 let tbl = addSymbolToNamedScope Overwrite sym scopeName currentTable

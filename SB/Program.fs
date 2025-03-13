@@ -70,7 +70,7 @@ let private getSettings argv =
 /// ----------------------------------
 /// 2. Parsing
 /// ----------------------------------
-let private createLexer (input: AntlrInputStream) =
+let createLexer (input: AntlrInputStream) =
     let factory = CommonTokenFactory() :> ITokenFactory
     SBLexer(input, TokenFactory = factory)
 
@@ -178,7 +178,7 @@ let main argv =
 
 //        printSymbolTable newState.SymTab
         
-        let CSHarpProgram = generateCSharp newState, settings.templateFileName
+        let CSharpProgram = generateCSharp newState, settings.templateFileName
         
     //     If success, generate code
     //     if error, report

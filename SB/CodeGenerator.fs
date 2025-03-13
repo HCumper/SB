@@ -6,14 +6,12 @@ open SymbolTableManager
 open Utility
 open Antlr4.StringTemplate
 
+let className = "GeneratedProgram"
+
 // ---------------------------------------------------------
 // 2. Utility function: get or guess C# type from SBTypes
 // ---------------------------------------------------------
 // Build a TemplateGroup
-
-create function to setup this value
-let templateGroup stTemplateGroupFile =
-    TemplateGroupFile(stTemplateGroupFile)
 
 let sbTypeToCSharp (sbType: SBTypes) =
     match sbType with
@@ -26,10 +24,9 @@ let sbTypeToCSharp (sbType: SBTypes) =
 // ---------------------------------------------------------
 // 3. Expressions: Convert ASTNode -> string (via templates)
 // ---------------------------------------------------------
-let rec astNodeToExpression (st: SymbolTable) (node: ASTNode) : string =
+let rec astNodeToExpression (st: SymbolTable) (templateGroup: TemplateGroupFile) (node: ASTNode) : string =
     match node.TokenType with
     | NumberLiteral ->
-        // e.g., node.Value = "123"
         let tmpl = templateGroup.GetInstanceOf("exprNumber")
         tmpl.Add("num", node.Value)
         tmpl.Render()
@@ -48,8 +45,8 @@ let rec astNodeToExpression (st: SymbolTable) (node: ASTNode) : string =
         // e.g. node.Value might be "+", "-", "*", "/"
         // node.Children = [ left; right ], node.Value = operator 
         if node.Children.Length = 2 then
-            let left = astNodeToExpression st node.Children.[0]
-            let right = astNodeToExpression st node.Children.[1]
+            let left = astNodeToExpression st templateGroup node.Children.[0]
+            let right = astNodeToExpression st templateGroup node.Children.[1]
             let opToken = node.Value
             let tmpl = templateGroup.GetInstanceOf("exprBinary")
             tmpl.Add("left", left)
@@ -70,7 +67,7 @@ let rec astNodeToExpression (st: SymbolTable) (node: ASTNode) : string =
         // Recursively build child expression arguments
         let argExprs =
             node.Children
-            |> List.map (astNodeToExpression st)
+            |> List.map (astNodeToExpression st templateGroup)
         tmpl.Add("args", argExprs)
         tmpl.Render()
 
@@ -82,13 +79,13 @@ let rec astNodeToExpression (st: SymbolTable) (node: ASTNode) : string =
 // ---------------------------------------------------------
 // 4. Statements: Convert ASTNode -> string (via templates)
 // ---------------------------------------------------------
-let rec astNodeToStatement (st: SymbolTable) (node: ASTNode) : string =
+let rec astNodeToStatement (st: SymbolTable) (templateGroup: TemplateGroupFile) (node: ASTNode) : string =
     match node.TokenType with
     | Assignment ->
         // node.Children = [ target, value ]
         if node.Children.Length = 2 then
-            let targetStr = astNodeToExpression st node.Children.[0]
-            let valueStr  = astNodeToExpression st node.Children.[1]
+            let targetStr = astNodeToExpression st templateGroup node.Children.[0]
+            let valueStr  = astNodeToExpression st templateGroup node.Children.[1]
             let tmpl = templateGroup.GetInstanceOf("stmtAssignment")
             tmpl.Add("target", targetStr)
             tmpl.Add("value", valueStr)
@@ -103,7 +100,7 @@ let rec astNodeToStatement (st: SymbolTable) (node: ASTNode) : string =
     | Return ->
         // if single child => return <expr>;
         if node.Children.Length = 1 then
-            let exprStr = astNodeToExpression st node.Children.[0]
+            let exprStr = astNodeToExpression st templateGroup node.Children.[0]
             let tmpl = templateGroup.GetInstanceOf("stmtReturn")
             tmpl.Add("expr", exprStr)
             tmpl.Render()
@@ -123,7 +120,7 @@ let rec astNodeToStatement (st: SymbolTable) (node: ASTNode) : string =
     | FunctionCall
     | ProcedureCall
     | CallExpr ->
-        let callStr = astNodeToExpression st node
+        let callStr = astNodeToExpression st templateGroup node
         let tmpl = templateGroup.GetInstanceOf("stmtExpression")
         tmpl.Add("expr", callStr)
         tmpl.Render()
@@ -137,7 +134,7 @@ let rec astNodeToStatement (st: SymbolTable) (node: ASTNode) : string =
 // ---------------------------------------------------------
 // 5. Generate a method from a FunctionDefinition/ProcedureDefinition
 // ---------------------------------------------------------
-let generateMethodSyntax (state: ProcessingState) (definitionNode: ASTNode) : string =
+let generateMethodSyntax (state: ProcessingState) (templateGroup: TemplateGroupFile) (definitionNode: ASTNode) : string =
     let st = state.SymTab
     let methodName = definitionNode.Value
 
@@ -155,7 +152,7 @@ let generateMethodSyntax (state: ProcessingState) (definitionNode: ASTNode) : st
             match child.TokenType with
             | Body
             | StmtList ->
-                child.Children |> List.map (astNodeToStatement st)
+                child.Children |> List.map (astNodeToStatement st templateGroup)
             | _ -> []
         )
     
@@ -171,9 +168,7 @@ let generateMethodSyntax (state: ProcessingState) (definitionNode: ASTNode) : st
 // ---------------------------------------------------------
 // 6. Build a class from all procedure/function definitions
 // ---------------------------------------------------------
-let buildClassFromAst (state: ProcessingState) (root: ASTNode) : string =
-    let className = "GeneratedProgram"
-
+let buildClassFromAst (state: ProcessingState) (templateGroup: TemplateGroupFile) (root: ASTNode): string =
     // Filter child nodes that are function/procedure definitions
     let methodNodes =
         root.Children
@@ -185,7 +180,7 @@ let buildClassFromAst (state: ProcessingState) (root: ASTNode) : string =
     // Generate each method as a string
     let methodStrings =
         methodNodes
-        |> List.map (generateMethodSyntax state)
+        |> List.map (generateMethodSyntax state templateGroup)
 
     // Fill the class template
     let classTmpl = templateGroup.GetInstanceOf("classDef")
@@ -197,11 +192,12 @@ let buildClassFromAst (state: ProcessingState) (root: ASTNode) : string =
 // ---------------------------------------------------------
 // 7. Top-level function to produce final C# code as string
 // ---------------------------------------------------------
-let generateCSharp (state: ProcessingState) : string =
-    let classString = buildClassFromAst state state.Ast
+let generateCSharp (state: ProcessingState) (templateFileName: string) : string =
+    let templateGroup = TemplateGroupFile(templateFileName)
+    let classString = buildClassFromAst state templateGroup state.Ast
     
     // Wrap in a namespace
-    let nsTmpl = templateGroup.GetInstanceOf("namespaceDef")
+    let nsTmpl = templateGroup.GetInstanceOf(templateFileName)
     nsTmpl.Add("nsName", "MyNamespace")
     nsTmpl.Add("content", classString)
     nsTmpl.Render()
