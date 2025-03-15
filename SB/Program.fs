@@ -55,10 +55,10 @@ let private configureLogger (config: IConfiguration) =
 let private getSettings argv =
     let configSettings = buildConfig()  // Read from configuration file
     let appName = configSettings.GetValue<string>("ApplicationName")
-    let inputFileName = configSettings.GetValue<string>("InputFile")
-    let templatesFileName = configSettings.GetValue<string>("TemplatesFile")
-    let outputFileName = configSettings.GetValue<string>("OutputFile")
-    let verbosityLevel = configSettings.GetValue<bool>("Verbose")
+    let inputFileName = configSettings.GetValue<string>("Appsettings:InputFile")
+    let templatesFileName = configSettings.GetValue<string>("Appsettings:TemplatesFile")
+    let outputFileName = configSettings.GetValue<string>("Appsettings:OutputFile")
+    let verbosityLevel = configSettings.GetValue<bool>("Appsettings:Verbose")
     let (log: Core.Logger) = configureLogger configSettings  // Configure Serilog
     
     match argv with
@@ -177,8 +177,7 @@ let main argv =
             | (_, returnedState) -> returnedState
 
 //        printSymbolTable newState.SymTab
-        
-        let CSharpProgram = generateCSharp newState, settings.templateFileName
+        let z = generateCSharp newState settings.templateFileName
         
     //     If success, generate code
     //     if error, report

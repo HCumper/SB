@@ -157,13 +157,13 @@ let generateMethodSyntax (state: ProcessingState) (templateGroup: TemplateGroupF
         )
     
     // Prepare the method template
-    let tmpl = templateGroup.GetInstanceOf("methodDef")
-    tmpl.Add("modifiers", "public")
-    tmpl.Add("returnType", sbTypeToCSharp returnType)
-    tmpl.Add("name", methodName)
-    tmpl.Add("parameters", "")      // skipping for brevity
-    tmpl.Add("bodyLines", bodyStmts)
-    tmpl.Render()
+    templateGroup.GetInstanceOf("methodDef")
+        .Add("modifiers", "public")
+        .Add("returnType", sbTypeToCSharp returnType)
+        .Add("name", methodName)
+        .Add("parameters", "")      // skipping for brevity
+        .Add("bodyLines", bodyStmts)
+        .Render()
 
 // ---------------------------------------------------------
 // 6. Build a class from all procedure/function definitions
@@ -192,20 +192,16 @@ let buildClassFromAst (state: ProcessingState) (templateGroup: TemplateGroupFile
 // ---------------------------------------------------------
 // 7. Top-level function to produce final C# code as string
 // ---------------------------------------------------------
+
 let generateCSharp (state: ProcessingState) (templateFileName: string) : string =
     let templateGroup = TemplateGroupFile(templateFileName)
     let classString = buildClassFromAst state templateGroup state.Ast
     
     // Wrap in a namespace
-    let nsTmpl = templateGroup.GetInstanceOf(templateFileName)
-    nsTmpl.Add("nsName", "MyNamespace")
-    nsTmpl.Add("content", classString)
-    nsTmpl.Render()
-
-
-
-
-
+    templateGroup.GetInstanceOf("namespaceDef")
+        .Add("nsName", "MyNamespace")
+        .Add("content", classString)
+        .Render()
 
 
 
