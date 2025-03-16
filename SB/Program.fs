@@ -6,7 +6,7 @@ open Microsoft.Extensions.Configuration
 open Serilog
 open Antlr4.Runtime
 open Antlr4.Runtime.Tree
-
+open Antlr4.StringTemplate
 open FSharpPlus.Data
 
 open Utility
@@ -115,7 +115,7 @@ let semanticAnalysisState : State<ProcessingState, ProcessingState> =
     }
 
 /// Run the semantic analysis, returning (Result<SymbolTable,string>, SymbolTable)
-let runSemanticAnalysis (astRoot: ASTNode) (logger: Core.Logger) =
+let runSemanticAnalysis (astRoot: ASTNode) (logger: Core.Logger) (group: TemplateGroup) =
     // Create the initial ProcessingState
     let initialState = {
         Ast = astRoot
@@ -126,6 +126,7 @@ let runSemanticAnalysis (astRoot: ASTNode) (logger: Core.Logger) =
         ImplicitStrings = Set.empty<string>
         Errors = []
         Logger = logger
+        Templates = group
     }
 
     // Run the semantic analysis state computation
@@ -172,8 +173,9 @@ let main argv =
                 exit 1
         
         let ast = processToAST (parseTree, stream) log settings.verbose
+        let group = new TemplateGroupFile(settings.templateFileName)
         let newState =
-            match runSemanticAnalysis ast settings.logger with
+            match runSemanticAnalysis ast settings.logger group with
             | (_, returnedState) -> returnedState
 
 //        printSymbolTable newState.SymTab

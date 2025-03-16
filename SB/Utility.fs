@@ -5,6 +5,7 @@ open System.IO
 open System.Text
 open Antlr4.Runtime
 open Antlr4.Runtime.Tree
+open Antlr4.StringTemplate
 open FSharpPlus
 open FSharpPlus.Data
 open Serilog
@@ -84,6 +85,7 @@ type NodeKind =
     | Reference
     | Remark
     | Repeat
+    | Return
     | Separator
     | Stmt
     | StmtList
@@ -166,6 +168,7 @@ type ProcessingState = {
     ImplicitStrings: Set<string>
     Errors: string list //Collection of error message so far
     Logger: Core.Logger //Read only Serilog logger
+    Templates: TemplateGroup
 }
 
 /// Functions
