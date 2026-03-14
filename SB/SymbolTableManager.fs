@@ -1,6 +1,7 @@
 ﻿module SymbolTableManager
 
 open System
+open Types
 open Utility
 
 /// The mode used when adding a symbol.
@@ -10,24 +11,22 @@ type SymbolAddMode =
 
 /// Get the name from a symbol.
 let getNameFromSymbol (symbol: Symbol) : string =
-    match symbol with
-    | Common s -> s.Name
-    | Array s -> s.Common.Name
+    getSymbolName symbol
 
 /// Create an empty symbol table.
 let emptySymbolTable : SymbolTable = Map.empty
 
 /// Push a new scope (with the given name) onto the symbol table.
 let pushScopeToTable (scopeName: string) (symbolTable: SymbolTable) : SymbolTable =
-    symbolTable |> Map.add scopeName { Name = scopeName; Symbols = Map.empty }
+    symbolTable |> Map.add scopeName { Name = scopeName; Parent = None; Symbols = Map.empty }
 
 /// Non-destructively fetch a scope from the symbol table.
 /// Returns None if no scope exists.
-let fetchScopeFromTable (name: string) (table: SymbolTable) : Scope<Symbol> option =
+let fetchScopeFromTable (name: string) (table: SymbolTable) : Scope option =
     Map.tryFind name table
    
 /// Fetch a named symbol from the given scope.
-let fetchSymbolFromScope (name: string) (scope: Scope<Symbol>) : Symbol option =
+let fetchSymbolFromScope (name: string) (scope: Scope) : Symbol option =
     Map.tryFind name scope.Symbols
 
 /// Update a given scope with a new symbol (or update an existing symbol)

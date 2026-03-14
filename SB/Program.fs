@@ -9,6 +9,7 @@ open Antlr4.Runtime.Tree
 open Antlr4.StringTemplate
 open FSharpPlus.Data
 
+open Types
 open Utility
 open ParseTreeVisitor
 open SymbolTableManager
@@ -89,7 +90,7 @@ let parseFile (inputFileName: string): Result<IParseTree * AntlrInputStream, Par
 /// ----------------------------------
 /// 3. AST Construction
 /// ----------------------------------
-let processToAST ((tree: IParseTree), _inputStream) log verbose : ASTNode =
+let processToAST ((tree: IParseTree), _inputStream) _log verbose : ASTNode =
     let visitor = ASTBuildingVisitor()
     let astNodes = tree.Accept(visitor)   // returns ASTNode list
     let astRoot  = List.head astNodes
@@ -114,26 +115,22 @@ let semanticAnalysisState : State<ProcessingState, ProcessingState> =
         return stateWithSymbols
     }
 
-/// Run the semantic analysis, returning (Result<SymbolTable,string>, SymbolTable)
-let runSemanticAnalysis (astRoot: ASTNode) (logger: Core.Logger) (group: TemplateGroup) =
+/// Run the semantic analysis and return the final processing state.
+let runSemanticAnalysis (astRoot: ASTNode) (_logger: Core.Logger) (_group: TemplateGroup) =
     // Create the initial ProcessingState
     let initialState = {
         Ast = astRoot
         SymTab = emptySymbolTable
         CurrentScope = globalScope
         InParameterList = false
-        ImplicitInts = Set.empty<string>
-        ImplicitStrings = Set.empty<string>
+        ImplicitTyping = Map.empty
         Errors = []
-        Logger = logger
-        Templates = group
     }
 
     // Run the semantic analysis state computation
     let (finalState: ProcessingState, _) = run semanticAnalysisState initialState
 
-    // Return the result along with the final ProcessingState
-    result, finalState
+    finalState
 
 /// ----------------------------------
 /// 5. Output Generation & Logging
@@ -174,9 +171,7 @@ let main argv =
         
         let ast = processToAST (parseTree, stream) log settings.verbose
         let group = new TemplateGroupFile(settings.templateFileName)
-        let newState =
-            match runSemanticAnalysis ast settings.logger group with
-            | (_, returnedState) -> returnedState
+        let newState = runSemanticAnalysis ast settings.logger group
 
 //        printSymbolTable newState.SymTab
         let z = generateCSharp newState settings.templateFileName

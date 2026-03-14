@@ -1,29 +1,24 @@
-﻿module TypeAnalyzer
+module TypeAnalyzer
 
-open Utility
-open SemanticAnalyzer
+open Types
 
-/// Update a symbol’s evaluated type and modify its name based on both its suffix
-/// and its membership in the implicit sets. Specifically:
-/// - If the symbol’s name ends with "%" or is in the ImplicitInts set, then mark it as IntegerType.
-/// - If it ends with "$" or is in the ImplicitStrings set, then mark it as StringType.
-/// Also, "%" is replaced with "i" and "$" with "s" in the symbol’s name.
-/// Updates a single Symbol's type/name based on implicit sets.
+/// Update a symbol's evaluated type and normalize its name based on suffixes
+/// and implicit typing rules.
 let updateSymbolTypeAndName
     (implicitInts: Set<string>)
     (implicitStrings: Set<string>)
     (sym: Symbol)
     : Symbol =
-    
+
     let updateCommon (commonSym: CommonSymbol) =
         let baseType =
-            if commonSym.Name.Contains "%" then Integer
-            elif commonSym.Name.Contains "$" then String
+            if commonSym.Name.Contains "%" then SBType.Integer
+            elif commonSym.Name.Contains "$" then SBType.String
             else commonSym.EvaluatedType
 
         let finalType =
-            if implicitInts.Contains commonSym.Name then Integer
-            elif implicitStrings.Contains commonSym.Name then String
+            if implicitInts.Contains commonSym.Name then SBType.Integer
+            elif implicitStrings.Contains commonSym.Name then SBType.String
             else baseType
 
         let newName =
@@ -32,35 +27,56 @@ let updateSymbolTypeAndName
         { commonSym with Name = newName; EvaluatedType = finalType }
 
     match sym with
-    | Common commonSym ->
-        Common (updateCommon commonSym)
-    | Array arrSym ->
-        let updatedCommon = updateCommon arrSym.Common
-        Array { arrSym with Common = updatedCommon }
+    | VariableSym varSym ->
+        VariableSym { varSym with Common = updateCommon varSym.Common }
+    | ConstantSym constSym ->
+        ConstantSym { constSym with Common = updateCommon constSym.Common }
+    | ParameterSym paramSym ->
+        ParameterSym { paramSym with Common = updateCommon paramSym.Common }
+    | ArraySym arrSym ->
+        ArraySym { arrSym with Common = updateCommon arrSym.Common }
+    | FunctionSym funcSym ->
+        FunctionSym {
+            funcSym with
+                Common = updateCommon funcSym.Common
+                ReturnType =
+                    match (updateCommon funcSym.Common).EvaluatedType with
+                    | SBType.Unknown -> funcSym.ReturnType
+                    | inferred -> inferred
+        }
+    | ProcedureSym procSym ->
+        ProcedureSym { procSym with Common = updateCommon procSym.Common }
+    | BuiltInSym builtInSym ->
+        BuiltInSym { builtInSym with Common = updateCommon builtInSym.Common }
 
-/// Traverse the symbol table (a Map of scopes),
-/// and update each symbol’s evaluated type and name.
+/// Traverse the symbol table and update each symbol's evaluated type and name.
 let fillImplicitTypesAndModifyNames
     (implicitInts: Set<string>)
     (implicitStrings: Set<string>)
     (symTab: SymbolTable)
     : SymbolTable =
     symTab
-    |> Map.map (fun scopeKey scope ->
-        // Map over each symbol in this scope’s Symbols map.
+    |> Map.map (fun _ scope ->
         let updatedSymbols =
             scope.Symbols
-            |> Map.map (fun symKey sym ->
-                updateSymbolTypeAndName implicitInts implicitStrings sym
-            )
+            |> Map.map (fun _ sym -> updateSymbolTypeAndName implicitInts implicitStrings sym)
 
-        // Return a new scope with the updated Symbols.
         { scope with Symbols = updatedSymbols }
     )
 
 /// Update the ProcessingState by applying the above transformation to its symbol table.
-/// This function uses the ImplicitInts and ImplicitStrings sets from the state.
 let fillImplicitTypesAndModifyNamesInState (state: ProcessingState) : ProcessingState =
-    let newSymTab = fillImplicitTypesAndModifyNames state.ImplicitInts state.ImplicitStrings state.SymTab
-    { state with SymTab = newSymTab }
+    let implicitInts =
+        state.ImplicitTyping
+        |> Map.values
+        |> Seq.collect (fun rule -> rule.Integers)
+        |> Set.ofSeq
 
+    let implicitStrings =
+        state.ImplicitTyping
+        |> Map.values
+        |> Seq.collect (fun rule -> rule.Strings)
+        |> Set.ofSeq
+
+    let newSymTab = fillImplicitTypesAndModifyNames implicitInts implicitStrings state.SymTab
+    { state with SymTab = newSymTab }

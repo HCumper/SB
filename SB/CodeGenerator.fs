@@ -1,211 +1,151 @@
-﻿module CodeGenerator
+module CodeGenerator
 
-open Utility
-open Antlr4.StringTemplate
+open System
+open Types
 
-
-// ---------------------------------------------------------
-// 2. Utility function: get or guess C# type from SBTypes
-//    (If you need typed variables, use this. We won't use
-//     it for function return types, since they're always void now.)
-// ---------------------------------------------------------
-let sbTypeToCSharp (t: SBTypes) =
+let private sbTypeToCSharp (t: SBType) =
     match t with
-    | SBTypes.String  -> "string"
-    | SBTypes.Integer -> "int"
-    | SBTypes.Real    -> "double"
-    | SBTypes.Unknown -> "object"
-    | SBTypes.Void    -> "void"  // fallback, though for local variables maybe?
+    | SBType.String -> "string"
+    | SBType.Integer -> "int"
+    | SBType.Real -> "double"
+    | SBType.Void -> "void"
+    | SBType.Unknown -> "object"
 
-// ---------------------------------------------------------
-// 3. DRY Helper: Render a given template with named attributes
-// ---------------------------------------------------------
-let renderTemplate (tg: TemplateGroup) (templateName: string) (pairs: (string * obj) list) =
-    let tmpl = tg.GetInstanceOf(templateName)
-    for (k, v) in pairs do
-        tmpl.Add(k, v) |> ignore
-    tmpl.Render()
+let private indent level (text: string) =
+    let padding = String.replicate (level * 4) " "
+    text.Split([| "\r\n"; "\n" |], StringSplitOptions.None)
+    |> Array.map (fun line -> if line = "" then "" else padding + line)
+    |> String.concat Environment.NewLine
 
-// ---------------------------------------------------------
-// 4. Expressions: Convert ASTNode -> string (via templates)
-// ---------------------------------------------------------
 let rec astNodeToExpression (state: ProcessingState) (node: ASTNode) : string =
-    let tg = state.Templates
-    match node.TokenType with
-    | NumberLiteral ->
-        // node.Value = e.g. "123"
-        renderTemplate tg "exprNumber" [ "num", node.Value ]
-
-    | StringLiteral ->
-        renderTemplate tg "exprString" [ "txt", node.Value ]
-
-    | Identifier ->
-        renderTemplate tg "exprIdentifier" [ "id", node.Value ]
-
-    | BinaryExpr ->
-        // We might store the operator in node.Value or sub-nodes (Plus, Minus, etc.)
-        // Suppose node.Value is something like "+", "-", "*", "/"
-        // node.Children = [ leftExpr; rightExpr ]
-        if node.Children.Length <> 2 then
-            renderTemplate tg "exprUnrecognized" [ "kind", "BinaryExpr (invalid structure)" ]
-        else
-            let left = astNodeToExpression state node.Children.[0]
-            let right = astNodeToExpression state node.Children.[1]
-            
-            // If node.Value is empty, maybe the operator is in node.Children, 
-            // or you might have NodeKind = Plus, Minus, Multiply, etc.
-            let op =
-                match node.TokenType with
-                | BinaryExpr -> node.Value  // or check subnodes
-                | Plus -> "+"
-                | Minus -> "-"
-                | Multiply -> "*"
-                | Divide -> "/"
-                | Mod -> "%"
-                | Div -> "/"  // or whatever your logic for integer division is
-                | _ -> node.Value // fallback
-
-            renderTemplate tg "exprBinary"
-                [ "left", left
-                  "op", op
-                  "right", right ]
-
-    | CallExpr
-    | ProcedureCall
-    | FunctionCall
-    | ArrayOrFunctionCall ->
-        // node.Value = function name, node.Children = arguments
-        let argExprs =
-            node.Children
-            |> List.map (astNodeToExpression state)
-
-        renderTemplate tg "exprCall"
-            [ "name", node.Value
-              "args", argExprs ]
-
-    | _ ->
-        // Fallback for unhandled expression nodes
-        renderTemplate tg "exprUnrecognized"
-            [ "kind", node.TokenType.ToString() ]
-
-
-// ---------------------------------------------------------
-// 5. Statements: Convert ASTNode -> string (via templates)
-// ---------------------------------------------------------
-let rec astNodeToStatement (state: ProcessingState) (node: ASTNode) : string =
-    let tg = state.Templates
-    match node.TokenType with
-    | Assignment ->
-        // Typically node.Children = [ target, value ]
-        if node.Children.Length <> 2 then
-            "// Invalid assignment structure"
-        else
-            let targetStr = astNodeToExpression state node.Children.[0]
-            let valueStr  = astNodeToExpression state node.Children.[1]
-            renderTemplate tg "stmtAssignment"
-                [ "target", targetStr
-                  "value", valueStr ]
-
-    | ExitStmt ->
-        renderTemplate tg "stmtBreak" []
-
-    | Return ->
-        // If single child => return <expr>;
+    match node.Kind with
+    | NodeKind.NumberLiteral
+    | NodeKind.StringLiteral
+    | NodeKind.Identifier
+    | NodeKind.ID -> node.Value
+    | NodeKind.BinaryExpr ->
         match node.Children with
-        | [ exprNode ] ->
-            let exprStr = astNodeToExpression state exprNode
-            renderTemplate tg "stmtReturn" [ "expr", exprStr ]
-        | [] ->
-            // Just "return;"
-            renderTemplate tg "stmtReturn" []
-        | _ ->
-            "// Invalid return structure"
+        | [ left; right ] ->
+            let lhs = astNodeToExpression state left
+            let rhs = astNodeToExpression state right
+            $"({lhs} {node.Value} {rhs})"
+        | _ -> node.Value
+    | NodeKind.CallExpr
+    | NodeKind.ProcedureCall
+    | NodeKind.FunctionCall
+    | NodeKind.ArrayOrFunctionCall ->
+        let args = node.Children |> List.map (astNodeToExpression state) |> String.concat ", "
+        $"{node.Value}({args})"
+    | _ when node.Children.IsEmpty -> node.Value
+    | _ -> node.Children |> List.map (astNodeToExpression state) |> String.concat ", "
 
-    | Remark ->
-        renderTemplate tg "stmtComment" [ "text", node.Value ]
-
-    // Possibly other statements like "If", "For", "Repeat", etc. 
-    // Here we just show a basic approach for calls or default
-    | ProcedureCall
-    | FunctionCall
-    | CallExpr
-    | ArrayOrFunctionCall ->
-        let callStr = astNodeToExpression state node
-        renderTemplate tg "stmtExpression" [ "expr", callStr ]
-
+let rec astNodeToStatement (state: ProcessingState) (node: ASTNode) : string =
+    match node.Kind with
+    | NodeKind.Assignment ->
+        match node.Children with
+        | [ target; value ] ->
+            $"{astNodeToExpression state target} = {astNodeToExpression state value};"
+        | _ -> $"// Invalid assignment: {node.Value}"
+    | NodeKind.ExitStmt -> "break;"
+    | NodeKind.Return ->
+        match node.Children with
+        | [ exprNode ] -> $"return {astNodeToExpression state exprNode};"
+        | _ -> "return;"
+    | NodeKind.Remark -> $"// {node.Value}"
+    | NodeKind.Local ->
+        let names =
+            node.Children
+            |> List.map (fun child -> child.Value)
+            |> List.filter (String.IsNullOrWhiteSpace >> not)
+            |> String.concat ", "
+        if String.IsNullOrWhiteSpace names then
+            "// LOCAL"
+        else
+            $"object {names};"
+    | NodeKind.ProcedureCall
+    | NodeKind.FunctionCall
+    | NodeKind.CallExpr
+    | NodeKind.ArrayOrFunctionCall -> $"{astNodeToExpression state node};"
+    | NodeKind.If
+    | NodeKind.For
+    | NodeKind.Repeat
+    | NodeKind.Select
+    | NodeKind.When ->
+        $"// Unsupported statement kind: {node.Kind} ({node.Value})"
     | _ ->
-        // fallback
-        renderTemplate tg "stmtUnrecognized"
-            [ "kind", node.TokenType.ToString() ]
+        let expr = astNodeToExpression state node
+        if String.IsNullOrWhiteSpace expr then $"// Unsupported statement kind: {node.Kind}"
+        else $"{expr};"
 
-let private parameters parentNode =
-        parentNode.Children
-        |> List.filter (fun child -> child.TokenType = Parameters)
-        |> List.collect (fun paramGroup -> paramGroup.Children)
-        |> List.map (fun param -> param.Value)
-        |> String.concat ", "
-        
-let private locals localNode =
-        localNode.Children
-        |> List.collect (fun paramGroup -> paramGroup.Children)
-        |> List.map (fun param -> param.Value)
-        |> String.concat ", "
-        
-// ---------------------------------------------------------
-// 6. Generate methods (procedures or functions) from the AST
-//    In your new definition, "functions and procedures do not have return types" => always void
-// ---------------------------------------------------------
+let private parameters (definitionNode: ASTNode) =
+    definitionNode.Children
+    |> List.filter (fun child -> child.Kind = NodeKind.Parameters)
+    |> List.collect (fun paramGroup -> paramGroup.Children)
+    |> List.map (fun param ->
+        let paramName = if String.IsNullOrWhiteSpace param.Value then "arg" else param.Value
+        $"object {paramName}")
+    |> String.concat ", "
+
+let private methodBodyLines (state: ProcessingState) (definitionNode: ASTNode) =
+    definitionNode.Children
+    |> List.collect (fun child ->
+        match child.Kind with
+        | NodeKind.Local -> [ astNodeToStatement state child ]
+        | NodeKind.Body
+        | NodeKind.StmtList -> child.Children |> List.map (astNodeToStatement state)
+        | _ -> [])
+
 let generateMethodSyntax (state: ProcessingState) (definitionNode: ASTNode) : string =
-    let tg = state.Templates
-    let methodName = definitionNode.Value
+    let returnType =
+        match definitionNode.Kind with
+        | NodeKind.FunctionDefinition -> "object"
+        | _ -> sbTypeToCSharp SBType.Void
 
-    // For the body, we look for child nodes of type Body, StmtList, etc.
-    let bodyStmts =
-        definitionNode.Children
-        |> List.collect (fun child ->
-            match child.TokenType with
-            | Local -> [ locals child ]
-            | Body
-            | StmtList ->
-                // Each child is a statement
-                child.Children
-                |> List.map (astNodeToStatement state)
-            | _ -> []
-        )
+    let body =
+        methodBodyLines state definitionNode
+        |> List.map (indent 2)
+        |> String.concat Environment.NewLine
 
-    // Render the method template
-    renderTemplate tg "methodDef"
-        [ "modifiers", "public"
-          "name", methodName
-          "parameters", parameters definitionNode
-          "bodyLines", bodyStmts ]
+    let methodName =
+        if String.IsNullOrWhiteSpace definitionNode.Value then "UnnamedMethod" else definitionNode.Value
 
-// ---------------------------------------------------------
-// 7. Build program from all procedure/function definitions
-// ---------------------------------------------------------
+    let bodyText =
+        if String.IsNullOrWhiteSpace body then indent 2 "// no body"
+        else body
+
+    String.concat Environment.NewLine
+        [ $"    public static {returnType} {methodName}({parameters definitionNode})"
+          "    {"
+          bodyText
+          "    }" ]
+
 let buildProgramFromAst (state: ProcessingState) (root: ASTNode) (className: string) : string =
-    // let tg = state.Templates
+    let safeClassName =
+        if String.IsNullOrWhiteSpace className then "GeneratedProgram"
+        else className
 
-    // Collect all definitions
-    let methodNodes =
+    let methodStrings =
         root.Children
         |> List.filter (fun c ->
-            c.TokenType = ProcedureDefinition
-            || c.TokenType = FunctionDefinition
-        )
-
-    // Generate strings for each method
-    let methodStrings =
-        methodNodes
+            c.Kind = NodeKind.ProcedureDefinition || c.Kind = NodeKind.FunctionDefinition)
         |> List.map (generateMethodSyntax state)
-    let header =     renderTemplate state.Templates "programHeader" [ "date", System.DateTime.Now.ToString("yyyy-MM-dd") ]
 
-    Seq.append (seq { yield header }) methodStrings |> String.concat "\n"
+    let members =
+        if List.isEmpty methodStrings then
+            [ "    public static void Main()"
+              "    {"
+              "        // No procedures or functions were generated."
+              "    }" ]
+        else
+            methodStrings
 
-// ---------------------------------------------------------
-// 8. Top-level function to produce final C# code as string
-// ---------------------------------------------------------
+    String.concat Environment.NewLine
+        ([ "using System;"
+           ""
+           $"public static class {safeClassName}"
+           "{" ]
+         @ members
+         @ [ "}" ])
+
 let generateCSharp (state: ProcessingState) (className: string) : string =
- //   let tg = state.Templates
     buildProgramFromAst state state.Ast className
-

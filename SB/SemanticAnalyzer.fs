@@ -1,187 +1,213 @@
-﻿module SemanticAnalyzer
+module SemanticAnalyzer
 
+open Types
 open Utility
 open SymbolTableManager
 open Monads.State
 open FSharpPlus.Data
 
 /// List of keywords used to pre-populate the symbol table.
-let keywords = 
-    [ "ABS"; "ACOS"; "ALLOCATE"; "AND"; "APPEND"; "ASC"; "ASIN"; "AT"; "ATAN"; 
-      "BEEP"; "BACKUP"; "BORDER"; "CIRCLE"; "CLS"; "CLOSE"; "COPY"; "COS"; 
-      "CURSOR OFF"; "CURSOR ON"; "DATA"; "DATE"; "DEALLOCATE"; "DEFine FuNction"; 
-      "DEFine PROCedure"; "DELETE"; "DIM"; "DIR"; "DRAW"; "END DEFine"; 
-      "END SELect"; "END WHILE"; "EXP"; "EXTERNAL"; "FORMAT"; "FOR"; "GLOBAL"; 
-      "GO SUB"; "GO TO"; "IF"; "INK"; "INPUT"; "INSTR"; "INT"; "LEFT$"; "LET"; 
-      "LEN"; "LIST"; "LOAD"; "LOADMEM"; "LOCAL"; "LOG"; "LOOP"; "LPRINT"; "LRUN"; 
-      "MOD"; "MID$"; "MOVE"; "NEW"; "NEXT"; "NOT"; "ON"; "ON ERROR"; "OR"; 
-      "PALETTE"; "PAPER"; "PAUSE"; "PEEK"; "PI"; "POINT"; "POKE"; "PRINT"; 
-      "REMark"; "REM"; "REPEAT"; "RESTORE"; "RETURN"; "RETurn"; "REPL$"; "RIGHT$"; 
-      "RND"; "ROUND"; "RUN"; "SAVE"; "SAVEMEM"; "SELect ON"; "SHELL"; "SGN"; 
-      "SIN"; "STEP"; "STOP"; "STR$"; "SYSVAR"; "TAN"; "THEN"; "TIME"; "TO"; 
+let keywords =
+    [ "ABS"; "ACOS"; "ALLOCATE"; "AND"; "APPEND"; "ASC"; "ASIN"; "AT"; "ATAN"
+      "BEEP"; "BACKUP"; "BORDER"; "CIRCLE"; "CLS"; "CLOSE"; "COPY"; "COS"
+      "CURSOR OFF"; "CURSOR ON"; "DATA"; "DATE"; "DEALLOCATE"; "DEFine FuNction"
+      "DEFine PROCedure"; "DELETE"; "DIM"; "DIR"; "DRAW"; "END DEFine"
+      "END SELect"; "END WHILE"; "EXP"; "EXTERNAL"; "FORMAT"; "FOR"; "GLOBAL"
+      "GO SUB"; "GO TO"; "IF"; "INK"; "INPUT"; "INSTR"; "INT"; "LEFT$"; "LET"
+      "LEN"; "LIST"; "LOAD"; "LOADMEM"; "LOCAL"; "LOG"; "LOOP"; "LPRINT"; "LRUN"
+      "MOD"; "MID$"; "MOVE"; "NEW"; "NEXT"; "NOT"; "ON"; "ON ERROR"; "OR"
+      "PALETTE"; "PAPER"; "PAUSE"; "PEEK"; "PI"; "POINT"; "POKE"; "PRINT"
+      "REMark"; "REM"; "REPEAT"; "RESTORE"; "RETURN"; "RETurn"; "REPL$"; "RIGHT$"
+      "RND"; "ROUND"; "RUN"; "SAVE"; "SAVEMEM"; "SELect ON"; "SHELL"; "SGN"
+      "SIN"; "STEP"; "STOP"; "STR$"; "SYSVAR"; "TAN"; "THEN"; "TIME"; "TO"
       "TRON"; "TROFF"; "UNTIL"; "VAL"; "WAIT"; "WHEN"; "WHILE"; "WINDOW"; "XOR" ]
 
-/// Creates the base CommonSymbol record.
-let private baseSymbol
-    (name: string)
-    (symbolKind: NodeKind)
-    (category: CategoryType)
-    (position: int * int)
-    (evaluatedType: SBTypes)
-    : CommonSymbol =
+let private withDefaultRule scopeName (state: ProcessingState) : ImplicitTypingRule =
+    match Map.tryFind scopeName state.ImplicitTyping with
+    | Some rule -> rule
+    | None -> { Integers = Set.empty; Strings = Set.empty }
+
+let private updateImplicitTyping scopeName (decorator: string) (names: Set<string>) (state: ProcessingState) =
+    let currentRule = withDefaultRule scopeName state
+    let updatedRule =
+        if decorator.Contains "%" then
+            { currentRule with Integers = Set.union currentRule.Integers names }
+        elif decorator.Contains "$" then
+            { currentRule with Strings = Set.union currentRule.Strings names }
+        else
+            currentRule
+
+    { state with ImplicitTyping = Map.add scopeName updatedRule state.ImplicitTyping }
+
+let private createCommonSymbol name category position evaluatedType =
     { Name = name
-      SymbolKind = symbolKind
-      EvaluatedType = evaluatedType
       Category = category
+      EvaluatedType = evaluatedType
       Position = position }
 
-/// Create a simple (common) symbol.
-let createCommonSymbol (name: string) (symbolKind: NodeKind) (category: CategoryType) (position: int * int) : Symbol =
-    Common (baseSymbol name symbolKind category position Unknown)
+let private createVariableSymbol name position evaluatedType =
+    VariableSym { Common = createCommonSymbol name SymbolCategory.Variable position evaluatedType }
 
-/// Creates an array symbol with the specified dimensions.
-let createArraySymbol
-    (name: string)
-    (symbolKind: NodeKind)
-    (category: CategoryType)
-    (position: int * int)
-    (dimensions: int list)
-    : Symbol =
-    Array { Common = baseSymbol name symbolKind category position Unknown
-            Dimensions = dimensions }
+let private createParameterSymbol name position evaluatedType =
+    ParameterSym { Common = createCommonSymbol name SymbolCategory.Parameter position evaluatedType; Passing = None }
 
-/// Pre-populate the symbol table with keywords.
-/// This pushes a new (global) scope and adds each keyword as a symbol.
+let private createArraySymbol name position dimensions =
+    ArraySym {
+        Common = createCommonSymbol name SymbolCategory.Array position SBType.Unknown
+        Dimensions = dimensions
+    }
+
+let private createFunctionSymbol name position =
+    FunctionSym {
+        Common = createCommonSymbol name SymbolCategory.Function position SBType.Unknown
+        Parameters = []
+        ReturnType = SBType.Unknown
+    }
+
+let private createProcedureSymbol name position =
+    ProcedureSym {
+        Common = createCommonSymbol name SymbolCategory.Procedure position SBType.Void
+        Parameters = []
+    }
+
+let private createBuiltInSymbol name =
+    BuiltInSym {
+        Common =
+            createCommonSymbol
+                name
+                SymbolCategory.Keyword
+                { BasicLineNo = None; EditorLineNo = 0; Column = 0 }
+                SBType.Unknown
+    }
+
+let private addOrUpdateSymbol mode scopeName symbol table =
+    addSymbolToNamedScope mode symbol scopeName table
+
+let private ensureScope scopeName parentScope table =
+    if Map.containsKey scopeName table then
+        table
+    else
+        table |> Map.add scopeName { Name = scopeName; Parent = parentScope; Symbols = Map.empty }
+
+/// Pre-populate the symbol table with language keywords.
 let prePopulateSymbolTable (oldState: ProcessingState) : ProcessingState =
-    let tableWithGlobalScope: SymbolTable = pushScopeToTable globalScope oldState.SymTab
+    let tableWithGlobalScope = ensureScope globalScope None oldState.SymTab
     let newSymTab =
-        List.fold
-            (fun (table: SymbolTable) (keyWord: string) ->
-                let newSymbol = createCommonSymbol keyWord ProcedureDefinition CategoryType.Keyword (0, 0)
-                addSymbolToNamedScope Overwrite newSymbol globalScope table)
-            tableWithGlobalScope
-            keywords
+        keywords
+        |> List.fold (fun table keyword ->
+            addOrUpdateSymbol Overwrite globalScope (createBuiltInSymbol keyword) table) tableWithGlobalScope
+
     { oldState with SymTab = newSymTab }
 
-/// Update the state's implicit integer or string sets based on new symbols.
-let private updateImplicitSets
-    (implicitCat: CategoryType)
-    (symbols: Symbol list)
-    (currentState: ProcessingState)
-    : ProcessingState =
-    let names = symbols |> List.map getSymbolName |> Set.ofList
-    match implicitCat with
-    | CategoryType.Integer ->
-        { currentState with ImplicitInts = Set.union names currentState.ImplicitInts }
-    | CategoryType.String ->
-        { currentState with ImplicitStrings = Set.union names currentState.ImplicitStrings }
-    | _ ->
-        currentState
+let rec private addChildrenToTable mode (children: ASTNode list) (stateForChildren: ProcessingState) : State<ProcessingState, unit> =
+    state {
+        match children with
+        | [] -> return ()
+        | head :: tail ->
+            do! addToTable mode head stateForChildren
+            let! nextState = getState
+            do! addChildrenToTable mode tail nextState
+    }
 
-/// Recursively update the symbol table based on an AST node.
-/// Uses the State monad to thread ProcessingState.
-let rec addToTable
+and addToTable
     (mode: SymbolAddMode)
     (node: ASTNode)
     (incomingState: ProcessingState)
     : State<ProcessingState, unit> =
     state {
-        // 1. Get the current state.
         let! currentState = getState
-        let currentTable  = currentState.SymTab
-        let scopeName     = incomingState.CurrentScope
+        let scopeName = currentState.CurrentScope
 
-        // 2. Process the node based on its token type.
-        let (updatedTable, outgoingScope, possiblyUpdatedState) =
-            match node.TokenType with
-            | ProcedureCall ->
-                let sym =
-                    createCommonSymbol node.Value ProcedureCall CategoryType.Procedure node.Position
-                let tbl = addSymbolToNamedScope Overwrite sym scopeName currentTable
-                (tbl, scopeName, currentState)
+        let currentRule = withDefaultRule scopeName currentState
 
-            | FunctionCall ->
-                let sym =
-                    createCommonSymbol node.Value FunctionCall CategoryType.Function node.Position
-                let tbl = addSymbolToNamedScope Overwrite sym scopeName currentTable
-                (tbl, scopeName, currentState)
+        let symbolFromIdentifier name position =
+            if currentState.InParameterList then
+                createParameterSymbol name position SBType.Unknown
+            else
+                let inferredType =
+                    if currentRule.Integers.Contains name then SBType.Integer
+                    elif currentRule.Strings.Contains name then SBType.String
+                    else SBType.Unknown
+                createVariableSymbol name position inferredType
 
-            | Implicit ->
-                let implicitCat =
-                    if node.Value.Contains("%") then CategoryType.Integer
-                    elif node.Value.Contains("$") then CategoryType.String
-                    else CategoryType.Variable
-                let implicitSyms =
-                    node.Children |> List.map (fun c ->
-                        createCommonSymbol c.Value Implicit implicitCat c.Position)
-                let tbl =
-                    implicitSyms |> List.fold (fun acc sym -> addSymbolToNamedScope Overwrite sym scopeName acc) currentTable
-                let newState = updateImplicitSets implicitCat implicitSyms currentState
-                (tbl, scopeName, newState)
+        let mutable updatedState = currentState
+        let mutable childState = currentState
 
-            | ProcedureDefinition
-            | FunctionDefinition ->
-                if node.Children.Length > 0 then
-                    let nameOfScope = node.Value
-                    let tbl = pushScopeToTable nameOfScope currentTable
-                    (tbl, nameOfScope, currentState)
-                else
-                    (currentTable, scopeName, currentState)
+        match node.Kind with
+        | NodeKind.ProcedureCall ->
+            let sym = createProcedureSymbol node.Value node.Position
+            updatedState <- { updatedState with SymTab = addOrUpdateSymbol mode scopeName sym updatedState.SymTab }
 
-            | Dim ->
-                match node.Children with
-                | [] -> (currentTable, scopeName, currentState)
-                | head :: tail ->
-                    let arraySizes =
-                        tail |> List.choose (fun x -> try Some (int x.Value) with _ -> None)
-                    let arrSym =
-                        createArraySymbol head.Value Dim CategoryType.Variable node.Position arraySizes
-                    let tbl = addSymbolToNamedScope Overwrite arrSym globalScope currentTable
-                    (tbl, scopeName, currentState)
+        | NodeKind.FunctionCall ->
+            let sym = createFunctionSymbol node.Value node.Position
+            updatedState <- { updatedState with SymTab = addOrUpdateSymbol mode scopeName sym updatedState.SymTab }
 
-            | Identifier ->
-                let sym =
-                    createCommonSymbol node.Value ID CategoryType.Variable node.Position
-                let tbl = addSymbolToNamedScope Overwrite sym scopeName currentTable
-                (tbl, scopeName, currentState)
+        | NodeKind.Implicit ->
+            let names = node.Children |> List.map (fun child -> child.Value) |> Set.ofList
+            let stateWithImplicit = updateImplicitTyping scopeName node.Value names updatedState
+            let symTabWithImplicit =
+                node.Children
+                |> List.fold (fun table child ->
+                    addOrUpdateSymbol mode scopeName (createVariableSymbol child.Value child.Position SBType.Unknown) table) stateWithImplicit.SymTab
+            updatedState <- { stateWithImplicit with SymTab = symTabWithImplicit }
 
-            | Parameters ->
-                // Mark the state as inside a parameter list.
-                let newSt = { currentState with InParameterList = true }
-                let sym =
-                    createCommonSymbol node.Value Parameters CategoryType.Parameter node.Position
-                let tbl = addSymbolToNamedScope Overwrite sym scopeName currentTable
-                (tbl, scopeName, newSt)
+        | NodeKind.ProcedureDefinition ->
+            let sym = createProcedureSymbol node.Value node.Position
+            let symTab =
+                updatedState.SymTab
+                |> addOrUpdateSymbol mode globalScope sym
+                |> ensureScope node.Value (Some globalScope)
+            updatedState <- { updatedState with SymTab = symTab; CurrentScope = node.Value }
+            childState <- updatedState
 
-            | Local ->
-                let newSt = { currentState with InParameterList = true }
-                let localName = node.Children[0].Value
-                let sym =
-                    createCommonSymbol localName Local CategoryType.Local node.Position
-                let tbl = addSymbolToNamedScope Overwrite sym scopeName currentTable
-                (tbl, scopeName, newSt)
+        | NodeKind.FunctionDefinition ->
+            let sym = createFunctionSymbol node.Value node.Position
+            let symTab =
+                updatedState.SymTab
+                |> addOrUpdateSymbol mode globalScope sym
+                |> ensureScope node.Value (Some globalScope)
+            updatedState <- { updatedState with SymTab = symTab; CurrentScope = node.Value }
+            childState <- updatedState
 
-            | _ ->
-                (currentTable, scopeName, currentState)
+        | NodeKind.Dim ->
+            match node.Children with
+            | [] -> ()
+            | head :: tail ->
+                let arraySizes =
+                    tail |> List.choose (fun child -> match System.Int32.TryParse child.Value with | true, value -> Some value | _ -> None)
+                let arrSym = createArraySymbol head.Value head.Position arraySizes
+                updatedState <- { updatedState with SymTab = addOrUpdateSymbol mode scopeName arrSym updatedState.SymTab }
 
-        // 3. Update the state with the new symbol table.
-        let updatedState = { possiblyUpdatedState with SymTab = updatedTable }
+        | NodeKind.Identifier
+        | NodeKind.ID ->
+            let sym = symbolFromIdentifier node.Value node.Position
+            updatedState <- { updatedState with SymTab = addOrUpdateSymbol mode scopeName sym updatedState.SymTab }
+
+        | NodeKind.Parameters ->
+            childState <- { updatedState with InParameterList = true }
+
+        | NodeKind.Local ->
+            match node.Children with
+            | first :: _ ->
+                let sym = createVariableSymbol first.Value first.Position SBType.Unknown
+                updatedState <- { updatedState with SymTab = addOrUpdateSymbol mode scopeName sym updatedState.SymTab }
+                childState <- updatedState
+            | [] -> ()
+
+        | _ -> ()
+
         do! putState updatedState
+        do! addChildrenToTable mode node.Children childState
 
-        // 4. Recurse over children.
-        let rec processKids kids =
-            state {
-                match kids with
-                | [] -> return ()
-                | head :: tail ->
-                    do! addToTable Overwrite head updatedState
-                    do! processKids tail
-            }
-        do! processKids node.Children
-
-        // 5. If finishing a Parameters node, revert the parameter flag.
-        if node.TokenType = Parameters then
-            do! putState { updatedState with InParameterList = false }
+        match node.Kind with
+        | NodeKind.Parameters ->
+            let! stateAfterChildren = getState
+            do! putState { stateAfterChildren with InParameterList = currentState.InParameterList }
+        | NodeKind.ProcedureDefinition
+        | NodeKind.FunctionDefinition ->
+            let! stateAfterChildren = getState
+            do! putState { stateAfterChildren with CurrentScope = currentState.CurrentScope }
+        | _ -> ()
 
         return ()
     }

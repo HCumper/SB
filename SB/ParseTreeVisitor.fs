@@ -3,6 +3,7 @@
 open System
 open Antlr4.Runtime
 open Antlr4.Runtime.Tree
+open Types
 open Utility
 
 // -----------------------------------------------------------------------------
@@ -93,10 +94,20 @@ type ASTBuildingVisitor() =
         single NodeKind.Program "" p children
 
     override this.VisitLine(ctx: SBParser.LineContext) =
-        if isNull (ctx.stmtlist()) then
-            []
-        else
-            this.CollectStmtList(ctx.stmtlist())
+        let p = posOfTree ctx
+
+        let lineValue =
+            match ctx.lineNumber() with
+            | null -> ""
+            | ln -> ln.GetText()
+
+        let children =
+            if isNull (ctx.stmtlist()) then
+                []
+            else
+                this.CollectStmtList(ctx.stmtlist())
+
+        single NodeKind.Line lineValue p children        
 
     override this.VisitStmtlist(ctx: SBParser.StmtlistContext) =
         this.CollectStmtList(ctx)

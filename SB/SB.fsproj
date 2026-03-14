@@ -6,11 +6,11 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <Compile Include="Types.fs" />
         <Compile Include="Utility.fs" />
         <Compile Include="SymbolTableManager.fs" />
         <Compile Include="Monads.fs" />
         <Compile Include="SyntaxAst.fs" />
-        <Compile Include="Asthelpers.fs" />
         <Compile Include="ParseTreeVisitor.fs" />
         <Compile Include="SemanticAnalyzer.fs" />
         <Compile Include="TypeAnalyzer.fs" />
