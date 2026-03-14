@@ -197,4 +197,5 @@ let main argv =
     //     0
     // with ex ->
 //        Console.Error.WriteLine(ex.Message)
+        Console.WriteLine(z)
         1

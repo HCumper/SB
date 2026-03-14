@@ -106,7 +106,7 @@ let rec astNodeToStatement (state: ProcessingState) (node: ASTNode) : string =
                 [ "target", targetStr
                   "value", valueStr ]
 
-    | Exitstmt ->
+    | ExitStmt ->
         renderTemplate tg "stmtBreak" []
 
     | Return ->
@@ -138,13 +138,24 @@ let rec astNodeToStatement (state: ProcessingState) (node: ASTNode) : string =
         renderTemplate tg "stmtUnrecognized"
             [ "kind", node.TokenType.ToString() ]
 
-
+let private parameters parentNode =
+        parentNode.Children
+        |> List.filter (fun child -> child.TokenType = Parameters)
+        |> List.collect (fun paramGroup -> paramGroup.Children)
+        |> List.map (fun param -> param.Value)
+        |> String.concat ", "
+        
+let private locals localNode =
+        localNode.Children
+        |> List.collect (fun paramGroup -> paramGroup.Children)
+        |> List.map (fun param -> param.Value)
+        |> String.concat ", "
+        
 // ---------------------------------------------------------
 // 6. Generate methods (procedures or functions) from the AST
 //    In your new definition, "functions and procedures do not have return types" => always void
 // ---------------------------------------------------------
 let generateMethodSyntax (state: ProcessingState) (definitionNode: ASTNode) : string =
-    // We'll unify function vs. procedure => always "void"
     let tg = state.Templates
     let methodName = definitionNode.Value
 
@@ -153,6 +164,7 @@ let generateMethodSyntax (state: ProcessingState) (definitionNode: ASTNode) : st
         definitionNode.Children
         |> List.collect (fun child ->
             match child.TokenType with
+            | Local -> [ locals child ]
             | Body
             | StmtList ->
                 // Each child is a statement
@@ -161,23 +173,18 @@ let generateMethodSyntax (state: ProcessingState) (definitionNode: ASTNode) : st
             | _ -> []
         )
 
-    // If you want parameters, you could parse them from the AST or symbol table
-    // For this example, we keep it empty
-    let parameters = ""
-
     // Render the method template
     renderTemplate tg "methodDef"
         [ "modifiers", "public"
           "name", methodName
-          "parameters", parameters
+          "parameters", parameters definitionNode
           "bodyLines", bodyStmts ]
 
-
 // ---------------------------------------------------------
-// 7. Build a class from all procedure/function definitions
+// 7. Build program from all procedure/function definitions
 // ---------------------------------------------------------
-let buildClassFromAst (state: ProcessingState) (root: ASTNode) (className: string) : string =
-    let tg = state.Templates
+let buildProgramFromAst (state: ProcessingState) (root: ASTNode) (className: string) : string =
+    // let tg = state.Templates
 
     // Collect all definitions
     let methodNodes =
@@ -191,25 +198,14 @@ let buildClassFromAst (state: ProcessingState) (root: ASTNode) (className: strin
     let methodStrings =
         methodNodes
         |> List.map (generateMethodSyntax state)
+    let header =     renderTemplate state.Templates "programHeader" [ "date", System.DateTime.Now.ToString("yyyy-MM-dd") ]
 
-    // Fill class template
-    renderTemplate tg "classDef"
-        [ "modifiers", "public"
-          "className", className
-          "members", methodStrings ]
-
+    Seq.append (seq { yield header }) methodStrings |> String.concat "\n"
 
 // ---------------------------------------------------------
 // 8. Top-level function to produce final C# code as string
 // ---------------------------------------------------------
 let generateCSharp (state: ProcessingState) (className: string) : string =
-    let tg = state.Templates
-    let classString = buildClassFromAst state state.Ast className
-
-    // Wrap in a namespace
-    renderTemplate tg "namespaceDef"
-        [ "nsName",  "MyNamespace"
-          "content", classString ]
-
-
+ //   let tg = state.Templates
+    buildProgramFromAst state state.Ast className
 

@@ -49,32 +49,44 @@ type NodeKind =
     | BinaryExpr
     | Body
     | CallExpr
+    | Data
     | Dim
+    | Div
+    | Divide
     | EndDef
-    | EndIf
     | EndFor
+    | EndIf
     | EndRepeat
-    | Exitstmt
+    | ExitStmt
     | Expression
     | For
-    | FunctionDefinition
-    | ID
-    | If
     | Funchdr
     | Function
     | FunctionCall
+    | FunctionDefinition
+    | Gosub
+    | Goto
+    | ID
     | Identifier
     | IdentifierOnly
+    | If
     | Implicit
     | Line
     | LineNumber
-    | Loc
     | Local
+    | Minus
+    | Mod
+    | Multiply
+    | NextStmt
     | Nothing
     | NumberLiteral
+    | OnClause
+    | OnGosub
+    | OnGoto
     | Operator
     | Parameters
     | ParenthesizedList
+    | Plus
     | Primary
     | Procedure
     | ProcedureCall
@@ -82,10 +94,13 @@ type NodeKind =
     | Prochdr
     | ProcName
     | Program
+    | Read
     | Reference
     | Remark
     | Repeat
+    | Restore
     | Return
+    | Select
     | Separator
     | Stmt
     | StmtList
@@ -94,17 +109,13 @@ type NodeKind =
     | TerminalNodeImpl
     | Terminator
     | TypedIdentifier
-    | Value
-    | UnaryExpr    
+    | UnaryExpr
     | Unknown
     | UnparenthesizedList
-    | Plus
-    | Minus
-    | Multiply
-    | Divide
-    | Mod
-    | Div
-
+    | Value
+    | When
+    | WhenError
+    
 /// <summary>
 /// Represents a node in the abstract syntax tree (AST).
 /// </summary>

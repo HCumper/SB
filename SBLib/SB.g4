@@ -1,190 +1,464 @@
 grammar SB;
 
-program : line+ (Newline)* EOF;
+// ============================================================
+// Parser Rules
+// ============================================================
 
-line :
-	lineNumber? stmtlist? Newline
-	| lineNumber Colon Newline
-	;
+program
+    : line* EOF
+    ;
 
-stmtlist : stmt (':' stmt)*; 
+line
+    : lineNumber? stmtlist? Newline
+    | lineNumber Colon Newline
+    ;
 
-stmt :
-	Dimension ID parenthesizedlist		 												#Dim
-	| Local unparenthesizedlist															#Local
-	| Implic unparenthesizedlist														#Implicit
-	| Refer unparenthesizedlist															#Reference155
-	| prochdr line* lineNumber? EndDef ID?												#ProcedureDefinition
-	| funchdr line* lineNumber? EndDef ID?		 										#FunctionDefinition
-    | For ID assignto expr To expr (Step expr)?
-        (
-          // Long form with remark
-          Colon Comment Newline line* lineNumber? endFor ID?
-           
-          // Short form
-          | Colon stmtlist
-     
-          // Long form without remark
-          | Newline line* lineNumber? endFor ID?
-        )
-         #Forloop
-                 
-    | Repeat identifier 
-      ( Colon stmtlist                                    // Short form
-      | Newline line* lineNumber? endRepeat ID?           // Long form
-      )                                                                                 #Repeat
+stmtlist
+    : stmt (Colon stmt)*
+    ;
 
-    | If expr 
-      ( (Then | Colon) stmtlist (Colon Else Colon stmtlist)?                   // Short form
-      | (Then)? Newline line+ (lineNumber? Else line+)? lineNumber? endIf      // Long form
-      )                                                                                 #If
+stmt
+    : simpleStmt                                                                      #SimpleStatement
+    | procedureDef                                                                    #ProcedureDefinitionStmt
+    | functionDef                                                                     #FunctionDefinitionStmt
+    | forStmt                                                                         #ForStatement
+    | repeatStmt                                                                      #RepeatStatement
+    | ifStmt                                                                          #IfStatement
+    | selectStmt                                                                      #SelectStatement
+    | whenStmt                                                                        #WhenStatement
+    ;
 
-    | Select constexpr Newline line* lineNumber? endSelect								#Longselect
-	| Comment																			#Remark
- 	| On (constexpr) Equal rangeexpr													#Onselect
-	| Next ID																			#Nextstmt
-	| Exit ID																			#Exitstmt
-	| identifier (parenthesizedlist)? assignto expr                                     #Assign
-	| ID (unparenthesizedlist | parenthesizedlist)?	                					#ProcedureCall
-	| expr assignto ID (unparenthesizedlist | parenthesizedlist)?	                	#FunctionCall
-	| identifier																		#IdentifierOnly
-	;
+simpleStmt
+    : Dimension dimList                                                               #Dim
+    | Local localList                                                                 #LocalDecl
+    | Implic unparenthesizedlist                                                      #ImplicitDecl
+    | Refer unparenthesizedlist                                                       #ReferenceDecl
+    | Comment                                                                         #Remark
+    | Next ID                                                                         #NextStmt
+    | Exit ID                                                                         #ExitStmt
+    | gotoStmt                                                                        #GotoStatement
+    | gosubStmt                                                                       #GosubStatement
+    | onGotoStmt                                                                      #OnGotoStatement
+    | onGosubStmt                                                                     #OnGosubStatement
+    | Return expr?                                                                    #ReturnStmt
+    | Data exprList                                                                   #DataStmt
+    | Read lvalueList                                                                 #ReadStmt
+    | Restore expr?                                                                   #RestoreStmt
+    | assignmentStmt                                                                  #AssignmentStatement
+    | channelProcCallStmt                                                             #ChannelProcCall
+    | procedureCallStmt                                                               #ProcedureCallStatement
+    ;
 
-assignto: '=';
-equals: '=';
-prochdr : DefProc ID parameters parenthesizedlist?;
-funchdr : DefFunc ID parameters parenthesizedlist?;
-identifier : ID (parenthesizedlist)?;
-parameters : (parenthesizedlist)?;
-parenthesizedlist :	LeftParen expr (separator expr)* RightParen;
-unparenthesizedlist : expr (separator expr)*;
-separator : Comma | Bang | Semi | To;
-constexpr : Integer | Real | String | ID;
-rangeexpr : constexpr To constexpr | constexpr;
-unaryTerminator : (Minus Integer | Minus Real | Minus identifier);
+// ============================================================
+// GO TO / GO SUB
+// ============================================================
 
-lineNumber : Integer;
-endFor : EndFor;
-endDef  : EndDef;
-endRepeat : EndRepeat;
-endIf : EndIf;
-endSelect : EndSelect;
+gotoStmt
+    : Go To expr
+    | GoTo expr
+    ;
 
-/*
-    SB has 11 levels of operator precedence
-    (1)  Unary plus and minus
-    (2)  String concatenation
-    (3)  String search (the INSTR operator)
-    (4)  Exponentiation
-    (5)  Multiplication, Division, Modulus calculation
-    (6)  Addition and Subtraction
-    (7)  Logical comparison (not equal, greater, etc)
-    (8)  Unary logical NOT
-    (9)  Logical AND
-    (10) Logical OR and XOR
-    (11) Expressions (inc. Function parameters and array
-         subscripts) enclosed in parentheses.
-    Every terminal and expression must have an associated precedence to determine whether parentheses are needed
-    
-    Relies on Antlr's precedence rules to handle the precedence of the operators
-*/
-expr
-    : LeftParen expr RightParen                                                         #Parenlist
-    | expr Amp expr                                                                     #Binary //Concatenation
-    | expr (Plus | Minus) expr                                                          #Binary //Add/Subtract
-    | expr (Multiply | Divide | Mod | Div) expr                                         #Binary //Multiply/Divide
-    | expr Caret expr                                                                   #Exponentiation
-    | expr (Equal | NotEqual | Less | LessEqual | Greater | GreaterEqual) expr          #Comparison
-    | expr And expr                                                                     #Logical //AND
-    | expr (Or | Xor) expr                                                              #Logical //OR/XOR
-    | Not expr                                                                          #Unary //Not
-    | (Plus | Minus)? primary                                                           #Unary //plus/minus
-    | (Integer | Real | String | identifier)                                            #Term
+gosubStmt
+    : Go Sub expr
+    | GoSub expr
+    ;
+
+onGotoStmt
+    : On expr (Go To | GoTo) exprList
+    ;
+
+onGosubStmt
+    : On expr (Go Sub | GoSub) exprList
+    ;
+
+// ============================================================
+// Assignment / calls
+// ============================================================
+
+assignmentStmt
+    : lvalue Equal expr
+    ;
+
+// Procedure call with leading channel argument e.g. PRINT #1, x
+channelProcCallStmt
+    : ID chanArg (separator arg)*
+    ;
+
+// Ordinary procedure call — arglist is optional to allow bare calls like CLS, STOP
+procedureCallStmt
+    : ID stmtArglist?
+    ;
+
+lvalue
+    : postfixName
+    ;
+
+lvalueList
+    : lvalue (Comma lvalue)*
+    ;
+
+stmtArglist
+    : parenthesizedlist
+    | unparenthesizedlist
+    ;
+
+chanArg
+    : Hash expr
+    ;
+
+arg
+    : chanArg
+    | expr
+    ;
+
+// ============================================================
+// Identifier / postfix forms
+// ============================================================
+
+postfixName
+    : ID postfixArg?
+    ;
+
+postfixArg
+    : LeftParen postfixArgList? RightParen
+    ;
+
+postfixArgList
+    : postfixArgItem (Comma postfixArgItem)*
+    ;
+
+postfixArgItem
+    : expr (To expr)?
+    ;
+
+// ============================================================
+// Procedure / Function definitions
+// ============================================================
+
+procedureDef
+    : Define ProcedureKw ID formalParams Newline
+      line*
+      lineNumber? endDef ID?
+    ;
+
+functionDef
+    : Define FunctionKw ID formalParams Newline
+      line*
+      lineNumber? endDef ID?
+    ;
+
+// Formal parameters are plain identifiers only — not full expressions
+formalParams
+    : (LeftParen ID (Comma ID)* RightParen)?
+    ;
+
+// ============================================================
+// Compound end-markers as parser rules
+// (avoids multi-word lexer tokens with embedded spaces)
+// ============================================================
+
+endDef
+    : End Define
+    ;
+
+endFor
+    : End For
+    ;
+
+endRepeat
+    : End Repeat
+    ;
+
+endIf
+    : End If
+    ;
+
+endSelect
+    : End SelectKw
+    ;
+
+endWhen
+    : End When
+    ;
+
+// ============================================================
+// Control flow
+// ============================================================
+
+forStmt
+    : For ID Equal expr To expr (Step expr)?
+      (
+          Colon Comment Newline line* lineNumber? endFor ID?        // long form + trailing remark
+        | Colon stmtlist                                            // short form
+        | Newline line* lineNumber? endFor ID?                     // long form
+      )
+    ;
+
+repeatStmt
+    : Repeat ID
+      (
+          Colon stmtlist
+        | Newline line* lineNumber? endRepeat ID?
+      )
+    ;
+
+ifStmt
+    : If expr
+      (
+          (Then | Colon) stmtlist (Colon Else Colon stmtlist)?      // short form
+        | (Then)? Newline ifBlock elseBlock? lineNumber? endIf      // long form
+      )
+    ;
+
+ifBlock
+    : line+
+    ;
+
+elseBlock
+    : lineNumber? Else Newline? line+
+    ;
+
+// SELect ON expr
+//   ON expr = range : stmts
+//   ...
+// END SELect
+selectStmt
+    : SelectKw On expr Newline
+      selectItem*
+      lineNumber? endSelect
+    ;
+
+selectItem
+    : onClause
+    | line
+    ;
+
+onClause
+    : lineNumber? On expr Equal rangeexpr (Colon stmtlist)? Newline
+    ;
+
+dimList
+    : dimItem (Comma dimItem)*
+    ;
+
+dimItem
+    : ID LeftParen exprList RightParen
     ;
     
+// WHEN ERROR ... END WHEN
+// WHEN expr  ... END WHEN
+whenStmt
+    : When ErrorKw Newline
+      line*
+      lineNumber? endWhen                                           #WhenErrorStmt
+    | When expr Newline
+      line*
+      lineNumber? endWhen                                           #WhenCondStmt
+    ;
+
+// ============================================================
+// Expressions
+// ============================================================
+
+exprList
+    : expr (Comma expr)*
+    ;
+
+expr
+    : orExpr
+    ;
+
+orExpr
+    : andExpr ((Or | Xor) andExpr)*
+    ;
+
+andExpr
+    : notExpr (And notExpr)*
+    ;
+
+notExpr
+    : Not notExpr
+    | compareExpr
+    ;
+
+// Includes == case-sensitive equality
+compareExpr
+    : instrExpr ((Equal | NotEqual | Less | LessEqual | Greater | GreaterEqual | CaseSensEq) instrExpr)*
+    ;
+
+// INSTR sits between comparison and concatenation in precedence
+instrExpr
+    : concatExpr (Instr concatExpr)?
+    ;
+
+concatExpr
+    : addExpr (Amp addExpr)*
+    ;
+
+addExpr
+    : mulExpr ((Plus | Minus) mulExpr)*
+    ;
+
+mulExpr
+    : powExpr ((Multiply | Divide | Mod | Div) powExpr)*
+    ;
+
+powExpr
+    : unaryExpr (Caret unaryExpr)*
+    ;
+
+// Unary minus/plus handled here — NOT in the Real lexer rule
+unaryExpr
+    : (Plus | Minus) unaryExpr
+    | primary
+    ;
+
 primary
-    : LeftParen expr RightParen
-    | Integer
+    : Integer
     | Real
     | String
-    | identifier
+    | LeftParen expr RightParen
+    | postfixName
     ;
 
-/* Tokens */
-Refer : 'REFERENCE';
-Implic : 'IMPLICIT%' | 'IMPLICIT$';
-Local : 'LOCal';
-Dimension : 'DIM';
-DefProc : 'DEFine PROCedure';
-DefFunc : 'DEFine FuNction';
-If : 'IF';
-Else : 'ELSE';
-Then : 'THEN';
-EndIf : 'END IF';
-Select : 'SELect ON';
-EndSelect : 'END SELect';
-EndDef  : 'END DEFine';
-On : 'ON';
-For : 'FOR';
-Next : 'NEXT';
-To : 'TO';
-EndFor : 'END FOR';
-Step : 'STEP';
-Repeat : 'REPeat';
-Exit : 'EXIT';
-Until : 'UNTIL';
-EndRepeat : 'END REPeat';
- 
-LeftParen : '(';
-RightParen : ')';
-LeftBracket : '[';
-RightBracket : ']';
+// ============================================================
+// Shared sub-rules
+// ============================================================
 
-Equal : '=';
-NotEqual : '<>';
-Less : '<';
-LessEqual : '<=';
-Greater : '>';
-GreaterEqual : '>=';
+parenthesizedlist
+    : LeftParen expr (separator expr)* RightParen
+    ;
 
-Plus : '+';
-Minus : '-';
-Multiply : '*';
-Divide : '/';
-Mod : 'MOD';
-Div : 'DIV';
+unparenthesizedlist
+    : expr (separator expr)*
+    ;
 
-And : 'AND';
-Or : 'OR';
-Xor : 'XOR';
-Caret : '^';
-Not : 'NOT';
-Tilde : '~';
+localList
+    : localItem (Comma localItem)*
+    ;
 
-Instr : 'INSTR';
-Amp : '&';
-Question : '?';
-Colon : ':';
-Semi : ';';
-Comma : ',';
-Point : '.';
-Bang : '!';
-       
-Whitespace : [ \t]+ -> skip;
+localItem
+    : ID (LeftParen exprList RightParen)?
+    ;
 
-Newline : (( '\r' '\n') |   '\n');
-Let : 'LET' -> skip;
-Comment	:  'REMark' ~( '\r' | '\n' )*;
+separator
+    : Comma
+    | Bang
+    | Semi
+    ;
 
-ID : LETTER ([0-9] | [A-Za-z] | '_')* ('$'|'%')?;
+// REMAINDER is the catch-all clause in SELect ON
+rangeexpr
+    : expr To expr
+    | expr
+    | Remainder
+    ;
 
-Integer : DIGIT+;
-Real : '-'? DIGIT* Point DIGIT*;
-String : '"' ~('"')* '"';
+lineNumber
+    : Integer
+    ;
 
-Unknowntype : 'program use only';
-Void : 'program use only';
+// ============================================================
+// Lexer Rules
+// ============================================================
 
-fragment LETTER : [a-zA-Z];
-fragment DIGIT : [0-9];
-fragment ESC : '\\"' | '\\\\' ;
+// ---------- Single-word keywords ----------
+// All compound end-markers are handled at the parser level
+// so no multi-word tokens with embedded spaces appear here.
+
+Define       : 'DEFine' ;
+ProcedureKw  : 'PROCedure' ;
+FunctionKw   : 'FuNction' ;
+End          : 'END' ;
+SelectKw     : 'SELect' ;
+ErrorKw      : 'ERROR' ;
+
+Refer        : 'REFERENCE' ;
+Implic       : 'IMPLICIT%' | 'IMPLICIT$' ;
+Local        : 'LOCal' ;
+Dimension    : 'DIM' ;
+If           : 'IF' ;
+Else         : 'ELSE' ;
+Then         : 'THEN' ;
+On           : 'ON' ;
+For          : 'FOR' ;
+Next         : 'NEXT' ;
+To           : 'TO' ;
+Step         : 'STEP' ;
+Repeat       : 'REPeat' ;
+Exit         : 'EXIT' ;
+Until        : 'UNTIL' ;
+When         : 'WHEN' ;
+Return       : 'RETurn' ;
+Go           : 'GO' ;
+GoTo         : 'GOTO' ;
+Sub          : 'SUB' ;
+GoSub        : 'GOSUB' ;
+Data         : 'DATA' ;
+Read         : 'READ' ;
+Restore      : 'RESTore' ;
+Remainder    : 'REMAINDER' ;
+
+// ---------- Operators ----------
+And          : 'AND' ;
+Or           : 'OR' ;
+Xor          : 'XOR' ;
+Not          : 'NOT' ;
+Mod          : 'MOD' ;
+Div          : 'DIV' ;
+Instr        : 'INSTR' ;
+
+// ---------- Multi-char symbols (longest match first) ----------
+CaseSensEq   : '==' ;
+NotEqual     : '<>' ;
+LessEqual    : '<=' ;
+GreaterEqual : '>=' ;
+Less         : '<' ;
+Greater      : '>' ;
+Equal        : '=' ;
+Plus         : '+' ;
+Minus        : '-' ;
+Multiply     : '*' ;
+Divide       : '/' ;
+Caret        : '^' ;
+Amp          : '&' ;
+Hash         : '#' ;
+Colon        : ':' ;
+Semi         : ';' ;
+Comma        : ',' ;
+Bang         : '!' ;
+Tilde        : '~' ;
+Question     : '?' ;
+Point        : '.' ;
+LeftParen    : '(' ;
+RightParen   : ')' ;
+LeftBracket  : '[' ;
+RightBracket : ']' ;
+
+// ---------- Whitespace ----------
+Whitespace   : [ \t]+ -> skip ;
+Newline      : '\r'? '\n' ;
+
+// LET is legal but meaningless — skip it entirely
+Let          : 'LET' -> skip ;
+
+// ---------- Comments ----------
+// REMark consumes to end of line as a single token
+Comment      : 'REMark' ~[\r\n]* ;
+
+// ---------- Identifiers ----------
+// Must appear after ALL keyword rules so keywords take lexer precedence
+ID           : LETTER [0-9A-Za-z_]* [%$]? ;
+
+// ---------- Literals ----------
+Integer      : DIGIT+ ;
+
+// No leading minus — unaryExpr handles negation
+// DIGIT* allows forms like .5
+Real         : DIGIT* Point DIGIT+ ([Ee] [+\-]? DIGIT+)? ;
+
+String       : '"' ~["\r\n]* '"' ;
+
+// ---------- Fragments ----------
+fragment LETTER : [A-Za-z] ;
+fragment DIGIT  : [0-9] ;
