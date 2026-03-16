@@ -5,8 +5,8 @@ open Utility
 open SymbolTableManager
 open Monads.State
 open FSharpPlus.Data
+open SyntaxAst
 
-/// List of keywords used to pre-populate the symbol table.
 let keywords =
     [ "ABS"; "ACOS"; "ALLOCATE"; "AND"; "APPEND"; "ASC"; "ASIN"; "AT"; "ATAN"
       "BEEP"; "BACKUP"; "BORDER"; "CIRCLE"; "CLS"; "CLOSE"; "COPY"; "COS"
@@ -84,12 +84,9 @@ let private addOrUpdateSymbol mode scopeName symbol table =
     addSymbolToNamedScope mode symbol scopeName table
 
 let private ensureScope scopeName parentScope table =
-    if Map.containsKey scopeName table then
-        table
-    else
-        table |> Map.add scopeName { Name = scopeName; Parent = parentScope; Symbols = Map.empty }
+    if Map.containsKey scopeName table then table
+    else table |> Map.add scopeName { Name = scopeName; Parent = parentScope; Symbols = Map.empty }
 
-/// Pre-populate the symbol table with language keywords.
 let prePopulateSymbolTable (oldState: ProcessingState) : ProcessingState =
     let tableWithGlobalScope = ensureScope globalScope None oldState.SymTab
     let newSymTab =
@@ -99,115 +96,258 @@ let prePopulateSymbolTable (oldState: ProcessingState) : ProcessingState =
 
     { oldState with SymTab = newSymTab }
 
-let rec private addChildrenToTable mode (children: ASTNode list) (stateForChildren: ProcessingState) : State<ProcessingState, unit> =
+let private sourcePositionOf pos = sourcePositionFromTuple pos
+
+let private posOfExpr expr =
+    match expr with
+    | PostfixName(pos, _, _)
+    | SliceRange(pos, _, _)
+    | BinaryExpr(pos, _, _, _)
+    | UnaryExpr(pos, _, _)
+    | NumberLiteral(pos, _)
+    | StringLiteral(pos, _)
+    | Identifier(pos, _) -> pos
+
+let rec private addExprList mode exprs =
     state {
-        match children with
+        match exprs with
         | [] -> return ()
         | head :: tail ->
-            do! addToTable mode head stateForChildren
-            let! nextState = getState
-            do! addChildrenToTable mode tail nextState
+            do! addExpr mode head
+            do! addExprList mode tail
     }
 
-and addToTable
-    (mode: SymbolAddMode)
-    (node: ASTNode)
-    (incomingState: ProcessingState)
-    : State<ProcessingState, unit> =
+and private addLineList mode lines =
+    state {
+        match lines with
+        | [] -> return ()
+        | head :: tail ->
+            do! addLine mode head
+            do! addLineList mode tail
+    }
+
+and private addStmtList mode stmts =
+    state {
+        match stmts with
+        | [] -> return ()
+        | head :: tail ->
+            do! addStmt mode head
+            do! addStmtList mode tail
+    }
+
+and private addExpr mode (expr: Expr) : State<ProcessingState, unit> =
     state {
         let! currentState = getState
         let scopeName = currentState.CurrentScope
-
         let currentRule = withDefaultRule scopeName currentState
 
         let symbolFromIdentifier name position =
-            if currentState.InParameterList then
-                createParameterSymbol name position SBType.Unknown
-            else
-                let inferredType =
-                    if currentRule.Integers.Contains name then SBType.Integer
-                    elif currentRule.Strings.Contains name then SBType.String
-                    else SBType.Unknown
-                createVariableSymbol name position inferredType
+            let inferredType =
+                if currentRule.Integers.Contains name then SBType.Integer
+                elif currentRule.Strings.Contains name then SBType.String
+                else SBType.Unknown
+            createVariableSymbol name position inferredType
 
-        let mutable updatedState = currentState
-        let mutable childState = currentState
+        match expr with
+        | PostfixName(pos, name, None) ->
+            let sym = symbolFromIdentifier name (sourcePositionOf pos)
+            let symTab = addOrUpdateSymbol mode scopeName sym currentState.SymTab
+            do! putState { currentState with SymTab = symTab }
+        | PostfixName(_, _, Some args) ->
+            do! addExprList mode args
+        | SliceRange(_, lhs, rhs)
+        | BinaryExpr(_, _, lhs, rhs) ->
+            do! addExpr mode lhs
+            do! addExpr mode rhs
+        | UnaryExpr(_, _, inner) ->
+            do! addExpr mode inner
+        | Identifier(pos, name) ->
+            let sym = symbolFromIdentifier name (sourcePositionOf pos)
+            let symTab = addOrUpdateSymbol mode scopeName sym currentState.SymTab
+            do! putState { currentState with SymTab = symTab }
+        | NumberLiteral _
+        | StringLiteral _ -> ()
+    }
 
-        match node.Kind with
-        | NodeKind.ProcedureCall ->
-            let sym = createProcedureSymbol node.Value node.Position
-            updatedState <- { updatedState with SymTab = addOrUpdateSymbol mode scopeName sym updatedState.SymTab }
+and private addLine mode (line: Line) : State<ProcessingState, unit> =
+    state {
+        let (Line(_, _, children)) = line
+        do! addStmtList mode children
+    }
 
-        | NodeKind.FunctionCall ->
-            let sym = createFunctionSymbol node.Value node.Position
-            updatedState <- { updatedState with SymTab = addOrUpdateSymbol mode scopeName sym updatedState.SymTab }
+and private addBlock mode block : State<ProcessingState, unit> =
+    state {
+        match block with
+        | StatementBlock stmts -> do! addStmtList mode stmts
+        | LineBlock lines -> do! addLineList mode lines
+    }
 
-        | NodeKind.Implicit ->
-            let names = node.Children |> List.map (fun child -> child.Value) |> Set.ofList
-            let stateWithImplicit = updateImplicitTyping scopeName node.Value names updatedState
-            let symTabWithImplicit =
-                node.Children
-                |> List.fold (fun table child ->
-                    addOrUpdateSymbol mode scopeName (createVariableSymbol child.Value child.Position SBType.Unknown) table) stateWithImplicit.SymTab
-            updatedState <- { stateWithImplicit with SymTab = symTabWithImplicit }
+and addStmt (mode: SymbolAddMode) (node: Stmt) : State<ProcessingState, unit> =
+    state {
+        let! currentState = getState
+        let scopeName = currentState.CurrentScope
+        let currentRule = withDefaultRule scopeName currentState
 
-        | NodeKind.ProcedureDefinition ->
-            let sym = createProcedureSymbol node.Value node.Position
+        let symbolFromIdentifier name position =
+            let inferredType =
+                if currentRule.Integers.Contains name then SBType.Integer
+                elif currentRule.Strings.Contains name then SBType.String
+                else SBType.Unknown
+            createVariableSymbol name position inferredType
+
+        match node with
+        | ProcedureDef(pos, name, parameters, body) ->
+            let sp = sourcePositionOf pos
+            let sym = createProcedureSymbol name sp
             let symTab =
-                updatedState.SymTab
+                currentState.SymTab
                 |> addOrUpdateSymbol mode globalScope sym
-                |> ensureScope node.Value (Some globalScope)
-            updatedState <- { updatedState with SymTab = symTab; CurrentScope = node.Value }
-            childState <- updatedState
+                |> ensureScope name (Some globalScope)
+            let scopedState = { currentState with SymTab = symTab; CurrentScope = name }
+            do! putState scopedState
+            let paramSymbols =
+                parameters
+                |> List.fold (fun table param ->
+                    addOrUpdateSymbol mode name (createParameterSymbol param sp SBType.Unknown) table) scopedState.SymTab
+            do! putState { scopedState with SymTab = paramSymbols }
+            do! addLineList mode body
+            let! stateAfter = getState
+            do! putState { stateAfter with CurrentScope = currentState.CurrentScope }
 
-        | NodeKind.FunctionDefinition ->
-            let sym = createFunctionSymbol node.Value node.Position
+        | FunctionDef(pos, name, parameters, body) ->
+            let sp = sourcePositionOf pos
+            let sym = createFunctionSymbol name sp
             let symTab =
-                updatedState.SymTab
+                currentState.SymTab
                 |> addOrUpdateSymbol mode globalScope sym
-                |> ensureScope node.Value (Some globalScope)
-            updatedState <- { updatedState with SymTab = symTab; CurrentScope = node.Value }
-            childState <- updatedState
+                |> ensureScope name (Some globalScope)
+            let scopedState = { currentState with SymTab = symTab; CurrentScope = name }
+            do! putState scopedState
+            let paramSymbols =
+                parameters
+                |> List.fold (fun table param ->
+                    addOrUpdateSymbol mode name (createParameterSymbol param sp SBType.Unknown) table) scopedState.SymTab
+            do! putState { scopedState with SymTab = paramSymbols }
+            do! addLineList mode body
+            let! stateAfter = getState
+            do! putState { stateAfter with CurrentScope = currentState.CurrentScope }
 
-        | NodeKind.Dim ->
-            match node.Children with
-            | [] -> ()
-            | head :: tail ->
-                let arraySizes =
-                    tail |> List.choose (fun child -> match System.Int32.TryParse child.Value with | true, value -> Some value | _ -> None)
-                let arrSym = createArraySymbol head.Value head.Position arraySizes
-                updatedState <- { updatedState with SymTab = addOrUpdateSymbol mode scopeName arrSym updatedState.SymTab }
+        | DimStmt(_, items) ->
+            let symTab =
+                items
+                |> List.fold (fun table (name, dims) ->
+                    let sizes =
+                        dims
+                        |> List.choose (function
+                            | NumberLiteral(_, value) ->
+                                match System.Int32.TryParse value with
+                                | true, n -> Some n
+                                | _ -> None
+                            | _ -> None)
+                    let pos =
+                        dims
+                        |> List.tryHead
+                        |> Option.map (posOfExpr >> sourcePositionOf)
+                        |> Option.defaultValue { BasicLineNo = None; EditorLineNo = 0; Column = 0 }
+                    addOrUpdateSymbol mode scopeName (createArraySymbol name pos sizes) table) currentState.SymTab
+            do! putState { currentState with SymTab = symTab }
+            do! addExprList mode (items |> List.collect snd)
 
-        | NodeKind.Identifier
-        | NodeKind.ID ->
-            let sym = symbolFromIdentifier node.Value node.Position
-            updatedState <- { updatedState with SymTab = addOrUpdateSymbol mode scopeName sym updatedState.SymTab }
+        | LocalStmt(pos, items) ->
+            let sp = sourcePositionOf pos
+            let symTab =
+                items
+                |> List.fold (fun table (name, _) ->
+                    addOrUpdateSymbol mode scopeName (createVariableSymbol name sp SBType.Unknown) table) currentState.SymTab
+            do! putState { currentState with SymTab = symTab }
+            do! addExprList mode (items |> List.collect (snd >> Option.defaultValue []))
 
-        | NodeKind.Parameters ->
-            childState <- { updatedState with InParameterList = true }
+        | ImplicitStmt(_, decorator, names) ->
+            let stateWithImplicit = updateImplicitTyping scopeName decorator (Set.ofList names) currentState
+            let symTab =
+                names
+                |> List.fold (fun table name ->
+                    addOrUpdateSymbol mode scopeName (createVariableSymbol name { BasicLineNo = None; EditorLineNo = 0; Column = 0 } SBType.Unknown) table) stateWithImplicit.SymTab
+            do! putState { stateWithImplicit with SymTab = symTab }
 
-        | NodeKind.Local ->
-            match node.Children with
-            | first :: _ ->
-                let sym = createVariableSymbol first.Value first.Position SBType.Unknown
-                updatedState <- { updatedState with SymTab = addOrUpdateSymbol mode scopeName sym updatedState.SymTab }
-                childState <- updatedState
-            | [] -> ()
+        | ReferenceStmt(_, children)
+        | DataStmt(_, children)
+        | ReadStmt(_, children) ->
+            do! addExprList mode children
 
-        | _ -> ()
+        | Assignment(_, lhs, rhs) ->
+            do! addExpr mode lhs
+            do! addExpr mode rhs
 
-        do! putState updatedState
-        do! addChildrenToTable mode node.Children childState
+        | ProcedureCall(pos, name, args) ->
+            let sym = createProcedureSymbol name (sourcePositionOf pos)
+            let symTab = addOrUpdateSymbol mode scopeName sym currentState.SymTab
+            do! putState { currentState with SymTab = symTab }
+            do! addExprList mode args
 
-        match node.Kind with
-        | NodeKind.Parameters ->
-            let! stateAfterChildren = getState
-            do! putState { stateAfterChildren with InParameterList = currentState.InParameterList }
-        | NodeKind.ProcedureDefinition
-        | NodeKind.FunctionDefinition ->
-            let! stateAfterChildren = getState
-            do! putState { stateAfterChildren with CurrentScope = currentState.CurrentScope }
-        | _ -> ()
+        | ChannelProcedureCall(pos, name, channel, args) ->
+            let sym = createProcedureSymbol name (sourcePositionOf pos)
+            let symTab = addOrUpdateSymbol mode scopeName sym currentState.SymTab
+            do! putState { currentState with SymTab = symTab }
+            do! addExpr mode channel
+            do! addExprList mode args
 
-        return ()
+        | ForStmt(pos, name, startExpr, endExpr, stepExpr, body) ->
+            let sym = createVariableSymbol name (sourcePositionOf pos) SBType.Unknown
+            let symTab = addOrUpdateSymbol mode scopeName sym currentState.SymTab
+            do! putState { currentState with SymTab = symTab }
+            do! addExpr mode startExpr
+            do! addExpr mode endExpr
+            match stepExpr with
+            | Some expr -> do! addExpr mode expr
+            | None -> ()
+            do! addBlock mode body
+
+        | RepeatStmt(_, _, body) ->
+            do! addBlock mode body
+
+        | IfStmt(_, cond, thenBody, elseBody) ->
+            do! addExpr mode cond
+            do! addBlock mode thenBody
+            match elseBody with
+            | Some block -> do! addBlock mode block
+            | None -> ()
+
+        | SelectStmt(_, selector, clauses) ->
+            do! addExpr mode selector
+            let rec addClauses remaining =
+                state {
+                    match remaining with
+                    | [] -> return ()
+                    | SelectClause(_, clauseSelector, rangeExpr, body) :: tail ->
+                        do! addExpr mode clauseSelector
+                        do! addExpr mode rangeExpr
+                        match body with
+                        | Some block -> do! addBlock mode block
+                        | None -> ()
+                        do! addClauses tail
+                }
+            do! addClauses clauses
+
+        | WhenStmt(_, condition, body) ->
+            match condition with
+            | Some expr -> do! addExpr mode expr
+            | None -> ()
+            do! addLineList mode body
+
+        | ReturnStmt(_, value)
+        | RestoreStmt(_, value) ->
+            match value with
+            | Some expr -> do! addExpr mode expr
+            | None -> ()
+
+        | ExitStmt _
+        | NextStmt _
+        | Remark _ -> ()
+    }
+
+let addToTable (mode: SymbolAddMode) (node: Ast) (_incomingState: ProcessingState) : State<ProcessingState, unit> =
+    state {
+        let (Program(_, children)) = node
+        do! addLineList mode children
     }

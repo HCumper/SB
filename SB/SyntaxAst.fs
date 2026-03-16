@@ -1,45 +1,48 @@
-﻿module SyntaxAst
+module SyntaxAst
 
 type Position = int * int
 
 type Ast =
-    | Program of Position * Ast list
-    | Line of Position * int option * Ast list
+    | Program of Position * Line list
 
-    | ProcedureDef of Position * string * string list * Ast list
-    | FunctionDef of Position * string * string list * Ast list
+and Line =
+    | Line of Position * int option * Stmt list
 
-    | DimStmt of Position * (string * Ast list) list
-    | LocalStmt of Position * (string * Ast list option) list
+and Block =
+    | StatementBlock of Stmt list
+    | LineBlock of Line list
+
+and SelectClause =
+    | SelectClause of Position * Expr * Expr * Block option
+
+and Stmt =
+    | ProcedureDef of Position * string * string list * Line list
+    | FunctionDef of Position * string * string list * Line list
+    | DimStmt of Position * (string * Expr list) list
+    | LocalStmt of Position * (string * Expr list option) list
     | ImplicitStmt of Position * string * string list
-    | ReferenceStmt of Position * Ast list
-
-    | Assignment of Position * Ast * Ast
-    | ProcedureCall of Position * string * Ast list
-    | ChannelProcedureCall of Position * string * Ast * Ast list
-
-    | ForStmt of Position * string * Ast * Ast * Ast option * Ast list
-    | RepeatStmt of Position * string * Ast list
-    | IfStmt of Position * Ast * Ast list * Ast list option
-    | SelectStmt of Position * Ast * Ast list
-    | SelectClause of Position * Ast * Ast * Ast list option
-    | WhenStmt of Position * Ast option * Ast list
-
-    | ReturnStmt of Position * Ast option
-    | DataStmt of Position * Ast list
-    | ReadStmt of Position * Ast list
-    | RestoreStmt of Position * Ast option
+    | ReferenceStmt of Position * Expr list
+    | Assignment of Position * Expr * Expr
+    | ProcedureCall of Position * string * Expr list
+    | ChannelProcedureCall of Position * string * Expr * Expr list
+    | ForStmt of Position * string * Expr * Expr * Expr option * Block
+    | RepeatStmt of Position * string * Block
+    | IfStmt of Position * Expr * Block * Block option
+    | SelectStmt of Position * Expr * SelectClause list
+    | WhenStmt of Position * Expr option * Line list
+    | ReturnStmt of Position * Expr option
+    | DataStmt of Position * Expr list
+    | ReadStmt of Position * Expr list
+    | RestoreStmt of Position * Expr option
     | ExitStmt of Position * string
     | NextStmt of Position * string
     | Remark of Position * string
 
-    | PostfixName of Position * string * Ast list option // handles A, A(1), A(1,2), A(1 TO 5) uniformly.
-    | SliceRange of Position * Ast * Ast // represents x TO y inside postfix args.
-
-    | BinaryExpr of Position * string * Ast * Ast // carry operator text directly.
-    | UnaryExpr of Position * string * Ast
-
+and Expr =
+    | PostfixName of Position * string * Expr list option
+    | SliceRange of Position * Expr * Expr
+    | BinaryExpr of Position * string * Expr * Expr
+    | UnaryExpr of Position * string * Expr
     | NumberLiteral of Position * string
     | StringLiteral of Position * string
     | Identifier of Position * string
-    

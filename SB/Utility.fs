@@ -1,15 +1,15 @@
-﻿module Utility
-open Types
+module Utility
+
 open System
 open System.Collections.Generic
 open Antlr4.Runtime
 open Antlr4.Runtime.Tree
 
-/// Functions
+open Types
+open SyntaxAst
 
 let globalScope = "~Global"
 
-/// Function to extract the symbol name from a symbol
 let getSymbolName (symbol: Symbol) : string =
     match symbol with
     | VariableSym s -> s.Common.Name
@@ -20,9 +20,6 @@ let getSymbolName (symbol: Symbol) : string =
     | ProcedureSym s -> s.Common.Name
     | BuiltInSym s -> s.Common.Name
 
-/// <summary>
-/// Active pattern to simplify type identification based on SBParser types.
-/// </summary>
 let (|StringType|IntegerType|RealType|VoidType|) code =
     match code with
     | SBParser.String -> StringType
@@ -30,9 +27,6 @@ let (|StringType|IntegerType|RealType|VoidType|) code =
     | SBParser.Real -> RealType
     | _ -> VoidType
 
-/// <summary>
-/// Converts an SBParser type to its corresponding string representation.
-/// </summary>
 let identifyType code =
     match code with
     | StringType -> "string"
@@ -40,9 +34,6 @@ let identifyType code =
     | RealType -> "float"
     | VoidType -> "void"
 
-/// <summary>
-/// Extracts the variable name and its type from an annotated name.
-/// </summary>
 let getTypeFromAnnotation (name: string) : string * _ =
     let len = name.Length - 1
     match name[len] with
@@ -50,102 +41,169 @@ let getTypeFromAnnotation (name: string) : string * _ =
     | '$' -> name.Substring(0, len), SBParser.String
     | _ -> name, SBParser.Real
 
-/// <summary>
-/// Gets the children of an IParseTree context as an F# list.
-/// </summary>
 let gatherChildren (context: IParseTree) : IParseTree list =
     [ for index in 0 .. context.ChildCount - 1 do yield context.GetChild(index) ]
 
-/// <summary>
-/// Maps over an Antlr list with a provided mapping function.
-/// </summary>
 let mapAntlrList (mappingFunction: IParseTree -> 'b) (inputList: IList<IParseTree>) : 'b list =
     [ for item in inputList do yield mappingFunction item ]
 
-/// <summary>
-/// Copies an Antlr list to an F# list non-destructively.
-/// </summary>
 let copyAntlrList (parentNode: IList<IParseTree>) : IParseTree list =
     mapAntlrList id parentNode
 
-/// <summary>
-/// Helper function to create an ASTNode.
-/// </summary>
-let private sourcePositionFromTuple (line, column) : SourcePosition =
+let sourcePositionFromTuple (line, column) : SourcePosition =
     { BasicLineNo = None; EditorLineNo = line; Column = column }
 
-let private sourcePositionToTuple (position: SourcePosition) : int * int =
+let sourcePositionToTuple (position: SourcePosition) : int * int =
     position.EditorLineNo, position.Column
 
-let createAstNode (tokenType: NodeKind) (value: string) (position: int * int) (children: ASTNode list) : ASTNode =
-    { Kind = tokenType; Value = value; Position = sourcePositionFromTuple position; Children = children }
+let rec private exprChildren (node: Expr) =
+    match node with
+    | PostfixName(_, _, args) -> Option.defaultValue [] args
+    | SliceRange(_, lhs, rhs) -> [ lhs; rhs ]
+    | BinaryExpr(_, _, lhs, rhs) -> [ lhs; rhs ]
+    | UnaryExpr(_, _, expr) -> [ expr ]
+    | NumberLiteral _
+    | StringLiteral _
+    | Identifier _ -> []
 
-/// <summary>
-/// Recursively pretty-prints an AST node and its descendants with indentation.
-/// </summary>
-let rec prettyPrintAst (node: ASTNode) (indent: int) : string =
+and private exprLabel (node: Expr) =
+    match node with
+    | PostfixName(_, name, _) -> $"PostfixName ({name})"
+    | SliceRange _ -> "SliceRange"
+    | BinaryExpr(_, op, _, _) -> $"BinaryExpr ({op})"
+    | UnaryExpr(_, op, _) -> $"UnaryExpr ({op})"
+    | NumberLiteral(_, value) -> $"NumberLiteral ({value})"
+    | StringLiteral(_, value) -> $"StringLiteral ({value})"
+    | Identifier(_, value) -> $"Identifier ({value})"
+
+let rec private prettyPrintExpr (node: Expr) (indent: int) : string =
     let padding = String.replicate indent " "
-    let currentLine = sprintf "%s- %A (\"%s\", pos=%A)\n" padding node.Kind node.Value node.Position
-    let childLines = node.Children |> List.map (fun child -> prettyPrintAst child (indent + 2)) |> String.concat ""
+    let currentLine = sprintf "%s- %s\n" padding (exprLabel node)
+    let childLines = exprChildren node |> List.map (fun child -> prettyPrintExpr child (indent + 2)) |> String.concat ""
     currentLine + childLines
 
-let rec printAST (indent: string) (node: ASTNode) =
-    printfn $"%s{indent}{node.Kind}: \"%s{node.Value}\""
-    node.Children |> List.iter (printAST (indent + "  "))
-       
+let private stmtLabel (node: Stmt) =
+    match node with
+    | ProcedureDef(_, name, parms, _) ->
+        let parmText = String.concat "," parms
+        $"ProcedureDef ({name}, parms={parmText})"
+    | FunctionDef(_, name, parms, _) ->
+        let parmText = String.concat "," parms
+        $"FunctionDef ({name}, parms={parmText})"
+    | DimStmt(_, items) -> $"DimStmt ({items.Length})"
+    | LocalStmt(_, items) -> $"LocalStmt ({items.Length})"
+    | ImplicitStmt(_, suffix, names) ->
+        let nameText = String.concat "," names
+        $"ImplicitStmt ({suffix}: {nameText})"
+    | ReferenceStmt _ -> "ReferenceStmt"
+    | Assignment _ -> "Assignment"
+    | ProcedureCall(_, name, _) -> $"ProcedureCall ({name})"
+    | ChannelProcedureCall(_, name, _, _) -> $"ChannelProcedureCall ({name})"
+    | ForStmt(_, name, _, _, _, _) -> $"ForStmt ({name})"
+    | RepeatStmt(_, name, _) -> $"RepeatStmt ({name})"
+    | IfStmt _ -> "IfStmt"
+    | SelectStmt _ -> "SelectStmt"
+    | WhenStmt _ -> "WhenStmt"
+    | ReturnStmt _ -> "ReturnStmt"
+    | DataStmt _ -> "DataStmt"
+    | ReadStmt _ -> "ReadStmt"
+    | RestoreStmt _ -> "RestoreStmt"
+    | ExitStmt(_, name) -> $"ExitStmt ({name})"
+    | NextStmt(_, name) -> $"NextStmt ({name})"
+    | Remark(_, text) -> $"Remark ({text})"
 
-/// Replace subtree in AST
-/// Tree pattern matching
-type ASTPattern = {
-    PatternTokenType: NodeKind option
-    PatternContent: string option // `None` means ignore, `"@parent"` means match parent content
-    PatternPosition: (int * int) option
-    PatternChildren: ASTPattern list option
-}
+let rec private prettyPrintBlock (block: Block) (indent: int) : string =
+    match block with
+    | StatementBlock stmts -> stmts |> List.map (fun stmt -> prettyPrintStmt stmt indent) |> String.concat ""
+    | LineBlock lines -> lines |> List.map (fun line -> prettyPrintLine line indent) |> String.concat ""
 
-let rec private matchPattern (parentContent: string option) (pattern: ASTPattern) (node: ASTNode) =
-    let matchTokenType = 
-        match pattern.PatternTokenType with
-        | Some pType -> pType = node.Kind
-        | None -> true
+and private prettyPrintSelectClause (node: SelectClause) (indent: int) : string =
+    let padding = String.replicate indent " "
+    let (SelectClause(_, selector, rangeExpr, body)) = node
+    let currentLine = sprintf "%s- SelectClause\n" padding
+    let childLines =
+        [ yield prettyPrintExpr selector (indent + 2)
+          yield prettyPrintExpr rangeExpr (indent + 2)
+          match body with
+          | Some block -> yield prettyPrintBlock block (indent + 2)
+          | None -> () ]
+        |> String.concat ""
+    currentLine + childLines
 
-    let matchContent = 
-        match pattern.PatternContent with
-        | Some "@parent" -> parentContent = Some node.Value  // Match inherited parent content
-        | Some pContent -> pContent = node.Value
-        | None -> true
+and private prettyPrintStmt (node: Stmt) (indent: int) : string =
+    let padding = String.replicate indent " "
+    let currentLine = sprintf "%s- %s\n" padding (stmtLabel node)
+    let childLines =
+        match node with
+        | ProcedureDef(_, _, _, body)
+        | FunctionDef(_, _, _, body) -> body |> List.map (fun line -> prettyPrintLine line (indent + 2))
+        | DimStmt(_, items) -> items |> List.collect snd |> List.map (fun expr -> prettyPrintExpr expr (indent + 2))
+        | LocalStmt(_, items) -> items |> List.collect (snd >> Option.defaultValue []) |> List.map (fun expr -> prettyPrintExpr expr (indent + 2))
+        | ImplicitStmt _ -> []
+        | ReferenceStmt(_, children)
+        | DataStmt(_, children)
+        | ReadStmt(_, children) -> children |> List.map (fun expr -> prettyPrintExpr expr (indent + 2))
+        | Assignment(_, lhs, rhs) -> [ prettyPrintExpr lhs (indent + 2); prettyPrintExpr rhs (indent + 2) ]
+        | ProcedureCall(_, _, args) -> args |> List.map (fun expr -> prettyPrintExpr expr (indent + 2))
+        | ChannelProcedureCall(_, _, channel, args) ->
+            (channel :: args) |> List.map (fun expr -> prettyPrintExpr expr (indent + 2))
+        | ForStmt(_, _, startExpr, endExpr, stepExpr, body) ->
+            [ yield prettyPrintExpr startExpr (indent + 2)
+              yield prettyPrintExpr endExpr (indent + 2)
+              match stepExpr with
+              | Some expr -> yield prettyPrintExpr expr (indent + 2)
+              | None -> ()
+              yield prettyPrintBlock body (indent + 2) ]
+        | RepeatStmt(_, _, body) -> [ prettyPrintBlock body (indent + 2) ]
+        | IfStmt(_, cond, thenBody, elseBody) ->
+            [ yield prettyPrintExpr cond (indent + 2)
+              yield prettyPrintBlock thenBody (indent + 2)
+              match elseBody with
+              | Some block -> yield prettyPrintBlock block (indent + 2)
+              | None -> () ]
+        | SelectStmt(_, selector, clauses) ->
+            prettyPrintExpr selector (indent + 2)
+            :: (clauses |> List.map (fun clause -> prettyPrintSelectClause clause (indent + 2)))
+        | WhenStmt(_, condition, body) ->
+            [ yield!
+                condition |> Option.toList |> List.map (fun expr -> prettyPrintExpr expr (indent + 2))
+              yield! body |> List.map (fun line -> prettyPrintLine line (indent + 2)) ]
+        | ReturnStmt(_, value)
+        | RestoreStmt(_, value) ->
+            value |> Option.toList |> List.map (fun expr -> prettyPrintExpr expr (indent + 2))
+        | ExitStmt _
+        | NextStmt _
+        | Remark _ -> []
+        |> String.concat ""
+    currentLine + childLines
 
-    let matchPosition = 
-        match pattern.PatternPosition with
-        | Some pPos -> pPos = sourcePositionToTuple node.Position
-        | None -> true
+and private prettyPrintLine (node: Line) (indent: int) : string =
+    let padding = String.replicate indent " "
+    let (Line(_, n, children)) = node
+    let lineText = Option.map string n |> Option.defaultValue ""
+    let currentLine = sprintf "%s- Line (%s)\n" padding lineText
+    let childLines = children |> List.map (fun child -> prettyPrintStmt child (indent + 2)) |> String.concat ""
+    currentLine + childLines
 
-    let matchChildren =
-        match pattern.PatternChildren with
-        | Some pChildren -> 
-            List.length pChildren = List.length node.Children &&
-            List.forall2 (matchPattern (Some node.Value)) pChildren node.Children
-        | None -> true
+let prettyPrintAst (node: Ast) (indent: int) : string =
+    let padding = String.replicate indent " "
+    match node with
+    | Program(_, children) ->
+        let currentLine = sprintf "%s- Program\n" padding
+        let childLines = children |> List.map (fun child -> prettyPrintLine child (indent + 2)) |> String.concat ""
+        currentLine + childLines
 
-    matchTokenType && matchContent && matchPosition && matchChildren
+let printAST (indent: string) (node: Ast) =
+    match node with
+    | Program(_, children) ->
+        printfn "%sProgram" indent
+        children
+        |> List.iter (fun line ->
+            let (Line(_, n, stmts)) = line
+            let lineText = Option.map string n |> Option.defaultValue ""
+            printfn "%s  Line (%s)" indent lineText
+            stmts |> List.iter (fun stmt -> printf "%s" (prettyPrintStmt stmt 4)))
 
-/// Replace a pattern in the AST with a new subtree
-let rec replacePattern (pattern: ASTPattern) (replacementTemplate: ASTNode) (node: ASTNode) =
-    if matchPattern None pattern node then
-        if replacementTemplate.Value = "@parent" then
-            { replacementTemplate with Value = node.Value }  // Inherit content
-        else
-            replacementTemplate
-    else
-        { node with Children = List.map (replacePattern pattern replacementTemplate) node.Children }
-
-///////////////////////////////////////////////////////
-// Result Monad (Computation Expression)
-///////////////////////////////////////////////////////
-
-/// <summary>
-/// Computation expression builder for Result<'T, 'E>.
-/// </summary>
 type ResultBuilder() =
     member _.Return(x) : Result<'T, 'E> = Ok x
     member _.ReturnFrom(m: Result<'T, 'E>) = m
@@ -182,6 +240,4 @@ type ResultBuilder() =
                 | Error e -> Error e
         loop sequence
 
-/// Instantiate the Result computation builder.
 let result = ResultBuilder()
-

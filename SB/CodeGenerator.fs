@@ -1,7 +1,9 @@
 module CodeGenerator
 
 open System
+
 open Types
+open SyntaxAst
 
 let private sbTypeToCSharp (t: SBType) =
     match t with
@@ -17,118 +19,145 @@ let private indent level (text: string) =
     |> Array.map (fun line -> if line = "" then "" else padding + line)
     |> String.concat Environment.NewLine
 
-let rec astNodeToExpression (state: ProcessingState) (node: ASTNode) : string =
-    match node.Kind with
-    | NodeKind.NumberLiteral
-    | NodeKind.StringLiteral
-    | NodeKind.Identifier
-    | NodeKind.ID -> node.Value
-    | NodeKind.BinaryExpr ->
-        match node.Children with
-        | [ left; right ] ->
-            let lhs = astNodeToExpression state left
-            let rhs = astNodeToExpression state right
-            $"({lhs} {node.Value} {rhs})"
-        | _ -> node.Value
-    | NodeKind.CallExpr
-    | NodeKind.ProcedureCall
-    | NodeKind.FunctionCall
-    | NodeKind.ArrayOrFunctionCall ->
-        let args = node.Children |> List.map (astNodeToExpression state) |> String.concat ", "
-        $"{node.Value}({args})"
-    | _ when node.Children.IsEmpty -> node.Value
-    | _ -> node.Children |> List.map (astNodeToExpression state) |> String.concat ", "
+let rec private exprToCode (node: Expr) : string =
+    match node with
+    | NumberLiteral(_, value)
+    | StringLiteral(_, value)
+    | Identifier(_, value) -> value
+    | PostfixName(_, name, None) -> name
+    | PostfixName(_, name, Some args) ->
+        let renderedArgs = args |> List.map exprToCode |> String.concat ", "
+        $"{name}({renderedArgs})"
+    | SliceRange(_, lhs, rhs) -> $"{exprToCode lhs} TO {exprToCode rhs}"
+    | BinaryExpr(_, op, lhs, rhs) -> $"({exprToCode lhs} {op} {exprToCode rhs})"
+    | UnaryExpr(_, op, expr) -> $"({op} {exprToCode expr})"
 
-let rec astNodeToStatement (state: ProcessingState) (node: ASTNode) : string =
-    match node.Kind with
-    | NodeKind.Assignment ->
-        match node.Children with
-        | [ target; value ] ->
-            $"{astNodeToExpression state target} = {astNodeToExpression state value};"
-        | _ -> $"// Invalid assignment: {node.Value}"
-    | NodeKind.ExitStmt -> "break;"
-    | NodeKind.Return ->
-        match node.Children with
-        | [ exprNode ] -> $"return {astNodeToExpression state exprNode};"
-        | _ -> "return;"
-    | NodeKind.Remark -> $"// {node.Value}"
-    | NodeKind.Local ->
-        let names =
-            node.Children
-            |> List.map (fun child -> child.Value)
-            |> List.filter (String.IsNullOrWhiteSpace >> not)
-            |> String.concat ", "
-        if String.IsNullOrWhiteSpace names then
-            "// LOCAL"
-        else
-            $"object {names};"
-    | NodeKind.ProcedureCall
-    | NodeKind.FunctionCall
-    | NodeKind.CallExpr
-    | NodeKind.ArrayOrFunctionCall -> $"{astNodeToExpression state node};"
-    | NodeKind.If
-    | NodeKind.For
-    | NodeKind.Repeat
-    | NodeKind.Select
-    | NodeKind.When ->
-        $"// Unsupported statement kind: {node.Kind} ({node.Value})"
-    | _ ->
-        let expr = astNodeToExpression state node
-        if String.IsNullOrWhiteSpace expr then $"// Unsupported statement kind: {node.Kind}"
-        else $"{expr};"
+let rec private blockStatements block =
+    match block with
+    | StatementBlock stmts -> stmts
+    | LineBlock lines -> lines |> List.collect (fun (Line(_, _, stmts)) -> stmts)
 
-let private parameters (definitionNode: ASTNode) =
-    definitionNode.Children
-    |> List.filter (fun child -> child.Kind = NodeKind.Parameters)
-    |> List.collect (fun paramGroup -> paramGroup.Children)
-    |> List.map (fun param ->
-        let paramName = if String.IsNullOrWhiteSpace param.Value then "arg" else param.Value
-        $"object {paramName}")
+let rec private stmtToCode (node: Stmt) : string =
+    match node with
+    | Assignment(_, target, value) ->
+        $"{exprToCode target} = {exprToCode value};"
+    | ExitStmt _ -> "break;"
+    | ReturnStmt(_, Some exprNode) -> $"return {exprToCode exprNode};"
+    | ReturnStmt _ -> "return;"
+    | Remark(_, text) -> $"// {text}"
+    | LocalStmt(_, items) ->
+        let names = items |> List.map fst |> List.filter (String.IsNullOrWhiteSpace >> not) |> String.concat ", "
+        if String.IsNullOrWhiteSpace names then "// LOCAL" else $"object {names};"
+    | ProcedureCall(_, name, args) ->
+        let renderedArgs = args |> List.map exprToCode |> String.concat ", "
+        $"{name}({renderedArgs});"
+    | ChannelProcedureCall(_, name, channel, args) ->
+        let renderedArgs = (channel :: args) |> List.map exprToCode |> String.concat ", "
+        $"{name}({renderedArgs});"
+    | IfStmt(_, cond, thenBody, elseBody) ->
+        let thenLines = blockStatements thenBody |> List.map stmtToCode |> List.map (indent 1) |> String.concat Environment.NewLine
+        let elseLines =
+            elseBody
+            |> Option.map (blockStatements >> List.map stmtToCode >> List.map (indent 1) >> String.concat Environment.NewLine)
+
+        match elseLines with
+        | Some elseText when not (String.IsNullOrWhiteSpace elseText) ->
+            String.concat Environment.NewLine
+                [ $"if {exprToCode cond}"
+                  "{"
+                  thenLines
+                  "}"
+                  "else"
+                  "{"
+                  elseText
+                  "}" ]
+        | _ ->
+            String.concat Environment.NewLine
+                [ $"if {exprToCode cond}"
+                  "{"
+                  thenLines
+                  "}" ]
+    | ForStmt(_, name, startExpr, endExpr, stepExpr, body) ->
+        let stepText = stepExpr |> Option.map exprToCode |> Option.defaultValue "1"
+        let bodyText = blockStatements body |> List.map stmtToCode |> List.map (indent 1) |> String.concat Environment.NewLine
+        String.concat Environment.NewLine
+            [ $"for (var {name} = {exprToCode startExpr}; {name} <= {exprToCode endExpr}; {name} += {stepText})"
+              "{"
+              bodyText
+              "}" ]
+    | RepeatStmt(_, _, body) ->
+        let bodyText = blockStatements body |> List.map stmtToCode |> List.map (indent 1) |> String.concat Environment.NewLine
+        String.concat Environment.NewLine
+            [ "while (true)"
+              "{"
+              bodyText
+              "}" ]
+    | DimStmt(_, items) ->
+        items
+        |> List.map (fun (name, dims) ->
+            let dimText = dims |> List.map exprToCode |> String.concat ", "
+            $"// DIM {name}({dimText})")
+        |> String.concat Environment.NewLine
+    | ProcedureDef _
+    | FunctionDef _ -> ""
+    | SelectStmt _ -> "// SELECT not yet implemented"
+    | WhenStmt _ -> "// WHEN not yet implemented"
+    | DataStmt(_, exprs) ->
+        let renderedExprs = exprs |> List.map exprToCode |> String.concat ", "
+        $"// DATA {renderedExprs}"
+    | ReadStmt(_, exprs) ->
+        let renderedExprs = exprs |> List.map exprToCode |> String.concat ", "
+        $"// READ {renderedExprs}"
+    | RestoreStmt(_, value) ->
+        match value with
+        | Some expr -> $"// RESTORE {exprToCode expr}"
+        | None -> "// RESTORE"
+    | ImplicitStmt _ -> "// IMPLICIT"
+    | ReferenceStmt(_, exprs) ->
+        let renderedExprs = exprs |> List.map exprToCode |> String.concat ", "
+        $"// REFERENCE {renderedExprs}"
+    | NextStmt(_, name) -> $"// NEXT {name}"
+
+let private methodParameters parameters =
+    parameters
+    |> List.map (fun paramName -> $"object {paramName}")
     |> String.concat ", "
 
-let private methodBodyLines (state: ProcessingState) (definitionNode: ASTNode) =
-    definitionNode.Children
-    |> List.collect (fun child ->
-        match child.Kind with
-        | NodeKind.Local -> [ astNodeToStatement state child ]
-        | NodeKind.Body
-        | NodeKind.StmtList -> child.Children |> List.map (astNodeToStatement state)
-        | _ -> [])
+let private generateMethodSyntax (_state: ProcessingState) (definitionNode: Stmt) : string =
+    let returnType, methodName, parameters, body =
+        match definitionNode with
+        | FunctionDef(_, name, parms, body) -> "object", name, parms, body
+        | ProcedureDef(_, name, parms, body) -> sbTypeToCSharp SBType.Void, name, parms, body
+        | _ -> sbTypeToCSharp SBType.Void, "UnnamedMethod", [], []
 
-let generateMethodSyntax (state: ProcessingState) (definitionNode: ASTNode) : string =
-    let returnType =
-        match definitionNode.Kind with
-        | NodeKind.FunctionDefinition -> "object"
-        | _ -> sbTypeToCSharp SBType.Void
-
-    let body =
-        methodBodyLines state definitionNode
+    let bodyText =
+        body
+        |> List.collect (fun (Line(_, _, stmts)) -> stmts)
+        |> List.map stmtToCode
+        |> List.filter (String.IsNullOrWhiteSpace >> not)
         |> List.map (indent 2)
         |> String.concat Environment.NewLine
 
-    let methodName =
-        if String.IsNullOrWhiteSpace definitionNode.Value then "UnnamedMethod" else definitionNode.Value
-
-    let bodyText =
-        if String.IsNullOrWhiteSpace body then indent 2 "// no body"
-        else body
+    let renderedBody =
+        if String.IsNullOrWhiteSpace bodyText then indent 2 "// no body"
+        else bodyText
 
     String.concat Environment.NewLine
-        [ $"    public static {returnType} {methodName}({parameters definitionNode})"
+        [ $"    public static {returnType} {methodName}({methodParameters parameters})"
           "    {"
-          bodyText
+          renderedBody
           "    }" ]
 
-let buildProgramFromAst (state: ProcessingState) (root: ASTNode) (className: string) : string =
-    let safeClassName =
-        if String.IsNullOrWhiteSpace className then "GeneratedProgram"
-        else className
+let private topLevelDefinitions root =
+    match root with
+    | Program(_, children) ->
+        children
+        |> List.collect (fun (Line(_, _, stmts)) -> stmts)
+        |> List.filter (function ProcedureDef _ | FunctionDef _ -> true | _ -> false)
 
-    let methodStrings =
-        root.Children
-        |> List.filter (fun c ->
-            c.Kind = NodeKind.ProcedureDefinition || c.Kind = NodeKind.FunctionDefinition)
-        |> List.map (generateMethodSyntax state)
+let buildProgramFromAst (state: ProcessingState) (root: Ast) (className: string) : string =
+    let safeClassName = if String.IsNullOrWhiteSpace className then "GeneratedProgram" else className
+    let methodStrings = topLevelDefinitions root |> List.map (generateMethodSyntax state)
 
     let members =
         if List.isEmpty methodStrings then
