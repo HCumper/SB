@@ -4,6 +4,7 @@ open System
 open Types
 open SymbolHelpers
 
+// Basic scope and symbol-table mutation helpers used by semantic analysis.
 /// The mode used when adding a symbol.
 type SymbolAddMode =
     | Overwrite

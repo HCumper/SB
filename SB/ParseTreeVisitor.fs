@@ -7,6 +7,7 @@ open Antlr4.Runtime.Tree
 open SyntaxAst
 open Types
 
+// Convert ANTLR token/tree locations into the source positions carried through the AST.
 let private posOfToken (t: IToken) : SourcePosition =
     { BasicLineNo = None
       EditorLineNo = t.Line
@@ -64,6 +65,7 @@ let private singleClause tree nodes =
 
 let private emptySeq<'T> : seq<'T> = Seq.empty
 
+// The visitor builds a best-effort AST, even when the parser has recovered from syntax errors.
 type ASTBuildingVisitor() =
     inherit SBBaseVisitor<VisitedNode list>()
 
@@ -76,6 +78,7 @@ type ASTBuildingVisitor() =
     member private this.SafeChildren<'T when 'T : null>(nodes: seq<'T>) =
         if isNull (box nodes) then emptySeq else nodes
 
+    // Collection helpers collapse subtree visits into the AST node shape expected by later stages.
     member private this.VisitLineList(lines: seq<SBParser.LineContext>) =
         this.SafeChildren(lines) |> Seq.map (fun l -> singleLine l (l.Accept(this))) |> Seq.toList
 

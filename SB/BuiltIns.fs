@@ -2,6 +2,7 @@ module BuiltIns
 
 open Types
 
+// Built-ins are resolved outside the user symbol table so source declarations stay distinct.
 let private zeroPosition =
     { BasicLineNo = None
       EditorLineNo = 0
@@ -32,5 +33,6 @@ let private builtIns =
     |> List.map (fun name -> normalizeIdentifier name, createBuiltInSymbol name)
     |> Map.ofList
 
+// Lookup is normalized at the boundary to preserve case-insensitive language semantics.
 let tryFind name =
     Map.tryFind (normalizeIdentifier name) builtIns

@@ -21,6 +21,7 @@ open SSB
 open Monads.State
 open SyntaxAst
 
+// The pipeline wires together preprocessing, parsing, AST construction, semantic analysis, and codegen.
 type Configuration = {
     InputFile: string
     OutputFile: string
@@ -94,6 +95,7 @@ let createLexer (input: AntlrInputStream) =
     let factory = CommonTokenFactory() :> ITokenFactory
     SBLexer(input, TokenFactory = factory)
 
+// Preprocess SSB inputs into numbered source text before handing them to ANTLR.
 let private prepareSource (inputFileName: string) : Result<PreparedSource, ParseError> =
     try
         if not (File.Exists(inputFileName)) then
@@ -131,6 +133,7 @@ let processToAST ((tree: IParseTree), _inputStream) verbose : Ast =
     if verbose then Console.WriteLine(prettyPrintAst astRoot)
     astRoot
 
+// Semantic analysis is modeled as a state pipeline so symbol-table mutations stay explicit.
 let semanticAnalysisState : State<ProcessingState, ProcessingState> =
     state {
         let! currentState = getState

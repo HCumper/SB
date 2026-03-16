@@ -6,6 +6,7 @@ open Antlr4.StringTemplate
 open CodeGenerator
 open CompilerPipeline
 
+// Thin CLI entry point over the main compiler pipeline.
 let private printParseError error =
     match error with
     | FileNotFound fileName ->

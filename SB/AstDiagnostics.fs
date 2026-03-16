@@ -8,6 +8,7 @@ open System.Text.Json
 open Types
 open SyntaxAst
 
+// Pretty-printers used when inspecting parse output and intermediate AST state.
 let private indent level =
     String.replicate level " "
 

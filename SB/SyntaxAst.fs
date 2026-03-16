@@ -2,6 +2,7 @@ module SyntaxAst
 
 open Types
 
+// The normalized AST shape produced by the parser visitor and consumed by later stages.
 type Ast =
     | Program of SourcePosition * Line list
 

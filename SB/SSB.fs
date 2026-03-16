@@ -1,5 +1,7 @@
 ﻿module SSB
 
+// This is kludge to support the SSB preprocessor. Tim Swenson originally implemented it as a syntax driven preprocessor so that is preserved instead of integrating it into the main pipeline.
+
 open System
 open System.IO
 open System.Collections.Generic
@@ -32,6 +34,7 @@ module Ssb =
           Labels: Dictionary<string, int>
           Defines: HashSet<string> }
 
+    // The legacy preprocessor is configured almost entirely through environment variables.
     let env name =
         match Environment.GetEnvironmentVariable(name) with
         | null -> ""
@@ -51,6 +54,7 @@ module Ssb =
         let mutable n = 0
         if Int32.TryParse(s, &n) then Some n else None
 
+    // Mirror the original tool's defaults, then selectively override them from the environment.
     let defaultConfig () =
         let d =
             { MaxLabels = 30
@@ -264,6 +268,7 @@ module Ssb =
     let emitLine (writer: TextWriter) (lineNum: int) (text: string) =
         writer.WriteLine($"{lineNum} {text}")
 
+    // Pass one assigns final line numbers to labels and collects conditional symbols.
     let rec passOne (cfg: Config) (state: Pass1State) (inputFile: string) =
         if not (File.Exists(inputFile)) then
             raise (FatalSsbError(sprintf "File not found: %s" inputFile))
@@ -334,6 +339,7 @@ module Ssb =
             | _ ->
                 raise (FatalSsbError(sprintf "Label not found: %s" suffix))
 
+    // Pass two emits numbered SuperBASIC, expanding includes and substituting resolved labels.
     let rec passTwo
         (cfg: Config)
         (labels: Dictionary<string, int>)
@@ -444,6 +450,7 @@ module Ssb =
             s.Length >= i + prefix.Length &&
             s.Substring(i, prefix.Length) = prefix
 
+    // A numbered line looks like the post-preprocessor SuperBASIC form: digits followed by a space.
     let isNumberedLine (s: string) =
         let t = s.TrimStart()
         if String.IsNullOrWhiteSpace t then false
@@ -453,6 +460,7 @@ module Ssb =
             t.Length > digits &&
             t.[digits] = ' '
 
+    // Decide whether the input is already numbered SuperBASIC or still needs SSB preprocessing.
     let classifySource (lines: string list) : SourceKind =
         let hasSsbMarker =
             lines
@@ -483,6 +491,7 @@ module Ssb =
             else
                 SourceKind.Ssb
 
+    // Shared implementation used by both the file-to-file CLI and the in-memory compiler pipeline.
     let private transformToWriter (cfg: Config) (inputFile: string) (startLine: int) (writer: TextWriter) =
         let pass1 =
             { LineNum = startLine
@@ -494,6 +503,7 @@ module Ssb =
         let lineNumRef = ref startLine
         passTwo cfg pass1.Labels pass1.Defines writer lineNumRef inputFile
 
+    // Transform an SSB file into numbered source text without writing an intermediate file.
     let transformFile (inputFile: string) =
         let cfg = defaultConfig()
         if not (File.Exists(inputFile)) then
@@ -504,6 +514,7 @@ module Ssb =
         transformToWriter cfg inputFile cfg.StartLine writer
         builder.ToString()
 
+    // Preserve the original command-line entry point for standalone preprocessor usage.
     let run (args: string[]) =
         let cfg = defaultConfig()
         let inputFile, outputFile, startLine = derivePaths cfg args

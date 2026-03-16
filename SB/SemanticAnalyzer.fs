@@ -9,6 +9,7 @@ open Monads.State
 open FSharpPlus.Data
 open SyntaxAst
 
+// Semantic analysis populates lexical scopes, records references and calls, and applies implicit typing.
 let private zeroPosition =
     { BasicLineNo = None
       EditorLineNo = 0

@@ -2,6 +2,7 @@ module Types
 
 open System
 
+// Shared compiler-domain types used across parsing, semantic analysis, and code generation.
 type SourcePosition = {
     BasicLineNo: int option
     EditorLineNo: int
@@ -33,6 +34,7 @@ type ParameterPassing =
 let normalizeIdentifier (name: string) =
     name.Trim().ToUpperInvariant()
 
+// Common symbol payload plus per-kind extensions for the symbol table.
 type CommonSymbol = {
     Name: string
     EvaluatedType: SBType
@@ -116,6 +118,7 @@ type Scope = {
 }
 
 type SymbolTable = Map<string, Scope>
+// Symbol tables map scope ids to scope records; each scope stores normalized symbol names.
 
 type ImplicitTypingRule = {
     Integers: Set<string>

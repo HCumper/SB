@@ -3,6 +3,7 @@ module TypeAnalyzer
 open Types
 open ProcessingTypes
 
+// Post-process symbol tables once implicit typing facts have been collected.
 /// Update a symbol's evaluated type and normalize its name based on suffixes
 /// and implicit typing rules.
 let updateSymbolTypeAndName

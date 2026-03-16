@@ -6,6 +6,7 @@ open Types
 open ProcessingTypes
 open SyntaxAst
 
+// Emit a minimal C# projection of the current AST; unsupported constructs are left as comments.
 let private sbTypeToCSharp (t: SBType) =
     match t with
     | SBType.String -> "string"
@@ -178,4 +179,5 @@ let buildProgramFromAst (state: ProcessingState) (root: Ast) (className: string)
          @ [ "}" ])
 
 let generateCSharp (state: ProcessingState) (className: string) : string =
+    // Global lines become the program body source; top-level routines are emitted as sibling methods.
     buildProgramFromAst state state.Ast className
