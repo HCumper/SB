@@ -1,5 +1,7 @@
 module Types
 
+open System
+
 type SourcePosition = {
     BasicLineNo: int option
     EditorLineNo: int
@@ -28,9 +30,11 @@ type ParameterPassing =
     | ByValue
     | ByReference
 
+let normalizeIdentifier (name: string) =
+    name.Trim().ToUpperInvariant()
+
 type CommonSymbol = {
     Name: string
-    Category: SymbolCategory
     EvaluatedType: SBType
     Position: SourcePosition
 }
@@ -51,6 +55,7 @@ type ParameterSymbol = {
 
 type ArraySymbol = {
     Common: CommonSymbol
+    ElementType: SBType
     Dimensions: int list
 }
 
@@ -89,13 +94,23 @@ module Symbol =
         | ProcedureSym s -> s.Common
         | BuiltInSym s -> s.Common
 
+    let category sym =
+        match sym with
+        | VariableSym _ -> SymbolCategory.Variable
+        | ConstantSym _ -> SymbolCategory.Constant
+        | ParameterSym _ -> SymbolCategory.Parameter
+        | ArraySym _ -> SymbolCategory.Array
+        | FunctionSym _ -> SymbolCategory.Function
+        | ProcedureSym _ -> SymbolCategory.Procedure
+        | BuiltInSym _ -> SymbolCategory.BuiltIn
+
     let name sym = (common sym).Name
-    let category sym = (common sym).Category
+    let normalizedName sym = name sym |> normalizeIdentifier
     let typ sym = (common sym).EvaluatedType
     let position sym = (common sym).Position
 
 type Scope = {
-    Name: string
+    Id: string
     Parent: string option
     Symbols: Map<string, Symbol>
 }

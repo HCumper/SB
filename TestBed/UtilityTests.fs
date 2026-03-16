@@ -16,7 +16,6 @@ let private variableSymbol name evaluatedType =
     VariableSym {
         Common = {
             Name = name
-            Category = SymbolCategory.Variable
             EvaluatedType = evaluatedType
             Position = pos
         }
@@ -45,12 +44,12 @@ let ``fillImplicitTypesAndModifyNames updates symbol type to Integer when name i
     let symTab =
         Map.ofList [
             ("global",
-             { Name = "global"
+             { Id = "global"
                Parent = None
                Symbols = Map.ofList [ ("var", variableSymbol "var" SBType.Unknown) ] })
         ]
     let updatedSymTab = fillImplicitTypesAndModifyNames (Set.ofList [ "var" ]) Set.empty symTab
-    let updatedSymbol = updatedSymTab["global"].Symbols["var"]
+    let updatedSymbol = updatedSymTab["global"].Symbols[normalizeIdentifier "var"]
     match updatedSymbol with
     | VariableSym sym -> Assert.That(sym.Common.EvaluatedType, Is.EqualTo(SBType.Integer))
     | _ -> Assert.Fail("Expected VariableSym")
@@ -60,12 +59,12 @@ let ``fillImplicitTypesAndModifyNames updates symbol type to String when name is
     let symTab =
         Map.ofList [
             ("global",
-             { Name = "global"
+             { Id = "global"
                Parent = None
                Symbols = Map.ofList [ ("var", variableSymbol "var" SBType.Unknown) ] })
         ]
     let updatedSymTab = fillImplicitTypesAndModifyNames Set.empty (Set.ofList [ "var" ]) symTab
-    let updatedSymbol = updatedSymTab["global"].Symbols["var"]
+    let updatedSymbol = updatedSymTab["global"].Symbols[normalizeIdentifier "var"]
     match updatedSymbol with
     | VariableSym sym -> Assert.That(sym.Common.EvaluatedType, Is.EqualTo(SBType.String))
     | _ -> Assert.Fail("Expected VariableSym")
@@ -77,7 +76,7 @@ let ``fillImplicitTypesAndModifyNamesInState updates symbol type to Integer when
           SymTab =
             Map.ofList [
                 ("global",
-                 { Name = "global"
+                 { Id = "global"
                    Parent = None
                    Symbols = Map.ofList [ ("var", variableSymbol "var" SBType.Unknown) ] })
             ]
@@ -87,7 +86,7 @@ let ``fillImplicitTypesAndModifyNamesInState updates symbol type to Integer when
           Facts = []
           Errors = [] }
     let updatedState = fillImplicitTypesAndModifyNamesInState state
-    let updatedSymbol = updatedState.SymTab["global"].Symbols["var"]
+    let updatedSymbol = updatedState.SymTab["global"].Symbols[normalizeIdentifier "var"]
     match updatedSymbol with
     | VariableSym sym -> Assert.That(sym.Common.EvaluatedType, Is.EqualTo(SBType.Integer))
     | _ -> Assert.Fail("Expected VariableSym")
@@ -99,7 +98,7 @@ let ``fillImplicitTypesAndModifyNamesInState updates symbol type to String when 
           SymTab =
             Map.ofList [
                 ("global",
-                 { Name = "global"
+                 { Id = "global"
                    Parent = None
                    Symbols = Map.ofList [ ("var", variableSymbol "var" SBType.Unknown) ] })
             ]
@@ -109,7 +108,29 @@ let ``fillImplicitTypesAndModifyNamesInState updates symbol type to String when 
           Facts = []
           Errors = [] }
     let updatedState = fillImplicitTypesAndModifyNamesInState state
-    let updatedSymbol = updatedState.SymTab["global"].Symbols["var"]
+    let updatedSymbol = updatedState.SymTab["global"].Symbols[normalizeIdentifier "var"]
     match updatedSymbol with
     | VariableSym sym -> Assert.That(sym.Common.EvaluatedType, Is.EqualTo(SBType.String))
+    | _ -> Assert.Fail("Expected VariableSym")
+
+[<Test>]
+let ``fillImplicitTypesAndModifyNamesInState applies implicit typing case-insensitively`` () =
+    let state =
+        { Ast = anyAst
+          SymTab =
+            Map.ofList [
+                ("global",
+                 { Id = "global"
+                   Parent = None
+                   Symbols = Map.ofList [ ("VAR", variableSymbol "VAR" SBType.Unknown) ] })
+            ]
+          CurrentScope = "global"
+          InParameterList = false
+          ImplicitTyping = Map.ofList [ ("global", { Integers = Set.ofList [ "var" ]; Strings = Set.empty }) ]
+          Facts = []
+          Errors = [] }
+    let updatedState = fillImplicitTypesAndModifyNamesInState state
+    let updatedSymbol = updatedState.SymTab["global"].Symbols[normalizeIdentifier "VAR"]
+    match updatedSymbol with
+    | VariableSym sym -> Assert.That(sym.Common.EvaluatedType, Is.EqualTo(SBType.Integer))
     | _ -> Assert.Fail("Expected VariableSym")

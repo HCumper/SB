@@ -11,15 +11,19 @@ let updateSymbolTypeAndName
     (sym: Symbol)
     : Symbol =
 
+    let implicitInts = implicitInts |> Set.map normalizeIdentifier
+    let implicitStrings = implicitStrings |> Set.map normalizeIdentifier
+
     let updateCommon (commonSym: CommonSymbol) =
+        let normalizedName = normalizeIdentifier commonSym.Name
         let baseType =
             if commonSym.Name.Contains "%" then SBType.Integer
             elif commonSym.Name.Contains "$" then SBType.String
             else commonSym.EvaluatedType
 
         let finalType =
-            if implicitInts.Contains commonSym.Name then SBType.Integer
-            elif implicitStrings.Contains commonSym.Name then SBType.String
+            if implicitInts.Contains normalizedName then SBType.Integer
+            elif implicitStrings.Contains normalizedName then SBType.String
             else baseType
 
         let newName =
@@ -35,18 +39,29 @@ let updateSymbolTypeAndName
     | ParameterSym paramSym ->
         ParameterSym { paramSym with Common = updateCommon paramSym.Common }
     | ArraySym arrSym ->
-        ArraySym { arrSym with Common = updateCommon arrSym.Common }
+        let updatedCommon = updateCommon arrSym.Common
+        ArraySym {
+            arrSym with
+                Common = updatedCommon
+                ElementType = updatedCommon.EvaluatedType
+        }
     | FunctionSym funcSym ->
+        let updatedCommon = updateCommon funcSym.Common
         FunctionSym {
             funcSym with
-                Common = updateCommon funcSym.Common
+                Common = updatedCommon
+                Parameters = funcSym.Parameters |> List.map (fun parameter -> { parameter with Common = updateCommon parameter.Common })
                 ReturnType =
-                    match (updateCommon funcSym.Common).EvaluatedType with
+                    match updatedCommon.EvaluatedType with
                     | SBType.Unknown -> funcSym.ReturnType
                     | inferred -> inferred
         }
     | ProcedureSym procSym ->
-        ProcedureSym { procSym with Common = updateCommon procSym.Common }
+        ProcedureSym {
+            procSym with
+                Common = updateCommon procSym.Common
+                Parameters = procSym.Parameters |> List.map (fun parameter -> { parameter with Common = updateCommon parameter.Common })
+        }
     | BuiltInSym builtInSym ->
         BuiltInSym { builtInSym with Common = updateCommon builtInSym.Common }
 
@@ -60,7 +75,11 @@ let fillImplicitTypesAndModifyNames
     |> Map.map (fun _ scope ->
         let updatedSymbols =
             scope.Symbols
-            |> Map.map (fun _ sym -> updateSymbolTypeAndName implicitInts implicitStrings sym)
+            |> Map.toList
+            |> List.map (fun (_, sym) ->
+                let updated = updateSymbolTypeAndName implicitInts implicitStrings sym
+                Symbol.normalizedName updated, updated)
+            |> Map.ofList
 
         { scope with Symbols = updatedSymbols }
     )
@@ -71,12 +90,14 @@ let fillImplicitTypesAndModifyNamesInState (state: ProcessingState) : Processing
         state.ImplicitTyping
         |> Map.values
         |> Seq.collect (fun rule -> rule.Integers)
+        |> Seq.map normalizeIdentifier
         |> Set.ofSeq
 
     let implicitStrings =
         state.ImplicitTyping
         |> Map.values
         |> Seq.collect (fun rule -> rule.Strings)
+        |> Seq.map normalizeIdentifier
         |> Set.ofSeq
 
     let newSymTab = fillImplicitTypesAndModifyNames implicitInts implicitStrings state.SymTab

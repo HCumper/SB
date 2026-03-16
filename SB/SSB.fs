@@ -3,8 +3,13 @@
 open System
 open System.IO
 open System.Collections.Generic
+open System.Text
 
 module Ssb =
+
+    type SourceKind =
+        | Ssb
+        | SuperBasic
 
     type Config =
         { MaxLabels: int
@@ -429,6 +434,76 @@ module Ssb =
         | _ ->
             raise (FatalSsbError("Usage: ssbfs <input-base-name> [start-line]"))
 
+    let firstNonSpaceIndex (s: string) =
+        s |> Seq.tryFindIndex (fun c -> c <> ' ')
+
+    let startsWithAtFirstNonSpace (prefix: string) (s: string) =
+        match firstNonSpaceIndex s with
+        | None -> false
+        | Some i ->
+            s.Length >= i + prefix.Length &&
+            s.Substring(i, prefix.Length) = prefix
+
+    let isNumberedLine (s: string) =
+        let t = s.TrimStart()
+        if String.IsNullOrWhiteSpace t then false
+        else
+            let digits = t |> Seq.takeWhile Char.IsAsciiDigit |> Seq.length
+            digits > 0 &&
+            t.Length > digits &&
+            t.[digits] = ' '
+
+    let classifySource (lines: string list) : SourceKind =
+        let hasSsbMarker =
+            lines
+            |> List.exists (fun line ->
+                let t = line.TrimStart()
+                startsWithAtFirstNonSpace "#INCLUDE" line ||
+                startsWithAtFirstNonSpace "#DEFINE" line ||
+                startsWithAtFirstNonSpace "#IFDEF" line ||
+                startsWithAtFirstNonSpace "#ENDIF" line ||
+                line.StartsWith("@", StringComparison.Ordinal) ||
+                t.StartsWith("##", StringComparison.Ordinal) ||
+                line.TrimEnd().EndsWith(@"\+", StringComparison.Ordinal) ||
+                line.Contains("GOTO @", StringComparison.Ordinal) ||
+                line.Contains("GO SUB @", StringComparison.Ordinal))
+
+        if hasSsbMarker then
+            SourceKind.Ssb
+        else
+            let codeLines =
+                lines
+                |> List.filter (fun s -> not (String.IsNullOrWhiteSpace s))
+
+            let numberedCount =
+                codeLines |> List.filter isNumberedLine |> List.length
+
+            if numberedCount > codeLines.Length / 2 then
+                SourceKind.SuperBasic
+            else
+                SourceKind.Ssb
+
+    let private transformToWriter (cfg: Config) (inputFile: string) (startLine: int) (writer: TextWriter) =
+        let pass1 =
+            { LineNum = startLine
+              Labels = Dictionary<string, int>(StringComparer.Ordinal)
+              Defines = HashSet<string>(StringComparer.Ordinal) }
+
+        passOne cfg pass1 inputFile
+
+        let lineNumRef = ref startLine
+        passTwo cfg pass1.Labels pass1.Defines writer lineNumRef inputFile
+
+    let transformFile (inputFile: string) =
+        let cfg = defaultConfig()
+        if not (File.Exists(inputFile)) then
+            raise (FatalSsbError(sprintf "Input file does not exist: %s" inputFile))
+
+        let builder = StringBuilder()
+        use writer = new StringWriter(builder)
+        transformToWriter cfg inputFile cfg.StartLine writer
+        builder.ToString()
+
     let run (args: string[]) =
         let cfg = defaultConfig()
         let inputFile, outputFile, startLine = derivePaths cfg args
@@ -442,84 +517,5 @@ module Ssb =
             else
                 raise (FatalSsbError(sprintf "Output file exists: %s" outputFile))
 
-        let pass1 =
-            { LineNum = startLine
-              Labels = Dictionary<string, int>(StringComparer.Ordinal)
-              Defines = HashSet<string>(StringComparer.Ordinal) }
-
-        passOne cfg pass1 inputFile
-
         use writer = new StreamWriter(outputFile, false)
-        let lineNumRef = ref startLine
-        passTwo cfg pass1.Labels pass1.Defines writer lineNumRef inputFile
-
-// module Program =
-//
-//     [<EntryPoint>]
-//     let main argv =
-//         try
-//             Ssb.run argv
-//             0
-//         with
-//         | :? Ssb.FatalSsbError as ex ->
-//             eprintfn "FATAL ERROR - %s" ex.Message
-//             1
-//         | ex ->
-//             eprintfn "UNEXPECTED ERROR - %s" ex.Message
-//             2
-            
-            
-            
-//             
-// type SourceKind =
-//     | Ssb
-//     | SuperBasic
-//
-// let firstNonSpaceIndex (s: string) =
-//     s |> Seq.tryFindIndex (fun c -> c <> ' ')
-//
-// let startsWithAtFirstNonSpace (prefix: string) (s: string) =
-//     match firstNonSpaceIndex s with
-//     | None -> false
-//     | Some i ->
-//         s.Length >= i + prefix.Length &&
-//         s.Substring(i, prefix.Length) = prefix
-//
-// let isNumberedLine (s: string) =
-//     let t = s.TrimStart()
-//     if String.IsNullOrWhiteSpace t then false
-//     else
-//         let digits = t |> Seq.takeWhile Char.IsDigit |> Seq.length
-//         digits > 0 &&
-//         t.Length > digits &&
-//         t.[digits] = ' '
-//
-// let classifySource (lines: string list) : SourceKind =
-//     let hasSsbMarker =
-//         lines
-//         |> List.exists (fun line ->
-//             let t = line.TrimStart()
-//             startsWithAtFirstNonSpace "#INCLUDE" line ||
-//             startsWithAtFirstNonSpace "#DEFINE" line ||
-//             startsWithAtFirstNonSpace "#IFDEF" line ||
-//             startsWithAtFirstNonSpace "#ENDIF" line ||
-//             line.StartsWith("@") ||
-//             t.StartsWith("##") ||
-//             line.TrimEnd().EndsWith(@"\+") ||
-//             line.Contains("GOTO @") ||
-//             line.Contains("GO SUB @"))
-//
-//     if hasSsbMarker then
-//         Ssb
-//     else
-//         let codeLines =
-//             lines
-//             |> List.filter (fun s -> not (String.IsNullOrWhiteSpace s))
-//
-//         let numberedCount =
-//             codeLines |> List.filter isNumberedLine |> List.length
-//
-//         if numberedCount > codeLines.Length / 2 then
-//             SuperBasic
-//         else
-//             Ssb
+        transformToWriter cfg inputFile startLine writer

@@ -42,8 +42,8 @@ let private analyzeProgram (input: string) =
 let ``assignment declares writable target but unresolved read stays an error`` () =
     let analyzed = analyzeProgram "10 y = x + 1\n"
 
-    Assert.That(analyzed.SymTab[globalScope].Symbols.ContainsKey("y"), Is.True)
-    Assert.That(analyzed.SymTab[globalScope].Symbols.ContainsKey("x"), Is.False)
+    Assert.That(analyzed.SymTab[globalScope].Symbols.ContainsKey(normalizeIdentifier "y"), Is.True)
+    Assert.That(analyzed.SymTab[globalScope].Symbols.ContainsKey(normalizeIdentifier "x"), Is.False)
     Assert.That(analyzed.Errors, Has.Some.Contains("Unresolved reference 'x'"))
 
     let declarationFacts =
@@ -69,8 +69,8 @@ let ``parameter references resolve within procedure scope`` () =
         analyzeProgram "10 DEFine PROCedure main(paramtype)\n20 PRINT paramtype\n30 END DEFine\n"
 
     Assert.That(analyzed.Errors, Is.Empty)
-    Assert.That(analyzed.SymTab["main"].Symbols.ContainsKey("paramtype"), Is.True)
-    Assert.That(analyzed.SymTab[globalScope].Symbols.ContainsKey("paramtype"), Is.False)
+    Assert.That(analyzed.SymTab["main"].Symbols.ContainsKey(normalizeIdentifier "paramtype"), Is.True)
+    Assert.That(analyzed.SymTab[globalScope].Symbols.ContainsKey(normalizeIdentifier "paramtype"), Is.False)
 
     let paramReference =
         analyzed.Facts
@@ -85,7 +85,7 @@ let ``parameter references resolve within procedure scope`` () =
         |> List.tryFind (fun fact ->
             fact.Name = "PRINT"
             && fact.Kind = CallSite
-            && fact.Category = Some SymbolCategory.Keyword)
+            && fact.Category = Some SymbolCategory.BuiltIn)
 
     Assert.That(paramReference.IsSome, Is.True)
     Assert.That(printCall.IsSome, Is.True)

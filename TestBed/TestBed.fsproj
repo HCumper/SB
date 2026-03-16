@@ -13,6 +13,7 @@
         <Compile Include="AstDiagnosticsTests.fs" />
         <Compile Include="SemanticAnalyzerTests.fs" />
         <Compile Include="ProgramFixtureTests.fs" />
+        <Compile Include="PipelineSourceTests.fs" />
     </ItemGroup>
 
     <ItemGroup>

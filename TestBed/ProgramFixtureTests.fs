@@ -98,13 +98,13 @@ let ``q3 fixture semantic analysis records declarations references and calls`` (
     let ast = parseAstFromFile "q3.SB"
     let analyzed = analyzeAst ast
 
-    Assert.That(analyzed.SymTab[globalScope].Symbols.ContainsKey("main"), Is.True)
-    Assert.That(analyzed.SymTab[globalScope].Symbols.ContainsKey("quicksort"), Is.True)
-    Assert.That(analyzed.SymTab[globalScope].Symbols.ContainsKey("QS2_PARTITION"), Is.True)
+    Assert.That(analyzed.SymTab[globalScope].Symbols.ContainsKey(normalizeIdentifier "main"), Is.True)
+    Assert.That(analyzed.SymTab[globalScope].Symbols.ContainsKey(normalizeIdentifier "quicksort"), Is.True)
+    Assert.That(analyzed.SymTab[globalScope].Symbols.ContainsKey(normalizeIdentifier "QS2_PARTITION"), Is.True)
 
-    Assert.That(analyzed.SymTab["quicksort"].Symbols.ContainsKey("l"), Is.True)
-    Assert.That(analyzed.SymTab["quicksort"].Symbols.ContainsKey("r"), Is.True)
-    Assert.That(analyzed.SymTab["quicksort"].Symbols.ContainsKey("pivot"), Is.True)
+    Assert.That(analyzed.SymTab["quicksort"].Symbols.ContainsKey(normalizeIdentifier "l"), Is.True)
+    Assert.That(analyzed.SymTab["quicksort"].Symbols.ContainsKey(normalizeIdentifier "r"), Is.True)
+    Assert.That(analyzed.SymTab["quicksort"].Symbols.ContainsKey(normalizeIdentifier "pivot"), Is.True)
 
     let mainParameterDeclaration =
         analyzed.Facts
@@ -119,7 +119,7 @@ let ``q3 fixture semantic analysis records declarations references and calls`` (
         |> List.tryFind (fun fact ->
             fact.Name = "PRINT"
             && fact.Kind = CallSite
-            && fact.Category = Some SymbolCategory.Keyword)
+            && fact.Category = Some SymbolCategory.BuiltIn)
 
     let quicksortDecl =
         analyzed.Facts
@@ -162,10 +162,10 @@ let ``golfer fixture semantic analysis records declarations references and calls
     let ast = parseAstFromFile "Golfer.sb"
     let analyzed = analyzeAst ast
 
-    Assert.That(analyzed.SymTab[globalScope].Symbols.ContainsKey("pow"), Is.True)
-    Assert.That(analyzed.SymTab[globalScope].Symbols.ContainsKey("ang"), Is.True)
+    Assert.That(analyzed.SymTab[globalScope].Symbols.ContainsKey(normalizeIdentifier "pow"), Is.True)
+    Assert.That(analyzed.SymTab[globalScope].Symbols.ContainsKey(normalizeIdentifier "ang"), Is.True)
 
-    Assert.That(analyzed.SymTab["pow"].Symbols.ContainsKey("p"), Is.True)
+    Assert.That(analyzed.SymTab["pow"].Symbols.ContainsKey(normalizeIdentifier "p"), Is.True)
 
     let atCall =
         analyzed.Facts

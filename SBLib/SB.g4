@@ -1,5 +1,29 @@
 grammar SB;
 
+options {
+    caseInsensitive = true;
+}
+
+@parser::members {
+    private bool IsElseLineAhead() =>
+        TokenStream.LA(1) == Else || (TokenStream.LA(1) == Integer && TokenStream.LA(2) == Else);
+
+    private bool IsEndIfLineAhead() =>
+        TokenStream.LA(1) == End || (TokenStream.LA(1) == Integer && TokenStream.LA(2) == End);
+
+    private bool IsEndRepeatLineAhead() =>
+        TokenStream.LA(1) == End || (TokenStream.LA(1) == Integer && TokenStream.LA(2) == End);
+
+    private bool IsEndDefLineAhead() =>
+        TokenStream.LA(1) == End || (TokenStream.LA(1) == Integer && TokenStream.LA(2) == End);
+
+    private bool IsEndWhenLineAhead() =>
+        TokenStream.LA(1) == End || (TokenStream.LA(1) == Integer && TokenStream.LA(2) == End);
+
+    private bool IsEndSelectLineAhead() =>
+        TokenStream.LA(1) == End || (TokenStream.LA(1) == Integer && TokenStream.LA(2) == End);
+}
+
 // ============================================================
 // Parser Rules
 // ============================================================
@@ -150,7 +174,8 @@ postfixArgList
     ;
 
 postfixArgItem
-    : expr (To expr)?
+    : chanArg
+    | expr (To expr?)?
     ;
 
 // ============================================================
@@ -159,14 +184,18 @@ postfixArgItem
 
 procedureDef
     : Define ProcedureKw ID formalParams Newline
-      line*
+      definitionBodyLine*
       lineNumber? endDef ID?
     ;
 
 functionDef
     : Define FunctionKw ID formalParams Newline
-      line*
+      definitionBodyLine*
       lineNumber? endDef ID?
+    ;
+
+definitionBodyLine
+    : {!IsEndDefLineAhead()}? line
     ;
 
 // Formal parameters are plain identifiers only — not full expressions
@@ -240,24 +269,37 @@ repeatStmt
     : Repeat ID
       (
           Colon stmtlist
-        | Newline line* lineNumber? endRepeat ID?
+        | Newline repeatBodyLine* lineNumber? endRepeat ID?
       )
+    ;
+
+repeatBodyLine
+    : {!IsEndRepeatLineAhead()}? line
     ;
 
 ifStmt
     : If expr
       (
-          (Then | Colon) stmtlist (Colon Else Colon stmtlist)?      // short form
-        | (Then)? Newline ifBlock elseBlock? lineNumber? endIf      // long form
+          Then Newline ifBlock elseBlock? lineNumber? endIf         // long form
+        | Newline ifBlock elseBlock? lineNumber? endIf              // long form
+        | (Then | Colon) stmtlist (Colon Else Colon stmtlist)?      // short form
       )
     ;
 
 ifBlock
-    : line+
+    : ifBodyLine+
     ;
 
 elseBlock
-    : lineNumber? Else Newline? line+
+    : lineNumber? Else Newline elseBodyLine*
+    ;
+
+ifBodyLine
+    : {!IsElseLineAhead() && !IsEndIfLineAhead()}? line
+    ;
+
+elseBodyLine
+    : {!IsEndIfLineAhead()}? line
     ;
 
 // SELect ON expr
@@ -266,8 +308,12 @@ elseBlock
 // END SELect
 selectStmt
     : SelectKw On expr Newline
-      selectItem*
+      selectBodyItem*
       lineNumber? endSelect
+    ;
+
+selectBodyItem
+    : {!IsEndSelectLineAhead()}? selectItem
     ;
 
 selectItem
@@ -291,11 +337,15 @@ dimItem
 // WHEN expr  ... END WHEN
 whenStmt
     : When ErrorKw Newline
-      line*
+      whenBodyLine*
       lineNumber? endWhen                                           #WhenErrorStmt
     | When expr Newline
-      line*
+      whenBodyLine*
       lineNumber? endWhen                                           #WhenCondStmt
+    ;
+
+whenBodyLine
+    : {!IsEndWhenLineAhead()}? line
     ;
 
 // ============================================================
@@ -409,11 +459,11 @@ lineNumber
 // All compound end-markers are handled at the parser level
 // so no multi-word tokens with embedded spaces appear here.
 
-Define       : 'DEFine' ;
-ProcedureKw  : 'PROCedure' ;
-FunctionKw   : 'FuNction' ;
+Define       : 'DEF' ('INE')? ;
+ProcedureKw  : 'PROC' ('EDURE')? ;
+FunctionKw   : 'FUNC' ('TION')? ;
 End          : 'END' ;
-SelectKw     : 'SELect' ;
+SelectKw     : 'SEL' ('ECT')? ;
 ErrorKw      : 'ERROR' ;
 
 Refer        : 'REFERENCE' ;
@@ -428,18 +478,18 @@ For          : 'FOR' ;
 Next         : 'NEXT' ;
 To           : 'TO' ;
 Step         : 'STEP' ;
-Repeat       : 'REPeat' ;
+Repeat       : 'REP' ('EAT')? ;
 Exit         : 'EXIT' ;
 Until        : 'UNTIL' ;
 When         : 'WHEN' ;
-Return       : 'RETurn' ;
+Return       : 'RET' ('URN')? ;
 Go           : 'GO' ;
 GoTo         : 'GOTO' ;
 Sub          : 'SUB' ;
 GoSub        : 'GOSUB' ;
 Data         : 'DATA' ;
 Read         : 'READ' ;
-Restore      : 'RESTore' ;
+Restore      : 'REST' ('ORE')? ;
 Remainder    : 'REMAINDER' ;
 
 // ---------- Operators ----------

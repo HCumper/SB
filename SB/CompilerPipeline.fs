@@ -17,6 +17,7 @@ open ParseTreeVisitor
 open SymbolTableManager
 open SemanticAnalyzer
 open TypeAnalyzer
+open SSB
 open Monads.State
 open SyntaxAst
 
@@ -37,6 +38,12 @@ type ProcessingError =
 type ParseError =
     | FileNotFound of string
     | ParseError of string
+
+type PreparedSource = {
+    OriginalPath: string
+    EffectiveText: string
+    Kind: Ssb.SourceKind
+}
 
 type RuntimeSettings = {
     InputFileName: string
@@ -87,10 +94,30 @@ let createLexer (input: AntlrInputStream) =
     let factory = CommonTokenFactory() :> ITokenFactory
     SBLexer(input, TokenFactory = factory)
 
-let parseFile (inputFileName: string) : Result<IParseTree * AntlrInputStream, ParseError> =
+let private prepareSource (inputFileName: string) : Result<PreparedSource, ParseError> =
     try
-        use reader = File.OpenText(inputFileName)
-        let inputStream = AntlrInputStream(reader)
+        if not (File.Exists(inputFileName)) then
+            Error(FileNotFound inputFileName)
+        else
+            let sourceText = File.ReadAllText(inputFileName)
+            let lines = sourceText.Replace("\r\n", "\n").Split('\n') |> Array.toList
+            let kind = Ssb.classifySource lines
+            let effectiveText =
+                match kind with
+                | Ssb.SourceKind.SuperBasic -> sourceText
+                | Ssb.SourceKind.Ssb -> Ssb.transformFile inputFileName
+
+            Ok {
+                OriginalPath = inputFileName
+                EffectiveText = effectiveText
+                Kind = kind
+            }
+    with
+    | ex -> Error(ParseError ex.Message)
+
+let parsePreparedSource (preparedSource: PreparedSource) : Result<IParseTree * AntlrInputStream, ParseError> =
+    try
+        let inputStream = AntlrInputStream(preparedSource.EffectiveText)
         let lexer = createLexer inputStream
         let tokenStream = CommonTokenStream(lexer)
         let parser = SBParser(tokenStream)
@@ -145,12 +172,16 @@ let logDiagnostics (config: Configuration) (parseTree, _) (ast: Ast) =
         Console.WriteLine("\nTransformed AST:")
 
 let loadAstFromInput settings =
-    match parseFile settings.InputFileName with
-    | Ok(parseTree, inputStream) ->
-        if settings.Verbose then printfn "Parsing succeeded."
-        let ast = processToAST (parseTree, inputStream) settings.Verbose
-        Ok(parseTree, inputStream, ast)
+    match prepareSource settings.InputFileName with
     | Error parseError -> Error parseError
+    | Ok preparedSource ->
+        match parsePreparedSource preparedSource with
+        | Error parseError -> Error parseError
+        | Ok(parseTree, inputStream) ->
+            if settings.Verbose then
+                printfn $"Parsing succeeded. Source kind: %A{preparedSource.Kind}"
+            let ast = processToAST (parseTree, inputStream) settings.Verbose
+            Ok(parseTree, inputStream, ast)
 
 let createTemplateGroup settings =
     new TemplateGroupFile(settings.TemplateFileName)

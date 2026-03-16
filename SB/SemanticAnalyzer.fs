@@ -3,25 +3,11 @@ module SemanticAnalyzer
 open Types
 open ProcessingTypes
 open ScopeNames
+open BuiltIns
 open SymbolTableManager
 open Monads.State
 open FSharpPlus.Data
 open SyntaxAst
-
-let keywords =
-    [ "ABS"; "ACOS"; "ALLOCATE"; "AND"; "APPEND"; "ASC"; "ASIN"; "AT"; "ATAN"
-      "BEEP"; "BACKUP"; "BORDER"; "CIRCLE"; "CLS"; "CLOSE"; "COPY"; "COS"
-      "CURSOR OFF"; "CURSOR ON"; "DATA"; "DATE"; "DEALLOCATE"; "DEFine FuNction"
-      "DEFine PROCedure"; "DELETE"; "DIM"; "DIR"; "DRAW"; "END DEFine"
-      "END SELect"; "END WHILE"; "EXP"; "EXTERNAL"; "FORMAT"; "FOR"; "GLOBAL"
-      "GO SUB"; "GO TO"; "IF"; "INK"; "INPUT"; "INSTR"; "INT"; "LEFT$"; "LET"
-      "LEN"; "LIST"; "LOAD"; "LOADMEM"; "LOCAL"; "LOG"; "LOOP"; "LPRINT"; "LRUN"
-      "MOD"; "MID$"; "MOVE"; "NEW"; "NEXT"; "NOT"; "ON"; "ON ERROR"; "OR"
-      "PALETTE"; "PAPER"; "PAUSE"; "PEEK"; "PI"; "POINT"; "POKE"; "PRINT"
-      "REMark"; "REM"; "REPEAT"; "RESTORE"; "RETURN"; "RETurn"; "REPL$"; "RIGHT$"
-      "RND"; "ROUND"; "RUN"; "SAVE"; "SAVEMEM"; "SELect ON"; "SHELL"; "SGN"
-      "SIN"; "STEP"; "STOP"; "STR$"; "SYSVAR"; "TAN"; "THEN"; "TIME"; "TO"
-      "TRON"; "TROFF"; "UNTIL"; "VAL"; "WAIT"; "WHEN"; "WHILE"; "WINDOW"; "XOR" ]
 
 let private zeroPosition =
     { BasicLineNo = None
@@ -34,51 +20,47 @@ let private withDefaultRule scopeName (state: ProcessingState) : ImplicitTypingR
     | None -> { Integers = Set.empty; Strings = Set.empty }
 
 let private updateImplicitTyping scopeName (decorator: string) (names: Set<string>) (state: ProcessingState) =
+    let normalizedNames = names |> Set.map normalizeIdentifier
     let currentRule = withDefaultRule scopeName state
     let updatedRule =
         if decorator.Contains "%" then
-            { currentRule with Integers = Set.union currentRule.Integers names }
+            { currentRule with Integers = Set.union currentRule.Integers normalizedNames }
         elif decorator.Contains "$" then
-            { currentRule with Strings = Set.union currentRule.Strings names }
+            { currentRule with Strings = Set.union currentRule.Strings normalizedNames }
         else
             currentRule
 
     { state with ImplicitTyping = Map.add scopeName updatedRule state.ImplicitTyping }
 
-let private createCommonSymbol name category position evaluatedType =
+let private createCommonSymbol name position evaluatedType =
     { Name = name
-      Category = category
       EvaluatedType = evaluatedType
       Position = position }
 
 let private createVariableSymbol name position evaluatedType =
-    VariableSym { Common = createCommonSymbol name SymbolCategory.Variable position evaluatedType }
+    VariableSym { Common = createCommonSymbol name position evaluatedType }
 
 let private createParameterSymbol name position evaluatedType =
-    ParameterSym { Common = createCommonSymbol name SymbolCategory.Parameter position evaluatedType; Passing = None }
+    ParameterSym { Common = createCommonSymbol name position evaluatedType; Passing = None }
 
-let private createArraySymbol name position dimensions =
+let private createArraySymbol name position elementType dimensions =
     ArraySym {
-        Common = createCommonSymbol name SymbolCategory.Array position SBType.Unknown
+        Common = createCommonSymbol name position elementType
+        ElementType = elementType
         Dimensions = dimensions
     }
 
 let private createFunctionSymbol name position =
     FunctionSym {
-        Common = createCommonSymbol name SymbolCategory.Function position SBType.Unknown
+        Common = createCommonSymbol name position SBType.Unknown
         Parameters = []
         ReturnType = SBType.Unknown
     }
 
 let private createProcedureSymbol name position =
     ProcedureSym {
-        Common = createCommonSymbol name SymbolCategory.Procedure position SBType.Void
+        Common = createCommonSymbol name position SBType.Void
         Parameters = []
-    }
-
-let private createBuiltInSymbol name =
-    BuiltInSym {
-        Common = createCommonSymbol name SymbolCategory.Keyword zeroPosition SBType.Unknown
     }
 
 let private addOrUpdateSymbol mode scopeName symbol table =
@@ -86,16 +68,27 @@ let private addOrUpdateSymbol mode scopeName symbol table =
 
 let private ensureScope scopeName parentScope table =
     if Map.containsKey scopeName table then table
-    else table |> Map.add scopeName { Name = scopeName; Parent = parentScope; Symbols = Map.empty }
+    else table |> Map.add scopeName { Id = scopeName; Parent = parentScope; Symbols = Map.empty }
+
+let private updateRoutineParameters (scopeName: string) (parameters: ParameterSymbol list) (table: SymbolTable) =
+    match Map.tryFind globalScope table with
+    | None -> table
+    | Some globalScopeSymbols ->
+        let key = normalizeIdentifier scopeName
+        match Map.tryFind key globalScopeSymbols.Symbols with
+        | None -> table
+        | Some (symbol: Symbol) ->
+            let updatedSymbol =
+                match symbol with
+                | FunctionSym symbol -> FunctionSym { symbol with Parameters = parameters }
+                | ProcedureSym symbol -> ProcedureSym { symbol with Parameters = parameters }
+                | symbol -> symbol
+            let updatedScope =
+                { globalScopeSymbols with Symbols = Map.add key updatedSymbol globalScopeSymbols.Symbols }
+            Map.add globalScope updatedScope table
 
 let prePopulateSymbolTable (oldState: ProcessingState) : ProcessingState =
-    let tableWithGlobalScope = ensureScope globalScope None oldState.SymTab
-    let newSymTab =
-        keywords
-        |> List.fold (fun table keyword ->
-            addOrUpdateSymbol Overwrite globalScope (createBuiltInSymbol keyword) table) tableWithGlobalScope
-
-    { oldState with SymTab = newSymTab }
+    { oldState with SymTab = ensureScope globalScope None oldState.SymTab }
 
 let private posOfExpr expr =
     match expr with
@@ -109,8 +102,9 @@ let private posOfExpr expr =
 
 let private inferredVariableType (state: ProcessingState) scopeName name =
     let currentRule = withDefaultRule scopeName state
-    if currentRule.Integers.Contains name then SBType.Integer
-    elif currentRule.Strings.Contains name then SBType.String
+    let normalizedName = normalizeIdentifier name
+    if currentRule.Integers.Contains normalizedName then SBType.Integer
+    elif currentRule.Strings.Contains normalizedName then SBType.String
     else SBType.Unknown
 
 let private recordFact kind category name scope position (state: ProcessingState) =
@@ -129,12 +123,15 @@ let rec private tryResolveSymbol scopeName symbolName (table: SymbolTable) =
     match Map.tryFind scopeName table with
     | None -> None
     | Some scope ->
-        match Map.tryFind symbolName scope.Symbols with
+        match Map.tryFind (normalizeIdentifier symbolName) scope.Symbols with
         | Some symbol -> Some(scopeName, symbol)
         | None ->
             match scope.Parent with
             | Some parent -> tryResolveSymbol parent symbolName table
-            | None -> None
+            | None ->
+                match BuiltIns.tryFind symbolName with
+                | Some symbol -> Some(globalScope, symbol)
+                | None -> None
 
 let private declareSymbol mode scopeName symbol state =
     let symTab = addOrUpdateSymbol mode scopeName symbol state.SymTab
@@ -148,7 +145,8 @@ let private declareVariable mode scopeName name position state =
     |> recordFact DeclarationSite (Some SymbolCategory.Variable) name scopeName position
 
 let private declareArray mode scopeName name position dimensions state =
-    let symbol = createArraySymbol name position dimensions
+    let inferredType = inferredVariableType state scopeName name
+    let symbol = createArraySymbol name position inferredType dimensions
     state
     |> declareSymbol mode scopeName symbol
     |> recordFact DeclarationSite (Some SymbolCategory.Array) name scopeName position
@@ -195,7 +193,7 @@ let private recordCall name position (state: ProcessingState) =
         match category with
         | SymbolCategory.Procedure
         | SymbolCategory.Function
-        | SymbolCategory.Keyword -> stateWithFact
+        | SymbolCategory.BuiltIn -> stateWithFact
         | _ -> appendError $"Symbol '{name}' is not callable at {position.EditorLineNo}:{position.Column}" stateWithFact
     | None ->
         state
@@ -273,9 +271,21 @@ and collectDeclarations (mode: SymbolAddMode) (node: Stmt) : State<ProcessingSta
                 |> declareProcedure mode name pos
                 |> fun s -> { s with SymTab = ensureScope name (Some globalScope) s.SymTab; CurrentScope = name }
             do! putState stateWithProc
-            let scopedState =
+            let parameterSymbols : ParameterSymbol list =
                 parameters
-                |> List.fold (fun state parameter -> declareParameter mode name parameter pos state) stateWithProc
+                |> List.map (fun parameter ->
+                    match createParameterSymbol parameter pos SBType.Unknown with
+                    | ParameterSym symbol -> symbol
+                    | _ -> failwith "unreachable")
+            let stateWithParameters =
+                parameterSymbols
+                |> List.fold (fun state parameter -> declareSymbol mode name (ParameterSym parameter) state) stateWithProc
+            let scopedState =
+                List.foldBack
+                    (fun (parameter: ParameterSymbol) state ->
+                        recordFact DeclarationSite (Some SymbolCategory.Parameter) parameter.Common.Name name pos state)
+                    parameterSymbols
+                    { stateWithParameters with SymTab = updateRoutineParameters name parameterSymbols stateWithParameters.SymTab }
             do! putState scopedState
             do! collectDeclarationLineList mode body
             let! stateAfterBody = getState
@@ -287,9 +297,21 @@ and collectDeclarations (mode: SymbolAddMode) (node: Stmt) : State<ProcessingSta
                 |> declareFunction mode name pos
                 |> fun s -> { s with SymTab = ensureScope name (Some globalScope) s.SymTab; CurrentScope = name }
             do! putState stateWithFunc
-            let scopedState =
+            let parameterSymbols : ParameterSymbol list =
                 parameters
-                |> List.fold (fun state parameter -> declareParameter mode name parameter pos state) stateWithFunc
+                |> List.map (fun parameter ->
+                    match createParameterSymbol parameter pos SBType.Unknown with
+                    | ParameterSym symbol -> symbol
+                    | _ -> failwith "unreachable")
+            let stateWithParameters =
+                parameterSymbols
+                |> List.fold (fun state parameter -> declareSymbol mode name (ParameterSym parameter) state) stateWithFunc
+            let scopedState =
+                List.foldBack
+                    (fun (parameter: ParameterSymbol) state ->
+                        recordFact DeclarationSite (Some SymbolCategory.Parameter) parameter.Common.Name name pos state)
+                    parameterSymbols
+                    { stateWithParameters with SymTab = updateRoutineParameters name parameterSymbols stateWithParameters.SymTab }
             do! putState scopedState
             do! collectDeclarationLineList mode body
             let! stateAfterBody = getState

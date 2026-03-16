@@ -18,7 +18,7 @@ let emptySymbolTable : SymbolTable = Map.empty
 
 /// Push a new scope (with the given name) onto the symbol table.
 let pushScopeToTable (scopeName: string) (symbolTable: SymbolTable) : SymbolTable =
-    symbolTable |> Map.add scopeName { Name = scopeName; Parent = None; Symbols = Map.empty }
+    symbolTable |> Map.add scopeName { Id = scopeName; Parent = None; Symbols = Map.empty }
 
 /// Non-destructively fetch a scope from the symbol table.
 /// Returns None if no scope exists.
@@ -27,7 +27,7 @@ let fetchScopeFromTable (name: string) (table: SymbolTable) : Scope option =
    
 /// Fetch a named symbol from the given scope.
 let fetchSymbolFromScope (name: string) (scope: Scope) : Symbol option =
-    Map.tryFind name scope.Symbols
+    Map.tryFind (normalizeIdentifier name) scope.Symbols
 
 /// Update a given scope with a new symbol (or update an existing symbol)
 /// and then rebuild the symbol table.
@@ -37,7 +37,7 @@ let addSymbolToNamedScope
     (scopeName: string) 
     (symbolTable: SymbolTable) : SymbolTable =
     
-    let symbolName = getSymbolName symbol
+    let symbolName = getNormalizedSymbolName symbol
     let scopeOption = Map.tryFind scopeName symbolTable
         
     match scopeOption with

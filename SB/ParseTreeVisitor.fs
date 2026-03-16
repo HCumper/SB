@@ -62,26 +62,37 @@ let private singleClause tree nodes =
     | [ ClauseNode clause ] -> clause
     | _ -> SelectClause(posOfTree tree, Identifier(posOfTree tree, ""), Identifier(posOfTree tree, ""), None)
 
+let private emptySeq<'T> : seq<'T> = Seq.empty
+
 type ASTBuildingVisitor() =
     inherit SBBaseVisitor<VisitedNode list>()
 
+    member private this.SafeAcceptExpr(tree: IParseTree) =
+        if isNull tree then
+            Identifier({ BasicLineNo = None; EditorLineNo = 0; Column = 0 }, "")
+        else
+            singleExpr tree (tree.Accept(this))
+
+    member private this.SafeChildren<'T when 'T : null>(nodes: seq<'T>) =
+        if isNull (box nodes) then emptySeq else nodes
+
     member private this.VisitLineList(lines: seq<SBParser.LineContext>) =
-        lines |> Seq.map (fun l -> singleLine l (l.Accept(this))) |> Seq.toList
+        this.SafeChildren(lines) |> Seq.map (fun l -> singleLine l (l.Accept(this))) |> Seq.toList
 
     member private this.CollectStmtList(ctx: SBParser.StmtlistContext) =
-        ctx.stmt() |> Seq.map (fun s -> singleStmt s (s.Accept(this))) |> Seq.toList
+        this.SafeChildren(ctx.stmt()) |> Seq.map (fun s -> singleStmt s (s.Accept(this))) |> Seq.toList
 
     member private this.CollectPlainStmtList(ctx: SBParser.PlainStmtlistContext) =
-        ctx.stmt() |> Seq.map (fun s -> singleStmt s (s.Accept(this))) |> Seq.toList
+        this.SafeChildren(ctx.stmt()) |> Seq.map (fun s -> singleStmt s (s.Accept(this))) |> Seq.toList
 
     member private this.CollectExprList(ctx: SBParser.ExprListContext) =
-        ctx.expr() |> Seq.map (fun e -> singleExpr e (e.Accept(this))) |> Seq.toList
+        this.SafeChildren(ctx.expr()) |> Seq.map (fun e -> this.SafeAcceptExpr(e)) |> Seq.toList
 
     member private this.CollectParenthesizedArgs(ctx: SBParser.ParenthesizedlistContext) =
-        ctx.expr() |> Seq.map (fun e -> singleExpr e (e.Accept(this))) |> Seq.toList
+        this.SafeChildren(ctx.expr()) |> Seq.map (fun e -> this.SafeAcceptExpr(e)) |> Seq.toList
 
     member private this.CollectUnparenthesizedArgs(ctx: SBParser.UnparenthesizedlistContext) =
-        ctx.expr() |> Seq.map (fun e -> singleExpr e (e.Accept(this))) |> Seq.toList
+        this.SafeChildren(ctx.expr()) |> Seq.map (fun e -> this.SafeAcceptExpr(e)) |> Seq.toList
 
     member private this.CollectStmtArgs(ctx: SBParser.StmtTailContext) =
         ctx.stmtSegment()
@@ -91,19 +102,27 @@ type ASTBuildingVisitor() =
 
     member private this.PostfixArgItemToExpr(ctx: SBParser.PostfixArgItemContext) =
         let p = posOfTree ctx
-        let exprs = ctx.expr() |> Seq.toList
+        let exprs = this.SafeChildren(ctx.expr()) |> Seq.toList
 
-        match exprs with
-        | [ a ] -> singleExpr a (a.Accept(this))
-        | [ a; b ] ->
-            let left = singleExpr a (a.Accept(this))
-            let right = singleExpr b (b.Accept(this))
-            SliceRange(p, left, right)
-        | _ ->
-            Identifier(p, "")
+        if not (isNull (ctx.chanArg())) then
+            this.SafeAcceptExpr(ctx.chanArg())
+        else
+            match exprs with
+            | [ a ] when not (isNull (ctx.To())) ->
+                let left = this.SafeAcceptExpr(a)
+                SliceRange(p, left, Identifier(p, ""))
+            | [ a ] -> this.SafeAcceptExpr(a)
+            | [ a; b ] ->
+                let left = this.SafeAcceptExpr(a)
+                let right = this.SafeAcceptExpr(b)
+                SliceRange(p, left, right)
+            | _ ->
+                Identifier(p, "")
 
     member private this.FoldLeft(pos: SourcePosition, first: Expr, ops: string list, rest: Expr list) =
-        (first, List.zip ops rest)
+        let pairCount = min ops.Length rest.Length
+        let zipped = List.zip (ops |> List.truncate pairCount) (rest |> List.truncate pairCount)
+        (first, zipped)
         ||> List.fold (fun acc (op, rhs) -> BinaryExpr(pos, op, acc, rhs))
 
     member private this.OperatorTexts(ctx: IRuleNode, allowed: Set<string>) =
@@ -150,7 +169,7 @@ type ASTBuildingVisitor() =
         single (LineNode(Line(p, lineNo, children)))
 
     override this.VisitStmtlist(ctx: SBParser.StmtlistContext) =
-        ctx.stmt() |> Seq.collect (fun s -> s.Accept(this)) |> Seq.toList
+        this.SafeChildren(ctx.stmt()) |> Seq.collect (fun s -> s.Accept(this)) |> Seq.toList
 
     override this.VisitSimpleStatement(ctx: SBParser.SimpleStatementContext) =
         this.VisitChildren(ctx)
@@ -189,7 +208,13 @@ type ASTBuildingVisitor() =
             | null -> []
             | fp -> fp.ID() |> Seq.map (fun id -> id.GetText()) |> Seq.toList
 
-        let body = this.VisitLineList(ctx.line())
+        let body =
+            ctx.definitionBodyLine()
+            |> Seq.choose (fun bodyLine ->
+                match bodyLine.line() with
+                | null -> None
+                | line -> Some (singleLine line (line.Accept(this))))
+            |> Seq.toList
         single (StmtNode(ProcedureDef(p, name, parms, body)))
 
     override this.VisitFunctionDef(ctx: SBParser.FunctionDefContext) =
@@ -205,7 +230,13 @@ type ASTBuildingVisitor() =
             | null -> []
             | fp -> fp.ID() |> Seq.map (fun id -> id.GetText()) |> Seq.toList
 
-        let body = this.VisitLineList(ctx.line())
+        let body =
+            ctx.definitionBodyLine()
+            |> Seq.choose (fun bodyLine ->
+                match bodyLine.line() with
+                | null -> None
+                | line -> Some (singleLine line (line.Accept(this))))
+            |> Seq.toList
         single (StmtNode(FunctionDef(p, name, parms, body)))
 
     override this.VisitDim(ctx: SBParser.DimContext) =
@@ -505,7 +536,19 @@ type ASTBuildingVisitor() =
             match ids with
             | id :: _ -> id.GetText()
             | [] -> ""
-        let body = this.BlockFromStmtOrLine(ctx.stmtlist(), ctx.line())
+        let body =
+            match ctx.stmtlist() with
+            | null ->
+                let lines =
+                    ctx.repeatBodyLine()
+                    |> Seq.choose (fun bodyLine ->
+                        match bodyLine.line() with
+                        | null -> None
+                        | line -> Some (singleLine line (line.Accept(this))))
+                    |> Seq.toList
+                LineBlock(lines)
+            | stmtList ->
+                StatementBlock(this.CollectStmtList(stmtList))
         single (StmtNode(RepeatStmt(p, name, body)))
 
     override this.VisitIfStmt(ctx: SBParser.IfStmtContext) =
@@ -523,26 +566,58 @@ type ASTBuildingVisitor() =
                 let t =
                     match ctx.ifBlock() with
                     | null -> LineBlock([])
-                    | ib -> LineBlock(this.VisitLineList(ib.line()))
+                    | ib ->
+                        let lines =
+                            ib.ifBodyLine()
+                            |> Seq.choose (fun bodyLine ->
+                                match bodyLine.line() with
+                                | null -> None
+                                | line -> Some (singleLine line (line.Accept(this))))
+                            |> Seq.toList
+                        LineBlock(lines)
                 let e =
                     match ctx.elseBlock() with
                     | null -> None
-                    | eb -> Some (LineBlock(this.VisitLineList(eb.line())))
+                    | eb ->
+                        let lines =
+                            eb.elseBodyLine()
+                            |> Seq.choose (fun bodyLine ->
+                                match bodyLine.line() with
+                                | null -> None
+                                | line -> Some (singleLine line (line.Accept(this))))
+                            |> Seq.toList
+                        Some (LineBlock(lines))
                 t, e
 
         single (StmtNode(IfStmt(p, cond, thenPart, elsePart)))
 
     override this.VisitIfBlock(ctx: SBParser.IfBlockContext) =
-        ctx.line() |> Seq.map (fun line -> LineNode(singleLine line (line.Accept(this)))) |> Seq.toList
+        ctx.ifBodyLine()
+        |> Seq.choose (fun bodyLine ->
+            match bodyLine.line() with
+            | null -> None
+            | line -> Some (LineNode(singleLine line (line.Accept(this)))))
+        |> Seq.toList
 
     override this.VisitElseBlock(ctx: SBParser.ElseBlockContext) =
-        ctx.line() |> Seq.map (fun line -> LineNode(singleLine line (line.Accept(this)))) |> Seq.toList
+        ctx.elseBodyLine()
+        |> Seq.choose (fun bodyLine ->
+            match bodyLine.line() with
+            | null -> None
+            | line -> Some (LineNode(singleLine line (line.Accept(this)))))
+        |> Seq.toList
 
     override this.VisitSelectStmt(ctx: SBParser.SelectStmtContext) =
         let p = posOfTree ctx
-        let selector = singleExpr (ctx.expr()) (ctx.expr().Accept(this))
-        let clauses = ctx.selectItem() |> Seq.map (fun si -> singleClause si (si.Accept(this))) |> Seq.toList
+        let selector = this.SafeAcceptExpr(ctx.expr())
+        let clauses =
+            this.SafeChildren(ctx.selectBodyItem())
+            |> Seq.map (fun si -> singleClause si (si.Accept(this)))
+            |> Seq.toList
         single (StmtNode(SelectStmt(p, selector, clauses)))
+
+    override this.VisitSelectBodyItem(ctx: SBParser.SelectBodyItemContext) =
+        ctx.selectItem().Accept(this)
 
     override this.VisitSelectItem(ctx: SBParser.SelectItemContext) =
         if not (isNull (ctx.onClause())) then ctx.onClause().Accept(this)
@@ -550,8 +625,8 @@ type ASTBuildingVisitor() =
 
     override this.VisitOnClause(ctx: SBParser.OnClauseContext) =
         let p = posOfTree ctx
-        let selectorExpr = singleExpr (ctx.expr()) (ctx.expr().Accept(this))
-        let rangeAst = singleExpr (ctx.rangeexpr()) (ctx.rangeexpr().Accept(this))
+        let selectorExpr = this.SafeAcceptExpr(ctx.expr())
+        let rangeAst = this.SafeAcceptExpr(ctx.rangeexpr())
         let body =
             match ctx.stmtlist() with
             | null -> None
@@ -559,12 +634,25 @@ type ASTBuildingVisitor() =
         single (ClauseNode(SelectClause(p, selectorExpr, rangeAst, body)))
 
     override this.VisitWhenErrorStmt(ctx: SBParser.WhenErrorStmtContext) =
-        single (StmtNode(WhenStmt(posOfTree ctx, None, this.VisitLineList(ctx.line()))))
+        let body =
+            ctx.whenBodyLine()
+            |> Seq.choose (fun bodyLine ->
+                match bodyLine.line() with
+                | null -> None
+                | line -> Some (singleLine line (line.Accept(this))))
+            |> Seq.toList
+        single (StmtNode(WhenStmt(posOfTree ctx, None, body)))
 
     override this.VisitWhenCondStmt(ctx: SBParser.WhenCondStmtContext) =
         let p = posOfTree ctx
-        let condition = singleExpr (ctx.expr()) (ctx.expr().Accept(this))
-        let body = this.VisitLineList(ctx.line())
+        let condition = this.SafeAcceptExpr(ctx.expr())
+        let body =
+            ctx.whenBodyLine()
+            |> Seq.choose (fun bodyLine ->
+                match bodyLine.line() with
+                | null -> None
+                | line -> Some (singleLine line (line.Accept(this))))
+            |> Seq.toList
         single (StmtNode(WhenStmt(p, Some condition, body)))
 
     override this.VisitExpr(ctx: SBParser.ExprContext) =
@@ -573,7 +661,7 @@ type ASTBuildingVisitor() =
     override this.VisitOrExpr(ctx: SBParser.OrExprContext) =
         let p = posOfTree ctx
         let terms =
-            ctx.andExpr() |> Seq.map (fun x -> singleExpr x (x.Accept(this))) |> Seq.toList
+            this.SafeChildren(ctx.andExpr()) |> Seq.map (fun x -> this.SafeAcceptExpr(x)) |> Seq.toList
         let ops = this.OperatorTexts(ctx, set [ "OR"; "XOR" ])
         match terms with
         | [] -> []
@@ -582,7 +670,7 @@ type ASTBuildingVisitor() =
     override this.VisitAndExpr(ctx: SBParser.AndExprContext) =
         let p = posOfTree ctx
         let terms =
-            ctx.notExpr() |> Seq.map (fun x -> singleExpr x (x.Accept(this))) |> Seq.toList
+            this.SafeChildren(ctx.notExpr()) |> Seq.map (fun x -> this.SafeAcceptExpr(x)) |> Seq.toList
         let ops =
             this.OperatorTexts(ctx, set [ "AND"; "&&" ])
             |> List.map (function | "&&" -> "AND" | other -> other)
@@ -595,13 +683,13 @@ type ASTBuildingVisitor() =
         if not (isNull (ctx.compareExpr())) then
             ctx.compareExpr().Accept(this)
         else
-            let rhs = singleExpr (ctx.notExpr()) (ctx.notExpr().Accept(this))
+            let rhs = this.SafeAcceptExpr(ctx.notExpr())
             single (ExprNode(UnaryExpr(p, "NOT", rhs)))
 
     override this.VisitCompareExpr(ctx: SBParser.CompareExprContext) =
         let p = posOfTree ctx
         let terms =
-            ctx.instrExpr() |> Seq.map (fun x -> singleExpr x (x.Accept(this))) |> Seq.toList
+            this.SafeChildren(ctx.instrExpr()) |> Seq.map (fun x -> this.SafeAcceptExpr(x)) |> Seq.toList
         let ops = this.OperatorTexts(ctx, set [ "="; "<>"; "<"; "<="; ">"; ">="; "==" ])
         match terms with
         | [] -> []
@@ -610,7 +698,7 @@ type ASTBuildingVisitor() =
     override this.VisitInstrExpr(ctx: SBParser.InstrExprContext) =
         let p = posOfTree ctx
         let parts =
-            ctx.concatExpr() |> Seq.map (fun x -> singleExpr x (x.Accept(this))) |> Seq.toList
+            this.SafeChildren(ctx.concatExpr()) |> Seq.map (fun x -> this.SafeAcceptExpr(x)) |> Seq.toList
         match parts with
         | [ singlePart ] -> [ ExprNode singlePart ]
         | [ lhs; rhs ] -> single (ExprNode(BinaryExpr(p, "INSTR", lhs, rhs)))
@@ -619,7 +707,7 @@ type ASTBuildingVisitor() =
     override this.VisitConcatExpr(ctx: SBParser.ConcatExprContext) =
         let p = posOfTree ctx
         let terms =
-            ctx.addExpr() |> Seq.map (fun x -> singleExpr x (x.Accept(this))) |> Seq.toList
+            this.SafeChildren(ctx.addExpr()) |> Seq.map (fun x -> this.SafeAcceptExpr(x)) |> Seq.toList
         let ops = this.OperatorTexts(ctx, set [ "&" ])
         match terms with
         | [] -> []
@@ -628,7 +716,7 @@ type ASTBuildingVisitor() =
     override this.VisitAddExpr(ctx: SBParser.AddExprContext) =
         let p = posOfTree ctx
         let terms =
-            ctx.mulExpr() |> Seq.map (fun x -> singleExpr x (x.Accept(this))) |> Seq.toList
+            this.SafeChildren(ctx.mulExpr()) |> Seq.map (fun x -> this.SafeAcceptExpr(x)) |> Seq.toList
         let ops = this.OperatorTexts(ctx, set [ "+"; "-" ])
         match terms with
         | [] -> []
@@ -637,7 +725,7 @@ type ASTBuildingVisitor() =
     override this.VisitMulExpr(ctx: SBParser.MulExprContext) =
         let p = posOfTree ctx
         let terms =
-            ctx.powExpr() |> Seq.map (fun x -> singleExpr x (x.Accept(this))) |> Seq.toList
+            this.SafeChildren(ctx.powExpr()) |> Seq.map (fun x -> this.SafeAcceptExpr(x)) |> Seq.toList
         let ops = this.OperatorTexts(ctx, set [ "*"; "/"; "MOD"; "DIV" ])
         match terms with
         | [] -> []
@@ -646,7 +734,7 @@ type ASTBuildingVisitor() =
     override this.VisitPowExpr(ctx: SBParser.PowExprContext) =
         let p = posOfTree ctx
         let terms =
-            ctx.unaryExpr() |> Seq.map (fun x -> singleExpr x (x.Accept(this))) |> Seq.toList
+            this.SafeChildren(ctx.unaryExpr()) |> Seq.map (fun x -> this.SafeAcceptExpr(x)) |> Seq.toList
         let ops = this.OperatorTexts(ctx, set [ "^" ])
         match terms with
         | [] -> []
@@ -657,8 +745,9 @@ type ASTBuildingVisitor() =
         if not (isNull (ctx.primary())) then
             ctx.primary().Accept(this)
         else
-            let op = ctx.GetChild(0).GetText()
-            let rhs = singleExpr (ctx.unaryExpr()) (ctx.unaryExpr().Accept(this))
+            let op =
+                if ctx.ChildCount > 0 then ctx.GetChild(0).GetText() else ""
+            let rhs = this.SafeAcceptExpr(ctx.unaryExpr())
             single (ExprNode(UnaryExpr(p, op, rhs)))
 
     override this.VisitPrimary(ctx: SBParser.PrimaryContext) =
@@ -686,12 +775,12 @@ type ASTBuildingVisitor() =
 
     override this.VisitRangeexpr(ctx: SBParser.RangeexprContext) =
         let p = posOfTree ctx
-        let exprs = ctx.expr() |> Seq.toList
+        let exprs = this.SafeChildren(ctx.expr()) |> Seq.toList
         match exprs with
         | [ a ] -> a.Accept(this)
         | [ a; b ] ->
-            let left = singleExpr a (a.Accept(this))
-            let right = singleExpr b (b.Accept(this))
+            let left = this.SafeAcceptExpr(a)
+            let right = this.SafeAcceptExpr(b)
             single (ExprNode(SliceRange(p, left, right)))
         | _ when not (isNull (ctx.Remainder())) ->
             single (ExprNode(Identifier(p, "REMAINDER")))
