@@ -5,9 +5,12 @@ open Antlr4.Runtime
 open Antlr4.Runtime.Tree
 
 open SyntaxAst
+open Types
 
-let private posOfToken (t: IToken) : Position =
-    (t.Line, t.Column)
+let private posOfToken (t: IToken) : SourcePosition =
+    { BasicLineNo = None
+      EditorLineNo = t.Line
+      Column = t.Column }
 
 let rec private firstTokenOf (tree: IParseTree) : IToken option =
     match tree with
@@ -15,10 +18,10 @@ let rec private firstTokenOf (tree: IParseTree) : IToken option =
     | _ when tree.ChildCount > 0 -> firstTokenOf (tree.GetChild 0)
     | _ -> None
 
-let private posOfTree (tree: IParseTree) : Position =
+let private posOfTree (tree: IParseTree) : SourcePosition =
     match firstTokenOf tree with
     | Some t -> posOfToken t
-    | None -> (0, 0)
+    | None -> { BasicLineNo = None; EditorLineNo = 0; Column = 0 }
 
 let private parseLineNumber (text: string) =
     match Int32.TryParse text with
@@ -68,6 +71,9 @@ type ASTBuildingVisitor() =
     member private this.CollectStmtList(ctx: SBParser.StmtlistContext) =
         ctx.stmt() |> Seq.map (fun s -> singleStmt s (s.Accept(this))) |> Seq.toList
 
+    member private this.CollectPlainStmtList(ctx: SBParser.PlainStmtlistContext) =
+        ctx.stmt() |> Seq.map (fun s -> singleStmt s (s.Accept(this))) |> Seq.toList
+
     member private this.CollectExprList(ctx: SBParser.ExprListContext) =
         ctx.expr() |> Seq.map (fun e -> singleExpr e (e.Accept(this))) |> Seq.toList
 
@@ -76,6 +82,12 @@ type ASTBuildingVisitor() =
 
     member private this.CollectUnparenthesizedArgs(ctx: SBParser.UnparenthesizedlistContext) =
         ctx.expr() |> Seq.map (fun e -> singleExpr e (e.Accept(this))) |> Seq.toList
+
+    member private this.CollectStmtArgs(ctx: SBParser.StmtTailContext) =
+        ctx.stmtSegment()
+        |> Seq.collect (fun segment -> segment.Accept(this))
+        |> Seq.map (fun node -> singleExpr ctx [ node ])
+        |> Seq.toList
 
     member private this.PostfixArgItemToExpr(ctx: SBParser.PostfixArgItemContext) =
         let p = posOfTree ctx
@@ -90,7 +102,7 @@ type ASTBuildingVisitor() =
         | _ ->
             Identifier(p, "")
 
-    member private this.FoldLeft(pos: Position, first: Expr, ops: string list, rest: Expr list) =
+    member private this.FoldLeft(pos: SourcePosition, first: Expr, ops: string list, rest: Expr list) =
         (first, List.zip ops rest)
         ||> List.fold (fun acc (op, rhs) -> BinaryExpr(pos, op, acc, rhs))
 
@@ -105,6 +117,20 @@ type ASTBuildingVisitor() =
             LineBlock(this.VisitLineList(lineContexts))
         else
             StatementBlock(this.CollectStmtList(stmtList))
+
+    member private this.ForBodyLineToLine(ctx: SBParser.ForBodyLineContext) =
+        let p = posOfTree ctx
+        let lineNo =
+            match ctx.lineNumber() with
+            | null -> None
+            | ln -> parseLineNumber (ln.GetText())
+
+        let statements =
+            match ctx.plainStmtlist() with
+            | null -> []
+            | stmtList -> this.CollectPlainStmtList(stmtList)
+
+        Line(p, lineNo, statements)
 
     override this.VisitProgram(ctx: SBParser.ProgramContext) =
         let p = posOfTree ctx
@@ -324,7 +350,10 @@ type ASTBuildingVisitor() =
         let p = posOfTree ctx
         let name = ctx.ID().GetText()
         let channel = singleExpr (ctx.chanArg()) (ctx.chanArg().Accept(this))
-        let args = ctx.arg() |> Seq.map (fun a -> singleExpr a (a.Accept(this))) |> Seq.toList
+        let args =
+            match ctx.stmtTail() with
+            | null -> []
+            | tail -> this.CollectStmtArgs(tail)
         single (StmtNode(ChannelProcedureCall(p, name, channel, args)))
 
     override this.VisitProcedureCallStmt(ctx: SBParser.ProcedureCallStmtContext) =
@@ -346,7 +375,33 @@ type ASTBuildingVisitor() =
         if not (isNull (ctx.parenthesizedlist())) then
             ctx.parenthesizedlist().Accept(this)
         else
-            ctx.unparenthesizedlist().Accept(this)
+            ctx.stmtTail().Accept(this)
+
+    override this.VisitStmtTail(ctx: SBParser.StmtTailContext) =
+        ctx.stmtSegment() |> Seq.collect (fun segment -> segment.Accept(this)) |> Seq.toList
+
+    override this.VisitStmtSegment(ctx: SBParser.StmtSegmentContext) =
+        match ctx.stmtArg() with
+        | null -> []
+        | arg -> arg.Accept(this)
+
+    override this.VisitStmtArg(ctx: SBParser.StmtArgContext) =
+        if not (isNull (ctx.chanArg())) then ctx.chanArg().Accept(this)
+        else ctx.rangedExpr().Accept(this)
+
+    override this.VisitRangedExpr(ctx: SBParser.RangedExprContext) =
+        let p = posOfTree ctx
+        let exprs = ctx.expr() |> Seq.toList
+
+        match exprs with
+        | [ value ] ->
+            value.Accept(this)
+        | [ startValue; endValue ] ->
+            let left = singleExpr startValue (startValue.Accept(this))
+            let right = singleExpr endValue (endValue.Accept(this))
+            single (ExprNode(SliceRange(p, left, right)))
+        | _ ->
+            single (ExprNode(Identifier(p, "")))
 
     override this.VisitChanArg(ctx: SBParser.ChanArgContext) =
         ctx.expr().Accept(this)
@@ -388,11 +443,10 @@ type ASTBuildingVisitor() =
 
     override this.VisitForStmt(ctx: SBParser.ForStmtContext) =
         let p = posOfTree ctx
-        let ids = ctx.ID() |> Seq.toList
         let name =
-            match ids with
-            | id :: _ -> id.GetText()
-            | [] -> ""
+            match ctx.ID() with
+            | null -> ""
+            | id -> id.GetText()
 
         let exprs = ctx.expr() |> Seq.toList
         let startExpr =
@@ -408,8 +462,41 @@ type ASTBuildingVisitor() =
             | _ :: _ :: third :: _ -> Some (singleExpr third (third.Accept(this)))
             | _ -> None
 
-        let body = this.BlockFromStmtOrLine(ctx.stmtlist(), ctx.line())
-        single (StmtNode(ForStmt(p, name, startExpr, endExpr, stepExpr, body)))
+        let loopStmt, trailingNodes =
+            match ctx.forBody() with
+            | null ->
+                let body =
+                    match ctx.stmtlist() with
+                    | null -> StatementBlock([])
+                    | stmtList -> StatementBlock(this.CollectStmtList(stmtList))
+
+                StmtNode(ForStmt(p, name, startExpr, endExpr, stepExpr, body)), []
+            | bodyCtx ->
+                let leadingLines =
+                    bodyCtx.forBodyLine()
+                    |> Seq.map this.ForBodyLineToLine
+                    |> Seq.toList
+
+                let terminator = bodyCtx.forTerminator()
+                let closingLine =
+                    match terminator.plainStmtlist() with
+                    | null -> []
+                    | stmtList ->
+                        let lineNo =
+                            match terminator.lineNumber() with
+                            | null -> None
+                            | ln -> parseLineNumber (ln.GetText())
+
+                        [ Line(posOfTree terminator, lineNo, this.CollectPlainStmtList(stmtList)) ]
+
+                let trailingNodes =
+                    match terminator.stmtlist() with
+                    | null -> []
+                    | stmtList -> stmtList.Accept(this)
+
+                StmtNode(ForStmt(p, name, startExpr, endExpr, stepExpr, LineBlock(leadingLines @ closingLine))), trailingNodes
+
+        loopStmt :: trailingNodes
 
     override this.VisitRepeatStmt(ctx: SBParser.RepeatStmtContext) =
         let p = posOfTree ctx
@@ -496,7 +583,9 @@ type ASTBuildingVisitor() =
         let p = posOfTree ctx
         let terms =
             ctx.notExpr() |> Seq.map (fun x -> singleExpr x (x.Accept(this))) |> Seq.toList
-        let ops = this.OperatorTexts(ctx, set [ "AND" ])
+        let ops =
+            this.OperatorTexts(ctx, set [ "AND"; "&&" ])
+            |> List.map (function | "&&" -> "AND" | other -> other)
         match terms with
         | [] -> []
         | first :: rest -> single (ExprNode(this.FoldLeft(p, first, ops, rest)))
@@ -612,7 +701,7 @@ type ASTBuildingVisitor() =
 
     override this.VisitTerminal(node: ITerminalNode) =
         let sym = node.Symbol
-        let p = (sym.Line, sym.Column)
+        let p = posOfToken sym
         match SBLexer.DefaultVocabulary.GetSymbolicName(sym.Type) with
         | "INTEGER" -> single (ExprNode(NumberLiteral(p, sym.Text)))
         | "REAL" -> single (ExprNode(NumberLiteral(p, sym.Text)))
@@ -622,8 +711,8 @@ type ASTBuildingVisitor() =
     override this.VisitErrorNode(node: IErrorNode) =
         let p =
             match node.Symbol with
-            | null -> (0, 0)
-            | s -> (s.Line, s.Column)
+            | null -> { BasicLineNo = None; EditorLineNo = 0; Column = 0 }
+            | s -> posOfToken s
         single (ExprNode(Identifier(p, node.GetText())))
 
     override this.VisitChildren(node: IRuleNode) =

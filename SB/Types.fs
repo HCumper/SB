@@ -1,7 +1,5 @@
 module Types
 
-open SyntaxAst
-
 type SourcePosition = {
     BasicLineNo: int option
     EditorLineNo: int
@@ -109,11 +107,15 @@ type ImplicitTypingRule = {
     Strings: Set<string>
 }
 
-type ProcessingState = {
-    Ast: Ast
-    SymTab: SymbolTable
-    CurrentScope: string
-    InParameterList: bool
-    ImplicitTyping: Map<string, ImplicitTypingRule>
-    Errors: string list
+type SemanticFactKind =
+    | DeclarationSite
+    | ReferenceSite
+    | CallSite
+
+type SemanticFact = {
+    Name: string
+    Scope: string
+    Position: SourcePosition
+    Category: SymbolCategory option
+    Kind: SemanticFactKind
 }

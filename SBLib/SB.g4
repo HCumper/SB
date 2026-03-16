@@ -14,6 +14,10 @@ line
     ;
 
 stmtlist
+    : stmt (Colon stmt)* Colon?
+    ;
+
+plainStmtlist
     : stmt (Colon stmt)*
     ;
 
@@ -81,7 +85,7 @@ assignmentStmt
 
 // Procedure call with leading channel argument e.g. PRINT #1, x
 channelProcCallStmt
-    : ID chanArg (separator arg)*
+    : ID chanArg stmtTail?
     ;
 
 // Ordinary procedure call — arglist is optional to allow bare calls like CLS, STOP
@@ -99,7 +103,25 @@ lvalueList
 
 stmtArglist
     : parenthesizedlist
-    | unparenthesizedlist
+    | stmtTail
+    ;
+
+stmtTail
+    : stmtSegment+
+    ;
+
+stmtSegment
+    : separator stmtArg?
+    | stmtArg
+    ;
+
+stmtArg
+    : chanArg
+    | rangedExpr
+    ;
+
+rangedExpr
+    : expr (To expr)?
     ;
 
 chanArg
@@ -188,10 +210,30 @@ endWhen
 forStmt
     : For ID Equal expr To expr (Step expr)?
       (
-          Colon Comment Newline line* lineNumber? endFor ID?        // long form + trailing remark
+          Colon Comment Newline forBody                            // long form + trailing remark
         | Colon stmtlist                                            // short form
-        | Newline line* lineNumber? endFor ID?                     // long form
+        | Newline forBody                                          // long form
       )
+    ;
+
+forBody
+    : forBodyLine*? forTerminator
+    ;
+
+forBodyLine
+    : lineNumber? plainStmtlist? Newline
+    | lineNumber Colon Newline
+    ;
+
+forTerminator
+    : lineNumber? endFor ID?
+      (Colon stmtlist)?
+    | lineNumber? plainStmtlist Colon endFor ID?
+      (Colon stmtlist)?
+    | lineNumber? Next ID
+      (Colon stmtlist)?
+    | lineNumber? plainStmtlist Colon Next ID
+      (Colon stmtlist)?
     ;
 
 repeatStmt
@@ -273,7 +315,7 @@ orExpr
     ;
 
 andExpr
-    : notExpr (And notExpr)*
+    : notExpr ((And | AmpAmp) notExpr)*
     ;
 
 notExpr
@@ -309,7 +351,7 @@ powExpr
 
 // Unary minus/plus handled here — NOT in the Real lexer rule
 unaryExpr
-    : (Plus | Minus) unaryExpr
+    : (Plus | Minus | Not) unaryExpr
     | primary
     ;
 
@@ -345,6 +387,7 @@ separator
     : Comma
     | Bang
     | Semi
+    | Backslash
     ;
 
 // REMAINDER is the catch-all clause in SELect ON
@@ -422,11 +465,13 @@ Multiply     : '*' ;
 Divide       : '/' ;
 Caret        : '^' ;
 Amp          : '&' ;
+AmpAmp       : '&&' ;
 Hash         : '#' ;
 Colon        : ':' ;
 Semi         : ';' ;
 Comma        : ',' ;
 Bang         : '!' ;
+Backslash    : '\\' ;
 Tilde        : '~' ;
 Question     : '?' ;
 Point        : '.' ;
@@ -455,9 +500,13 @@ Integer      : DIGIT+ ;
 
 // No leading minus — unaryExpr handles negation
 // DIGIT* allows forms like .5
-Real         : DIGIT* Point DIGIT+ ([Ee] [+\-]? DIGIT+)? ;
+Real         : DIGIT* Point DIGIT+ ([Ee] [+\-]? DIGIT+)?
+             | DIGIT+ [Ee] [+\-]? DIGIT+
+             ;
 
-String       : '"' ~["\r\n]* '"' ;
+String       : '"' ~["\r\n]* '"'
+             | '\'' ~['\r\n]* '\''
+             ;
 
 // ---------- Fragments ----------
 fragment LETTER : [A-Za-z] ;

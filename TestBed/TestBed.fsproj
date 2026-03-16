@@ -10,6 +10,9 @@
         <Compile Include="ParseTreeVisitorTests.fs" />
         <Compile Include="UtilityTests.fs" />
         <Compile Include="AstVerificationTests.fs" />
+        <Compile Include="AstDiagnosticsTests.fs" />
+        <Compile Include="SemanticAnalyzerTests.fs" />
+        <Compile Include="ProgramFixtureTests.fs" />
     </ItemGroup>
 
     <ItemGroup>

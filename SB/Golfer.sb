@@ -1,0 +1,415 @@
+﻿100 REMark Golfer
+110 intro
+120 MODE 8:CLS
+130 WINDOW 512,256,0,0:PAPER 0:CLS:WINDOW 448,200,32,16:WINDOW#0,448,40,32,216:PAPER#0,0:CLS#0:PAPER#2,0:BORDER#2,0:INK#0,7
+140 BORDER 0,0:SCALE 100,0,0:PRINT "Please Wait"
+150 holes = 9:initialise:CLS:max = 100
+160 CLS#0:BORDER#0,2,4:course=0:CLS#0
+170 INPUT#0,\"Load Your Own High Scores ? (y/n) ";an$
+180 IF an$="Y" OR an$="y" THEN dataload
+190 CLS#0:PRINT#0;\"SPACE=PLAY : ANY KEY=TOPSCORES"
+200 pointer$=INKEY$(-1)
+210 IF pointer$<>" " THEN top
+220 pointer$=" ":CLS#0
+230 INPUT#0;"Number of course? (1-100)  ";course
+240 IF course >100 OR course<0 THEN GO TO 230
+250 RANDOMISE course
+260 DIM shoots(holes):DIM pars(holes)
+270 PAPER#0,0:CLS:sc1=0
+280 FOR hole = 1 TO holes
+290   shots=0:finished=0
+300   PAPER 7,4,1:CLS:CLS#0
+310   trees 75:fairway:trees 45
+320   IF RND(0 TO 1)=1 THEN
+330     water
+340   ELSE
+350     lake
+360   END IF
+370   green
+380   length=800-20*c+RND(0 TO 20)
+390   IF length<=270 THEN par =3
+400   IF length>270 AND length<395 THEN par =4
+410   IF length>395 THEN par =5
+420   CSIZE 0,0: INK 0:PRINT "  Hole ";hole;
+430   PRINT "     Length ";length;
+440   PRINT "     Par ";par
+450   AT 19,0:PRINT "score ";sc1;"     Course ";course
+460   REPeat club
+470     pow:PAUSE 50:ang:shots=shots+1:shoot:test
+480     IF finished THEN EXIT club
+490   END REPeat club
+500   PAPER 1:INK 7:CLS#0
+510   PRINT#0,"   It's in, well played":PAUSE 40:CLS
+520   shoots(hole)=shots:pars(hole)=par
+530   IF shots=1 THEN hole_in_one
+540   IF shots <=par THEN
+550     CLS#0:r=par-shots
+560     SELect ON r
+570       ON r=0:PRINT#0,  "A Par, Not Bad"
+580       ON r=1:PRINT#0,  "Well played, A birdie"
+590       ON r=2:PRINT#0,  "Fantastic shot, An Eagle"
+600       ON r=3:PRINT#0,  "An Albatross..incredible!"
+610     END SELect
+620     shoots(hole)=shots:pars(hole)=par
+630     scorecard
+640   ELSE
+650     CLS #0
+660     PRINT#0, shots-par!"over par on this hole."
+670     shoots(hole)=shots:pars(hole)=par:scorecard
+680   END IF
+690   sc1=sc1+shots-par:PAUSE 200
+700 END FOR hole
+710 PRINT#0, "Overall you were ";
+720 IF sc1 THEN PRINT ABS(sc1);" ";
+730 IF sc1=0 THEN PRINT"on par"
+740 IF sc1>0 THEN PRINT"over par"
+750 IF sc1<0 THEN PRINT"under par"
+760 IF sc1<score(course) THEN top:datasave
+770 CLS#0:CLS:scorecard
+780 CLS#0:PRINT#0, "Hit spacebar to play again"
+790 IF INKEY$(-1)=" " THEN GO TO 170
+800 GO TO 780
+810 :
+820 DEFine PROCedure pow
+830   CLS#0:INK#0,7
+840   PRINT#0,,"                0        50       100"
+850   AT#0, 0,0:PRINT#0;"Space Bar ":AT#0,1,0:PRINT#0;"Selects"
+860   FOR p=0 TO 200
+870     IF CODE (INKEY$(1))=32 THEN GO TO 910
+880     BLOCK #0,2,5,p+200,20,2
+890   END FOR p
+900   IF INKEY$(30)<>" " THEN GO TO 830
+910   power=INT(p/2)
+920   IF power=0 THEN GO TO 830
+930 END DEFine pow
+940 :
+950 DEFine PROCedure ang
+960   CLS#0
+970   PRINT#0;"angle (0-12)"\\"e.g 12 = >"
+980   AT#0,0,14:INPUT#0,angle:angle=angle*PI/6
+990   IF power>max THEN
+1000     CLS#0:PRINT#0;"You Have Fluffed It!":power=power/4
+1010     angle=angle+RND(-20 TO 20)/100:PAUSE 30
+1020     max=100
+1030   END IF
+1040 END DEFine ang
+1050 :
+1060 DEFine PROCedure shoot
+1070   ballx=INT(ballx+SIN(angle)*525*power/length)
+1080   bally=INT(bally-COS(angle)*525*power/length)
+1090   POKE_W add,color
+1100   POKE_W add+128,color1
+1110   IF bally<26 OR bally>204 OR ballx<16 OR ballx>238 THEN lost
+1120   look:ball
+1130 END DEFine shoot
+1140 :
+1150 DEFine PROCedure ball
+1160   add=INT(131072+128*bally+INT(ballx/4)*2)
+1170   color=PEEK_W (add)
+1180   color1=PEEK_W (add+128)
+1190   bit=(ballx MOD 4)*2:bitt=(255-2^(7-bit)*1.875)
+1200   IF bitt-INT(bitt) THEN bitt=bitt*1.6
+1210   newcol=(bitt && PEEK (add))*256+(bitt && PEEK(add+1))
+1220   POKE_W add,newcol
+1230   newcol1=(bitt &&PEEK (add+128))*256+(bitt && PEEK (add+129))
+1240   POKE_W add+128,newcol1
+1250   FOR n=0 TO 4
+1260     POKE_W add,color:POKE_W add+128,color1
+1270     PAUSE 10
+1280     POKE_W add,newcol:POKE_W add+128,newcol1
+1290     PAUSE 9
+1300   END FOR n
+1310 END DEFine ball
+1320 :
+1330 POKE_W add,color:POKE_W add+128,color1
+1340 PAUSE 10
+1350 POKE_W add,newcol:POKE_W add+128,newcol1
+1360 PAUSE 9:END FOR n
+1370 REMark END DEFine
+1380 :
+1390 DEFine FuNction getcol(x,y)
+1400   LOCal add
+1410   add=INT(131072+128*y+INT(x/4)*2)
+1420   bit=(x MOD 4)*2:bitt=(2^(7-bit))
+1430   grn=4*((bitt && PEEK (add))<>0)
+1440   bitt=(2^(7-bit)*1.5):rb=(bitt && PEEK (add+1))/bitt*3
+1450   rb=(bitt && PEEK (add+1))/bitt*3:RETurn grn+rb
+1460 END DEFine getcol
+1470 :
+1480 DEFine PROCedure fairway
+1490   INK 4:a=50:b=25:blockx=5:blocky=b+90
+1500   FILL 0
+1510   FOR f=0 TO 170 STEP .7
+1520     b=INT(b-1+RND(0 TO 2))
+1530     IF INT(f)=150 THEN LET c=b:e=a
+1540     IF f> 70 AND RND (0 TO 100)<2 THEN
+1550       INK 6
+1560       FILL 1:ELLIPSE f-10,a-RND (0 TO b),4,.7,RND(0 TO 7)
+1570       INK 4:FILL 0
+1580     END IF
+1590     IF b<15 THEN LET b=15
+1600     IF b>35 THEN LET b=35
+1610     IF a-b<10 THEN LET a=10+b
+1620     IF a>90 THEN a=90
+1630     LINE f,a TO f,a-b
+1640     a=INT(a-2+RND(0 TO 4))
+1650   END FOR f
+1660 END DEFine fairway
+1670 :
+1680 DEFine PROCedure green
+1690   FOR g = 1 TO 5
+1700     FILL 1:INK 6,4,3
+1710     ELLIPSE 150,e-c/2,(c-g)/2,.7-RND(0 TO .1),RND(0 TO 10)
+1720     IF g/2=INT(g/2) THEN NEXT g
+1730     INK 6:FILL 1
+1740     x=RND(0 TO c)-c/2:y=SQRT(c^2/4-x^2)
+1750     aa=RND(0 TO 1):IF aa<.5 THEN LET y=-y:
+1760     ELLIPSE x+150,y+e-c/2,c/5,.6-RND(0 TO .2),RND (0 TO 100)
+1770   END FOR g
+1780   zx=RND(-c/4 TO c/4):xz=RND(-c/4 TO c/4):FILL 0
+1790   INK 0:CIRCLE 150+zx,e-c/2+xz,.6:INK 7
+1800   LINE 150+zx,e-c/2+xz TO 150+zx,e-c/2+c/5+xz
+1810   INK 2:LINE 150+zx,e-c/2+c/5+xz TO 152+zx,e-c/2+c/6+xz
+1820   LINE 152+zx,e-c/2+c/6+xz TO 150+zx,e-c/2+c/6+xz
+1830   holex=150+zx:holey=e-c/2+xz
+1840   holex=INT((holex/166*448+33)/2)
+1850   holey=INT((100-holey)*2+16.5)
+1860   BLOCK c/2.5,c/2.5,blockx-3,blocky,7
+1870   ballx=19:bally=129+INT(c/4)
+1880   ball
+1890 END DEFine green
+1900 :
+1910 DEFine PROCedure water
+1920   y=0:x=RND (50 TO 350)
+1930   BLOCK 7,4,x,y,5
+1940   y=y+4:x=x-3+RND (0 TO 7)
+1950   IF y=200 THEN GO TO 1970
+1960   GO TO 1930
+1970 END DEFine water
+1980 :
+1990 DEFine PROCedure lake
+2000   IF RND(0 TO 2)=1 THEN RETurn
+2010   FILL 1:INK 5
+2020   x=RND(30 TO 175):y=RND(30 TO 70)
+2030   FOR o=-2 TO 2
+2040     ji=y+RND(-5 TO 5)
+2050     ELLIPSE x+(4*o),ji,20,.65,RND(1 TO 7)
+2060   NEXT o
+2070   FILL 0
+2080 END DEFine lake
+2090 :
+2100 DEFine PROCedure trees(ee)
+2110   INK 4,3,3
+2120   FOR f= 1 TO ee
+2130     FILL 1:ok=RND(15 TO 75)
+2140     CIRCLE RND(1 TO 175),ok,1+RND(0 TO 10)/7
+2150     FILL 0
+2160   END FOR f
+2170 END DEFine trees
+2180 :
+2190 DEFine PROCedure look
+2200   c1=getcol  (ballx,bally)
+2210   c2=getcol  (ballx+1,bally)
+2220   c3=getcol  (ballx,bally+1)
+2230   c4=getcol (ballx,bally+1)
+2240 END DEFine
+2250 :
+2260 DEFine PROCedure test
+2270   hazard=0:bm=ABS(ballx-holex)
+2280   IF bm<=1 AND ABS(bally-holey)<=1 THEN
+2290     POKE_W add,color:POKE_W add+128,color1:finished=1:RETurn
+2300   END IF
+2310   IF c1=6 AND c2=6 OR c1=6 AND c3=6 THEN bunker
+2320   IF c1=5 THEN wet
+2330   IF c1=7 AND c3=4 OR c1=4 AND c3=7 THEN rough
+2340   IF c1=4 AND c2=4 OR c1=4 AND c3=4 THEN RETurn
+2350   IF c1=3 OR c2=3 THEN branches
+2360   IF c1=7 AND c2=7 THEN RETurn
+2370   putt
+2380   hazard=0:PAUSE 100:CLS#0
+2390 END DEFine test
+2400 :
+2410 DEFine PROCedure bunker
+2420   IF hazard THEN RETurn
+2430   hazard=1
+2440   CLS#0:PRINT#0\"   BUNKERED!"
+2450   max=25
+2460 END DEFine bunker
+2470 :
+2480 DEFine PROCedure wet
+2490   IF hazard THEN RETurn
+2500   hazard=1:CLS#0
+2510   PRINT#0;"WATER !!!. Back to tee"
+2520   ballx=19:bally=129+INT(c/4)
+2530   POKE_W add,color:POKE_W add+128,color1
+2540   ball
+2550 END DEFine wet
+2560 :
+2570 DEFine PROCedure rough
+2580   IF hazard THEN RETurn
+2590   hazard=1
+2600   CLS#0:PRINT#0;"You Are In The Rough"
+2610   max=75:PAUSE 50
+2620 END DEFine rough
+2630 :
+2640 DEFine PROCedure putt
+2650   REPeat putting
+2660     dist=SQRT((holey-bally)^2+(holex-ballx)^2)
+2670     dist=dist/(224/length)
+2680     dist=INT(dist*100)/100
+2690     IF dist>50 THEN RETurn
+2700     IF hazard THEN RETurn
+2710     hazard=1:CLS #0
+2720     PRINT#0;"You are ";dist;" yards from the hole"
+2730     PAUSE 100:BLOCK#0,440,4,0,32,4
+2740     OVER#0,-1
+2750     angle= ATAN(ABS(holex-ballx)/ABS(bally-holey+1E-5))
+2760     IF holey>bally THEN
+2770       IF holex<=ballx THEN
+2780         angle=angle+PI
+2790       ELSE
+2800         angle=PI-angle
+2810       END IF
+2820     ELSE
+2830       IF holex<=ballx THEN
+2840         angle=2*PI-angle
+2850       END IF
+2860     END IF
+2870     putx=31:puty=24
+2880     CURSOR#0,putx,puty:PRINT#0, "o"
+2890     FOR ang1=0 TO 60 STEP 2
+2900       FOR  plot=0 TO 1
+2910         LINE#0,60,72 TO 62-62*SIN(RAD(ang1)),72-62*COS(RAD(ang1))
+2920       END FOR plot
+2930       IF INKEY$=" " THEN GO TO 2960
+2940     END FOR ang1
+2950     IF INKEY$(10)<>" " THEN GO TO 2890
+2960     FOR a=ang1 TO 0 STEP -2
+2970       FOR plot=0 TO 1
+2980         LINE#0,60,72 TO 62-62*SIN(RAD(a)),72-62+COS(RAD(a))
+2990       END FOR plot
+3000     END FOR a:CURSOR#0,putx,puty:PRINT#0;"o"
+3010     power=ang1/7:shoot:test:shots=shots+1
+3020     PAUSE 1+49*NOT finished
+3030     IF finished THEN EXIT putting
+3040   END REPeat putting
+3050   OVER#0,0
+3060 END DEFine putt
+3070 :
+3080 DEFine PROCedure branches
+3090   IF hazard THEN RETurn
+3100   CLS#0:PRINT#0;"You Have Hit A Tree!"
+3110   ballx=ballx-2:bally=bally+RND(-1 TO 1)
+3120   POKE_W add+128,color1:look:ball:test
+3130   hazard=1
+3140 END DEFine branches
+3150 :
+3160 DEFine PROCedure lost
+3170   CLS#0
+3180   PRINT#0;"Ball Out Of Bounds"\"Penalty Shot"
+3190   IF ballx<16 THEN ballx=16
+3200   IF ballx>238 THEN ballx=238
+3210   IF bally>204 THEN bally=204
+3220   IF bally<26 THEN bally=26
+3230   shots=shots+1:PAUSE 50
+3240 END DEFine lost
+3250 :
+3260 POKE_W add,color:POKE_W add+1,color1
+3270 holed=1
+3280 REMark END DEFine
+3290 :
+3300 DEFine PROCedure hole_in_one
+3310   PAPER 1:INK 7:CLS
+3320   INK 7:FOR f=1 TO 130 STEP 9
+3330   CURSOR f,50:PRINT "Hole I":NEXT f
+3340   FOR f =320 TO 212 STEP -9:CURSOR f,50:PRINT "n One ":NEXT f
+3350   PRINT \\"           Superb Shot!!!":PAUSE 200:CLS
+3360   PAUSE 200:CLS
+3370 END DEFine hole_in_one
+3380 :
+3390 PAPER 0:CLS:CSIZE 3,1:INK 7:CLS#0
+3400 CLS#0:PAPER 1:INK 7:CSIZE 0,0:CLS
+3410 :
+3420 DEFine PROCedure top
+3430   PAUSE 100:CLS#0:CLS
+3440   IF pointer$<>" " THEN GO TO 3480
+3450   PRINT "Well done a course record"
+3460   INPUT#0,"Your name ? ";name$(course)
+3470   score(course)=sc1:PAPER 1:INK 7:CLS
+3480   start=1:finish=50:MODE 512
+3490   CLS:FOR f=start TO finish
+3500   IF f=course THEN INK 2:PAPER 6
+3510   PRINT f;"  ";name$(f,1 TO 10);"  ";score(f),
+3520   INK 7:PAPER 0:NEXT f
+3530   IF start=51 THEN
+3540     CLS#0:CSIZE#0,1,0:PRINT#0,\"                  Hit Any Key"
+3550     PAUSE 10000:MODE 256:CSIZE#0,0,0:RETurn
+3560   ELSE
+3570     CLS#0:CSIZE#0,1,0:PRINT#0,\"            Hit Any Key To See Next 50"
+3580     PAUSE 10000:start=51:finish=100:CSIZE#0,0,0:GO TO 3490
+3590   END IF
+3600 END DEFine top
+3610 :
+3620 DEFine PROCedure scorecard
+3630   PRINT\
+3640   PRINT " Hole","Par","Score"
+3650   PRINT:tot=0:totpar=0
+3660   FOR f=1 TO holes
+3670     dif=shoots(f)-pars(f)
+3680     SELect ON dif
+3690       ON dif=-1:d$="Birdie"
+3700       ON dif=-2:d$="Eagle"
+3710       ON dif=-3:d$="Albetros"
+3720       ON dif=0:d$="Par"
+3730       ON dif=1 TO 20:d$="Bogey "& dif
+3740     END SELect
+3750     IF shoots(f)=0 THEN d$="------"
+3760     PRINT "  ";f,pars(f)," ";shoots(f);"       ";
+3770     INK 7:PRINT d$:INK 7
+3780     tot=tot+shoots(f):totpar=totpar+pars(f)
+3790   NEXT f
+3800   PRINT\,totpar," ";tot,"   ";:PRINT tot-totpar
+3810   PRINT\\"Course Record ";score(course);" by ";
+3820   PRINT name$(course,1 TO 10)
+3830 END DEFine scorecard
+3840 :
+3850 DEFine PROCedure datasave
+3860   DELETE flp1_golf_data
+3870   OPEN_NEW #9,flp1_golf_data
+3880   FOR n=1 TO 100:PRINT#9 ,score(n):NEXT n
+3890   FOR n=1 TO 100:PRINT#9 ,name$(n, 1 TO 10)
+3900   NEXT n
+3910   CLOSE#9
+3920 END DEFine datasave
+3930 :
+3940 DEFine PROCedure dataload
+3950   OPEN_IN#9,flp1_golf_data
+3960   FOR n=1 TO 100:INPUT#9,score(n):NEXT n
+3970   FOR n=1 TO 100:INPUT#9,name$(n,1 TO 10)
+3980   NEXT n
+3990   CLOSE#9
+4000 END DEFine dataload
+4010 :
+4020 DEFine PROCedure initialise
+4030   DIM cse(100):DIM score(100):DIM name$(100,16)
+4040   RANDOMISE 20000:RESTORE 160
+4050   FOR f=1 TO 100
+4060     LET score(f)=RND(-9 TO -4):READ player$
+4070     IF (f/5)=INT(f/5) THEN RESTORE 4090
+4080     name$(f,1 TO 10)=player$
+4090     DATA "N.Faldo   ","T.Watson  ","T.Kite    ","Balesteros","G.Norman"
+4100   NEXT f
+4110 END DEFine initialise
+4120 :
+4130 DEFine PROCedure intro
+4140   MODE 4:WINDOW 512,256,0,0:PAPER 0:INK 7:CLS:CSIZE 1,0
+4150   BORDER 18,0:PRINT '         QL Golfer':PRINT '         ========='
+4160   PRINT\'Instructions:'
+4170   PRINT 'The object of the game is to get your ball into'\'the hole in as little shots as you can.'
+4180   PRINT\'When you have chosen the course you want play,'\'at the bottom of the screen is a bar graph'
+4190   PRINT 'indicating the power of your shot. When the'\'graph reaches the strength you want,'\'press the space bar to hit.'
+4200   PRINT 'You are then prompted for the angle of trajectory.'\'This follows exactly the layout on a clock face,'\'so if you want to go straight up, type 12,'
+4210   PRINT 'or 6 to go straight down etc.'
+4220   PRINT \'When you reach the green, a small golf club'\'appears, and you press the space bar'\'when you want to hit the ball.'
+4230   PRINT \'Press any key to continue':x$=INKEY$(-1):CLS
+4240 END DEFine intro

@@ -6,9 +6,12 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <Compile Include="SyntaxAst.fs" />
         <Compile Include="Types.fs" />
-        <Compile Include="Utility.fs" />
+        <Compile Include="SyntaxAst.fs" />
+        <Compile Include="AstDiagnostics.fs" />
+        <Compile Include="ProcessingTypes.fs" />
+        <Compile Include="ScopeNames.fs" />
+        <Compile Include="SymbolHelpers.fs" />
         <Compile Include="SymbolTableManager.fs" />
         <Compile Include="Monads.fs" />
         <Compile Include="ParseTreeVisitor.fs" />
@@ -16,9 +19,9 @@
         <Compile Include="TypeAnalyzer.fs" />
         <Compile Include="SSB.fs" />
         <Compile Include="CodeGenerator.fs" />
+        <Compile Include="CompilerPipeline.fs" />
         <Content Include="CSharpTemplates.stg" />
         <Compile Include="Program.fs" />
-        <Content Include="bin\Debug\net10.0\appsettings.json" />
     </ItemGroup>
 
     <ItemGroup>

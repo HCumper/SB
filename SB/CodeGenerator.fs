@@ -3,6 +3,7 @@ module CodeGenerator
 open System
 
 open Types
+open ProcessingTypes
 open SyntaxAst
 
 let private sbTypeToCSharp (t: SBType) =

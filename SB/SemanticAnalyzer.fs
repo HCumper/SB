@@ -1,7 +1,8 @@
 module SemanticAnalyzer
 
 open Types
-open Utility
+open ProcessingTypes
+open ScopeNames
 open SymbolTableManager
 open Monads.State
 open FSharpPlus.Data
@@ -21,6 +22,11 @@ let keywords =
       "RND"; "ROUND"; "RUN"; "SAVE"; "SAVEMEM"; "SELect ON"; "SHELL"; "SGN"
       "SIN"; "STEP"; "STOP"; "STR$"; "SYSVAR"; "TAN"; "THEN"; "TIME"; "TO"
       "TRON"; "TROFF"; "UNTIL"; "VAL"; "WAIT"; "WHEN"; "WHILE"; "WINDOW"; "XOR" ]
+
+let private zeroPosition =
+    { BasicLineNo = None
+      EditorLineNo = 0
+      Column = 0 }
 
 let private withDefaultRule scopeName (state: ProcessingState) : ImplicitTypingRule =
     match Map.tryFind scopeName state.ImplicitTyping with
@@ -72,12 +78,7 @@ let private createProcedureSymbol name position =
 
 let private createBuiltInSymbol name =
     BuiltInSym {
-        Common =
-            createCommonSymbol
-                name
-                SymbolCategory.Keyword
-                { BasicLineNo = None; EditorLineNo = 0; Column = 0 }
-                SBType.Unknown
+        Common = createCommonSymbol name SymbolCategory.Keyword zeroPosition SBType.Unknown
     }
 
 let private addOrUpdateSymbol mode scopeName symbol table =
@@ -96,8 +97,6 @@ let prePopulateSymbolTable (oldState: ProcessingState) : ProcessingState =
 
     { oldState with SymTab = newSymTab }
 
-let private sourcePositionOf pos = sourcePositionFromTuple pos
-
 let private posOfExpr expr =
     match expr with
     | PostfixName(pos, _, _)
@@ -108,134 +107,198 @@ let private posOfExpr expr =
     | StringLiteral(pos, _)
     | Identifier(pos, _) -> pos
 
-let rec private addExprList mode exprs =
-    state {
-        match exprs with
-        | [] -> return ()
-        | head :: tail ->
-            do! addExpr mode head
-            do! addExprList mode tail
-    }
+let private inferredVariableType (state: ProcessingState) scopeName name =
+    let currentRule = withDefaultRule scopeName state
+    if currentRule.Integers.Contains name then SBType.Integer
+    elif currentRule.Strings.Contains name then SBType.String
+    else SBType.Unknown
 
-and private addLineList mode lines =
-    state {
-        match lines with
-        | [] -> return ()
-        | head :: tail ->
-            do! addLine mode head
-            do! addLineList mode tail
-    }
+let private recordFact kind category name scope position (state: ProcessingState) =
+    let fact =
+        { Name = name
+          Scope = scope
+          Position = position
+          Category = category
+          Kind = kind }
+    { state with Facts = fact :: state.Facts }
 
-and private addStmtList mode stmts =
+let private appendError message (state: ProcessingState) =
+    { state with Errors = state.Errors @ [ message ] }
+
+let rec private tryResolveSymbol scopeName symbolName (table: SymbolTable) =
+    match Map.tryFind scopeName table with
+    | None -> None
+    | Some scope ->
+        match Map.tryFind symbolName scope.Symbols with
+        | Some symbol -> Some(scopeName, symbol)
+        | None ->
+            match scope.Parent with
+            | Some parent -> tryResolveSymbol parent symbolName table
+            | None -> None
+
+let private declareSymbol mode scopeName symbol state =
+    let symTab = addOrUpdateSymbol mode scopeName symbol state.SymTab
+    { state with SymTab = symTab }
+
+let private declareVariable mode scopeName name position state =
+    let inferredType = inferredVariableType state scopeName name
+    let symbol = createVariableSymbol name position inferredType
+    state
+    |> declareSymbol mode scopeName symbol
+    |> recordFact DeclarationSite (Some SymbolCategory.Variable) name scopeName position
+
+let private declareArray mode scopeName name position dimensions state =
+    let symbol = createArraySymbol name position dimensions
+    state
+    |> declareSymbol mode scopeName symbol
+    |> recordFact DeclarationSite (Some SymbolCategory.Array) name scopeName position
+
+let private declareProcedure mode name position state =
+    state
+    |> declareSymbol mode globalScope (createProcedureSymbol name position)
+    |> recordFact DeclarationSite (Some SymbolCategory.Procedure) name globalScope position
+
+let private declareFunction mode name position state =
+    state
+    |> declareSymbol mode globalScope (createFunctionSymbol name position)
+    |> recordFact DeclarationSite (Some SymbolCategory.Function) name globalScope position
+
+let private declareParameter mode scopeName name position state =
+    state
+    |> declareSymbol mode scopeName (createParameterSymbol name position SBType.Unknown)
+    |> recordFact DeclarationSite (Some SymbolCategory.Parameter) name scopeName position
+
+let private ensureVariableDeclared mode scopeName name position state =
+    match tryResolveSymbol scopeName name state.SymTab with
+    | Some _ -> state
+    | None -> declareVariable mode scopeName name position state
+
+let private referenceSymbol expectedCategory name position (state: ProcessingState) =
+    match tryResolveSymbol state.CurrentScope name state.SymTab with
+    | Some(resolvedScope, symbol) ->
+        let category = Symbol.category symbol
+        let stateWithFact = recordFact ReferenceSite (Some category) name resolvedScope position state
+        match expectedCategory with
+        | Some expected when expected <> category ->
+            appendError $"Expected {expected} for '{name}' but found {category} at {position.EditorLineNo}:{position.Column}" stateWithFact
+        | _ -> stateWithFact
+    | None ->
+        state
+        |> recordFact ReferenceSite expectedCategory name state.CurrentScope position
+        |> appendError $"Unresolved reference '{name}' at {position.EditorLineNo}:{position.Column}"
+
+let private recordCall name position (state: ProcessingState) =
+    match tryResolveSymbol state.CurrentScope name state.SymTab with
+    | Some(resolvedScope, symbol) ->
+        let category = Symbol.category symbol
+        let stateWithFact = recordFact CallSite (Some category) name resolvedScope position state
+        match category with
+        | SymbolCategory.Procedure
+        | SymbolCategory.Function
+        | SymbolCategory.Keyword -> stateWithFact
+        | _ -> appendError $"Symbol '{name}' is not callable at {position.EditorLineNo}:{position.Column}" stateWithFact
+    | None ->
+        state
+        |> recordFact CallSite None name state.CurrentScope position
+        |> appendError $"Unresolved call '{name}' at {position.EditorLineNo}:{position.Column}"
+
+let private resolveWritableTarget expr (state: ProcessingState) =
+    match expr with
+    | Identifier(pos, name)
+    | PostfixName(pos, name, None) ->
+        referenceSymbol None name pos state, []
+    | PostfixName(pos, name, Some args) ->
+        referenceSymbol None name pos state, args
+    | _ -> state, []
+
+let rec private collectDeclarationStmtList mode stmts =
     state {
         match stmts with
         | [] -> return ()
         | head :: tail ->
-            do! addStmt mode head
-            do! addStmtList mode tail
+            do! collectDeclarations mode head
+            do! collectDeclarationStmtList mode tail
     }
 
-and private addExpr mode (expr: Expr) : State<ProcessingState, unit> =
+and private collectDeclarationLineList mode lines =
     state {
-        let! currentState = getState
-        let scopeName = currentState.CurrentScope
-        let currentRule = withDefaultRule scopeName currentState
-
-        let symbolFromIdentifier name position =
-            let inferredType =
-                if currentRule.Integers.Contains name then SBType.Integer
-                elif currentRule.Strings.Contains name then SBType.String
-                else SBType.Unknown
-            createVariableSymbol name position inferredType
-
-        match expr with
-        | PostfixName(pos, name, None) ->
-            let sym = symbolFromIdentifier name (sourcePositionOf pos)
-            let symTab = addOrUpdateSymbol mode scopeName sym currentState.SymTab
-            do! putState { currentState with SymTab = symTab }
-        | PostfixName(_, _, Some args) ->
-            do! addExprList mode args
-        | SliceRange(_, lhs, rhs)
-        | BinaryExpr(_, _, lhs, rhs) ->
-            do! addExpr mode lhs
-            do! addExpr mode rhs
-        | UnaryExpr(_, _, inner) ->
-            do! addExpr mode inner
-        | Identifier(pos, name) ->
-            let sym = symbolFromIdentifier name (sourcePositionOf pos)
-            let symTab = addOrUpdateSymbol mode scopeName sym currentState.SymTab
-            do! putState { currentState with SymTab = symTab }
-        | NumberLiteral _
-        | StringLiteral _ -> ()
+        match lines with
+        | [] -> return ()
+        | head :: tail ->
+            do! collectDeclarationLine mode head
+            do! collectDeclarationLineList mode tail
     }
 
-and private addLine mode (line: Line) : State<ProcessingState, unit> =
-    state {
-        let (Line(_, _, children)) = line
-        do! addStmtList mode children
-    }
-
-and private addBlock mode block : State<ProcessingState, unit> =
+and private collectDeclarationBlock mode block =
     state {
         match block with
-        | StatementBlock stmts -> do! addStmtList mode stmts
-        | LineBlock lines -> do! addLineList mode lines
+        | StatementBlock stmts -> do! collectDeclarationStmtList mode stmts
+        | LineBlock lines -> do! collectDeclarationLineList mode lines
     }
 
-and addStmt (mode: SymbolAddMode) (node: Stmt) : State<ProcessingState, unit> =
+and private collectWritableDeclarations mode expr =
     state {
         let! currentState = getState
-        let scopeName = currentState.CurrentScope
-        let currentRule = withDefaultRule scopeName currentState
+        match expr with
+        | Identifier(pos, name)
+        | PostfixName(pos, name, None) ->
+            do! putState (ensureVariableDeclared mode currentState.CurrentScope name pos currentState)
+        | PostfixName(pos, name, Some _) ->
+            do! putState (ensureVariableDeclared mode currentState.CurrentScope name pos currentState)
+        | _ -> ()
+    }
 
-        let symbolFromIdentifier name position =
-            let inferredType =
-                if currentRule.Integers.Contains name then SBType.Integer
-                elif currentRule.Strings.Contains name then SBType.String
-                else SBType.Unknown
-            createVariableSymbol name position inferredType
+and private collectDeclarationWritableList mode exprs =
+    state {
+        match exprs with
+        | [] -> return ()
+        | head :: tail ->
+            do! collectWritableDeclarations mode head
+            do! collectDeclarationWritableList mode tail
+    }
 
+and private collectDeclarationLine mode (line: Line) : State<ProcessingState, unit> =
+    state {
+        let (Line(_, _, children)) = line
+        do! collectDeclarationStmtList mode children
+    }
+
+and collectDeclarations (mode: SymbolAddMode) (node: Stmt) : State<ProcessingState, unit> =
+    state {
+        let! currentState = getState
         match node with
         | ProcedureDef(pos, name, parameters, body) ->
-            let sp = sourcePositionOf pos
-            let sym = createProcedureSymbol name sp
-            let symTab =
-                currentState.SymTab
-                |> addOrUpdateSymbol mode globalScope sym
-                |> ensureScope name (Some globalScope)
-            let scopedState = { currentState with SymTab = symTab; CurrentScope = name }
-            do! putState scopedState
-            let paramSymbols =
+            let stateWithProc =
+                currentState
+                |> declareProcedure mode name pos
+                |> fun s -> { s with SymTab = ensureScope name (Some globalScope) s.SymTab; CurrentScope = name }
+            do! putState stateWithProc
+            let scopedState =
                 parameters
-                |> List.fold (fun table param ->
-                    addOrUpdateSymbol mode name (createParameterSymbol param sp SBType.Unknown) table) scopedState.SymTab
-            do! putState { scopedState with SymTab = paramSymbols }
-            do! addLineList mode body
-            let! stateAfter = getState
-            do! putState { stateAfter with CurrentScope = currentState.CurrentScope }
+                |> List.fold (fun state parameter -> declareParameter mode name parameter pos state) stateWithProc
+            do! putState scopedState
+            do! collectDeclarationLineList mode body
+            let! stateAfterBody = getState
+            do! putState { stateAfterBody with CurrentScope = currentState.CurrentScope }
 
         | FunctionDef(pos, name, parameters, body) ->
-            let sp = sourcePositionOf pos
-            let sym = createFunctionSymbol name sp
-            let symTab =
-                currentState.SymTab
-                |> addOrUpdateSymbol mode globalScope sym
-                |> ensureScope name (Some globalScope)
-            let scopedState = { currentState with SymTab = symTab; CurrentScope = name }
-            do! putState scopedState
-            let paramSymbols =
+            let stateWithFunc =
+                currentState
+                |> declareFunction mode name pos
+                |> fun s -> { s with SymTab = ensureScope name (Some globalScope) s.SymTab; CurrentScope = name }
+            do! putState stateWithFunc
+            let scopedState =
                 parameters
-                |> List.fold (fun table param ->
-                    addOrUpdateSymbol mode name (createParameterSymbol param sp SBType.Unknown) table) scopedState.SymTab
-            do! putState { scopedState with SymTab = paramSymbols }
-            do! addLineList mode body
-            let! stateAfter = getState
-            do! putState { stateAfter with CurrentScope = currentState.CurrentScope }
+                |> List.fold (fun state parameter -> declareParameter mode name parameter pos state) stateWithFunc
+            do! putState scopedState
+            do! collectDeclarationLineList mode body
+            let! stateAfterBody = getState
+            do! putState { stateAfterBody with CurrentScope = currentState.CurrentScope }
 
-        | DimStmt(_, items) ->
-            let symTab =
+        | DimStmt(pos, items) ->
+            let nextState =
                 items
-                |> List.fold (fun table (name, dims) ->
+                |> List.fold (fun state (name, dims) ->
                     let sizes =
                         dims
                         |> List.choose (function
@@ -244,101 +307,232 @@ and addStmt (mode: SymbolAddMode) (node: Stmt) : State<ProcessingState, unit> =
                                 | true, n -> Some n
                                 | _ -> None
                             | _ -> None)
-                    let pos =
-                        dims
-                        |> List.tryHead
-                        |> Option.map (posOfExpr >> sourcePositionOf)
-                        |> Option.defaultValue { BasicLineNo = None; EditorLineNo = 0; Column = 0 }
-                    addOrUpdateSymbol mode scopeName (createArraySymbol name pos sizes) table) currentState.SymTab
-            do! putState { currentState with SymTab = symTab }
-            do! addExprList mode (items |> List.collect snd)
+                    declareArray mode state.CurrentScope name pos sizes state) currentState
+            do! putState nextState
 
         | LocalStmt(pos, items) ->
-            let sp = sourcePositionOf pos
-            let symTab =
+            let nextState =
                 items
-                |> List.fold (fun table (name, _) ->
-                    addOrUpdateSymbol mode scopeName (createVariableSymbol name sp SBType.Unknown) table) currentState.SymTab
-            do! putState { currentState with SymTab = symTab }
-            do! addExprList mode (items |> List.collect (snd >> Option.defaultValue []))
+                |> List.fold (fun state (name, _) -> declareVariable mode state.CurrentScope name pos state) currentState
+            do! putState nextState
 
         | ImplicitStmt(_, decorator, names) ->
-            let stateWithImplicit = updateImplicitTyping scopeName decorator (Set.ofList names) currentState
-            let symTab =
+            let stateWithImplicit = updateImplicitTyping currentState.CurrentScope decorator (Set.ofList names) currentState
+            let nextState =
                 names
-                |> List.fold (fun table name ->
-                    addOrUpdateSymbol mode scopeName (createVariableSymbol name { BasicLineNo = None; EditorLineNo = 0; Column = 0 } SBType.Unknown) table) stateWithImplicit.SymTab
-            do! putState { stateWithImplicit with SymTab = symTab }
+                |> List.fold (fun state name -> declareVariable mode state.CurrentScope name zeroPosition state) stateWithImplicit
+            do! putState nextState
 
-        | ReferenceStmt(_, children)
-        | DataStmt(_, children)
+        | ReferenceStmt _
+        | DataStmt _ -> ()
+
         | ReadStmt(_, children) ->
-            do! addExprList mode children
+            do! collectDeclarationWritableList mode children
 
         | Assignment(_, lhs, rhs) ->
-            do! addExpr mode lhs
-            do! addExpr mode rhs
+            do! collectWritableDeclarations mode lhs
 
-        | ProcedureCall(pos, name, args) ->
-            let sym = createProcedureSymbol name (sourcePositionOf pos)
-            let symTab = addOrUpdateSymbol mode scopeName sym currentState.SymTab
-            do! putState { currentState with SymTab = symTab }
-            do! addExprList mode args
+        | ProcedureCall _
+        | ChannelProcedureCall _ -> ()
 
-        | ChannelProcedureCall(pos, name, channel, args) ->
-            let sym = createProcedureSymbol name (sourcePositionOf pos)
-            let symTab = addOrUpdateSymbol mode scopeName sym currentState.SymTab
-            do! putState { currentState with SymTab = symTab }
-            do! addExpr mode channel
-            do! addExprList mode args
-
-        | ForStmt(pos, name, startExpr, endExpr, stepExpr, body) ->
-            let sym = createVariableSymbol name (sourcePositionOf pos) SBType.Unknown
-            let symTab = addOrUpdateSymbol mode scopeName sym currentState.SymTab
-            do! putState { currentState with SymTab = symTab }
-            do! addExpr mode startExpr
-            do! addExpr mode endExpr
-            match stepExpr with
-            | Some expr -> do! addExpr mode expr
-            | None -> ()
-            do! addBlock mode body
+        | ForStmt(pos, name, _, _, _, body) ->
+            let nextState = ensureVariableDeclared mode currentState.CurrentScope name pos currentState
+            do! putState nextState
+            do! collectDeclarationBlock mode body
 
         | RepeatStmt(_, _, body) ->
-            do! addBlock mode body
+            do! collectDeclarationBlock mode body
+
+        | IfStmt(_, _, thenBody, elseBody) ->
+            do! collectDeclarationBlock mode thenBody
+            match elseBody with
+            | Some block -> do! collectDeclarationBlock mode block
+            | None -> ()
+
+        | SelectStmt(_, _, clauses) ->
+            let rec collectClauses remaining =
+                state {
+                    match remaining with
+                    | [] -> return ()
+                    | SelectClause(_, _, _, body) :: tail ->
+                        match body with
+                        | Some block -> do! collectDeclarationBlock mode block
+                        | None -> ()
+                        do! collectClauses tail
+                }
+            do! collectClauses clauses
+
+        | WhenStmt(_, _, body) ->
+            do! collectDeclarationLineList mode body
+
+        | ReturnStmt _
+        | RestoreStmt _
+        | ExitStmt _
+        | NextStmt _
+        | Remark _ -> ()
+    }
+
+let rec private resolveExpr mode expr : State<ProcessingState, unit> =
+    state {
+        let! currentState = getState
+        match expr with
+        | PostfixName(pos, name, None) ->
+            do! putState (referenceSymbol None name pos currentState)
+        | PostfixName(pos, name, Some args) ->
+            do! putState (referenceSymbol None name pos currentState)
+            do! resolveExprList mode args
+        | SliceRange(_, lhs, rhs)
+        | BinaryExpr(_, _, lhs, rhs) ->
+            do! resolveExpr mode lhs
+            do! resolveExpr mode rhs
+        | UnaryExpr(_, _, inner) ->
+            do! resolveExpr mode inner
+        | Identifier(pos, name) ->
+            do! putState (referenceSymbol None name pos currentState)
+        | NumberLiteral _
+        | StringLiteral _ -> ()
+    }
+
+and private resolveExprList mode exprs =
+    state {
+        match exprs with
+        | [] -> return ()
+        | head :: tail ->
+            do! resolveExpr mode head
+            do! resolveExprList mode tail
+    }
+
+and private resolveLineList mode lines =
+    state {
+        match lines with
+        | [] -> return ()
+        | head :: tail ->
+            do! resolveLine mode head
+            do! resolveLineList mode tail
+    }
+
+and private resolveStmtList mode stmts =
+    state {
+        match stmts with
+        | [] -> return ()
+        | head :: tail ->
+            do! resolveStmt mode head
+            do! resolveStmtList mode tail
+    }
+
+and private resolveLine mode (line: Line) : State<ProcessingState, unit> =
+    state {
+        let (Line(_, _, children)) = line
+        do! resolveStmtList mode children
+    }
+
+and private resolveBlock mode block : State<ProcessingState, unit> =
+    state {
+        match block with
+        | StatementBlock stmts -> do! resolveStmtList mode stmts
+        | LineBlock lines -> do! resolveLineList mode lines
+    }
+
+and private resolveWritableExpr mode expr : State<ProcessingState, unit> =
+    state {
+        let! currentState = getState
+        let nextState, args = resolveWritableTarget expr currentState
+        do! putState nextState
+        do! resolveExprList mode args
+    }
+
+and private resolveStmt (mode: SymbolAddMode) (node: Stmt) : State<ProcessingState, unit> =
+    state {
+        let! currentState = getState
+        match node with
+        | ProcedureDef(_, name, _, body)
+        | FunctionDef(_, name, _, body) ->
+            do! putState { currentState with CurrentScope = name }
+            do! resolveLineList mode body
+            let! stateAfterBody = getState
+            do! putState { stateAfterBody with CurrentScope = currentState.CurrentScope }
+
+        | DimStmt(_, items) ->
+            do! resolveExprList mode (items |> List.collect snd)
+
+        | LocalStmt(_, items) ->
+            do! resolveExprList mode (items |> List.collect (snd >> Option.defaultValue []))
+
+        | ImplicitStmt _ -> ()
+
+        | ReferenceStmt(_, children)
+        | DataStmt(_, children) ->
+            do! resolveExprList mode children
+
+        | ReadStmt(_, children) ->
+            let rec loop remaining =
+                state {
+                    match remaining with
+                    | [] -> return ()
+                    | head :: tail ->
+                        do! resolveWritableExpr mode head
+                        do! loop tail
+                }
+            do! loop children
+
+        | Assignment(_, lhs, rhs) ->
+            do! resolveWritableExpr mode lhs
+            do! resolveExpr mode rhs
+
+        | ProcedureCall(pos, name, args) ->
+            do! putState (recordCall name pos currentState)
+            do! resolveExprList mode args
+
+        | ChannelProcedureCall(pos, name, channel, args) ->
+            do! putState (recordCall name pos currentState)
+            do! resolveExpr mode channel
+            do! resolveExprList mode args
+
+        | ForStmt(pos, name, startExpr, endExpr, stepExpr, body) ->
+            do! putState (referenceSymbol None name pos currentState)
+            do! resolveExpr mode startExpr
+            do! resolveExpr mode endExpr
+            match stepExpr with
+            | Some expr -> do! resolveExpr mode expr
+            | None -> ()
+            do! resolveBlock mode body
+
+        | RepeatStmt(_, _, body) ->
+            do! resolveBlock mode body
 
         | IfStmt(_, cond, thenBody, elseBody) ->
-            do! addExpr mode cond
-            do! addBlock mode thenBody
+            do! resolveExpr mode cond
+            do! resolveBlock mode thenBody
             match elseBody with
-            | Some block -> do! addBlock mode block
+            | Some block -> do! resolveBlock mode block
             | None -> ()
 
         | SelectStmt(_, selector, clauses) ->
-            do! addExpr mode selector
-            let rec addClauses remaining =
+            do! resolveExpr mode selector
+            let rec resolveClauses remaining =
                 state {
                     match remaining with
                     | [] -> return ()
                     | SelectClause(_, clauseSelector, rangeExpr, body) :: tail ->
-                        do! addExpr mode clauseSelector
-                        do! addExpr mode rangeExpr
+                        do! resolveExpr mode clauseSelector
+                        do! resolveExpr mode rangeExpr
                         match body with
-                        | Some block -> do! addBlock mode block
+                        | Some block -> do! resolveBlock mode block
                         | None -> ()
-                        do! addClauses tail
+                        do! resolveClauses tail
                 }
-            do! addClauses clauses
+            do! resolveClauses clauses
 
         | WhenStmt(_, condition, body) ->
             match condition with
-            | Some expr -> do! addExpr mode expr
+            | Some expr -> do! resolveExpr mode expr
             | None -> ()
-            do! addLineList mode body
+            do! resolveLineList mode body
 
         | ReturnStmt(_, value)
         | RestoreStmt(_, value) ->
             match value with
-            | Some expr -> do! addExpr mode expr
+            | Some expr -> do! resolveExpr mode expr
             | None -> ()
 
         | ExitStmt _
@@ -349,5 +543,6 @@ and addStmt (mode: SymbolAddMode) (node: Stmt) : State<ProcessingState, unit> =
 let addToTable (mode: SymbolAddMode) (node: Ast) (_incomingState: ProcessingState) : State<ProcessingState, unit> =
     state {
         let (Program(_, children)) = node
-        do! addLineList mode children
+        do! collectDeclarationLineList mode children
+        do! resolveLineList mode children
     }

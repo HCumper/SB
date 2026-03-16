@@ -1,6 +1,7 @@
 module TypeAnalyzer
 
 open Types
+open ProcessingTypes
 
 /// Update a symbol's evaluated type and normalize its name based on suffixes
 /// and implicit typing rules.

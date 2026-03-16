@@ -2,7 +2,7 @@
 
 open System
 open Types
-open Utility
+open SymbolHelpers
 
 /// The mode used when adding a symbol.
 type SymbolAddMode =
