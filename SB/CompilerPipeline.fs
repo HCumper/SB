@@ -67,12 +67,12 @@ let private configureLogger (config: IConfiguration) =
         .CreateLogger()
 
 let getSettings argv : RuntimeSettings =
-    let configSettings = buildConfig()
+    let configSettings = buildConfig ()
     let appName = configSettings.GetValue<string>("ApplicationName")
-    let inputFileName = configSettings.GetValue<string>("Appsettings:InputFile")
-    let templatesFileName = configSettings.GetValue<string>("Appsettings:TemplatesFile")
-    let outputFileName = configSettings.GetValue<string>("Appsettings:OutputFile")
-    let verbosityLevel = configSettings.GetValue<bool>("Appsettings:Verbose")
+    let inputFileName = configSettings.GetValue<string>("AppSettings:InputFile")
+    let templatesFileName = configSettings.GetValue<string>("AppSettings:TemplatesFile")
+    let outputFileName = configSettings.GetValue<string>("AppSettings:OutputFile")
+    let verbosityLevel = configSettings.GetValue<bool>("AppSettings:Verbose")
     let logger = configureLogger configSettings
 
     match argv with
@@ -80,7 +80,7 @@ let getSettings argv : RuntimeSettings =
         { InputFileName = input
           OutputFileName = output
           TemplateFileName = templatesFileName
-          Verbose = Boolean.Parse(verbose: string)
+          Verbose = Boolean.Parse(verbose)
           AppName = appName
           Logger = logger }
     | _ ->

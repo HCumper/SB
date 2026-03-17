@@ -164,6 +164,7 @@ let ``golfer fixture semantic analysis records declarations references and calls
 
     Assert.That(analyzed.SymTab[globalScope].Symbols.ContainsKey(normalizeIdentifier "pow"), Is.True)
     Assert.That(analyzed.SymTab[globalScope].Symbols.ContainsKey(normalizeIdentifier "ang"), Is.True)
+    Assert.That(analyzed.SymTab[globalScope].Symbols.ContainsKey(normalizeIdentifier "score"), Is.True)
 
     Assert.That(analyzed.SymTab["pow"].Symbols.ContainsKey(normalizeIdentifier "p"), Is.True)
 
@@ -195,7 +196,17 @@ let ``golfer fixture semantic analysis records declarations references and calls
             && fact.Kind = CallSite
             && fact.Category = Some SymbolCategory.Procedure)
 
+    let scoreReference =
+        analyzed.Facts
+        |> List.tryFind (fun fact ->
+            fact.Name = "score"
+            && fact.Scope = globalScope
+            && fact.Kind = ReferenceSite
+            && fact.Category = Some SymbolCategory.Array)
+
     Assert.That(atCall.IsSome, Is.True)
     Assert.That(inputCall.IsSome, Is.True)
     Assert.That(pDeclaration.IsSome, Is.True)
     Assert.That(powCall.IsSome, Is.True)
+    Assert.That(scoreReference.IsSome, Is.True)
+    Assert.That(analyzed.Errors |> List.exists (fun error -> error.Contains("score")), Is.False)

@@ -89,3 +89,151 @@ let ``parameter references resolve within procedure scope`` () =
 
     Assert.That(paramReference.IsSome, Is.True)
     Assert.That(printCall.IsSome, Is.True)
+
+[<Test>]
+let ``dim inside procedure without local remains globally resolvable`` () =
+    let analyzed =
+        analyzeProgram "10 DEFine PROCedure initialise\n20 DIM score(100)\n30 END DEFine\n40 PRINT score(1)\n"
+
+    Assert.That(analyzed.Errors, Is.Empty)
+    Assert.That(analyzed.SymTab[globalScope].Symbols.ContainsKey(normalizeIdentifier "score"), Is.True)
+    Assert.That(analyzed.SymTab["initialise"].Symbols.ContainsKey(normalizeIdentifier "score"), Is.False)
+
+    let scoreReference =
+        analyzed.Facts
+        |> List.tryFind (fun fact ->
+            fact.Name = "score"
+            && fact.Kind = ReferenceSite
+            && fact.Scope = globalScope
+            && fact.Category = Some SymbolCategory.Array)
+
+    Assert.That(scoreReference.IsSome, Is.True)
+
+[<Test>]
+let ``local statement with dimensions declares local array`` () =
+    let analyzed =
+        analyzeProgram "10 DEFine PROCedure main\n20 LOCal work(10)\n30 PRINT work(1)\n40 END DEFine\n"
+
+    Assert.That(analyzed.Errors, Is.Empty)
+    Assert.That(analyzed.SymTab["main"].Symbols.ContainsKey(normalizeIdentifier "work"), Is.True)
+    Assert.That(analyzed.SymTab[globalScope].Symbols.ContainsKey(normalizeIdentifier "work"), Is.False)
+
+    let workReference =
+        analyzed.Facts
+        |> List.tryFind (fun fact ->
+            fact.Name = "work"
+            && fact.Kind = ReferenceSite
+            && fact.Scope = "main"
+            && fact.Category = Some SymbolCategory.Array)
+
+    Assert.That(workReference.IsSome, Is.True)
+
+[<Test>]
+let ``assignment inside procedure without local declares global variable`` () =
+    let analyzed =
+        analyzeProgram "10 DEFine PROCedure initialise\n20 score = 1\n30 END DEFine\n40 PRINT score\n"
+
+    Assert.That(analyzed.Errors, Is.Empty)
+    Assert.That(analyzed.SymTab[globalScope].Symbols.ContainsKey(normalizeIdentifier "score"), Is.True)
+    Assert.That(analyzed.SymTab["initialise"].Symbols.ContainsKey(normalizeIdentifier "score"), Is.False)
+
+    let scoreReference =
+        analyzed.Facts
+        |> List.tryFind (fun fact ->
+            fact.Name = "score"
+            && fact.Kind = ReferenceSite
+            && fact.Scope = globalScope
+            && fact.Category = Some SymbolCategory.Variable)
+
+    Assert.That(scoreReference.IsSome, Is.True)
+
+[<Test>]
+let ``assignment inside procedure respects explicit local declaration`` () =
+    let analyzed =
+        analyzeProgram "10 DEFine PROCedure main\n20 LOCal score\n30 score = 1\n40 PRINT score\n50 END DEFine\n"
+
+    Assert.That(analyzed.Errors, Is.Empty)
+    Assert.That(analyzed.SymTab["main"].Symbols.ContainsKey(normalizeIdentifier "score"), Is.True)
+    Assert.That(analyzed.SymTab[globalScope].Symbols.ContainsKey(normalizeIdentifier "score"), Is.False)
+
+    let scoreReference =
+        analyzed.Facts
+        |> List.tryFind (fun fact ->
+            fact.Name = "score"
+            && fact.Kind = ReferenceSite
+            && fact.Scope = "main"
+            && fact.Category = Some SymbolCategory.Variable)
+
+    Assert.That(scoreReference.IsSome, Is.True)
+
+[<Test>]
+let ``input inside procedure without local declares global variable`` () =
+    let analyzed =
+        analyzeProgram "10 DEFine PROCedure main\n20 INPUT score\n30 PRINT score\n40 END DEFine\n"
+
+    Assert.That(analyzed.Errors, Is.Empty)
+    Assert.That(analyzed.SymTab[globalScope].Symbols.ContainsKey(normalizeIdentifier "score"), Is.True)
+    Assert.That(analyzed.SymTab["main"].Symbols.ContainsKey(normalizeIdentifier "score"), Is.False)
+
+    let scoreReference =
+        analyzed.Facts
+        |> List.tryFind (fun fact ->
+            fact.Name = "score"
+            && fact.Kind = ReferenceSite
+            && fact.Scope = globalScope
+            && fact.Category = Some SymbolCategory.Variable)
+
+    Assert.That(scoreReference.IsSome, Is.True)
+
+[<Test>]
+let ``channel input respects explicit local declaration`` () =
+    let analyzed =
+        analyzeProgram "10 DEFine PROCedure main\n20 LOCal score\n30 INPUT#0,score\n40 PRINT score\n50 END DEFine\n"
+
+    Assert.That(analyzed.Errors, Is.Empty)
+    Assert.That(analyzed.SymTab["main"].Symbols.ContainsKey(normalizeIdentifier "score"), Is.True)
+    Assert.That(analyzed.SymTab[globalScope].Symbols.ContainsKey(normalizeIdentifier "score"), Is.False)
+
+    let scoreReference =
+        analyzed.Facts
+        |> List.tryFind (fun fact ->
+            fact.Name = "score"
+            && fact.Kind = ReferenceSite
+            && fact.Scope = "main"
+            && fact.Category = Some SymbolCategory.Variable)
+
+    Assert.That(scoreReference.IsSome, Is.True)
+
+[<Test>]
+let ``inkey resolves as built in expression source`` () =
+    let analyzed =
+        analyzeProgram "10 x$=INKEY$(-1)\n20 PRINT x$\n"
+
+    Assert.That(analyzed.Errors, Is.Empty)
+
+    let inkeyReference =
+        analyzed.Facts
+        |> List.tryFind (fun fact ->
+            fact.Name = "INKEY$"
+            && fact.Kind = ReferenceSite
+            && fact.Scope = globalScope
+            && fact.Category = Some SymbolCategory.BuiltIn)
+
+    Assert.That(inkeyReference.IsSome, Is.True)
+
+[<Test>]
+let ``goto resolves as built in call`` () =
+    let analyzed =
+        analyzeProgram "10 GO TO 100\n100 PRINT \"done\"\n"
+
+    Assert.That(analyzed.Errors, Is.Empty)
+
+    let gotoCall =
+        analyzed.Facts
+        |> List.tryFind (fun fact ->
+            fact.Name = "GOTO"
+            && fact.Kind = CallSite
+            && fact.Scope = globalScope
+            && fact.Category = Some SymbolCategory.BuiltIn)
+
+    Assert.That(gotoCall.IsSome, Is.True)

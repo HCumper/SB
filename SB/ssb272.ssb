@@ -99,7 +99,7 @@ IF t_lang$ <> "" THEN d_lang$ = t_lang$
 
 
 ## Add in code for language support
-#INCLUDE ram1_ssblang_ssb
+## #INCLUDE ram1_ssblang_ssb
 
 
 OPEN #3,"con_300x160a75x10_32"
@@ -413,9 +413,9 @@ STOP
 ## broken out into two different files to make it easier
 ## to read and to maintain the code.
 
-#INCLUDE ram1_ssbpass1_ssb
+## #INCLUDE ram1_ssbpass1_ssb
 
-#INCLUDE ram1_ssbpass2_ssb
+## #INCLUDE ram1_ssbpass2_ssb
 
 
 ## Function first_char

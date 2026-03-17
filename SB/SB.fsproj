@@ -22,6 +22,9 @@
         <Compile Include="CodeGenerator.fs" />
         <Compile Include="CompilerPipeline.fs" />
         <Content Include="CSharpTemplates.stg" />
+        <Content Include="appsettings.json">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
         <Compile Include="Program.fs" />
     </ItemGroup>
 

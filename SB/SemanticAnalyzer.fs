@@ -167,10 +167,51 @@ let private declareParameter mode scopeName name position state =
     |> declareSymbol mode scopeName (createParameterSymbol name position SBType.Unknown)
     |> recordFact DeclarationSite (Some SymbolCategory.Parameter) name scopeName position
 
-let private ensureVariableDeclared mode scopeName name position state =
+let private tryResolveLocalSymbol scopeName symbolName (table: SymbolTable) =
+    match Map.tryFind scopeName table with
+    | None -> None
+    | Some scope -> Map.tryFind (normalizeIdentifier symbolName) scope.Symbols
+
+let private isRoutineScope scopeName (table: SymbolTable) =
+    match Map.tryFind scopeName table with
+    | Some scope when scopeName <> globalScope && scope.Parent = Some globalScope -> true
+    | _ -> false
+
+let private declarationScopeForDim currentScope name (table: SymbolTable) =
+    if currentScope = globalScope then
+        globalScope
+    elif isRoutineScope currentScope table then
+        match tryResolveLocalSymbol currentScope name table with
+        | Some(ParameterSym _)
+        | Some(VariableSym _)
+        | Some(ArraySym _) -> currentScope
+        | _ -> globalScope
+    else
+        currentScope
+
+let private declarationScopeForWritable currentScope name (table: SymbolTable) =
+    if currentScope = globalScope then
+        globalScope
+    elif isRoutineScope currentScope table then
+        match tryResolveLocalSymbol currentScope name table with
+        | Some(ParameterSym _)
+        | Some(VariableSym _)
+        | Some(ArraySym _) -> currentScope
+        | _ -> globalScope
+    else
+        currentScope
+
+let private ensureVariableDeclaredInScope mode scopeName name position state =
     match tryResolveSymbol scopeName name state.SymTab with
     | Some _ -> state
     | None -> declareVariable mode scopeName name position state
+
+let private ensureWritableDeclared mode scopeName name position state =
+    match tryResolveSymbol scopeName name state.SymTab with
+    | Some _ -> state
+    | None ->
+        let targetScope = declarationScopeForWritable scopeName name state.SymTab
+        declareVariable mode targetScope name position state
 
 let private referenceSymbol expectedCategory name position (state: ProcessingState) =
     match tryResolveSymbol state.CurrentScope name state.SymTab with
@@ -210,6 +251,9 @@ let private resolveWritableTarget expr (state: ProcessingState) =
         referenceSymbol None name pos state, args
     | _ -> state, []
 
+let private isInputStatement name =
+    normalizeIdentifier name = "INPUT"
+
 let rec private collectDeclarationStmtList mode stmts =
     state {
         match stmts with
@@ -241,9 +285,9 @@ and private collectWritableDeclarations mode expr =
         match expr with
         | Identifier(pos, name)
         | PostfixName(pos, name, None) ->
-            do! putState (ensureVariableDeclared mode currentState.CurrentScope name pos currentState)
+            do! putState (ensureWritableDeclared mode currentState.CurrentScope name pos currentState)
         | PostfixName(pos, name, Some _) ->
-            do! putState (ensureVariableDeclared mode currentState.CurrentScope name pos currentState)
+            do! putState (ensureWritableDeclared mode currentState.CurrentScope name pos currentState)
         | _ -> ()
     }
 
@@ -330,13 +374,26 @@ and collectDeclarations (mode: SymbolAddMode) (node: Stmt) : State<ProcessingSta
                                 | true, n -> Some n
                                 | _ -> None
                             | _ -> None)
-                    declareArray mode state.CurrentScope name pos sizes state) currentState
+                    let targetScope = declarationScopeForDim state.CurrentScope name state.SymTab
+                    declareArray mode targetScope name pos sizes state) currentState
             do! putState nextState
 
         | LocalStmt(pos, items) ->
             let nextState =
                 items
-                |> List.fold (fun state (name, _) -> declareVariable mode state.CurrentScope name pos state) currentState
+                |> List.fold (fun state (name, dims) ->
+                    match dims with
+                    | Some dimExprs ->
+                        let sizes =
+                            dimExprs
+                            |> List.choose (function
+                                | NumberLiteral(_, value) ->
+                                    match System.Int32.TryParse value with
+                                    | true, n -> Some n
+                                    | _ -> None
+                                | _ -> None)
+                        declareArray mode state.CurrentScope name pos sizes state
+                    | None -> declareVariable mode state.CurrentScope name pos state) currentState
             do! putState nextState
 
         | ImplicitStmt(_, decorator, names) ->
@@ -355,11 +412,13 @@ and collectDeclarations (mode: SymbolAddMode) (node: Stmt) : State<ProcessingSta
         | Assignment(_, lhs, rhs) ->
             do! collectWritableDeclarations mode lhs
 
-        | ProcedureCall _
-        | ChannelProcedureCall _ -> ()
+        | ProcedureCall(_, name, args)
+        | ChannelProcedureCall(_, name, _, args) ->
+            if isInputStatement name then
+                do! collectDeclarationWritableList mode args
 
         | ForStmt(pos, name, _, _, _, body) ->
-            let nextState = ensureVariableDeclared mode currentState.CurrentScope name pos currentState
+            let nextState = ensureVariableDeclaredInScope mode currentState.CurrentScope name pos currentState
             do! putState nextState
             do! collectDeclarationBlock mode body
 
@@ -504,12 +563,40 @@ and private resolveStmt (mode: SymbolAddMode) (node: Stmt) : State<ProcessingSta
 
         | ProcedureCall(pos, name, args) ->
             do! putState (recordCall name pos currentState)
-            do! resolveExprList mode args
+            if isInputStatement name then
+                let rec loop remaining =
+                    state {
+                        match remaining with
+                        | [] -> return ()
+                        | head :: tail ->
+                            match head with
+                            | Identifier _
+                            | PostfixName _ -> do! resolveWritableExpr mode head
+                            | _ -> do! resolveExpr mode head
+                            do! loop tail
+                    }
+                do! loop args
+            else
+                do! resolveExprList mode args
 
         | ChannelProcedureCall(pos, name, channel, args) ->
             do! putState (recordCall name pos currentState)
             do! resolveExpr mode channel
-            do! resolveExprList mode args
+            if isInputStatement name then
+                let rec loop remaining =
+                    state {
+                        match remaining with
+                        | [] -> return ()
+                        | head :: tail ->
+                            match head with
+                            | Identifier _
+                            | PostfixName _ -> do! resolveWritableExpr mode head
+                            | _ -> do! resolveExpr mode head
+                            do! loop tail
+                    }
+                do! loop args
+            else
+                do! resolveExprList mode args
 
         | ForStmt(pos, name, startExpr, endExpr, stepExpr, body) ->
             do! putState (referenceSymbol None name pos currentState)
