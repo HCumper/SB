@@ -408,6 +408,11 @@ and collectDeclarations (mode: SymbolAddMode) (node: Stmt) : State<ProcessingSta
         | Assignment(_, lhs, rhs) ->
             do! collectWritableDeclarations mode lhs
 
+        | GotoStmt _
+        | GosubStmt _
+        | OnGotoStmt _
+        | OnGosubStmt _ -> ()
+
         | ProcedureCall(_, name, args)
         | ChannelProcedureCall(_, name, _, args) ->
             if isInputStatement name then
@@ -556,6 +561,15 @@ and private resolveStmt (mode: SymbolAddMode) (node: Stmt) : State<ProcessingSta
         | Assignment(_, lhs, rhs) ->
             do! resolveWritableExpr mode lhs
             do! resolveExpr mode rhs
+
+        | GotoStmt(_, target)
+        | GosubStmt(_, target) ->
+            do! resolveExpr mode target
+
+        | OnGotoStmt(_, selector, targets)
+        | OnGosubStmt(_, selector, targets) ->
+            do! resolveExpr mode selector
+            do! resolveExprList mode targets
 
         | ProcedureCall(pos, name, args) ->
             do! putState (recordCall name pos currentState)

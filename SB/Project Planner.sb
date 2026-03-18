@@ -1,0 +1,859 @@
+100 REMark =========================================================
+110 REMark QL PROJECT PLANNER - READABLE REWRITE
+120 REMark Based on original by H. Beyzaii
+130 REMark This version focuses on readability and maintainability.
+140 REMark =========================================================
+
+150 :
+160 REMark ---------------------------
+170 REMark Configuration
+180 REMark ---------------------------
+190 programDevice$ = "flp1"
+200 dataDevice$    = "flp1"
+210 printerPort$   = "par"
+220 :
+230 REMark ---------------------------
+240 REMark Main program entry
+250 REMark ---------------------------
+260 IF PEEK(163890) THEN
+270   MODE 4
+280   shadowColour = 0
+290 ELSE
+300   shadowColour = 224
+310 END IF
+320 :
+330 MODE 4
+340 WINDOW 480,255,20,0
+350 PAPER 0
+360 CLS
+370 :
+380 CSIZE 0,0
+390 AT 3,8
+400 CSIZE 3,1
+410 INK 2
+420 PRINT "QL.PROJECT PLANNER ";
+430 :
+440 CSIZE 0,0
+450 AT 4,58
+460 PRINT "version 1.1"
+470 :
+480 CSIZE 0,0
+490 AT 6,9
+500 CSIZE 1,0
+510 PRINT "1985 Triptych Publishing"
+520 :
+530 CSIZE 0,0
+540 AT 19,10
+550 PRINT "by H. Beyzaii"
+560 :
+570 INK #0,7
+580 OVER #0,-1
+590 :
+600 customCharBase = RESPR(1024)
+610 LBYTES programDevice$ & "_PP_udg", customCharBase
+620 :
+630 OPEN #10, con__1
+640 CHAR_USE #10,0,customCharBase
+650 :
+660 OPEN #3,  con__1
+670 OPEN #4,  con__1
+680 OPEN #8,  con__1
+690 OPEN #5,  scr_
+700 OPEN #6,  scr_
+710 OPEN #7,  scr_
+720 OPEN #9,  scr_
+730 OPEN #11, scr_
+740 :
+750 IF PEEK_L(163872) = 262144 THEN
+760   maxActivities = 59
+770 ELSE
+780   maxActivities = 98
+790 END IF
+800 :
+810 maxSpecialHolidays = 80
+820 fieldWidth3  = 3
+830 fieldWidth4  = 4
+840 fieldWidth9  = 9
+850 fieldWidth10 = 10
+860 :
+870 DIM successorHead%(maxActivities)
+880 DIM listPositionToActivity%(maxActivities)
+890 DIM activityToListPosition%(maxActivities)
+900 DIM edgeChild%((maxActivities + 1) * fieldWidth10)
+910 DIM edgeNext%((maxActivities + 1) * fieldWidth10)
+920 :
+930 DIM activityName$(maxActivities,16)
+940 DIM activityDuration$(maxActivities,fieldWidth3)
+950 DIM activityPrereqText$(maxActivities,30)
+960 DIM activityCost$(maxActivities,6)
+970 :
+980 DIM specialHolidayDate$(maxSpecialHolidays,6)
+990 DIM workingDayEnabled%(6)
+1000 DIM monthName$(11,fieldWidth3)
+1010 DIM milestoneDate$(fieldWidth10,6)
+1020 DIM milestoneActivity%(fieldWidth10)
+1030 DIM calendarColumnX%(2)
+1040 DIM monthRowY%(11)
+1050 DIM monthOffset%(13)
+1060 :
+1070 REMark Computed schedule arrays in reserved memory
+1080 earliestStartAddr = customCharBase + 60
+1090 latestFinishAddr  = earliestStartAddr + (maxActivities + 1) * 2
+1100 freeFloatAddr     = latestFinishAddr  + (maxActivities + 1) * 2
+1110 interferenceAddr  = freeFloatAddr     + (maxActivities + 1) * 2
+1120 holidayWorkAddr   = interferenceAddr  + (maxActivities + 1) * 2
+1130 holidayDayAddr    = holidayWorkAddr
+1140 :
+1150 DIM printerGraphic$(fieldWidth3,5)
+1160 :
+1170 loadProgramData
+1180 initializeProject
+1190 initializeViewState
+1200 :
+1210 currentMenuX = 0
+1220 currentMenuY = 0
+1230 :
+1240 setupWindowSet 1
+1250 drawHeading 1,0
+1260 drawVerticalSplit 14,15
+1270 createNewProjectDisplay
+1280 :
+1290 REPeat mainLoop
+1300   CLS #8
+1310   PAPER #fieldWidth9,7
+1320   CLS #fieldWidth9
+1330   :
+1340   IF milestoneListMode THEN
+1350     showMessage " to change milestones select Modify or Delete "
+1360   END IF
+1370   :
+1380   handleMenuHighlight currentMenuX,currentMenuY,6,lastKey,1
+1390   menuCode = currentMenuY * 100 + currentMenuX
+1400   :
+1410   SELect ON menuCode
+1420     =0
+1430       addActivity
+1440     =9
+1450       insertActivity
+1460     =18
+1470       modifyActivity
+1480     =27
+1490       moveActivity
+1500     =36
+1510       deleteActivity
+1520     =45
+1530       gotoActivity
+1540     =100
+1550       showList 0
+1560     =109
+1570       showChart 0
+1580     =118
+1590       setupWindowSet 2
+1600       specificationMenu
+1610       IF milestoneListMode THEN
+1620         currentMenuY = 0
+1630         drawMenu 1,currentMenuX,currentMenuY
+1640       ELSE
+1650         drawMenu 1,currentMenuX,currentMenuY
+1660       END IF
+1670     =127
+1680       setupWindowSet 2
+1690       fileMenu
+1700       setupWindowSet 1
+1710       drawHeading 1,0
+1720       drawVerticalSplit 14,15
+1730       drawMenu 1,currentMenuX,currentMenuY
+1740     =136
+1750       reportsMenu
+1760       drawMenu 1,currentMenuX,currentMenuY
+1770     =145
+1780       printerMenu
+1790       drawMenu 1,currentMenuX,currentMenuY
+1800   END SELect
+1810 END REPeat mainLoop
+1820 :
+1830 :
+1840 REMark =========================================================
+1850 REMark Program data loading
+1860 REMark =========================================================
+1870 DEFine PROCedure loadProgramData
+1880   LOCal i,j,charCode
+1890   :
+1900   dataFileHandle = FOPEN(#15, programDevice$ & "_PP_progdata")
+1910   :
+1920   FOR i = 0 TO fieldWidth3
+1930     printerGraphic$(i) = ""
+1940     FOR j = 1 TO 5
+1950       INPUT #15, charCode
+1960       printerGraphic$(i) = printerGraphic$(i) & CHR$(charCode)
+1970     END FOR j
+1980   END FOR i
+1990   :
+2000   projectName$ = FILL$(" ",20)
+2010   storageBias  = 32767
+2020   escapeMode   = 0
+2030   :
+2040   FOR i = 0 TO 11
+2050     INPUT #15, monthName$(i)
+2060   END FOR i
+2070   :
+2080   CLOSE #15
+2090 END DEFine loadProgramData
+2100 :
+2110 :
+2120 REMark =========================================================
+2130 REMark Window layouts
+2140 REMark =========================================================
+2150 DEFine PROCedure setupWindowSet(layoutNo)
+2160   SELect ON layoutNo
+2170     =1
+2180       createWindow fieldWidth3,512,256,0,0,fieldWidth4,0
+2190       createWindow fieldWidth3,456,152,38,47,shadowColour,0
+2200       createWindow #6,456,22,38,16,shadowColour,0
+2210       createWindow #6,160,22,28,fieldWidth10,7,1,1,0
+2220       createWindow #7,300,22,186,fieldWidth10,7,1,1,0
+2230       createWindow fieldWidth3,456,152,28,41,7,1,1,0
+2240       createWindow #8,456,24,38,208,shadowColour,0
+2250       createWindow #8,456,24,28,202,7,1,1,0
+2260       :
+2270       WINDOW #8,451,10,32,203
+2280       WINDOW #fieldWidth9,451,fieldWidth10,32,213
+2290       WINDOW #fieldWidth3,451,150,32,42
+2300       WINDOW #6,154,20,32,11
+2310       WINDOW #7,294,20,190,11
+2320       WINDOW #4,152,150,32,42
+2330       WINDOW #10,290,150,192,42
+2340       WINDOW #11,294,fieldWidth10,190,21
+2350       :
+2360       createWindow #5,414,22,61,231,shadowColour,0
+2370       createWindow #5,416,22,48,223,7,1,1,0
+2380       :
+2390       CSIZE #fieldWidth3,1,0
+2400       CSIZE #4,1,0
+2410       CSIZE #5,1,0
+2420       CSIZE #6,0,0
+2430       CSIZE #8,1,0
+2440       CSIZE #fieldWidth9,1,0
+2450       AT    #10,0,0
+2460       CSIZE #10,0,0
+2470       CSIZE #11,0,0
+2480       SCALE #10,1200,0,0
+2490       SCALE #fieldWidth3,1200,0,0
+2500       :
+2510       INK #fieldWidth3,0
+2520       INK #4,5
+2530       INK #5,0
+2540       INK #6,0
+2550       INK #7,0
+2560       INK #8,0
+2570       INK #10,0
+2580       INK #11,0
+2590       :
+2600       OVER  #4,-1
+2610       PAPER #4,7
+2620       PAPER #10,7
+2630       PAPER #11,7
+2640       :
+2650       menuPrompt$ = "No  Activity"
+2660       PRINT #6, menuPrompt$
+2670     =2
+2680       CSIZE #fieldWidth3,1,0
+2690       CSIZE #4,2,0
+2700       CSIZE #5,1,0
+2710       CSIZE #8,1,0
+2720       CSIZE #fieldWidth9,1,0
+2730       :
+2740       INK #fieldWidth3,7
+2750       INK #8,0
+2760       :
+2770       createWindow fieldWidth3,512,256,0,0,2,0
+2780       createWindow fieldWidth3,456,180,32,16,2,1,2,7
+2790       WINDOW #4,448,176,36,18
+2800       PAPER #4,2
+2810       createWindow #8,456,24,32,202,7,1,1,0
+2820       createWindow #5,416,22,52,223,7,1,1,0
+2830       PAPER #fieldWidth3,0
+2840       :
+2850       WINDOW #8,451,fieldWidth10,36,203
+2860       WINDOW #fieldWidth9,451,fieldWidth10,36,213
+2870   END SELect
+2880 END DEFine setupWindowSet
+2890 :
+2900 :
+2910 DEFine PROCedure createWindow(channel,width,height,x,y,paperColour,hasBorder,borderWidth,borderInk)
+2920   WINDOW #channel,width,height,x,y
+2930   PAPER  #channel,paperColour
+2940   CLS    #channel
+2950   IF hasBorder THEN
+2960     BORDER #channel,borderWidth,borderInk
+2970   END IF
+2980 END DEFine createWindow
+2990 :
+3000 :
+3010 REMark =========================================================
+3020 REMark Menu display and movement
+3030 REMark =========================================================
+3040 DEFine PROCedure drawMenu(menuMode,x,y)
+3050   OVER #5,0
+3060   INK  #5,0
+3070   CLS  #5
+3080   :
+3090   SELect ON menuMode
+3100     =1
+3110       menuText$ = " Add     Insert   Modify    Move    Delete    Goto  List    Chart    Spec      File    Report    Print"
+3120     =2
+3130       menuText$ = " Dir     Save     Load     Erase    Menu"
+3140     =fieldWidth3
+3150       menuText$ = "Units    Dates    T/Cost   Hols     MStone   Menu"
+3160     =fieldWidth4
+3170       menuText$ = " Name    Remark   Start    W/days   Hol-MS   Menu"
+3180     =5
+3190       menuText$ = " Spec     List    Chart    Units    Dates    Menu"
+3200   END SELect
+3210   :
+3220   PRINT #5,menuText$;
+3230   OVER #5,-1
+3240   INK  #5,5
+3250   drawMenuBar x,y
+3260 END DEFine drawMenu
+3270 :
+3280 :
+3290 DEFine PROCedure handleMenuHighlight(x,y,itemCount,keyCode,allowVertical)
+3300   REPeat keyLoop
+3310     keyCode = CODE(INKEY$(#fieldWidth3,-1))
+3320     :
+3330     SELect ON keyCode
+3340       =32,200
+3350         drawMenuBar x,y
+3360         x = (x + fieldWidth9) MOD (itemCount * fieldWidth9)
+3370         drawMenuBar x,y
+3380       =192
+3390         drawMenuBar x,y
+3400         x = (x - fieldWidth9) MOD (itemCount * fieldWidth9)
+3410         drawMenuBar x,y
+3420       =208
+3430         IF allowVertical THEN
+3440           drawMenuBar x,y
+3450           y = (y - 1) MOD 2
+3460           drawMenuBar x,y
+3470         END IF
+3480       =216
+3490         IF allowVertical THEN
+3500           drawMenuBar x,y
+3510           y = (y + 1) MOD 2
+3520           drawMenuBar x,y
+3530         END IF
+3540       =196
+3550         IF currentActivityIndex > -1 AND chartModeEnabled AND chartLeftOffset >= 25 * chartScale THEN
+3560           chartLeftOffset = chartLeftOffset - 25 * chartScale
+3570           drawHeading 2,0
+3580           PAN #10,150
+3590           drawGrid 14,15
+3600           listActivities topActivity,0,min(14,currentActivityIndex - activityToListPosition%(topActivity)) + 1,2,0
+3610         END IF
+3620       =204
+3630         IF currentActivityIndex > -1 AND chartModeEnabled AND chartLeftOffset + 48 * chartScale <= totalProjectLength THEN
+3640           chartLeftOffset = chartLeftOffset + 25 * chartScale
+3650           drawHeading 2,0
+3660           PAN #10,-150
+3670           drawGrid 14,15
+3680           listActivities topActivity,0,min(14,currentActivityIndex - activityToListPosition%(topActivity)) + 1,2,0
+3690         END IF
+3700       =212
+3710         moveUp
+3720       =220
+3730         moveDown
+3740     END SELect
+3750     :
+3760     IF keyCode = fieldWidth10 THEN EXIT keyLoop
+3770   END REPeat keyLoop
+3780 END DEFine handleMenuHighlight
+3790 :
+3800 :
+3810 DEFine PROCedure drawMenuBar(x,y)
+3820   AT    #5,y,x
+3830   BLOCK #5,52,fieldWidth10,x*8,y*fieldWidth10,2
+3840 END DEFine drawMenuBar
+3850 :
+3860 :
+3870 REMark =========================================================
+3880 REMark Project initialization
+3890 REMark =========================================================
+3900 DEFine PROCedure createNewProjectDisplay
+3910   showMessage "initializing; max activities " & (maxActivities + 1)
+3920   initializeViewState
+3930   projectListActive = 1
+3940   currentActivityIndex = -1
+3950   successorFreeListHead = 1000
+3960   freeEdgeListHead = 0
+3970   :
+3980   FOR i = 0 TO maxActivities
+3990     activityName$(i)         = FILL$(" ",16)
+4000     activityDuration$(i)     = "   "
+4010     activityCost$(i)         = "      "
+4020     activityPrereqText$(i)   = FILL$(" ",30)
+4030     listPositionToActivity%(i) = i
+4040     activityToListPosition%(i) = 100
+4050     successorHead%(i)          = 1000
+4060   END FOR i
+4070   :
+4080   edgeCount = (maxActivities + 1) * fieldWidth10 - 1
+4090   FOR i = 0 TO edgeCount
+4100     edgeChild%(i) = 100
+4110     edgeNext%(i)  = i + 1
+4120   END FOR i
+4130   edgeNext%(i) = 1000
+4140   :
+4150   projectRemark$   = FILL$(" ",20)
+4160   projectStartDate$ = "850101"
+4170   projectStartDayNumber = 8766
+4180   specialHolidayCount = 0
+4190   numberWorkingDays = 2
+4200   :
+4210   FOR i = 1 TO 5
+4220     workingDayEnabled%(i) = 1
+4230   END FOR i
+4240   workingDayEnabled%(0) = 0
+4250   workingDayEnabled%(6) = 0
+4260   :
+4270   FOR i = 0 TO fieldWidth10
+4280     milestoneActivity%(i) = 1000
+4290     milestoneDate$(i) = "      "
+4300   END FOR i
+4310   milestoneActivity%(0) = 0
+4320   :
+4330   FOR i = 1 TO maxSpecialHolidays
+4340     specialHolidayDate$(i) = FILL$(" ",6)
+4350   END FOR i
+4360 END DEFine createNewProjectDisplay
+4370 :
+4380 :
+4390 DEFine PROCedure initializeProject
+4400   createNewProjectDisplay
+4410 END DEFine initializeProject
+4420 :
+4430 :
+4440 DEFine PROCedure initializeViewState
+4450   topActivity         = 0
+4460   currentActivity     = 0
+4470   currentLineInView   = 0
+4480   displayMode         = 1
+4490   scheduleCalculated  = 0
+4500   dateCalculated      = 0
+4510   milestoneListMode   = 0
+4520   totalProjectLength  = 0
+4530   chartScale          = 0
+4540   chartLeftOffset     = 0
+4550   chartModeEnabled    = 0
+4560 END DEFine initializeViewState
+4570 :
+4580 :
+4590 REMark =========================================================
+4600 REMark File menu
+4610 REMark =========================================================
+4620 DEFine PROCedure fileMenu
+4630   LOCal x,y
+4640   :
+4650   projectListActive = 0
+4660   x = 0
+4670   y = 0
+4680   drawMenu 2,0,0
+4690   :
+4700   REPeat fileLoop
+4710     CLS #8
+4720     PAPER #fieldWidth9,7
+4730     CLS #fieldWidth9
+4740     :
+4750     handleMenuHighlight x,y,5,lastKey,0
+4760     :
+4770     SELect ON x
+4780       =0
+4790         showDirectory
+4800       =9
+4810         saveProject
+4820       =18
+4830         loadProject
+4840       =27
+4850         eraseProject
+4860     END SELect
+4870     :
+4880     IF x = 36 THEN EXIT fileLoop
+4890   END REPeat fileLoop
+4900 END DEFine fileMenu
+4910 :
+4920 :
+4930 DEFine FuNction askDevice$
+4940   CLS #8
+4950   showMessage " Which device "
+4960   AT #8,0,1
+4970   PRINT #8,"?"!dataDevice$
+4980   :
+4990   escapeMode = 1
+5000   editField 3,6,1,4,dataDevice$,32,128,8,0,1
+5010   escapeMode = 0
+5020   :
+5030   RETurn dataDevice$
+5040 END DEFine askDevice$
+5050 :
+5060 :
+5070 DEFine FuNction askProjectName$
+5080   CLS #8
+5090   showMessage " Input name;max 10 chars "
+5100   tempName$ = "          "
+5110   AT #8,0,1
+5120   PRINT #8,"?"!tempName$
+5130   :
+5140   escapeMode = 1
+5150   editField 3,12,1,10,tempName$,32,128,8,0,1
+5160   escapeMode = 0
+5170   :
+5180   RETurn tempName$
+5190 END DEFine askProjectName$
+5200 :
+5210 :
+5220 DEFine PROCedure saveProject
+5230   saveDevice$ = askDevice$
+5240   IF lastKey = 27 THEN RETurn
+5250   :
+5260   saveName$ = askProjectName$
+5270   IF lastKey = 27 THEN RETurn
+5280   :
+5290   trimTrailingSpaces saveName$
+5300   :
+5310   status = FOP_NEW(#15, saveDevice$ & "_data_" & saveName$)
+5320   IF status <> 0 THEN
+5330     showError 11,""
+5340     RETurn
+5350   END IF
+5360   :
+5370   PRINT #15,maxActivities\successorFreeListHead\freeEdgeListHead\currentActivityIndex\specialHolidayCount\projectName$\projectRemark$\projectStartDate$
+5380   :
+5390   FOR i = 0 TO maxActivities
+5400     PRINT #15, activityName$(i)\activityDuration$(i)\activityPrereqText$(i)\activityCost$(i)\successorHead%(i)\listPositionToActivity%(i)\activityToListPosition%(i)
+5410   END FOR i
+5420   :
+5430   FOR i = 0 TO (maxActivities + 1) * fieldWidth10
+5440     PRINT #15, edgeChild%(i)\edgeNext%(i)
+5450   END FOR i
+5460   :
+5470   FOR i = 0 TO 6
+5480     PRINT #15, workingDayEnabled%(i)
+5490   END FOR i
+5500   :
+5510   FOR i = 0 TO maxSpecialHolidays
+5520     PRINT #15, specialHolidayDate$(i)
+5530   END FOR i
+5540   :
+5550   FOR i = 0 TO fieldWidth10
+5560     PRINT #15, milestoneActivity%(i)\milestoneDate$(i)
+5570   END FOR i
+5580   :
+5590   CLOSE #15
+5600 END DEFine saveProject
+5610 :
+5620 :
+5630 DEFine PROCedure loadProject
+5640   initializeViewState
+5650   :
+5660   loadDevice$ = askDevice$
+5670   IF lastKey = 27 THEN RETurn
+5680   :
+5690   loadName$ = askProjectName$
+5700   IF lastKey = 27 THEN RETurn
+5710   :
+5720   trimTrailingSpaces loadName$
+5730   :
+5740   status = FOPEN(#15, loadDevice$ & "_data_" & loadName$)
+5750   IF status <> 0 THEN
+5760     showError 11,loadName$
+5770     RETurn
+5780   END IF
+5790   :
+5800   INPUT #15,tempActivityLimit\successorFreeListHead\freeEdgeListHead\currentActivityIndex\specialHolidayCount\projectName$\projectRemark$\projectStartDate$
+5810   :
+5820   FOR i = 0 TO tempActivityLimit
+5830     INPUT #15, activityName$(i)\activityDuration$(i)\activityPrereqText$(i)\activityCost$(i)\successorHead%(i)\listPositionToActivity%(i)\activityToListPosition%(i)
+5840   END FOR i
+5850   :
+5860   FOR i = 0 TO (tempActivityLimit + 1) * fieldWidth10
+5870     INPUT #15, edgeChild%(i)\edgeNext%(i)
+5880   END FOR i
+5890   :
+5900   FOR i = 0 TO 6
+5910     INPUT #15, workingDayEnabled%(i)
+5920   END FOR i
+5930   :
+5940   FOR i = 0 TO maxSpecialHolidays
+5950     INPUT #15, specialHolidayDate$(i)
+5960   END FOR i
+5970   :
+5980   FOR i = 0 TO fieldWidth10
+5990     INPUT #15, milestoneActivity%(i)\milestoneDate$(i)
+6000   END FOR i
+6010   :
+6020   CLOSE #15
+6030   :
+6040   currentActivity = listPositionToActivity%(0)
+6050   topActivity     = currentActivity
+6060   currentLineInView = 0
+6070   :
+6080   setMonthOffsets dt$(projectStartDate$)
+6090   projectStartDayNumber = (dt$(projectStartDate$) - 1961) * 365 + (dt$(projectStartDate$) - 1961) DIV fieldWidth4 + monthOffset%(projectStartDate$(fieldWidth3 TO fieldWidth4)) + projectStartDate$(5 TO 6) - 2
+6100 END DEFine loadProject
+6110 :
+6120 :
+6130 DEFine PROCedure showDirectory
+6140   directoryDevice$ = askDevice$
+6150   IF lastKey = 27 THEN RETurn
+6160   :
+6170   trimTrailingSpaces directoryDevice$
+6180   CLS #fieldWidth3
+6190   :
+6200   status = FOP_DIR(#15, directoryDevice$ & "_d")
+6210   IF status <> 0 THEN
+6220     showError 11,directoryDevice$
+6230     RETurn
+6240   END IF
+6250   :
+6260   CLOSE #15
+6270   DIR #fieldWidth3, directoryDevice$ & "_"
+6280 END DEFine showDirectory
+6290 :
+6300 :
+6310 DEFine PROCedure eraseProject
+6320   eraseDevice$ = askDevice$
+6330   IF lastKey = 27 THEN RETurn
+6340   :
+6350   eraseName$ = askProjectName$
+6360   IF lastKey = 27 THEN RETurn
+6370   :
+6380   trimTrailingSpaces eraseName$
+6390   status = FOPEN(#15, eraseDevice$ & "_data_" & eraseName$)
+6400   IF status <> 0 THEN
+6410     showError 11,eraseName$
+6420     RETurn
+6430   ELSE
+6440     CLOSE #15
+6450     DELETE eraseDevice$ & "_data_" & eraseName$
+6460   END IF
+6470 END DEFine eraseProject
+6480 :
+6490 :
+6500 REMark =========================================================
+6510 REMark Basic headings and messages
+6520 REMark =========================================================
+6530 DEFine PROCedure showMessage(message$)
+6540   PAPER #fieldWidth9,7
+6550   CLS   #fieldWidth9
+6560   PAPER #fieldWidth9,fieldWidth4
+6570   INK   #fieldWidth9,2
+6580   AT    #fieldWidth9,0,(55 - LEN(message$)) DIV 2
+6590   PRINT #fieldWidth9,message$;
+6600 END DEFine showMessage
+6610 :
+6620 :
+6630 DEFine PROCedure drawHeading(mode,printerFlag)
+6640   LOCal i,headerChannel,scaleChannel
+6650   :
+6660   IF printerFlag THEN
+6670     headerChannel = 14
+6680     scaleChannel  = 14
+6690   ELSE
+6700     headerChannel = 7
+6710     scaleChannel  = 11
+6720     CLS #7
+6730   END IF
+6740   :
+6750   SELect ON mode
+6760     =1
+6770       PRINT #headerChannel,"Dur'n Prerequisites                    Cost"
+6780     =2
+6790       PRINT #headerChannel,"Scale=";chartScale
+6800       FOR i = 0 TO 40 STEP fieldWidth10
+6810         positionAt scaleChannel,0,i,20
+6820         PRINT #scaleChannel,chartLeftOffset + i * chartScale;
+6830       END FOR i
+6840       PRINT #scaleChannel
+6850   END SELect
+6860 END DEFine drawHeading
+6870 :
+6880 :
+6890 DEFine PROCedure drawVerticalSplit(y1,height)
+6900   LOCal topY,bottomY
+6910   topY    = 1120 - 80 * y1
+6920   bottomY = topY + 80 * height + fieldWidth10
+6930   LINE #fieldWidth3,922,topY TO 922,bottomY,930,topY TO 930,bottomY
+6940 END DEFine drawVerticalSplit
+6950 :
+6960 :
+6970 DEFine PROCedure drawGrid(y1,height)
+6980   LOCal startY,endY,i,gridX
+6990   startY = 1120 - 80 * y1
+7000   endY   = startY + height * 80 + fieldWidth10
+7010   :
+7020   SELect ON displayMode
+7030     =2
+7040       IF chartLeftOffset = 0 THEN
+7050         gridX = 178
+7060       ELSE
+7070         gridX = (5 - (chartLeftOffset DIV chartScale) MOD 5) * 35.6
+7080         IF chartLeftOffset MOD (chartScale * 5) = 0 THEN
+7090           gridX = 0
+7100         END IF
+7110       END IF
+7120       :
+7130       INK #10,fieldWidth4
+7140       FOR i = gridX TO 1700 STEP 178
+7150         LINE #10,i,startY TO i,endY
+7160       END FOR i
+7170   END SELect
+7180   INK #10,0
+7190 END DEFine drawGrid
+7200 :
+7210 :
+7220 REMark =========================================================
+7230 REMark Navigation in activity list
+7240 REMark =========================================================
+7250 DEFine PROCedure moveUp
+7260   IF currentActivityIndex = -1 OR NOT projectListActive THEN RETurn
+7270   IF currentActivity = listPositionToActivity%(0) THEN RETurn
+7280   :
+7290   currentActivity = listPositionToActivity%(activityToListPosition%(currentActivity) - 1)
+7300   clearPointerSquare
+7310   :
+7320   IF currentLineInView = 0 THEN
+7330     topActivity = listPositionToActivity%(activityToListPosition%(topActivity) - 1)
+7340     SCROLL #fieldWidth3,fieldWidth10
+7350     listActivities topActivity,0,1,displayMode,0
+7360   ELSE
+7370     currentLineInView = currentLineInView - 1
+7380   END IF
+7390   :
+7400   clearPointerSquare
+7410 END DEFine moveUp
+7420 :
+7430 :
+7440 DEFine PROCedure moveDown
+7450   IF currentActivityIndex = -1 OR NOT projectListActive THEN RETurn
+7460   IF currentActivity = listPositionToActivity%(currentActivityIndex) THEN RETurn
+7470   :
+7480   currentActivity = listPositionToActivity%(activityToListPosition%(currentActivity) + 1)
+7490   clearPointerSquare
+7500   :
+7510   IF currentLineInView = 14 THEN
+7520     topActivity = listPositionToActivity%(activityToListPosition%(topActivity) + 1)
+7530     SCROLL #fieldWidth3,-fieldWidth10
+7540     listActivities currentActivity,14,1,displayMode,0
+7550   ELSE
+7560     currentLineInView = currentLineInView + 1
+7570   END IF
+7580   :
+7590   clearPointerSquare
+7600 END DEFine moveDown
+7610 :
+7620 :
+7630 DEFine PROCedure clearPointerSquare
+7640   AT #4,currentLineInView,2
+7650   PRINT #4," ";
+7660 END DEFine clearPointerSquare
+7670 :
+7680 :
+7690 REMark =========================================================
+7700 REMark Utility functions
+7710 REMark =========================================================
+7720 DEFine PROCedure trimTrailingSpaces(text$)
+7730   IF text$ = FILL$(" ",LEN(text$)) THEN
+7740     text$ = ""
+7750     RETurn
+7760   END IF
+7770   :
+7780   REPeat trimLoop
+7790     IF text$(LEN(text$)) = " " THEN
+7800       text$ = text$(1 TO LEN(text$) - 1)
+7810     ELSE
+7820       EXIT trimLoop
+7830     END IF
+7840   END REPeat trimLoop
+7850 END DEFine trimTrailingSpaces
+7860 :
+7870 :
+7880 DEFine FuNction min(x,y)
+7890   IF x < 0 OR y < 0 THEN
+7900     RETurn 0
+7910   ELSE IF x < y THEN
+7920     RETurn x
+7930   ELSE
+7940     RETurn y
+7950   END IF
+7960 END DEFine min
+7970 :
+7980 :
+7990 DEFine FuNction dt$(shortDate$)
+8000   LOCal fullYear$
+8010   IF shortDate$(1 TO 2) < 61 THEN
+8020     fullYear$ = "20" & shortDate$(1 TO 2)
+8030   ELSE
+8040     fullYear$ = "19" & shortDate$(1 TO 2)
+8050   END IF
+8060   RETurn fullYear$
+8070 END DEFine dt$
+8080 :
+8090 :
+8100 DEFine PROCedure setMonthOffsets(year$)
+8110   LOCal i
+8120   IF year$ MOD fieldWidth4 = 0 THEN
+8130     RESTORE 8160
+8140   ELSE
+8150     RESTORE 8150
+8160   END IF
+8170   :
+8180   FOR i = 0 TO 13
+8190     READ monthOffset%(i)
+8200   END FOR i
+8210 END DEFine setMonthOffsets
+8220 :
+8230 DATA 335,1,32,60,91,121,152,182,213,244,274,305,335,366
+8240 DATA 336,1,32,61,92,122,153,183,214,245,275,306,336,367
+8250 :
+8260 :
+8270 DEFine PROCedure showError(errorNo,detail$)
+8280   AT    #0,0,0
+8290   PAPER #fieldWidth9,2
+8300   CLS   #fieldWidth9
+8310   INK   #fieldWidth9,7
+8320   :
+8330   SELect ON errorNo
+8340     =1,5
+8350       errorText$ = " error in prereqs"
+8360     =2
+8370       errorText$ = " no job " & detail$
+8380     =fieldWidth3,fieldWidth4
+8390       errorText$ = " prereq. " & detail$ & "; loop error"
+8400     =6
+8410       errorText$ = " too many prereqs in job " & (edgeChild%(currentEdgePointer) + 1)
+8420     =7
+8430       errorText$ = " no of prereqs >10"
+8440     =8,15,16
+8450       errorText$ = " no more allowed"
+8460     =fieldWidth9
+8470       errorText$ = " no activity"
+8480     =fieldWidth10
+8490       errorText$ = " invalid date"
+8500     =11
+8510       errorText$ = " device error"
+8520     =13
+8530       errorText$ = " 1961<year<2025"
+8540     =14
+8550       errorText$ = " no holiday"
+8560     =17
+8570       errorText$ = " no milestone"
+8580     =18
+8590       errorText$ = " disabled; List to enable"
+8600     =19
+8610       errorText$ = " total length of project > 65534 "
+8620   END SELect
+8630   :
+8640   errorText$ = errorText$ & "; press any key"
+8650   PRINT #fieldWidth9,errorText$;
+8660   lastKey = CODE(INKEY$(#4,-1))
+8670 END DEFine showError

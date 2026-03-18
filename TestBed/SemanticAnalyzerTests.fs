@@ -222,21 +222,12 @@ let ``inkey resolves as built in expression source`` () =
     Assert.That(inkeyReference.IsSome, Is.True)
 
 [<Test>]
-let ``goto resolves as built in call`` () =
+let ``goto is handled as control flow not a built in call`` () =
     let analyzed =
         analyzeProgram "10 GO TO 100\n100 PRINT \"done\"\n"
 
     Assert.That(analyzed.Errors, Is.Empty)
-
-    let gotoCall =
-        analyzed.Facts
-        |> List.tryFind (fun fact ->
-            fact.Name = "GOTO"
-            && fact.Kind = CallSite
-            && fact.Scope = globalScope
-            && fact.Category = Some SymbolCategory.BuiltIn)
-
-    Assert.That(gotoCall.IsSome, Is.True)
+    Assert.That(analyzed.Facts |> List.exists (fun fact -> fact.Name = "GOTO" && fact.Kind = CallSite), Is.False)
 
 [<Test>]
 let ``symbol positions preserve basic line numbers while keeping editor line numbers`` () =

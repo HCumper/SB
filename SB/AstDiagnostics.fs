@@ -113,6 +113,24 @@ and private prettyStmt level stmt =
             [ $"{pad}Assignment @{formatPosition pos}\n"
               prettyExpr (level + 2) target
               prettyExpr (level + 2) value ]
+    | GotoStmt(pos, target) ->
+        String.concat ""
+            [ $"{pad}GotoStmt @{formatPosition pos}\n"
+              prettyExpr (level + 2) target ]
+    | GosubStmt(pos, target) ->
+        String.concat ""
+            [ $"{pad}GosubStmt @{formatPosition pos}\n"
+              prettyExpr (level + 2) target ]
+    | OnGotoStmt(pos, selector, targets) ->
+        String.concat ""
+            [ $"{pad}OnGotoStmt @{formatPosition pos}\n"
+              prettyExpr (level + 2) selector
+              targets |> List.map (prettyExpr (level + 2)) |> String.concat "" ]
+    | OnGosubStmt(pos, selector, targets) ->
+        String.concat ""
+            [ $"{pad}OnGosubStmt @{formatPosition pos}\n"
+              prettyExpr (level + 2) selector
+              targets |> List.map (prettyExpr (level + 2)) |> String.concat "" ]
     | ProcedureCall(pos, name, args) ->
         let renderedArgs = args |> List.map (prettyExpr (level + 2)) |> String.concat ""
         $"{pad}ProcedureCall {name} @{formatPosition pos}\n{renderedArgs}"
@@ -360,6 +378,38 @@ and private writeStmt (writer: Utf8JsonWriter) stmt =
         writeExpr writer target
         writer.WritePropertyName("value")
         writeExpr writer value
+    | GotoStmt(pos, target) ->
+        writer.WriteString("kind", "GotoStmt")
+        writer.WritePropertyName("position")
+        writePosition writer pos
+        writer.WritePropertyName("target")
+        writeExpr writer target
+    | GosubStmt(pos, target) ->
+        writer.WriteString("kind", "GosubStmt")
+        writer.WritePropertyName("position")
+        writePosition writer pos
+        writer.WritePropertyName("target")
+        writeExpr writer target
+    | OnGotoStmt(pos, selector, targets) ->
+        writer.WriteString("kind", "OnGotoStmt")
+        writer.WritePropertyName("position")
+        writePosition writer pos
+        writer.WritePropertyName("selector")
+        writeExpr writer selector
+        writer.WritePropertyName("targets")
+        writer.WriteStartArray()
+        targets |> List.iter (writeExpr writer)
+        writer.WriteEndArray()
+    | OnGosubStmt(pos, selector, targets) ->
+        writer.WriteString("kind", "OnGosubStmt")
+        writer.WritePropertyName("position")
+        writePosition writer pos
+        writer.WritePropertyName("selector")
+        writeExpr writer selector
+        writer.WritePropertyName("targets")
+        writer.WriteStartArray()
+        targets |> List.iter (writeExpr writer)
+        writer.WriteEndArray()
     | ProcedureCall(pos, name, args) ->
         writer.WriteString("kind", "ProcedureCall")
         writer.WriteString("name", name)

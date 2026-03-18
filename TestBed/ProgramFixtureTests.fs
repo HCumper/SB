@@ -75,15 +75,16 @@ let private tryFindLine lineNumber lines =
 let ``q3 fixture preserves selected AST subtrees`` () =
     let ast = parseAstFromFile "q3.SB"
 
-    match tryFindProcedure "main" ast with
+    match tryFindProcedure "quicksort" ast with
     | Some(parameters, body) ->
-        Assert.That(parameters, Has.Length.EqualTo(1))
-        Assert.That(List.head parameters, Is.EqualTo("paramtype"))
+        Assert.That(parameters, Has.Length.EqualTo(2))
+        Assert.That(parameters[0], Is.EqualTo("l"))
+        Assert.That(parameters[1], Is.EqualTo("r"))
 
-        match tryFindLine 20 body with
-        | Some [ LocalStmt(_, [ ("nxx", None); ("txx$", None); ("now", None); ("finished", None) ]) ] -> ()
-        | other -> Assert.Fail($"Unexpected main body line 20: %A{other}")
-    | None -> Assert.Fail("Expected top-level procedure 'main'")
+        match tryFindLine 630 body with
+        | Some [ Assignment(_, Identifier(_, "i"), Identifier(_, "l")); Assignment(_, Identifier(_, "j"), Identifier(_, "r")) ] -> ()
+        | other -> Assert.Fail($"Unexpected quicksort line 630: %A{other}")
+    | None -> Assert.Fail("Expected top-level procedure 'quicksort'")
 
     match tryFindProcedure "QUICKSORT1" ast with
     | Some(_, body) ->
@@ -98,19 +99,21 @@ let ``q3 fixture semantic analysis records declarations references and calls`` (
     let ast = parseAstFromFile "q3.SB"
     let analyzed = analyzeAst ast
 
-    Assert.That(analyzed.SymTab[globalScope].Symbols.ContainsKey(normalizeIdentifier "main"), Is.True)
+    Assert.That(analyzed.SymTab[globalScope].Symbols.ContainsKey(normalizeIdentifier "check"), Is.True)
     Assert.That(analyzed.SymTab[globalScope].Symbols.ContainsKey(normalizeIdentifier "quicksort"), Is.True)
     Assert.That(analyzed.SymTab[globalScope].Symbols.ContainsKey(normalizeIdentifier "QS2_PARTITION"), Is.True)
+    Assert.That(analyzed.SymTab[globalScope].Symbols.ContainsKey(normalizeIdentifier "QUICKSORT2"), Is.True)
 
     Assert.That(analyzed.SymTab["quicksort"].Symbols.ContainsKey(normalizeIdentifier "l"), Is.True)
     Assert.That(analyzed.SymTab["quicksort"].Symbols.ContainsKey(normalizeIdentifier "r"), Is.True)
-    Assert.That(analyzed.SymTab["quicksort"].Symbols.ContainsKey(normalizeIdentifier "pivot"), Is.True)
+    Assert.That(analyzed.SymTab["quicksort"].Symbols.ContainsKey(normalizeIdentifier "i"), Is.True)
+    Assert.That(analyzed.SymTab["quicksort"].Symbols.ContainsKey(normalizeIdentifier "j"), Is.True)
 
-    let mainParameterDeclaration =
+    let quicksortParameterDeclaration =
         analyzed.Facts
         |> List.tryFind (fun fact ->
-            fact.Name = "paramtype"
-            && fact.Scope = "main"
+            fact.Name = "l"
+            && fact.Scope = "quicksort"
             && fact.Kind = DeclarationSite
             && fact.Category = Some SymbolCategory.Parameter)
 
@@ -129,9 +132,28 @@ let ``q3 fixture semantic analysis records declarations references and calls`` (
             && fact.Kind = DeclarationSite
             && fact.Category = Some SymbolCategory.Procedure)
 
-    Assert.That(mainParameterDeclaration.IsSome, Is.True)
+    let partitionCall =
+        analyzed.Facts
+        |> List.tryFind (fun fact ->
+            fact.Name = "QS2_PARTITION"
+            && fact.Scope = globalScope
+            && fact.Kind = CallSite
+            && fact.Category = Some SymbolCategory.Procedure)
+
+    let checkCall =
+        analyzed.Facts
+        |> List.tryFind (fun fact ->
+            fact.Name = "check"
+            && fact.Scope = globalScope
+            && fact.Kind = CallSite
+            && fact.Category = Some SymbolCategory.Procedure)
+
+    Assert.That(quicksortParameterDeclaration.IsSome, Is.True)
     Assert.That(printCall.IsSome, Is.True)
     Assert.That(quicksortDecl.IsSome, Is.True)
+    Assert.That(partitionCall.IsSome, Is.True)
+    Assert.That(checkCall.IsSome, Is.True)
+    Assert.That(analyzed.Errors, Is.Empty)
 
 [<Test>]
 [<Category("ProgramFixture")>]
@@ -210,3 +232,54 @@ let ``golfer fixture semantic analysis records declarations references and calls
     Assert.That(powCall.IsSome, Is.True)
     Assert.That(scoreReference.IsSome, Is.True)
     Assert.That(analyzed.Errors |> List.exists (fun error -> error.Contains("score")), Is.False)
+
+[<Test>]
+[<Category("ProgramFixture")>]
+let ``project planner fixture semantic analysis resolves mixed-case globals and channel references`` () =
+    let ast = parseAstFromFile "Project Planner.sb"
+    let analyzed = analyzeAst ast
+
+    Assert.That(analyzed.SymTab[globalScope].Symbols.ContainsKey(normalizeIdentifier "fieldWidth3"), Is.True)
+    Assert.That(analyzed.SymTab[globalScope].Symbols.ContainsKey(normalizeIdentifier "fieldwidth3"), Is.True)
+    Assert.That(analyzed.SymTab[globalScope].Symbols.ContainsKey(normalizeIdentifier "fieldWidth4"), Is.True)
+    Assert.That(analyzed.SymTab[globalScope].Symbols.ContainsKey(normalizeIdentifier "fieldWidth9"), Is.True)
+    Assert.That(analyzed.SymTab[globalScope].Symbols.ContainsKey(normalizeIdentifier "fieldWidth10"), Is.True)
+
+    let fieldWidth3Declaration =
+        analyzed.Facts
+        |> List.tryFind (fun fact ->
+            fact.Name = "fieldWidth3"
+            && fact.Scope = globalScope
+            && fact.Kind = DeclarationSite
+            && fact.Category = Some SymbolCategory.Variable)
+
+    let drawMenuCaseReference =
+        analyzed.Facts
+        |> List.tryFind (fun fact ->
+            fact.Name = "fieldWidth3"
+            && fact.Scope = globalScope
+            && fact.Position.EditorLineNo = 306)
+
+    let inkeyChannelReference =
+        analyzed.Facts
+        |> List.tryFind (fun fact ->
+            fact.Name = "fieldWidth3"
+            && fact.Scope = globalScope
+            && fact.Position.EditorLineNo = 323
+            && fact.Kind = ReferenceSite)
+
+    let createWindowReference =
+        analyzed.Facts
+        |> List.tryFind (fun fact ->
+            fact.Name = "fieldWidth4"
+            && fact.Scope = globalScope
+            && fact.Position.EditorLineNo = 210
+            && fact.Kind = ReferenceSite)
+
+    Assert.That(fieldWidth3Declaration.IsSome, Is.True)
+    Assert.That(drawMenuCaseReference.IsSome, Is.True)
+    Assert.That(inkeyChannelReference.IsSome, Is.True)
+    Assert.That(createWindowReference.IsSome, Is.True)
+    Assert.That(analyzed.Errors |> List.exists (fun error -> error.Contains("Unresolved reference 'fieldWidth3'") || error.Contains("Unresolved reference 'fieldwidth3'")), Is.False)
+    Assert.That(analyzed.Errors |> List.exists (fun error -> error.Contains("Unresolved call 'fieldWidth3'") || error.Contains("Unresolved call 'fieldwidth3'")), Is.False)
+    Assert.That(analyzed.Errors |> List.exists (fun error -> error.Contains("Unresolved reference 'fieldWidth4'") || error.Contains("Unresolved reference 'fieldWidth9'") || error.Contains("Unresolved reference 'fieldWidth10'")), Is.False)

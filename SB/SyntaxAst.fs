@@ -24,6 +24,10 @@ and Stmt =
     | ImplicitStmt of SourcePosition * string * string list
     | ReferenceStmt of SourcePosition * Expr list
     | Assignment of SourcePosition * Expr * Expr
+    | GotoStmt of SourcePosition * Expr
+    | GosubStmt of SourcePosition * Expr
+    | OnGotoStmt of SourcePosition * Expr * Expr list
+    | OnGosubStmt of SourcePosition * Expr * Expr list
     | ProcedureCall of SourcePosition * string * Expr list
     | ChannelProcedureCall of SourcePosition * string * Expr * Expr list
     | ForStmt of SourcePosition * string * Expr * Expr * Expr option * Block

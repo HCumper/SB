@@ -315,25 +315,41 @@ type ASTBuildingVisitor() =
         let p = posOfTree ctx
         let gotoCtx = ctx.gotoStmt()
         let args = gotoCtx.Accept(this) |> List.map (fun node -> singleExpr gotoCtx [ node ])
-        single (StmtNode(ProcedureCall(p, "GOTO", args)))
+        let target =
+            match args with
+            | expr :: _ -> expr
+            | [] -> Identifier(p, "")
+        single (StmtNode(GotoStmt(p, target)))
 
     override this.VisitGosubStatement(ctx: SBParser.GosubStatementContext) =
         let p = posOfTree ctx
         let gosubCtx = ctx.gosubStmt()
         let args = gosubCtx.Accept(this) |> List.map (fun node -> singleExpr gosubCtx [ node ])
-        single (StmtNode(ProcedureCall(p, "GOSUB", args)))
+        let target =
+            match args with
+            | expr :: _ -> expr
+            | [] -> Identifier(p, "")
+        single (StmtNode(GosubStmt(p, target)))
 
     override this.VisitOnGotoStatement(ctx: SBParser.OnGotoStatementContext) =
         let p = posOfTree ctx
         let onGotoCtx = ctx.onGotoStmt()
         let args = onGotoCtx.Accept(this) |> List.map (fun node -> singleExpr onGotoCtx [ node ])
-        single (StmtNode(ProcedureCall(p, "ON-GOTO", args)))
+        let selector, targets =
+            match args with
+            | first :: rest -> first, rest
+            | [] -> Identifier(p, ""), []
+        single (StmtNode(OnGotoStmt(p, selector, targets)))
 
     override this.VisitOnGosubStatement(ctx: SBParser.OnGosubStatementContext) =
         let p = posOfTree ctx
         let onGosubCtx = ctx.onGosubStmt()
         let args = onGosubCtx.Accept(this) |> List.map (fun node -> singleExpr onGosubCtx [ node ])
-        single (StmtNode(ProcedureCall(p, "ON-GOSUB", args)))
+        let selector, targets =
+            match args with
+            | first :: rest -> first, rest
+            | [] -> Identifier(p, ""), []
+        single (StmtNode(OnGosubStmt(p, selector, targets)))
 
     override this.VisitReturnStmt(ctx: SBParser.ReturnStmtContext) =
         let p = posOfTree ctx

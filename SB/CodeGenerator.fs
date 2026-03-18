@@ -43,6 +43,16 @@ let rec private stmtToCode (node: Stmt) : string =
     match node with
     | Assignment(_, target, value) ->
         $"{exprToCode target} = {exprToCode value};"
+    | GotoStmt(_, target) ->
+        $"// GOTO {exprToCode target}"
+    | GosubStmt(_, target) ->
+        $"// GOSUB {exprToCode target}"
+    | OnGotoStmt(_, selector, targets) ->
+        let renderedTargets = targets |> List.map exprToCode |> String.concat ", "
+        $"// ON {exprToCode selector} GOTO {renderedTargets}"
+    | OnGosubStmt(_, selector, targets) ->
+        let renderedTargets = targets |> List.map exprToCode |> String.concat ", "
+        $"// ON {exprToCode selector} GOSUB {renderedTargets}"
     | ExitStmt _ -> "break;"
     | ReturnStmt(_, Some exprNode) -> $"return {exprToCode exprNode};"
     | ReturnStmt _ -> "return;"
