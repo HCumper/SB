@@ -8,8 +8,10 @@ open SyntaxAst
 open Types
 
 // Convert ANTLR token/tree locations into the source positions carried through the AST.
+let mutable private ambientBasicLineNo : int option = None
+
 let private posOfToken (t: IToken) : SourcePosition =
-    { BasicLineNo = None
+    { BasicLineNo = ambientBasicLineNo
       EditorLineNo = t.Line
       Column = t.Column }
 
@@ -22,7 +24,7 @@ let rec private firstTokenOf (tree: IParseTree) : IToken option =
 let private posOfTree (tree: IParseTree) : SourcePosition =
     match firstTokenOf tree with
     | Some t -> posOfToken t
-    | None -> { BasicLineNo = None; EditorLineNo = 0; Column = 0 }
+    | None -> { BasicLineNo = ambientBasicLineNo; EditorLineNo = 0; Column = 0 }
 
 let private parseLineNumber (text: string) =
     match Int32.TryParse text with
@@ -69,9 +71,17 @@ let private emptySeq<'T> : seq<'T> = Seq.empty
 type ASTBuildingVisitor() =
     inherit SBBaseVisitor<VisitedNode list>()
 
+    member private _.WithBasicLineNo (basicLineNo: int option) (action: unit -> 'T) =
+        let previous = ambientBasicLineNo
+        ambientBasicLineNo <- basicLineNo
+        try
+            action ()
+        finally
+            ambientBasicLineNo <- previous
+
     member private this.SafeAcceptExpr(tree: IParseTree) =
         if isNull tree then
-            Identifier({ BasicLineNo = None; EditorLineNo = 0; Column = 0 }, "")
+            Identifier({ BasicLineNo = ambientBasicLineNo; EditorLineNo = 0; Column = 0 }, "")
         else
             singleExpr tree (tree.Accept(this))
 
@@ -141,18 +151,18 @@ type ASTBuildingVisitor() =
             StatementBlock(this.CollectStmtList(stmtList))
 
     member private this.ForBodyLineToLine(ctx: SBParser.ForBodyLineContext) =
-        let p = posOfTree ctx
         let lineNo =
             match ctx.lineNumber() with
             | null -> None
             | ln -> parseLineNumber (ln.GetText())
+        this.WithBasicLineNo lineNo (fun () ->
+            let p = posOfTree ctx
+            let statements =
+                match ctx.plainStmtlist() with
+                | null -> []
+                | stmtList -> this.CollectPlainStmtList(stmtList)
 
-        let statements =
-            match ctx.plainStmtlist() with
-            | null -> []
-            | stmtList -> this.CollectPlainStmtList(stmtList)
-
-        Line(p, lineNo, statements)
+            Line(p, lineNo, statements))
 
     override this.VisitProgram(ctx: SBParser.ProgramContext) =
         let p = posOfTree ctx
@@ -160,16 +170,16 @@ type ASTBuildingVisitor() =
         single (RootNode(Program(p, children)))
 
     override this.VisitLine(ctx: SBParser.LineContext) =
-        let p = posOfTree ctx
         let lineNo =
             match ctx.lineNumber() with
             | null -> None
             | ln -> parseLineNumber (ln.GetText())
+        this.WithBasicLineNo lineNo (fun () ->
+            let p = posOfTree ctx
+            let children =
+                if isNull (ctx.stmtlist()) then [] else this.CollectStmtList(ctx.stmtlist())
 
-        let children =
-            if isNull (ctx.stmtlist()) then [] else this.CollectStmtList(ctx.stmtlist())
-
-        single (LineNode(Line(p, lineNo, children)))
+            single (LineNode(Line(p, lineNo, children))))
 
     override this.VisitStmtlist(ctx: SBParser.StmtlistContext) =
         this.SafeChildren(ctx.stmt()) |> Seq.collect (fun s -> s.Accept(this)) |> Seq.toList
@@ -803,7 +813,7 @@ type ASTBuildingVisitor() =
     override this.VisitErrorNode(node: IErrorNode) =
         let p =
             match node.Symbol with
-            | null -> { BasicLineNo = None; EditorLineNo = 0; Column = 0 }
+            | null -> { BasicLineNo = ambientBasicLineNo; EditorLineNo = 0; Column = 0 }
             | s -> posOfToken s
         single (ExprNode(Identifier(p, node.GetText())))
 

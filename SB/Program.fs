@@ -2,9 +2,9 @@ module Program
 
 open System
 
-open Antlr4.StringTemplate
 open CodeGenerator
 open CompilerPipeline
+open SymbolTableManager
 
 // Thin CLI entry point over the main compiler pipeline.
 let private printParseError error =
@@ -24,9 +24,15 @@ let main argv =
     | Error parseError ->
         printParseError parseError
     | Ok(parseTree, inputStream, ast) ->
-        let group: TemplateGroup = createTemplateGroup settings
         let state = runSemanticAnalysis ast
-        let generated = generateCSharp state settings.TemplateFileName
         logDiagnostics { InputFile = settings.InputFileName; OutputFile = settings.OutputFileName; Verbose = settings.Verbose } (parseTree, inputStream) ast
-        Console.WriteLine(generated)
-        1
+        if settings.Verbose then
+            printSymbolTable state.SymTab
+        if not state.Errors.IsEmpty then
+            Console.Error.WriteLine("Semantic analysis failed:")
+            state.Errors |> List.iter (Console.Error.WriteLine)
+            1
+        else
+            let generated = generateCSharp state settings.TemplateFileName
+            Console.WriteLine(generated)
+            0

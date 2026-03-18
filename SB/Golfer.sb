@@ -374,8 +374,8 @@
 3830 END DEFine scorecard
 3840 :
 3850 DEFine PROCedure datasave
-3860   DELETE flp1_golf_data
-3870   OPEN_NEW #9,flp1_golf_data
+3860   DELETE "flp1_golf_data"
+3870   OPEN_NEW #9,"flp1_golf_data"
 3880   FOR n=1 TO 100:PRINT#9 ,score(n):NEXT n
 3890   FOR n=1 TO 100:PRINT#9 ,name$(n, 1 TO 10)
 3900   NEXT n
@@ -383,7 +383,7 @@
 3920 END DEFine datasave
 3930 :
 3940 DEFine PROCedure dataload
-3950   OPEN_IN#9,flp1_golf_data
+3950   OPEN_IN #9,"flp1_golf_data"
 3960   FOR n=1 TO 100:INPUT#9,score(n):NEXT n
 3970   FOR n=1 TO 100:INPUT#9,name$(n,1 TO 10)
 3980   NEXT n

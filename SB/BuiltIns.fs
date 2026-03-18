@@ -19,14 +19,15 @@ let private createBuiltInSymbol name =
 
 let private builtInNames =
     [ "ABS"; "ACOS"; "ALLOCATE"; "APPEND"; "ASC"; "ASIN"; "AT"; "ATAN"
-      "BACKUP"; "BEEP"; "BORDER"; "CIRCLE"; "CLS"; "CLOSE"; "COPY"; "COS"
+      "BACKUP"; "BEEP"; "BLOCK"; "BORDER"; "CIRCLE"; "CLS"; "CLOSE"; "CODE"; "COPY"; "COS"; "CSIZE"; "CURSOR"
       "CURSOR OFF"; "CURSOR ON"; "DATE"; "DEALLOCATE"; "DELETE"; "DIR"; "DRAW"
-      "EXP"; "FORMAT"; "INK"; "INKEY"; "INKEY$"; "INPUT"; "INSTR"; "INT"; "LEFT$"; "LEN"; "LIST"
-      "LOAD"; "LOADMEM"; "LOG"; "LPRINT"; "LRUN"; "MID$"; "MOVE"; "NEW"
-      "GOTO"; "GOSUB"; "ON-GOTO"; "ON-GOSUB"
-      "PALETTE"; "PAPER"; "PAUSE"; "PEEK"; "PI"; "POINT"; "POKE"; "PRINT"
-      "REPL$"; "RIGHT$"; "RND"; "ROUND"; "RUN"; "SAVE"; "SAVEMEM"; "SHELL"
+      "ELLIPSE"; "EXP"; "FILL"; "FORMAT"; "GETENV$"; "INK"; "INKEY"; "INKEY$"; "INPUT"; "INSTR"; "INT"; "LEFT$"; "LEN"; "LINE"; "LIST"
+      "LOAD"; "LOADMEM"; "LOG"; "LPRINT"; "LRUN"; "MID$"; "MODE"; "MOVE"; "NEW"
+      "GOTO"; "GOSUB"; "ON-GOTO"; "ON-GOSUB"; "OPEN"; "OPEN_IN"; "OPEN_NEW";
+      "OVER"; "PALETTE"; "PAPER"; "PAUSE"; "PEEK"; "PEEK_W"; "PI"; "POINT"; "POKE"; "POKE_W"; "PRINT"; "RAD";
+      "RANDOMISE"; "REPL$"; "RIGHT$"; "RND"; "ROUND"; "RUN"; "SAVE"; "SAVEMEM"; "SCALE"; "SHELL"; "SQRT"
       "SGN"; "SIN"; "STOP"; "STR$"; "SYSVAR"; "TAN"; "TIME"; "TRON"; "TROFF"
+      "TURBO_BUFFERSZ"; "TURBO_DIAGS"; "TURBO_LOCSTR"; "TURBO_OBJDAT"; "TURBO_OBJFIL"; "TURBO_OPTIM"; "TURBO_REPFIL"; "TURBO_STRUCT"; "TURBO_TASKN"; "TURBO_WINDO"
       "VAL"; "WAIT"; "WINDOW" ]
 
 let private builtIns =

@@ -1,12 +1,5 @@
-10 DEFine PROCedure main (paramtype)
-20 LOCal nxx, txx$, now, finished
-30 END DEFine
-130 IMPLICIT% azz, bzz
-210 quicksort 1,noooooo
-10 temp = b((c+e))
 100 CLS
 110 TURBO_repfil
-25 IMPLICIT$ a$, b$
 120 sorts=0:partitions=0
 130 IMPLICIT% a, b
 140 DIM a(10001)
@@ -29,7 +22,7 @@
 310 check
 320 STOP
 330 :
-340 DEFine PROCedure checkxxx
+340 DEFine PROCedure check
 140 DIM a(10001,17)
 150 DIM b(10001)
 350 PRINT "Time" ! DATE-now

@@ -15,14 +15,14 @@ let private zeroPosition =
       EditorLineNo = 0
       Column = 0 }
 
-let private withDefaultRule scopeName (state: ProcessingState) : ImplicitTypingRule =
-    match Map.tryFind scopeName state.ImplicitTyping with
+let private withDefaultRule (state: ProcessingState) : ImplicitTypingRule =
+    match Map.tryFind globalScope state.ImplicitTyping with
     | Some rule -> rule
     | None -> { Integers = Set.empty; Strings = Set.empty }
 
-let private updateImplicitTyping scopeName (decorator: string) (names: Set<string>) (state: ProcessingState) =
+let private updateImplicitTyping (decorator: string) (names: Set<string>) (state: ProcessingState) =
     let normalizedNames = names |> Set.map normalizeIdentifier
-    let currentRule = withDefaultRule scopeName state
+    let currentRule = withDefaultRule state
     let updatedRule =
         if decorator.Contains "%" then
             { currentRule with Integers = Set.union currentRule.Integers normalizedNames }
@@ -31,7 +31,7 @@ let private updateImplicitTyping scopeName (decorator: string) (names: Set<strin
         else
             currentRule
 
-    { state with ImplicitTyping = Map.add scopeName updatedRule state.ImplicitTyping }
+    { state with ImplicitTyping = Map.add globalScope updatedRule state.ImplicitTyping }
 
 let private createCommonSymbol name position evaluatedType =
     { Name = name
@@ -102,7 +102,7 @@ let private posOfExpr expr =
     | Identifier(pos, _) -> pos
 
 let private inferredVariableType (state: ProcessingState) scopeName name =
-    let currentRule = withDefaultRule scopeName state
+    let currentRule = withDefaultRule state
     let normalizedName = normalizeIdentifier name
     if currentRule.Integers.Contains normalizedName then SBType.Integer
     elif currentRule.Strings.Contains normalizedName then SBType.String
@@ -397,11 +397,7 @@ and collectDeclarations (mode: SymbolAddMode) (node: Stmt) : State<ProcessingSta
             do! putState nextState
 
         | ImplicitStmt(_, decorator, names) ->
-            let stateWithImplicit = updateImplicitTyping currentState.CurrentScope decorator (Set.ofList names) currentState
-            let nextState =
-                names
-                |> List.fold (fun state name -> declareVariable mode state.CurrentScope name zeroPosition state) stateWithImplicit
-            do! putState nextState
+            do! putState (updateImplicitTyping decorator (Set.ofList names) currentState)
 
         | ReferenceStmt _
         | DataStmt _ -> ()

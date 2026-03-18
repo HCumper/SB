@@ -237,3 +237,42 @@ let ``goto resolves as built in call`` () =
             && fact.Category = Some SymbolCategory.BuiltIn)
 
     Assert.That(gotoCall.IsSome, Is.True)
+
+[<Test>]
+let ``symbol positions preserve basic line numbers while keeping editor line numbers`` () =
+    let analyzed =
+        analyzeProgram "100 score = 1\n200 DEFine PROCedure main\n210 LOCal work\n220 END DEFine\n"
+
+    let scoreSymbol = analyzed.SymTab[globalScope].Symbols[normalizeIdentifier "score"]
+    let mainSymbol = analyzed.SymTab[globalScope].Symbols[normalizeIdentifier "main"]
+    let workSymbol = analyzed.SymTab["main"].Symbols[normalizeIdentifier "work"]
+
+    Assert.That((Symbol.position scoreSymbol).BasicLineNo, Is.EqualTo(Some 100))
+    Assert.That((Symbol.position scoreSymbol).EditorLineNo, Is.EqualTo(1))
+    Assert.That((Symbol.position mainSymbol).BasicLineNo, Is.EqualTo(Some 200))
+    Assert.That((Symbol.position mainSymbol).EditorLineNo, Is.EqualTo(2))
+    Assert.That((Symbol.position workSymbol).BasicLineNo, Is.EqualTo(Some 210))
+    Assert.That((Symbol.position workSymbol).EditorLineNo, Is.EqualTo(3))
+
+[<Test>]
+let ``implicit updates typing rules without declaring symbols`` () =
+    let analyzed =
+        analyzeProgram "10 IMPLICIT% a,b\n20 PRINT a\n"
+
+    Assert.That(analyzed.SymTab[globalScope].Symbols.ContainsKey(normalizeIdentifier "a"), Is.False)
+    Assert.That(analyzed.SymTab[globalScope].Symbols.ContainsKey(normalizeIdentifier "b"), Is.False)
+    Assert.That(analyzed.Errors, Has.Some.Contains("Unresolved reference 'a'"))
+    Assert.That(analyzed.ImplicitTyping[globalScope].Integers.Contains(normalizeIdentifier "a"), Is.True)
+    Assert.That(analyzed.ImplicitTyping[globalScope].Integers.Contains(normalizeIdentifier "b"), Is.True)
+
+[<Test>]
+let ``procedure implicit typing applies globally to later declarations`` () =
+    let analyzed =
+        analyzeProgram "10 DEFine PROCedure main\n20 IMPLICIT% score\n30 END DEFine\n40 score = 1\n"
+
+    Assert.That(analyzed.Errors, Is.Empty)
+    Assert.That(analyzed.SymTab[globalScope].Symbols.ContainsKey(normalizeIdentifier "score"), Is.True)
+
+    match analyzed.SymTab[globalScope].Symbols[normalizeIdentifier "score"] with
+    | VariableSym sym -> Assert.That(sym.Common.EvaluatedType, Is.EqualTo(SBType.Integer))
+    | other -> Assert.Fail($"Expected variable symbol for score, got %A{other}")
