@@ -9,6 +9,7 @@
     <ItemGroup>
         <Compile Include="ParseTreeVisitorTests.fs" />
         <Compile Include="AstToHirTests.fs" />
+        <Compile Include="InterpreterTests.fs" />
         <Compile Include="UtilityTests.fs" />
         <Compile Include="AstVerificationTests.fs" />
         <Compile Include="AstDiagnosticsTests.fs" />

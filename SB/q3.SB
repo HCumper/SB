@@ -1,5 +1,5 @@
-100 CLS
-110 TURBO_repfil
+100 REMark CLS
+110 REMark 10TURBO_repfil
 120 sorts=0:partitions=0
 130 IMPLICIT% a, b
 140 DIM a(10001)

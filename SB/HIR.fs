@@ -150,6 +150,7 @@ type HirRoutine = {
 }
 
 type HirProgram = {
+    SymbolNames: Map<SymbolId, string>
     Globals: HirStorage list
     Routines: HirRoutine list
     DataEntries: HirDataEntry list

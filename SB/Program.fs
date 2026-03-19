@@ -4,6 +4,7 @@ open System
 
 open CompilerPipeline
 open HIRPrettyPrinter
+open Interpreter
 open SymbolTableManager
 open SemanticAnalysisFacts
 
@@ -23,13 +24,21 @@ let private printParseError error =
         printfn $"Parsing failed with error: %s{errorMsg}"
         1
 
-let private formatHirLoweringError error =
+let private formatHirLoweringError (error: HirLoweringError) =
     let location =
         match error.Position with
         | Some pos -> $" at %d{pos.EditorLineNo}:%d{pos.Column}"
         | None -> String.Empty
 
     $"[{error.Scope}] {error.Message}{location}"
+
+let private formatRuntimeError (error: RuntimeError) =
+    let location =
+        match error.Position with
+        | Some pos -> $" at %d{pos.EditorLineNo}:%d{pos.Column}"
+        | None -> String.Empty
+
+    $"{error.Message}{location}"
 
 [<EntryPoint>]
 let main argv =
@@ -64,4 +73,9 @@ let main argv =
                     Console.WriteLine("HIR:")
                     Console.WriteLine(prettyPrintHir hirProgram)
                     Console.WriteLine($"HIR lowering succeeded. Globals={hirProgram.Globals.Length}, Routines={hirProgram.Routines.Length}, DataEntries={hirProgram.DataEntries.Length}, MainStatements={hirProgram.Main.Length}")
-                0
+                match interpretProgram hirProgram with
+                | Ok _ -> 0
+                | Error runtimeError ->
+                    Console.Error.WriteLine("Runtime failed:")
+                    Console.Error.WriteLine(formatRuntimeError runtimeError)
+                    1

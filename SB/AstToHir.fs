@@ -151,6 +151,12 @@ let private buildSymbolIdMap (symTab: SymbolTable) =
     |> List.mapi (fun index key -> key, SymbolId index)
     |> Map.ofList
 
+let private buildSymbolNameMap (symbolIds: Map<string * string, SymbolId>) =
+    symbolIds
+    |> Map.toList
+    |> List.map (fun ((_, symbolName), symbolId) -> symbolId, symbolName)
+    |> Map.ofList
+
 let private requireSymbolIdForExpr ctx expr name pos =
     match getRecordedResolvedSymbol ctx expr with
     | Some resolved ->
@@ -652,7 +658,8 @@ let lowerToHir (state: ProcessingState) : Result<HirProgram, LoweringError list>
 
     zip (zip routines (collectDataItems rootCtx lines)) (lowerMainLines rootCtx lines)
     |> map (fun ((loweredRoutines, (dataEntries, restorePoints)), loweredMain) ->
-        { Globals = globals
+        { SymbolNames = buildSymbolNameMap symbolIds
+          Globals = globals
           Routines = loweredRoutines
           DataEntries = dataEntries
           RestorePoints = restorePoints
