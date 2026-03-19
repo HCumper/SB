@@ -2,7 +2,6 @@ module Program
 
 open System
 
-open CodeGenerator
 open CompilerPipeline
 open SymbolTableManager
 open SemanticAnalysisFacts
@@ -45,6 +44,6 @@ let main argv =
                 state.Diagnostics |> List.iter (formatDiagnostic >> Console.Error.WriteLine)
             1
         else
-            let generated = generateCSharp state settings.TemplateFileName
-            Console.WriteLine(generated)
+//            let generated = generateCSharp state settings.TemplateFileName
+//            Console.WriteLine(generated)
             0

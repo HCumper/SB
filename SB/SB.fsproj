@@ -10,6 +10,7 @@
           <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
         </Content>
         <Compile Include="Types.fs" />
+        <Compile Include="HIR.fs" />
         <Compile Include="SyntaxAst.fs" />
         <Compile Include="AstDiagnostics.fs" />
         <Compile Include="ProcessingTypes.fs" />
@@ -25,7 +26,7 @@
         <Compile Include="SemanticAnalyzer.fs" />
         <Compile Include="TypeAnalyzer.fs" />
         <Compile Include="SSB.fs" />
-        <Compile Include="CodeGenerator.fs" />
+        <Compile Include="AstToHir.fs" />
         <Compile Include="CompilerPipeline.fs" />
         <Content Include="CSharpTemplates.stg" />
         <Compile Include="Program.fs" />
