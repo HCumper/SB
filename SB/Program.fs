@@ -3,6 +3,7 @@ module Program
 open System
 
 open CompilerPipeline
+open HIRPrettyPrinter
 open SymbolTableManager
 open SemanticAnalysisFacts
 
@@ -60,5 +61,7 @@ let main argv =
                 1
             | Ok hirProgram ->
                 if settings.Verbose then
+                    Console.WriteLine("HIR:")
+                    Console.WriteLine(prettyPrintHir hirProgram)
                     Console.WriteLine($"HIR lowering succeeded. Globals={hirProgram.Globals.Length}, Routines={hirProgram.Routines.Length}, DataEntries={hirProgram.DataEntries.Length}, MainStatements={hirProgram.Main.Length}")
                 0

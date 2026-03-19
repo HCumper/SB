@@ -11,6 +11,7 @@
         </Content>
         <Compile Include="Types.fs" />
         <Compile Include="HIR.fs" />
+        <Compile Include="HIRPrettyPrinter.fs" />
         <Compile Include="SyntaxAst.fs" />
         <Compile Include="AstDiagnostics.fs" />
         <Compile Include="ProcessingTypes.fs" />
