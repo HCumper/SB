@@ -1,4 +1,11 @@
-﻿namespace Monads
+namespace Monads
+
+// Monads.State provides the computation-expression wrapper used throughout the
+// semantic pipeline.
+//
+// FSharpPlus exposes a State type, but not the builder and convenience surface
+// used by the analyzer and pipeline layers. This module fills that gap and keeps
+// state-threading code readable.
 
 (*
    ================================================================
@@ -34,6 +41,8 @@ module State =
     open FSharpPlus.Data
 
     type StateBuilder() =
+        // This builder is intentionally minimal: just enough to support the
+        // explicit state-threaded workflows used by the compiler.
         member _.Return(x: 'T) : State<'S, 'T> =
             State(fun s -> (x, s))
 

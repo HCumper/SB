@@ -21,6 +21,13 @@ open SSB
 open Monads.State
 open SyntaxAst
 
+// CompilerPipeline sequences the major compiler stages.
+//
+// It is responsible for moving source text through preprocessing, parsing, AST
+// construction, semantic analysis, and the current code-generation/debug entry
+// points. The substantive logic for each stage lives elsewhere; this module owns
+// the boundaries between those stages.
+//
 // The pipeline wires together preprocessing, parsing, AST construction, semantic analysis, and codegen.
 type Configuration = {
     InputFile: string
@@ -128,6 +135,8 @@ let parsePreparedSource (preparedSource: PreparedSource) : Result<IParseTree * A
     | ex -> Result.Error(ParseError ex.Message)
 
 let processToAST ((tree: IParseTree), _inputStream) verbose : Ast =
+    // The parser visitor returns a list, but the grammar is rooted at a single
+    // Program node, so the pipeline extracts the first AST root.
     let astNodes = convertTreeToAst tree
     let astRoot = List.head astNodes
     if verbose then Console.WriteLine(prettyPrintAst astRoot)
@@ -177,6 +186,7 @@ let logDiagnostics (config: Configuration) (parseTree, _) (ast: Ast) =
         Console.WriteLine("\nTransformed AST:")
 
 let loadAstFromInput settings =
+    // This is the shared parse entry point used by both tests and the CLI.
     match prepareSource settings.InputFileName with
     | Result.Error parseError -> Result.Error parseError
     | Ok preparedSource ->

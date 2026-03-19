@@ -6,6 +6,13 @@ open Types
 open ProcessingTypes
 open SyntaxAst
 
+// CodeGenerator emits the current best-effort C# projection of the AST.
+//
+// This is not a full backend yet. It turns the normalized AST into a useful
+// skeleton, leaving unsupported constructs as comments rather than attempting to
+// silently guess behavior. That makes it useful both for debugging and as an
+// intermediate step toward a richer lowering pipeline.
+//
 // Emit a minimal C# projection of the current AST; unsupported constructs are left as comments.
 let private sbTypeToCSharp (t: SBType) =
     match t with
@@ -22,6 +29,8 @@ let private indent level (text: string) =
     |> String.concat Environment.NewLine
 
 let rec private exprToCode (node: Expr) : string =
+    // Expression emission follows the AST shape directly; semantic coercion rules
+    // are expected to have been handled earlier.
     match node with
     | NumberLiteral(_, value)
     | StringLiteral(_, value)
@@ -40,6 +49,8 @@ let rec private blockStatements block =
     | LineBlock lines -> lines |> List.collect (fun (Line(_, _, stmts)) -> stmts)
 
 let rec private stmtToCode (node: Stmt) : string =
+    // Unimplemented statements are emitted as comments so generated output remains
+    // inspectable rather than silently dropping language constructs.
     match node with
     | Assignment(_, target, value) ->
         $"{exprToCode target} = {exprToCode value};"
@@ -136,6 +147,7 @@ let private methodParameters parameters =
     |> String.concat ", "
 
 let private generateMethodSyntax (_state: ProcessingState) (definitionNode: Stmt) : string =
+    // Only routine definitions currently become methods in the generated output.
     let returnType, methodName, parameters, body =
         match definitionNode with
         | FunctionDef(_, name, parms, body) -> "object", name, parms, body

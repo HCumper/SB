@@ -7,6 +7,12 @@ open CompilerPipeline
 open SymbolTableManager
 open SemanticAnalysisFacts
 
+// Program is the thin CLI shell over the compiler pipeline.
+//
+// It parses runtime settings, runs the pipeline, prints diagnostics or generated
+// output, and sets the process exit code. All real compiler work is delegated to
+// the stage modules.
+//
 // Thin CLI entry point over the main compiler pipeline.
 let private printParseError error =
     match error with
@@ -19,6 +25,8 @@ let private printParseError error =
 
 [<EntryPoint>]
 let main argv =
+    // The CLI currently stops after semantic analysis failure and only emits
+    // generated C# when the semantic pipeline reports a clean enough result.
     let settings = getSettings argv
 
     match loadAstFromInput settings with

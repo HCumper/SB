@@ -4,6 +4,12 @@ open System
 open Types
 open SymbolHelpers
 
+// SymbolTableManager owns the low-level immutable symbol-table operations.
+//
+// It handles scope creation, symbol insertion, lookup, and debug printing.
+// Higher-level semantic policies such as name resolution rules and declaration
+// behavior live in the semantic-analysis modules.
+//
 // Basic scope and symbol-table mutation helpers used by semantic analysis.
 /// The mode used when adding a symbol.
 type SymbolAddMode =
@@ -37,7 +43,8 @@ let addSymbolToNamedScope
     (symbol: Symbol) 
     (scopeName: string) 
     (symbolTable: SymbolTable) : SymbolTable =
-    
+    // Overwrite vs Skip is centralized here so callers can choose declaration
+    // semantics without repeating the map-update logic.
     let symbolName = getNormalizedSymbolName symbol
     let scopeOption = Map.tryFind scopeName symbolTable
         
@@ -56,6 +63,7 @@ let addSymbolToNamedScope
     
 /// Pretty print the contents of the entire symbol table.
 let printSymbolTable (symbolTable: SymbolTable) =
+    // This is intentionally simple and debug-oriented rather than a stable format.
     symbolTable |> Map.iter (fun scopeName scope ->
         printfn $"Scope: %s{scopeName}"
         scope.Symbols |> Map.iter (fun symbolName symbol ->

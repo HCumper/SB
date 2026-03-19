@@ -1,4 +1,10 @@
-﻿module SSB
+module SSB
+
+// SSB contains the compatibility preprocessor for Structured SuperBasic input.
+//
+// The current compiler still supports the historical SSB-to-numbered-SuperBasic
+// preprocessing flow, so this module preserves that textual transformation
+// rather than trying to absorb it into the parser itself.
 
 // This is kludge to support the SSB preprocessor. Tim Swenson originally implemented it as a syntax driven preprocessor so that is preserved instead of integrating it into the main pipeline.
 
@@ -178,6 +184,8 @@ module Ssb =
             s.Substring(idx, prefix.Length) = prefix
 
     let resolveIncludePath (cfg: Config) (directiveLine: string) =
+        // Includes remain a textual preprocessor concern rather than a parser-level
+        // construct.
         if directiveLine.Length < 10 then
             raise (FatalSsbError(sprintf "Malformed #INCLUDE: %s" directiveLine))
         cfg.WorkingDir1 + directiveLine.Substring(9)

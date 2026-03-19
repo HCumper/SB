@@ -7,6 +7,19 @@ open Antlr4.Runtime.Tree
 open SyntaxAst
 open Types
 
+// ParseTreeVisitor is the translation layer from the ANTLR parse tree into the
+// normalized AST used by the rest of the compiler.
+//
+// Its job is not semantic analysis and not syntax validation beyond what the
+// parser has already recovered. Instead, it:
+// - converts parser contexts into the compact AST DU shape
+// - preserves source positions, including ambient BASIC line numbers
+// - normalizes surface-syntax variants into shared AST nodes
+// - produces a best-effort tree even when ANTLR recovered from syntax errors
+//
+// This keeps later stages insulated from parser-specific context types and from
+// many of the incidental distinctions present in the grammar.
+//
 // Convert ANTLR token/tree locations into the source positions carried through the AST.
 let mutable private ambientBasicLineNo : int option = None
 
@@ -72,6 +85,9 @@ type ASTBuildingVisitor() =
     inherit SBBaseVisitor<VisitedNode list>()
 
     member private _.WithBasicLineNo (basicLineNo: int option) (action: unit -> 'T) =
+        // BASIC line numbers are carried ambiently because many nested parser
+        // contexts do not repeat the numbered-line information directly, but AST
+        // nodes still need to know which numbered source line they came from.
         let previous = ambientBasicLineNo
         ambientBasicLineNo <- basicLineNo
         try
@@ -88,7 +104,9 @@ type ASTBuildingVisitor() =
     member private this.SafeChildren<'T when 'T : null>(nodes: seq<'T>) =
         if isNull (box nodes) then emptySeq else nodes
 
-    // Collection helpers collapse subtree visits into the AST node shape expected by later stages.
+    // Collection helpers collapse parser-specific child lists into the exact AST
+    // collections expected by later stages, so the individual Visit* overrides can
+    // stay focused on shape conversion instead of list plumbing.
     member private this.VisitLineList(lines: seq<SBParser.LineContext>) =
         this.SafeChildren(lines) |> Seq.map (fun l -> singleLine l (l.Accept(this))) |> Seq.toList
 
@@ -117,6 +135,9 @@ type ASTBuildingVisitor() =
         let p = posOfTree ctx
         let exprs = this.SafeChildren(ctx.expr()) |> Seq.toList
 
+        // Postfix arguments are one of the denser syntax areas in the grammar:
+        // they can represent ordinary expressions, channel arguments, or slice/range
+        // forms using TO. This helper normalizes those cases into the smaller Expr DU.
         if not (isNull (ctx.chanArg())) then
             this.SafeAcceptExpr(ctx.chanArg())
         else
@@ -133,6 +154,9 @@ type ASTBuildingVisitor() =
                 Identifier(p, "")
 
     member private this.FoldLeft(pos: SourcePosition, first: Expr, ops: string list, rest: Expr list) =
+        // Expression rules are often parsed as "first operand plus repeated
+        // operator/rest pairs". Folding them left here keeps precedence handling in
+        // the grammar and keeps the AST in the expected binary-expression form.
         let pairCount = min ops.Length rest.Length
         let zipped = List.zip (ops |> List.truncate pairCount) (rest |> List.truncate pairCount)
         (first, zipped)
@@ -145,6 +169,9 @@ type ASTBuildingVisitor() =
                   yield t ]
 
     member private this.BlockFromStmtOrLine(stmtList: SBParser.StmtlistContext, lineContexts: seq<SBParser.LineContext>) =
+        // Some constructs can legally contain either a single-line statement list or
+        // a multi-line nested body. The AST preserves that distinction explicitly as
+        // StatementBlock vs LineBlock.
         if isNull stmtList then
             LineBlock(this.VisitLineList(lineContexts))
         else
@@ -209,6 +236,8 @@ type ASTBuildingVisitor() =
         ctx.whenStmt().Accept(this)
 
     override this.VisitProcedureDef(ctx: SBParser.ProcedureDefContext) =
+        // Procedure and function definitions lower almost identically: extract the
+        // declared name, formal parameter list, and already-normalized body lines.
         let p = posOfTree ctx
         let ids = ctx.ID() |> Seq.toList
         let name =
@@ -253,6 +282,8 @@ type ASTBuildingVisitor() =
         single (StmtNode(FunctionDef(p, name, parms, body)))
 
     override this.VisitDim(ctx: SBParser.DimContext) =
+        // Declaration-style statements are normalized into compact tuples rather
+        // than retaining parser-specific list/item wrapper nodes.
         let p = posOfTree ctx
         let items =
             ctx.dimList().dimItem()

@@ -2,6 +2,12 @@ module Types
 
 open System
 
+// Types is the shared domain contract for the compiler.
+//
+// It defines the cross-stage data structures used by parsing, semantic analysis,
+// diagnostics, and later lowering/codegen work. Centralizing those shapes here
+// keeps the rest of the codebase from duplicating basic compiler concepts.
+//
 // Shared compiler-domain types used across parsing, semantic analysis, and code generation.
 type SourcePosition = {
     BasicLineNo: int option
@@ -88,6 +94,8 @@ type Symbol =
     | BuiltInSym of BuiltInSymbol
 
 module Symbol =
+    // These accessors keep the rest of the compiler from pattern-matching on the
+    // Symbol DU just to retrieve common metadata.
     let common sym =
         match sym with
         | VariableSym s -> s.Common

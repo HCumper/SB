@@ -100,6 +100,8 @@ let fillImplicitTypesAndModifyNames
 
 /// Update the ProcessingState by applying the above transformation to its symbol table.
 let fillImplicitTypesAndModifyNamesInState (state: ProcessingState) : ProcessingState =
+    // Aggregate all collected IMPLICIT rules first, then rewrite the symbol table
+    // once so the normalization step is not order-sensitive.
     let implicitInts =
         state.ImplicitTyping
         |> Map.values

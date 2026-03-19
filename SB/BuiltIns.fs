@@ -2,6 +2,16 @@ module BuiltIns
 
 open Types
 
+// BuiltIns centralizes the language/runtime view of built-in names.
+//
+// It provides:
+// - the broad keyword surface
+// - the subset of names that should resolve as callable built-ins
+// - the small signature model used by semantic analysis
+//
+// The current signature modeling is intentionally conservative and only captures
+// the argument facts the analyzer can check cheaply and reliably.
+
 type BuiltInArgumentKind =
     | Any
     | Numeric
@@ -87,6 +97,8 @@ let private builtIns =
     |> Seq.map (fun name -> name, createBuiltInSymbol name)
     |> Map.ofSeq
 
+// Keyword membership and callable-built-in membership are separate because many
+// language keywords are not valid callable symbols.
 let isCoreKeyword name =
     coreSuperBasicKeywords.Contains(normalizeIdentifier name)
 
@@ -142,6 +154,8 @@ let private signature name fixedArity argumentKinds =
       ArgumentKinds = argumentKinds }
 
 let private builtInSignatures =
+    // Signature entries only encode stable facts such as fixed arity and basic
+    // argument kinds. More syntax-rich built-ins are left intentionally partial.
     [ signature "ABS" (Some 1) (Some [ Numeric ])
       signature "ACOS" (Some 1) (Some [ Numeric ])
       signature "ACOT" (Some 1) (Some [ Numeric ])

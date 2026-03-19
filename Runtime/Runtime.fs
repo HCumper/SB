@@ -1,7 +1,14 @@
-﻿module Runtime
+module Runtime
 
 open System.Threading
 open System.Xml
+
+// Runtime is the experimental execution support layer for generated/interpreted code.
+//
+// It models a small mutable environment stack with shared variable cells so code
+// outside the compiler core can simulate SuperBASIC-like storage and simple call
+// behavior. The shapes are intentionally interop-friendly because some consumers
+// are expected to be generated or external code.
 
 (* Presents an interface
 type IRuntime =
@@ -93,6 +100,9 @@ let private threadLocalEnv =
 /// Helper functions for getting/setting the current thread’s EnvStack
 let private currentEnv() = threadLocalEnv.Value
 let private setEnv (env: EnvStack) = threadLocalEnv.Value <- env
+
+// Variable lookup walks the frame stack from top to bottom, which makes local
+// shadowing explicit while still allowing shared globals underneath.
 // Look up a variable by name, scanning from top to bottom.
 /// If found, returns Some VarCell; otherwise, None.
 let rec lookupVar (name: string) : VarCell option =
@@ -143,7 +153,8 @@ let declareGlobal (name: string) (initial: Value) : unit =
     | globalFrame :: others ->
         let cell = createVar initial
         let updatedGlobal = globalFrame.Add(name, cell)
-        // Propagate the reference to all intermediate frames.
+        // Propagate the same cell reference through intermediate frames so updates
+        // remain shared across views of the global variable.
         let rec propagate (frames: Frame list) (acc: Frame list) =
             match frames with
             | [] -> List.rev acc

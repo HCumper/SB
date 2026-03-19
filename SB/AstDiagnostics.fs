@@ -8,6 +8,12 @@ open System.Text.Json
 open Types
 open SyntaxAst
 
+// AstDiagnostics renders the normalized AST into human-readable and JSON forms.
+//
+// These helpers are intended for debugging, tests, and pipeline inspection. They
+// do not participate in parsing or semantic analysis directly; they just provide
+// ways to inspect the AST that those stages produce.
+//
 // Pretty-printers used when inspecting parse output and intermediate AST state.
 let private indent level =
     String.replicate level " "
@@ -21,6 +27,7 @@ let private formatPosition (position: SourcePosition) =
     | None -> $"{position.EditorLineNo}:{position.Column}"
 
 let rec private prettyExpr level expr =
+    // The pretty-printer favors structural clarity over source reconstruction.
     let pad = indent level
     match expr with
     | Identifier(pos, name) -> $"{pad}Identifier {name} @{formatPosition pos}\n"
@@ -71,6 +78,8 @@ and private prettyClause level (SelectClause(pos, selector, rangeExpr, body)) =
 and private prettyStmt level stmt =
     let pad = indent level
     match stmt with
+    // Definitions and control-flow constructs are rendered in a tree shape so
+    // nested statements and expressions stay easy to inspect.
     | ProcedureDef(pos, name, parameters, body) ->
         let parameterText = String.concat ", " parameters
         String.concat ""

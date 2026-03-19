@@ -2,6 +2,13 @@ module SyntaxAst
 
 open Types
 
+// SyntaxAst defines the normalized syntax tree consumed after parsing.
+//
+// The parse-tree visitor lowers ANTLR contexts into this smaller DU-based model
+// so downstream stages can work with language structure instead of grammar
+// mechanics. The AST preserves source positions and important syntactic
+// distinctions while avoiding parser-specific wrappers.
+//
 // The normalized AST shape produced by the parser visitor and consumed by later stages.
 type Ast =
     | Program of SourcePosition * Line list
