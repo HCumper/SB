@@ -22,6 +22,14 @@ let private printParseError error =
         printfn $"Parsing failed with error: %s{errorMsg}"
         1
 
+let private formatHirLoweringError error =
+    let location =
+        match error.Position with
+        | Some pos -> $" at %d{pos.EditorLineNo}:%d{pos.Column}"
+        | None -> String.Empty
+
+    $"[{error.Scope}] {error.Message}{location}"
+
 [<EntryPoint>]
 let main argv =
     // The CLI currently stops after semantic analysis failure and only emits
@@ -44,6 +52,13 @@ let main argv =
                 state.Diagnostics |> List.iter (formatDiagnostic >> Console.Error.WriteLine)
             1
         else
-//            let generated = generateCSharp state settings.TemplateFileName
-//            Console.WriteLine(generated)
-            0
+            match runHirLowering state with
+            | Error loweringErrors ->
+                Console.Error.WriteLine("HIR lowering failed:")
+                loweringErrors
+                |> List.iter (formatHirLoweringError >> Console.Error.WriteLine)
+                1
+            | Ok hirProgram ->
+                if settings.Verbose then
+                    Console.WriteLine($"HIR lowering succeeded. Globals={hirProgram.Globals.Length}, Routines={hirProgram.Routines.Length}, DataEntries={hirProgram.DataEntries.Length}, MainStatements={hirProgram.Main.Length}")
+                0

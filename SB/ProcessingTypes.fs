@@ -10,7 +10,11 @@ open Types
 // the state monad. That makes pass ordering explicit and keeps test inspection
 // straightforward.
 //
-// ProcessingState is the shared compiler context threaded through semantic passes.
+type ResolvedSymbolRef = {
+    Scope: string
+    Name: string
+}
+
 type ProcessingState = {
     Ast: Ast
     SymTab: SymbolTable
@@ -21,4 +25,20 @@ type ProcessingState = {
     ExpressionFacts: SemanticFact list
     Diagnostics: SemanticDiagnostic list
     Errors: string list
+    ExprTypes: Map<NodeId, SBType>
+    TargetTypes: Map<NodeId, SBType>
+    ResolvedSymbols: Map<NodeId, ResolvedSymbolRef>
+    RoutineSymbols: Map<string, ResolvedSymbolRef>
+    ParameterSymbols: Map<string * string, ResolvedSymbolRef>
+    ActiveLoops: string list
 }
+
+let exprPosition expr =
+    match expr with
+    | PostfixName(_, pos, _, _)
+    | SliceRange(_, pos, _, _)
+    | BinaryExpr(_, pos, _, _, _)
+    | UnaryExpr(_, pos, _, _)
+    | NumberLiteral(_, pos, _)
+    | StringLiteral(_, pos, _)
+    | Identifier(_, pos, _) -> pos

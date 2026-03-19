@@ -11,6 +11,10 @@ let private pos line column =
       EditorLineNo = line
       Column = column }
 
+let private id line column name = mkIdentifier (pos line column) name
+let private num line column value = mkNumberLiteral (pos line column) value
+let private bin line column op lhs rhs = mkBinaryExpr (pos line column) op lhs rhs
+
 let private sampleAst =
     Program(
         pos 1 0,
@@ -26,8 +30,8 @@ let private sampleAst =
                     Some 20,
                     [ IfStmt(
                         pos 2 2,
-                        BinaryExpr(pos 2 5, "=", Identifier(pos 2 5, "x"), NumberLiteral(pos 2 9, "3")),
-                        StatementBlock [ ProcedureCall(pos 2 12, "PRINT", [ Identifier(pos 2 18, "paramtype") ]) ],
+                        bin 2 5 "=" (id 2 5 "x") (num 2 9 "3"),
+                        StatementBlock [ ProcedureCall(pos 2 12, "PRINT", [ id 2 18 "paramtype" ]) ],
                         Some (StatementBlock [ Remark(pos 2 28, "done") ])) ]) ]) ]) ])
 
 [<Test>]

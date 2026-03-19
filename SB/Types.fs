@@ -15,6 +15,8 @@ type SourcePosition = {
     Column: int
 }
 
+type NodeId = NodeId of int
+
 type SBType =
     | String
     | Integer
@@ -175,6 +177,7 @@ type SemanticDiagnosticCode =
     | InvalidReturn
     | InvalidRestoreTarget
     | InvalidChannel
+    | InvalidLoopControl
 
 type SemanticFact = {
     Name: string

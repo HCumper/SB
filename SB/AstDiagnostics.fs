@@ -30,22 +30,22 @@ let rec private prettyExpr level expr =
     // The pretty-printer favors structural clarity over source reconstruction.
     let pad = indent level
     match expr with
-    | Identifier(pos, name) -> $"{pad}Identifier {name} @{formatPosition pos}\n"
-    | NumberLiteral(pos, value) -> $"{pad}NumberLiteral {value} @{formatPosition pos}\n"
-    | StringLiteral(pos, value) -> $"{pad}StringLiteral {value} @{formatPosition pos}\n"
-    | UnaryExpr(pos, op, inner) ->
+    | Identifier(_, pos, name) -> $"{pad}Identifier {name} @{formatPosition pos}\n"
+    | NumberLiteral(_, pos, value) -> $"{pad}NumberLiteral {value} @{formatPosition pos}\n"
+    | StringLiteral(_, pos, value) -> $"{pad}StringLiteral {value} @{formatPosition pos}\n"
+    | UnaryExpr(_, pos, op, inner) ->
         $"{pad}UnaryExpr {op} @{formatPosition pos}\n{prettyExpr (level + 2) inner}"
-    | BinaryExpr(pos, op, left, right) ->
+    | BinaryExpr(_, pos, op, left, right) ->
         String.concat ""
             [ $"{pad}BinaryExpr {op} @{formatPosition pos}\n"
               prettyExpr (level + 2) left
               prettyExpr (level + 2) right ]
-    | SliceRange(pos, left, right) ->
+    | SliceRange(_, pos, left, right) ->
         String.concat ""
             [ $"{pad}SliceRange @{formatPosition pos}\n"
               prettyExpr (level + 2) left
               prettyExpr (level + 2) right ]
-    | PostfixName(pos, name, args) ->
+    | PostfixName(_, pos, name, args) ->
         let renderedArgs =
             args
             |> Option.defaultValue []
@@ -227,29 +227,29 @@ let private writeStringArray (name: string) (writer: Utf8JsonWriter) (values: st
 let rec private writeExpr (writer: Utf8JsonWriter) expr =
     writer.WriteStartObject()
     match expr with
-    | Identifier(pos, name) ->
+    | Identifier(_, pos, name) ->
         writer.WriteString("kind", "Identifier")
         writer.WriteString("name", name)
         writer.WritePropertyName("position")
         writePosition writer pos
-    | NumberLiteral(pos, value) ->
+    | NumberLiteral(_, pos, value) ->
         writer.WriteString("kind", "NumberLiteral")
         writer.WriteString("value", value)
         writer.WritePropertyName("position")
         writePosition writer pos
-    | StringLiteral(pos, value) ->
+    | StringLiteral(_, pos, value) ->
         writer.WriteString("kind", "StringLiteral")
         writer.WriteString("value", value)
         writer.WritePropertyName("position")
         writePosition writer pos
-    | UnaryExpr(pos, op, inner) ->
+    | UnaryExpr(_, pos, op, inner) ->
         writer.WriteString("kind", "UnaryExpr")
         writer.WriteString("operator", op)
         writer.WritePropertyName("position")
         writePosition writer pos
         writer.WritePropertyName("operand")
         writeExpr writer inner
-    | BinaryExpr(pos, op, left, right) ->
+    | BinaryExpr(_, pos, op, left, right) ->
         writer.WriteString("kind", "BinaryExpr")
         writer.WriteString("operator", op)
         writer.WritePropertyName("position")
@@ -258,7 +258,7 @@ let rec private writeExpr (writer: Utf8JsonWriter) expr =
         writeExpr writer left
         writer.WritePropertyName("right")
         writeExpr writer right
-    | SliceRange(pos, left, right) ->
+    | SliceRange(_, pos, left, right) ->
         writer.WriteString("kind", "SliceRange")
         writer.WritePropertyName("position")
         writePosition writer pos
@@ -266,7 +266,7 @@ let rec private writeExpr (writer: Utf8JsonWriter) expr =
         writeExpr writer left
         writer.WritePropertyName("right")
         writeExpr writer right
-    | PostfixName(pos, name, args) ->
+    | PostfixName(_, pos, name, args) ->
         writer.WriteString("kind", "PostfixName")
         writer.WriteString("name", name)
         writer.WritePropertyName("position")

@@ -21,24 +21,17 @@ open SemanticAnalysisSymbols
 // This is intentionally the most algorithmic semantic module: it concentrates the
 // rules that combine symbol information with expression structure.
 let posOfExpr expr =
-    match expr with
-    | PostfixName(pos, _, _)
-    | SliceRange(pos, _, _)
-    | BinaryExpr(pos, _, _, _)
-    | UnaryExpr(pos, _, _)
-    | NumberLiteral(pos, _)
-    | StringLiteral(pos, _)
-    | Identifier(pos, _) -> pos
+    exprPosition expr
 
 let rec describeExpr expr =
     match expr with
-    | Identifier(_, name)
-    | PostfixName(_, name, None) -> name
-    | PostfixName(_, name, Some _) -> $"{name}(...)"
-    | NumberLiteral(_, value) -> value
-    | StringLiteral(_, value) -> value
-    | UnaryExpr(_, op, _) -> op
-    | BinaryExpr(_, op, _, _) -> op
+    | Identifier(_, _, name)
+    | PostfixName(_, _, name, None) -> name
+    | PostfixName(_, _, name, Some _) -> $"{name}(...)"
+    | NumberLiteral(_, _, value) -> value
+    | StringLiteral(_, _, value) -> value
+    | UnaryExpr(_, _, op, _) -> op
+    | BinaryExpr(_, _, op, _, _) -> op
     | SliceRange _ -> "TO"
 
 let isNumericType = function
@@ -258,16 +251,16 @@ let rec tryEvaluateConstantExpr (state: ProcessingState) expr =
                 | _ -> None
 
     match expr with
-    | NumberLiteral(_, value) -> Some value
-    | StringLiteral(_, value) -> Some value
-    | Identifier(_, name)
-    | PostfixName(_, name, None) ->
+    | NumberLiteral(_, _, value) -> Some value
+    | StringLiteral(_, _, value) -> Some value
+    | Identifier(_, _, name)
+    | PostfixName(_, _, name, None) ->
         match tryResolveSymbol state.CurrentScope name state.SymTab with
         | Some(_, symbol) -> Symbol.valueText symbol
         | _ -> None
     | PostfixName _ -> None
     | SliceRange _ -> None
-    | UnaryExpr(_, op, inner) ->
+    | UnaryExpr(_, _, op, inner) ->
         match normalizeIdentifier op, tryEvaluateConstantExpr state inner with
         | "+", Some value -> Some value
         | "-", Some value ->
@@ -285,7 +278,7 @@ let rec tryEvaluateConstantExpr (state: ProcessingState) expr =
                 | _ -> None
             | _ -> None
         | _ -> None
-    | BinaryExpr(_, op, lhs, rhs) ->
+    | BinaryExpr(_, _, op, lhs, rhs) ->
         match tryEvaluateConstantExpr state lhs, tryEvaluateConstantExpr state rhs with
         | Some left, Some right ->
             match coerceBinaryOperands op lhs rhs left right with
@@ -476,12 +469,12 @@ let private validateBuiltInStringArgument name position index exprType (state: P
 
 let private validateBuiltInWritableArgument name index expr (state: ProcessingState) =
     match expr with
-    | Identifier(pos, targetName)
-    | PostfixName(pos, targetName, None) ->
+    | Identifier(_, pos, targetName)
+    | PostfixName(_, pos, targetName, None) ->
         match tryResolveSymbol state.CurrentScope targetName state.SymTab with
         | Some(_, symbol) -> validateWritableTarget targetName pos false symbol state
         | None -> state
-    | PostfixName(pos, targetName, Some _) ->
+    | PostfixName(_, pos, targetName, Some _) ->
         match tryResolveSymbol state.CurrentScope targetName state.SymTab with
         | Some(_, symbol) -> validateWritableTarget targetName pos true symbol state
         | None -> state
@@ -491,12 +484,12 @@ let private validateBuiltInWritableArgument name index expr (state: ProcessingSt
 
 let private isWritableExpression state expr =
     match expr with
-    | Identifier(_, targetName)
-    | PostfixName(_, targetName, None) ->
+    | Identifier(_, _, targetName)
+    | PostfixName(_, _, targetName, None) ->
         match tryResolveSymbol state.CurrentScope targetName state.SymTab with
         | Some(_, symbol) -> isWritableResolvedTarget false symbol
         | None -> false
-    | PostfixName(_, targetName, Some args) ->
+    | PostfixName(_, _, targetName, Some args) ->
         match tryResolveSymbol state.CurrentScope targetName state.SymTab with
         | Some(_, symbol) -> isWritableResolvedTarget true symbol
         | None -> false
@@ -546,15 +539,18 @@ let private validateConstantCoercion pos operator coercedType leftExpr rightExpr
 let rec inferExprType (state: ProcessingState) expr =
     let typed inferredType nextState =
         let constantValue = tryEvaluateConstantExpr nextState expr
-        inferredType, recordExpressionResult expr inferredType constantValue nextState
+        let recordedState =
+            { nextState with ExprTypes = Map.add (nodeIdOfExpr expr) inferredType nextState.ExprTypes }
+            |> recordExpressionResult expr inferredType constantValue
+        inferredType, recordedState
 
     match expr with
-    | NumberLiteral(_, value) ->
+    | NumberLiteral(_, _, value) ->
         match System.Int32.TryParse value with
         | true, _ -> typed SBType.Integer state
         | _ -> typed SBType.Real state
     | StringLiteral _ -> typed SBType.String state
-    | Identifier(_, name) ->
+    | Identifier(_, _, name) ->
         match tryResolveSymbol state.CurrentScope name state.SymTab with
         | Some(_, symbol) ->
             let validatedState = validateScalarVsArrayUsage name (posOfExpr expr) false symbol state
@@ -578,7 +574,7 @@ let rec inferExprType (state: ProcessingState) expr =
                     validatedState, inferred
             typed symbolType contextValidatedState
         | None -> typed (inferredVariableType state state.CurrentScope name) state
-    | PostfixName(pos, name, args) ->
+    | PostfixName(_, pos, name, args) ->
         // Postfix names are overloaded in SuperBASIC syntax: array access, function
         // call, and some built-in forms all share this shape. Resolution decides
         // which interpretation is legal before result typing is chosen.
@@ -625,7 +621,7 @@ let rec inferExprType (state: ProcessingState) expr =
                     signatureCheckedState, inferred
             typed inferred contextValidatedState
         | None -> typed (inferredVariableType stateAfterArgs stateAfterArgs.CurrentScope name) stateAfterArgs
-    | SliceRange(pos, lhs, rhs) ->
+    | SliceRange(_, pos, lhs, rhs) ->
         let lhsType, stateAfterLhs = inferExprType state lhs
         let rhsType, stateAfterRhs = inferExprType stateAfterLhs rhs
         let nextState =
@@ -634,7 +630,7 @@ let rec inferExprType (state: ProcessingState) expr =
             else
                 appendDiagnostic SemanticDiagnosticCode.InvalidSliceBounds None (Some pos) $"Slice bounds must be integer expressions at {pos.EditorLineNo}:{pos.Column}" stateAfterRhs
         typed SBType.Integer nextState
-    | UnaryExpr(pos, op, inner) ->
+    | UnaryExpr(_, pos, op, inner) ->
         let innerType, nextState = inferExprType state inner
         match normalizeIdentifier op with
         | "NOT" ->
@@ -668,7 +664,7 @@ let rec inferExprType (state: ProcessingState) expr =
                 | _ -> appendDiagnostic SemanticDiagnosticCode.InvalidOperandTypes None (Some pos) $"Operator '{op}' expects a numeric-compatible expression at {pos.EditorLineNo}:{pos.Column}" nextState
             typed coercedType coercedState
         | _ -> typed innerType nextState
-    | BinaryExpr(pos, op, lhs, rhs) ->
+    | BinaryExpr(_, pos, op, lhs, rhs) ->
         // Binary operators are where the coercion table is applied. Unknown+Unknown
         // stays permissive so partially inferred real-world fixtures do not gain
         // false-positive diagnostics just because type information is incomplete.
@@ -694,7 +690,7 @@ let inferWritableTargetType (state: ProcessingState) expr =
     // only real storage locations may participate: variables, parameters, and
     // indexed arrays.
     match expr with
-    | Identifier(_, name) ->
+    | Identifier(_, _, name) ->
         match tryResolveSymbol state.CurrentScope name state.SymTab with
         | Some(_, symbol) ->
             if isWritableResolvedTarget false symbol then
@@ -704,7 +700,7 @@ let inferWritableTargetType (state: ProcessingState) expr =
             else
                 SBType.Unknown
         | None -> SBType.Unknown
-    | PostfixName(_, name, args) ->
+    | PostfixName(_, _, name, args) ->
         match tryResolveSymbol state.CurrentScope name state.SymTab with
         | Some(_, symbol) ->
             if isWritableResolvedTarget args.IsSome symbol then
@@ -718,12 +714,12 @@ let inferWritableTargetType (state: ProcessingState) expr =
 
 let updateWritableTargetType expr inferredType valueText (state: ProcessingState) =
     match expr with
-    | Identifier(_, name) ->
+    | Identifier(_, _, name) ->
         match tryResolveSymbol state.CurrentScope name state.SymTab with
         | Some(_, symbol) when isWritableResolvedTarget false symbol ->
             { state with SymTab = tryUpdateResolvedSymbolTypeAndValue inferredType valueText state.CurrentScope name state.SymTab }
         | _ -> state
-    | PostfixName(_, name, args) ->
+    | PostfixName(_, _, name, args) ->
         match tryResolveSymbol state.CurrentScope name state.SymTab with
         | Some(_, symbol) when isWritableResolvedTarget args.IsSome symbol ->
             { state with SymTab = tryUpdateResolvedSymbolTypeAndValue inferredType valueText state.CurrentScope name state.SymTab }
@@ -735,15 +731,15 @@ let resolveWritableTarget expr (state: ProcessingState) =
     // Callers can validate the target itself first, then walk the index expressions
     // as ordinary readable expressions.
     match expr with
-    | Identifier(pos, name)
-    | PostfixName(pos, name, None) ->
+    | Identifier(_, pos, name)
+    | PostfixName(_, pos, name, None) ->
         let nextState = referenceSymbol None name pos state
         let validatedState =
             match tryResolveSymbol nextState.CurrentScope name nextState.SymTab with
             | Some(_, symbol) -> validateWritableTarget name pos false symbol nextState
             | None -> nextState
         validatedState, []
-    | PostfixName(pos, name, Some args) ->
+    | PostfixName(_, pos, name, Some args) ->
         let nextState = referenceSymbol None name pos state
         let validatedState =
             match tryResolveSymbol nextState.CurrentScope name nextState.SymTab with

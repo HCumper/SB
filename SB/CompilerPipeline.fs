@@ -13,6 +13,7 @@ open Types
 open ProcessingTypes
 open ScopeNames
 open AstDiagnostics
+open AstToHir
 open ParseTreeVisitor
 open SymbolTableManager
 open SemanticAnalyzer
@@ -46,6 +47,12 @@ type ProcessingError =
 type ParseError =
     | FileNotFound of string
     | ParseError of string
+
+type HirLoweringError = {
+    Message: string
+    Scope: string
+    Position: SourcePosition option
+}
 
 type PreparedSource = {
     OriginalPath: string
@@ -165,10 +172,23 @@ let runSemanticAnalysis (astRoot: Ast) =
           Facts = []
           ExpressionFacts = []
           Diagnostics = []
-          Errors = [] }
+          Errors = []
+          ExprTypes = Map.empty
+          TargetTypes = Map.empty
+          ResolvedSymbols = Map.empty
+          RoutineSymbols = Map.empty
+          ParameterSymbols = Map.empty
+          ActiveLoops = [] }
 
     let (finalState: ProcessingState, _) = run semanticAnalysisState initialState
     finalState
+
+let runHirLowering (state: ProcessingState) =
+    lowerToHir state
+    |> Result.mapError (List.map (fun error ->
+        { Message = error.Message
+          Scope = error.Scope
+          Position = error.Position }))
 
 let generateAstOutput (config: Configuration) (ast: Ast) =
     File.Delete config.OutputFile

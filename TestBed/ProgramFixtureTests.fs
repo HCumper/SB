@@ -50,7 +50,13 @@ let private analyzeAst ast =
           Facts = []
           ExpressionFacts = []
           Diagnostics = []
-          Errors = [] }
+          Errors = []
+          ExprTypes = Map.empty
+          TargetTypes = Map.empty
+          ResolvedSymbols = Map.empty
+          RoutineSymbols = Map.empty
+          ParameterSymbols = Map.empty
+          ActiveLoops = [] }
 
     let seededState = prePopulateSymbolTable initialState
     let (_, analyzedState) = run (addToTable Overwrite ast seededState) seededState
@@ -126,14 +132,14 @@ let ``q3 fixture preserves selected AST subtrees`` () =
         Assert.That(parameters[1], Is.EqualTo("r"))
 
         match tryFindLine 630 body with
-        | Some [ Assignment(_, Identifier(_, "i"), Identifier(_, "l")); Assignment(_, Identifier(_, "j"), Identifier(_, "r")) ] -> ()
+        | Some [ Assignment(_, Identifier(_, _, "i"), Identifier(_, _, "l")); Assignment(_, Identifier(_, _, "j"), Identifier(_, _, "r")) ] -> ()
         | other -> Assert.Fail($"Unexpected quicksort line 630: %A{other}")
     | None -> Assert.Fail("Expected top-level procedure 'quicksort'")
 
     match tryFindProcedure "QUICKSORT1" ast with
     | Some(_, body) ->
         match tryFindLine 1230 body with
-        | Some [ Assignment(_, Identifier(_, "low"), Identifier(_, "bottom")); Assignment(_, Identifier(_, "high"), Identifier(_, "top")); Assignment(_, Identifier(_, "ptr"), Identifier(_, "bottom")) ] -> ()
+        | Some [ Assignment(_, Identifier(_, _, "low"), Identifier(_, _, "bottom")); Assignment(_, Identifier(_, _, "high"), Identifier(_, _, "top")); Assignment(_, Identifier(_, _, "ptr"), Identifier(_, _, "bottom")) ] -> ()
         | other -> Assert.Fail($"Unexpected QUICKSORT1 line 1230: %A{other}")
     | None -> Assert.Fail("Expected top-level procedure 'QUICKSORT1'")
 
@@ -207,7 +213,7 @@ let ``golfer fixture preserves selected AST subtrees`` () =
     match tryFindProcedure "pow" ast with
     | Some(_, body) ->
         match tryFindLine 860 body with
-        | Some [ ForStmt(_, "p", NumberLiteral(_, "0"), NumberLiteral(_, "200"), None, LineBlock _) ] -> ()
+        | Some [ ForStmt(_, "p", NumberLiteral(_, _, "0"), NumberLiteral(_, _, "200"), None, LineBlock _) ] -> ()
         | other -> Assert.Fail($"Unexpected pow line 860: %A{other}")
     | None -> Assert.Fail("Expected top-level procedure 'pow'")
 
@@ -218,7 +224,7 @@ let ``golfer fixture preserves selected AST subtrees`` () =
             when List.length stmts = 3
                  && (match stmts[0] with ChannelProcedureCall(_, "AT", _, _) -> true | _ -> false)
                  && (match stmts[1] with ChannelProcedureCall(_, "INPUT", _, _) -> true | _ -> false)
-                 && (match stmts[2] with Assignment(_, Identifier(_, "angle"), _) -> true | _ -> false) -> ()
+                 && (match stmts[2] with Assignment(_, Identifier(_, _, "angle"), _) -> true | _ -> false) -> ()
         | other -> Assert.Fail($"Unexpected ang line 980: %A{other}")
     | None -> Assert.Fail("Expected top-level procedure 'ang'")
 

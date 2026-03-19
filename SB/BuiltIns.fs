@@ -131,10 +131,13 @@ let private fixedArityBuiltIns =
       "LN", 1
       "LOG", 1
       "LOG10", 1
+      "LEFT$", 2
       "PEEK", 1
       "PEEK_W", 1
       "PEEK_L", 1
+      "RIGHT$", 2
       "RND", 1
+      "ROUND", 1
       "SGN", 1
       "SIN", 1
       "SQRT", 1
@@ -179,6 +182,7 @@ let private builtInSignatures =
       signature "INT" (Some 1) (Some [ Numeric ])
       signature "KEYROW" (Some 1) (Some [ Numeric ])
       signature "LEN" (Some 1) (Some [ String ])
+      signature "LEFT$" (Some 2) (Some [ String; Numeric ])
       signature "LN" (Some 1) (Some [ Numeric ])
       signature "LOG" (Some 1) (Some [ Numeric ])
       signature "LOG10" (Some 1) (Some [ Numeric ])
@@ -186,6 +190,8 @@ let private builtInSignatures =
       signature "PEEK_W" (Some 1) (Some [ Numeric ])
       signature "PEEK_L" (Some 1) (Some [ Numeric ])
       signature "RND" (Some 1) (Some [ Numeric ])
+      signature "RIGHT$" (Some 2) (Some [ String; Numeric ])
+      signature "ROUND" (Some 1) (Some [ Numeric ])
       signature "SGN" (Some 1) (Some [ Numeric ])
       signature "SIN" (Some 1) (Some [ Numeric ])
       signature "SQRT" (Some 1) (Some [ Numeric ])

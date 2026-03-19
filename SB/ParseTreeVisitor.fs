@@ -71,12 +71,12 @@ let private singleStmt tree nodes =
 let private singleExpr tree nodes =
     match nodes with
     | [ ExprNode expr ] -> expr
-    | _ -> Identifier(posOfTree tree, "")
+    | _ -> mkIdentifier (posOfTree tree) ""
 
 let private singleClause tree nodes =
     match nodes with
     | [ ClauseNode clause ] -> clause
-    | _ -> SelectClause(posOfTree tree, Identifier(posOfTree tree, ""), Identifier(posOfTree tree, ""), None)
+    | _ -> SelectClause(posOfTree tree, mkIdentifier (posOfTree tree) "", mkIdentifier (posOfTree tree) "", None)
 
 let private emptySeq<'T> : seq<'T> = Seq.empty
 
@@ -97,7 +97,7 @@ type ASTBuildingVisitor() =
 
     member private this.SafeAcceptExpr(tree: IParseTree) =
         if isNull tree then
-            Identifier({ BasicLineNo = ambientBasicLineNo; EditorLineNo = 0; Column = 0 }, "")
+            mkIdentifier { BasicLineNo = ambientBasicLineNo; EditorLineNo = 0; Column = 0 } ""
         else
             singleExpr tree (tree.Accept(this))
 
@@ -144,14 +144,14 @@ type ASTBuildingVisitor() =
             match exprs with
             | [ a ] when not (isNull (ctx.To())) ->
                 let left = this.SafeAcceptExpr(a)
-                SliceRange(p, left, Identifier(p, ""))
+                mkSliceRange p left (mkIdentifier p "")
             | [ a ] -> this.SafeAcceptExpr(a)
             | [ a; b ] ->
                 let left = this.SafeAcceptExpr(a)
                 let right = this.SafeAcceptExpr(b)
-                SliceRange(p, left, right)
+                mkSliceRange p left right
             | _ ->
-                Identifier(p, "")
+                mkIdentifier p ""
 
     member private this.FoldLeft(pos: SourcePosition, first: Expr, ops: string list, rest: Expr list) =
         // Expression rules are often parsed as "first operand plus repeated
@@ -160,7 +160,7 @@ type ASTBuildingVisitor() =
         let pairCount = min ops.Length rest.Length
         let zipped = List.zip (ops |> List.truncate pairCount) (rest |> List.truncate pairCount)
         (first, zipped)
-        ||> List.fold (fun acc (op, rhs) -> BinaryExpr(pos, op, acc, rhs))
+        ||> List.fold (fun acc (op, rhs) -> mkBinaryExpr pos op acc rhs)
 
     member private this.OperatorTexts(ctx: IRuleNode, allowed: Set<string>) =
         [ for i in 0 .. ctx.ChildCount - 1 do
@@ -319,7 +319,7 @@ type ASTBuildingVisitor() =
         let names =
             ctx.unparenthesizedlist().expr()
             |> Seq.map (fun e -> singleExpr e (e.Accept(this)))
-            |> Seq.choose (function Identifier(_, name) -> Some name | _ -> None)
+            |> Seq.choose (function Identifier(_, _, name) -> Some name | _ -> None)
             |> Seq.toList
         single (StmtNode(ImplicitStmt(p, suffix, names)))
 
@@ -349,7 +349,7 @@ type ASTBuildingVisitor() =
         let target =
             match args with
             | expr :: _ -> expr
-            | [] -> Identifier(p, "")
+            | [] -> mkIdentifier p ""
         single (StmtNode(GotoStmt(p, target)))
 
     override this.VisitGosubStatement(ctx: SBParser.GosubStatementContext) =
@@ -359,7 +359,7 @@ type ASTBuildingVisitor() =
         let target =
             match args with
             | expr :: _ -> expr
-            | [] -> Identifier(p, "")
+            | [] -> mkIdentifier p ""
         single (StmtNode(GosubStmt(p, target)))
 
     override this.VisitOnGotoStatement(ctx: SBParser.OnGotoStatementContext) =
@@ -369,7 +369,7 @@ type ASTBuildingVisitor() =
         let selector, targets =
             match args with
             | first :: rest -> first, rest
-            | [] -> Identifier(p, ""), []
+            | [] -> mkIdentifier p "", []
         single (StmtNode(OnGotoStmt(p, selector, targets)))
 
     override this.VisitOnGosubStatement(ctx: SBParser.OnGosubStatementContext) =
@@ -379,7 +379,7 @@ type ASTBuildingVisitor() =
         let selector, targets =
             match args with
             | first :: rest -> first, rest
-            | [] -> Identifier(p, ""), []
+            | [] -> mkIdentifier p "", []
         single (StmtNode(OnGosubStmt(p, selector, targets)))
 
     override this.VisitReturnStmt(ctx: SBParser.ReturnStmtContext) =
@@ -490,9 +490,9 @@ type ASTBuildingVisitor() =
         | [ startValue; endValue ] ->
             let left = singleExpr startValue (startValue.Accept(this))
             let right = singleExpr endValue (endValue.Accept(this))
-            single (ExprNode(SliceRange(p, left, right)))
+            single (ExprNode(mkSliceRange p left right))
         | _ ->
-            single (ExprNode(Identifier(p, "")))
+            single (ExprNode(mkIdentifier p ""))
 
     override this.VisitChanArg(ctx: SBParser.ChanArgContext) =
         ctx.expr().Accept(this)
@@ -510,8 +510,8 @@ type ASTBuildingVisitor() =
             | pa -> pa.Accept(this) |> List.map (fun node -> singleExpr pa [ node ])
         let expr =
             match children with
-            | [] -> Identifier(p, name)
-            | _ -> PostfixName(p, name, Some children)
+            | [] -> mkIdentifier p name
+            | _ -> mkPostfixName p name (Some children)
         single (ExprNode expr)
 
     override this.VisitPostfixArg(ctx: SBParser.PostfixArgContext) =
@@ -543,11 +543,11 @@ type ASTBuildingVisitor() =
         let startExpr =
             match exprs with
             | first :: _ -> singleExpr first (first.Accept(this))
-            | [] -> Identifier(p, "")
+            | [] -> mkIdentifier p ""
         let endExpr =
             match exprs with
             | _ :: second :: _ -> singleExpr second (second.Accept(this))
-            | _ -> Identifier(p, "")
+            | _ -> mkIdentifier p ""
         let stepExpr =
             match exprs with
             | _ :: _ :: third :: _ -> Some (singleExpr third (third.Accept(this)))
@@ -744,7 +744,7 @@ type ASTBuildingVisitor() =
             ctx.compareExpr().Accept(this)
         else
             let rhs = this.SafeAcceptExpr(ctx.notExpr())
-            single (ExprNode(UnaryExpr(p, "NOT", rhs)))
+            single (ExprNode(mkUnaryExpr p "NOT" rhs))
 
     override this.VisitCompareExpr(ctx: SBParser.CompareExprContext) =
         let p = posOfTree ctx
@@ -761,7 +761,7 @@ type ASTBuildingVisitor() =
             this.SafeChildren(ctx.concatExpr()) |> Seq.map (fun x -> this.SafeAcceptExpr(x)) |> Seq.toList
         match parts with
         | [ singlePart ] -> [ ExprNode singlePart ]
-        | [ lhs; rhs ] -> single (ExprNode(BinaryExpr(p, "INSTR", lhs, rhs)))
+        | [ lhs; rhs ] -> single (ExprNode(mkBinaryExpr p "INSTR" lhs rhs))
         | _ -> []
 
     override this.VisitConcatExpr(ctx: SBParser.ConcatExprContext) =
@@ -808,16 +808,16 @@ type ASTBuildingVisitor() =
             let op =
                 if ctx.ChildCount > 0 then ctx.GetChild(0).GetText() else ""
             let rhs = this.SafeAcceptExpr(ctx.unaryExpr())
-            single (ExprNode(UnaryExpr(p, op, rhs)))
+            single (ExprNode(mkUnaryExpr p op rhs))
 
     override this.VisitPrimary(ctx: SBParser.PrimaryContext) =
         let p = posOfTree ctx
         if not (isNull (ctx.Integer())) then
-            single (ExprNode(NumberLiteral(p, ctx.Integer().GetText())))
+            single (ExprNode(mkNumberLiteral p (ctx.Integer().GetText())))
         elif not (isNull (ctx.Real())) then
-            single (ExprNode(NumberLiteral(p, ctx.Real().GetText())))
+            single (ExprNode(mkNumberLiteral p (ctx.Real().GetText())))
         elif not (isNull (ctx.String())) then
-            single (ExprNode(StringLiteral(p, ctx.String().GetText())))
+            single (ExprNode(mkStringLiteral p (ctx.String().GetText())))
         elif not (isNull (ctx.postfixName())) then
             ctx.postfixName().Accept(this)
         elif not (isNull (ctx.expr())) then
@@ -841,9 +841,9 @@ type ASTBuildingVisitor() =
         | [ a; b ] ->
             let left = this.SafeAcceptExpr(a)
             let right = this.SafeAcceptExpr(b)
-            single (ExprNode(SliceRange(p, left, right)))
+            single (ExprNode(mkSliceRange p left right))
         | _ when not (isNull (ctx.Remainder())) ->
-            single (ExprNode(Identifier(p, "REMAINDER")))
+            single (ExprNode(mkIdentifier p "REMAINDER"))
         | _ -> []
 
     override this.VisitLineNumber(_ctx: SBParser.LineNumberContext) = []
@@ -852,9 +852,9 @@ type ASTBuildingVisitor() =
         let sym = node.Symbol
         let p = posOfToken sym
         match SBLexer.DefaultVocabulary.GetSymbolicName(sym.Type) with
-        | "INTEGER" -> single (ExprNode(NumberLiteral(p, sym.Text)))
-        | "REAL" -> single (ExprNode(NumberLiteral(p, sym.Text)))
-        | "STRING" -> single (ExprNode(StringLiteral(p, sym.Text)))
+        | "INTEGER" -> single (ExprNode(mkNumberLiteral p sym.Text))
+        | "REAL" -> single (ExprNode(mkNumberLiteral p sym.Text))
+        | "STRING" -> single (ExprNode(mkStringLiteral p sym.Text))
         | _ -> []
 
     override this.VisitErrorNode(node: IErrorNode) =
@@ -862,17 +862,19 @@ type ASTBuildingVisitor() =
             match node.Symbol with
             | null -> { BasicLineNo = ambientBasicLineNo; EditorLineNo = 0; Column = 0 }
             | s -> posOfToken s
-        single (ExprNode(Identifier(p, node.GetText())))
+        single (ExprNode(mkIdentifier p (node.GetText())))
 
     override this.VisitChildren(node: IRuleNode) =
         [ for i in 0 .. node.ChildCount - 1 do
               yield! node.GetChild(i).Accept(this) ]
 
 let convertTreeToAst (parseTree: IParseTree) : Ast list =
+    resetNodeIds()
     let visitor = ASTBuildingVisitor()
     [ singleRoot parseTree (parseTree.Accept(visitor)) ]
 
 let convertTreeToExpr (parseTree: IParseTree) : Expr list =
+    resetNodeIds()
     let visitor = ASTBuildingVisitor()
     parseTree.Accept(visitor)
     |> List.choose (function

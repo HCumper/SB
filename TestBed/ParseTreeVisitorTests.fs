@@ -20,7 +20,7 @@ let ``convertTreeToAst handles nested expressions correctly`` () =
     Assert.That(ast, Has.Length.EqualTo(1))
 
     match ast[0] with
-    | BinaryExpr(_, "+", Identifier _, NumberLiteral _) -> Assert.Pass()
+    | BinaryExpr(_, _, "+", Identifier _, NumberLiteral _) -> Assert.Pass()
     | other -> Assert.Fail($"Unexpected AST: %A{other}")
 
 [<Test>]
@@ -30,7 +30,7 @@ let ``convertAssignmentToAst handles equality expressions correctly`` () =
     Assert.That(ast, Has.Length.EqualTo(1))
 
     match ast[0] with
-    | BinaryExpr(_, "=", Identifier(_, "y"), BinaryExpr(_, "+", Identifier(_, "x"), NumberLiteral(_, "3"))) ->
+    | BinaryExpr(_, _, "=", Identifier(_, _, "y"), BinaryExpr(_, _, "+", Identifier(_, _, "x"), NumberLiteral(_, _, "3"))) ->
         Assert.Pass()
     | other -> Assert.Fail($"Unexpected AST: %A{other}")
 
@@ -51,8 +51,8 @@ let ``goto statements lower to dedicated ast nodes`` () =
     let (Program(_, lines)) = ast
     let stmts = lines |> List.collect (fun (Line(_, _, children)) -> children)
     match stmts with
-    | [ GotoStmt(_, NumberLiteral(_, "100"))
-        GosubStmt(_, NumberLiteral(_, "200"))
-        OnGotoStmt(_, Identifier(_, "x"), [ NumberLiteral(_, "100"); NumberLiteral(_, "200") ])
-        OnGosubStmt(_, Identifier(_, "y"), [ NumberLiteral(_, "300"); NumberLiteral(_, "400") ]) ] -> Assert.Pass()
+    | [ GotoStmt(_, NumberLiteral(_, _, "100"))
+        GosubStmt(_, NumberLiteral(_, _, "200"))
+        OnGotoStmt(_, Identifier(_, _, "x"), [ NumberLiteral(_, _, "100"); NumberLiteral(_, _, "200") ])
+        OnGosubStmt(_, Identifier(_, _, "y"), [ NumberLiteral(_, _, "300"); NumberLiteral(_, _, "400") ]) ] -> Assert.Pass()
     | other -> Assert.Fail($"Unexpected statements: %A{other}")

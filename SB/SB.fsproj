@@ -28,7 +28,6 @@
         <Compile Include="SSB.fs" />
         <Compile Include="AstToHir.fs" />
         <Compile Include="CompilerPipeline.fs" />
-        <Content Include="CSharpTemplates.stg" />
         <Compile Include="Program.fs" />
     </ItemGroup>
 

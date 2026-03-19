@@ -12,6 +12,12 @@ type SymbolId = SymbolId of int
 
 type LabelId = LabelId of int
 
+type LoopId = LoopId of int
+
+type StorageSlotId = StorageSlotId of int
+
+type DataSlotId = DataSlotId of int
+
 type HirType =
     | Int
     | Float
@@ -66,6 +72,25 @@ type LoopName =
     | AnonymousLoop
     | NamedLoop of string
 
+type StorageClass =
+    | GlobalStorage
+    | RoutineLocalStorage of string
+    | RoutineParameterStorage of string
+
+type HirStorage = {
+    Symbol: SymbolId
+    Slot: StorageSlotId
+    Name: string
+    Type: HirType
+    Class: StorageClass
+    Position: SourcePosition
+}
+
+type HirRestorePoint = {
+    LineNumber: int
+    Slot: DataSlotId
+}
+
 type HirExpr =
     | Literal of HirConst * HirType * SourcePosition
     | ReadVar of SymbolId * HirType * SourcePosition
@@ -74,20 +99,36 @@ type HirExpr =
     | Binary of HirBinaryOp * HirExpr * HirExpr * HirType * SourcePosition
     | CallFunc of SymbolId * HirExpr list * HirType * SourcePosition
 
+type HirDataEntry = {
+    Slot: DataSlotId
+    Value: HirExpr
+    Position: SourcePosition
+    LineNumber: int option
+}
+
 type HirTarget =
     | WriteVar of SymbolId * HirType * SourcePosition
     | WriteArrayElem of SymbolId * HirExpr list * HirType * SourcePosition
 
 type HirBlock = HirStmt list
 
+and HirSelectClause = {
+    Selector: HirExpr
+    Range: HirExpr
+    Body: HirBlock option
+    Position: SourcePosition
+}
+
 and HirStmt =
     | Assign of HirTarget * HirExpr * SourcePosition
     | ProcCall of SymbolId * HirExpr option * HirExpr list * SourcePosition
     | BuiltInCall of BuiltInKind * HirExpr option * HirExpr list * SourcePosition
-    | Input of HirExpr option * HirTarget list * SourcePosition
+    | Input of HirExpr option * HirExpr list * HirTarget list * SourcePosition
     | If of HirExpr * HirBlock * HirBlock option * SourcePosition
-    | For of SymbolId * HirExpr * HirExpr * HirExpr * HirBlock * SourcePosition
-    | Repeat of LoopName * HirBlock * SourcePosition
+    | For of LoopId * SymbolId * HirExpr * HirExpr * HirExpr * HirBlock * SourcePosition
+    | Repeat of LoopId * LoopName * HirBlock * SourcePosition
+    | Exit of LoopId * SourcePosition
+    | Next of LoopId * SourcePosition
     | Goto of HirExpr * SourcePosition
     | OnGoto of HirExpr * HirExpr list * SourcePosition
     | Gosub of HirExpr * SourcePosition
@@ -101,15 +142,17 @@ and HirStmt =
 type HirRoutine = {
     Name: string
     Symbol: SymbolId
-    Parameters: SymbolId list
+    Parameters: HirStorage list
+    Locals: HirStorage list
     Body: HirBlock
     ReturnType: HirType option
     Position: SourcePosition
 }
 
 type HirProgram = {
-    Globals: SymbolId list
+    Globals: HirStorage list
     Routines: HirRoutine list
-    DataItems: HirExpr list
+    DataEntries: HirDataEntry list
+    RestorePoints: HirRestorePoint list
     Main: HirBlock
 }

@@ -9,6 +9,16 @@ open Types
 // mechanics. The AST preserves source positions and important syntactic
 // distinctions while avoiding parser-specific wrappers.
 //
+let mutable private nextNodeIdValue = 1
+
+let freshNodeId () =
+    let nodeId = NodeId nextNodeIdValue
+    nextNodeIdValue <- nextNodeIdValue + 1
+    nodeId
+
+let resetNodeIds () =
+    nextNodeIdValue <- 1
+
 // The normalized AST shape produced by the parser visitor and consumed by later stages.
 type Ast =
     | Program of SourcePosition * Line list
@@ -51,10 +61,28 @@ and Stmt =
     | Remark of SourcePosition * string
 
 and Expr =
-    | PostfixName of SourcePosition * string * Expr list option
-    | SliceRange of SourcePosition * Expr * Expr
-    | BinaryExpr of SourcePosition * string * Expr * Expr
-    | UnaryExpr of SourcePosition * string * Expr
-    | NumberLiteral of SourcePosition * string
-    | StringLiteral of SourcePosition * string
-    | Identifier of SourcePosition * string
+    | PostfixName of NodeId * SourcePosition * string * Expr list option
+    | SliceRange of NodeId * SourcePosition * Expr * Expr
+    | BinaryExpr of NodeId * SourcePosition * string * Expr * Expr
+    | UnaryExpr of NodeId * SourcePosition * string * Expr
+    | NumberLiteral of NodeId * SourcePosition * string
+    | StringLiteral of NodeId * SourcePosition * string
+    | Identifier of NodeId * SourcePosition * string
+
+let nodeIdOfExpr expr =
+    match expr with
+    | PostfixName(nodeId, _, _, _)
+    | SliceRange(nodeId, _, _, _)
+    | BinaryExpr(nodeId, _, _, _, _)
+    | UnaryExpr(nodeId, _, _, _)
+    | NumberLiteral(nodeId, _, _)
+    | StringLiteral(nodeId, _, _)
+    | Identifier(nodeId, _, _) -> nodeId
+
+let mkPostfixName pos name args = PostfixName(freshNodeId(), pos, name, args)
+let mkSliceRange pos lhs rhs = SliceRange(freshNodeId(), pos, lhs, rhs)
+let mkBinaryExpr pos op lhs rhs = BinaryExpr(freshNodeId(), pos, op, lhs, rhs)
+let mkUnaryExpr pos op expr = UnaryExpr(freshNodeId(), pos, op, expr)
+let mkNumberLiteral pos value = NumberLiteral(freshNodeId(), pos, value)
+let mkStringLiteral pos value = StringLiteral(freshNodeId(), pos, value)
+let mkIdentifier pos name = Identifier(freshNodeId(), pos, name)

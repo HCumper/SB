@@ -34,7 +34,13 @@ let private analyzeProgram (input: string) =
           Facts = []
           ExpressionFacts = []
           Diagnostics = []
-          Errors = [] }
+          Errors = []
+          ExprTypes = Map.empty
+          TargetTypes = Map.empty
+          ResolvedSymbols = Map.empty
+          RoutineSymbols = Map.empty
+          ParameterSymbols = Map.empty
+          ActiveLoops = [] }
 
     let seededState = prePopulateSymbolTable initialState
     let (_, analyzedState) = run (addToTable Overwrite ast seededState) seededState
@@ -543,3 +549,53 @@ let ``function return and call expressions propagate inferred string type`` () =
 
     Assert.That(returnConcat.IsSome, Is.True)
     Assert.That(functionCallResult.IsSome, Is.True)
+
+[<Test>]
+let ``function return without value is rejected`` () =
+    let analyzed =
+        analyzeProgram "10 DEFine FuNction missing(x)\n20 RETurn\n30 END DEFine\n"
+
+    Assert.That(analyzed.Errors, Has.Some.Contains("Function 'missing' must return a value"))
+
+[<Test>]
+let ``exit outside active loop is rejected`` () =
+    let analyzed =
+        analyzeProgram "10 EXIT outer\n"
+
+    Assert.That(analyzed.Errors, Has.Some.Contains("Loop control target 'outer' is not active"))
+
+[<Test>]
+let ``next outside active loop is rejected`` () =
+    let analyzed =
+        analyzeProgram "10 NEXT i\n"
+
+    Assert.That(analyzed.Errors, Has.Some.Contains("Loop control target 'i' is not active"))
+
+[<Test>]
+let ``next matching active for loop is accepted`` () =
+    let analyzed =
+        analyzeProgram "10 FOR i=1 TO 3\n20 NEXT i\n"
+
+    Assert.That(analyzed.Errors, Is.Empty)
+
+[<Test>]
+let ``exit matching active repeat loop is accepted`` () =
+    let analyzed =
+        analyzeProgram "10 REPeat outer\n20 EXIT outer\n30 END REPeat outer\n"
+
+    Assert.That(analyzed.Errors, Is.Empty)
+
+[<Test>]
+let ``left and right built in signatures are validated`` () =
+    let analyzed =
+        analyzeProgram "10 a$ = LEFT$(1,2)\n20 b$ = RIGHT$(\"abc\",\"A\")\n"
+
+    Assert.That(analyzed.Errors, Has.Some.Contains("Built-in 'LEFT$' argument 1 must be string-compatible"))
+    Assert.That(analyzed.Errors, Has.Some.Contains("Built-in 'RIGHT$' argument 2 must be numeric-compatible"))
+
+[<Test>]
+let ``round built in numeric signature is validated`` () =
+    let analyzed =
+        analyzeProgram "10 value = ROUND(\"A\")\n"
+
+    Assert.That(analyzed.Errors, Has.Some.Contains("Built-in 'ROUND' argument 1 must be numeric-compatible"))

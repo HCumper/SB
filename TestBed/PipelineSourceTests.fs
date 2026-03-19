@@ -51,7 +51,7 @@ let ``loadAstFromInput preprocesses ssb source before parsing`` () =
     withTempSource "PRINT 1\n" (fun path ->
         match loadAstFromInput (testSettings path) with
         | Error err -> Assert.Fail($"Expected transformed SSB input to parse successfully, got %A{err}")
-        | Ok(_, _, Program(_, [ Line(_, Some 1000, [ ProcedureCall(_, "PRINT", [ NumberLiteral(_, "1") ]) ]) ])) -> ()
+        | Ok(_, _, Program(_, [ Line(_, Some 1000, [ ProcedureCall(_, "PRINT", [ NumberLiteral(_, _, "1") ]) ]) ])) -> ()
         | Ok(_, _, ast) -> Assert.Fail($"Unexpected AST for transformed SSB input: %A{ast}")
     )
 
@@ -60,7 +60,7 @@ let ``loadAstFromInput keeps numbered superbasic source unchanged`` () =
     withTempSource "10 PRINT 1\n" (fun path ->
         match loadAstFromInput (testSettings path) with
         | Error err -> Assert.Fail($"Expected numbered SuperBasic input to parse successfully, got %A{err}")
-        | Ok(_, _, Program(_, [ Line(_, Some 10, [ ProcedureCall(_, "PRINT", [ NumberLiteral(_, "1") ]) ]) ])) -> ()
+        | Ok(_, _, Program(_, [ Line(_, Some 10, [ ProcedureCall(_, "PRINT", [ NumberLiteral(_, _, "1") ]) ]) ])) -> ()
         | Ok(_, _, ast) -> Assert.Fail($"Unexpected AST for numbered SuperBasic input: %A{ast}")
     )
 
