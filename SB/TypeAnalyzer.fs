@@ -3,7 +3,15 @@ module TypeAnalyzer
 open Types
 open ProcessingTypes
 
-// Post-process symbol tables once implicit typing facts have been collected.
+// TypeAnalyzer is a post-pass over the completed symbol table.
+//
+// Semantic analysis initially records declarations, references, inferred types,
+// and implicit typing facts. This module applies the accumulated IMPLICIT rules
+// and suffix-based naming conventions across the finished symbol table in one
+// place so the rest of the pipeline can consume a normalized view.
+//
+// It is intentionally separate from the main semantic walk because IMPLICIT rules
+// can affect symbols declared earlier or later in the source.
 /// Update a symbol's evaluated type and normalize its name based on suffixes
 /// and implicit typing rules.
 let updateSymbolTypeAndName
@@ -17,6 +25,8 @@ let updateSymbolTypeAndName
 
     let updateCommon (commonSym: CommonSymbol) =
         let normalizedName = normalizeIdentifier commonSym.Name
+        // Suffixes are treated as an explicit declaration of the final symbol type,
+        // then IMPLICIT rules are applied for otherwise-unsuffixed names.
         let baseType =
             if commonSym.Name.Contains "%" then SBType.Integer
             elif commonSym.Name.Contains "$" then SBType.String
@@ -72,6 +82,9 @@ let fillImplicitTypesAndModifyNames
     (implicitStrings: Set<string>)
     (symTab: SymbolTable)
     : SymbolTable =
+    // The whole-table rewrite keeps symbol keys and symbol payload names aligned
+    // after normalization, which is important because later lookups use the
+    // normalized key form.
     symTab
     |> Map.map (fun _ scope ->
         let updatedSymbols =

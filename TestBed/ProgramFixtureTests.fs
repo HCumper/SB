@@ -1,14 +1,17 @@
 module TestBed.ProgramFixtureTests
 
+open System
 open System.IO
 open Antlr4.Runtime
 open NUnit.Framework
+open Serilog
 
 open Types
 open ProcessingTypes
 open SyntaxAst
 open ScopeNames
 open ParseTreeVisitor
+open CompilerPipeline
 open SemanticAnalyzer
 open SymbolTableManager
 open Monads.State
@@ -45,11 +48,52 @@ let private analyzeAst ast =
           InParameterList = false
           ImplicitTyping = Map.empty
           Facts = []
+          ExpressionFacts = []
+          Diagnostics = []
           Errors = [] }
 
     let seededState = prePopulateSymbolTable initialState
     let (_, analyzedState) = run (addToTable Overwrite ast seededState) seededState
     analyzedState
+
+let private analyzeAstFull ast =
+    runSemanticAnalysis ast
+
+let private testSettings inputFile =
+    { InputFileName = inputFile
+      OutputFileName = Path.GetTempFileName()
+      TemplateFileName = "unused"
+      Verbose = false
+      AppName = "Test"
+      Logger = LoggerConfiguration().CreateLogger() }
+
+let private withTempDirectory action =
+    let path = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}")
+    Directory.CreateDirectory(path) |> ignore
+    try
+        action path
+    finally
+        if Directory.Exists(path) then
+            Directory.Delete(path, true)
+
+let private loadFixtureAstThroughPipeline (fileName: string) =
+    withTempDirectory (fun dir ->
+        let sourcePath = Path.Combine(dir, Path.GetFileName(fileName))
+        File.Copy(fixturePath fileName, sourcePath)
+
+        for includeName in [ "ram1_ssblang_ssb"; "ram1_ssbpass1_ssb"; "ram1_ssbpass2_ssb" ] do
+            File.WriteAllText(Path.Combine(dir, includeName), "")
+
+        let originalCurrentDirectory = Directory.GetCurrentDirectory()
+        Directory.SetCurrentDirectory(dir)
+        try
+            let ast =
+                match loadAstFromInput (testSettings sourcePath) with
+                | Result.Error err -> failwith $"Expected fixture pipeline load to succeed, got %A{err}"
+                | Ok(_, _, ast) -> ast
+            ast
+        finally
+            Directory.SetCurrentDirectory(originalCurrentDirectory))
 
 let private topLevelStatements ast =
     match ast with
@@ -283,3 +327,92 @@ let ``project planner fixture semantic analysis resolves mixed-case globals and 
     Assert.That(analyzed.Errors |> List.exists (fun error -> error.Contains("Unresolved reference 'fieldWidth3'") || error.Contains("Unresolved reference 'fieldwidth3'")), Is.False)
     Assert.That(analyzed.Errors |> List.exists (fun error -> error.Contains("Unresolved call 'fieldWidth3'") || error.Contains("Unresolved call 'fieldwidth3'")), Is.False)
     Assert.That(analyzed.Errors |> List.exists (fun error -> error.Contains("Unresolved reference 'fieldWidth4'") || error.Contains("Unresolved reference 'fieldWidth9'") || error.Contains("Unresolved reference 'fieldWidth10'")), Is.False)
+
+[<Test>]
+[<Category("ProgramFixture")>]
+let ``q3 fixture semantic output keeps folded shortlist value and structured call diagnostics clean`` () =
+    let ast = parseAstFromFile "q3.SB"
+    let analyzed = analyzeAstFull ast
+
+    match analyzed.SymTab[globalScope].Symbols[normalizeIdentifier "shortlist"] with
+    | VariableSym sym ->
+        Assert.That(sym.Common.EvaluatedType, Is.EqualTo(SBType.Integer))
+        Assert.That(sym.ValueText, Is.EqualTo(Some "9"))
+    | other -> Assert.Fail($"Expected variable symbol for shortlist, got %A{other}")
+
+    let quicksortCall =
+        analyzed.Facts
+        |> List.tryFind (fun fact ->
+            fact.Name = "quicksort"
+            && fact.Kind = CallSite
+            && fact.Category = Some SymbolCategory.Procedure)
+
+    Assert.That(quicksortCall.IsSome, Is.True)
+    Assert.That(analyzed.Diagnostics |> List.exists (fun d -> d.Code = SemanticDiagnosticCode.InvalidCallArity), Is.False)
+
+[<Test>]
+[<Category("ProgramFixture")>]
+let ``golfer fixture semantic output records string inkey result and select diagnostics stay clean`` () =
+    let ast = parseAstFromFile "Golfer.sb"
+    let analyzed = analyzeAstFull ast
+
+    let inkeyResult =
+        analyzed.ExpressionFacts
+        |> List.tryFind (fun fact ->
+            fact.Kind = ExpressionResult
+            && fact.Name = "INKEY$(...)"
+            && fact.Position.EditorLineNo = 11
+            && fact.EvaluatedType = Some SBType.String)
+
+    let scoreSymbol = analyzed.SymTab[globalScope].Symbols[normalizeIdentifier "score"]
+
+    Assert.That(inkeyResult.IsSome, Is.True)
+    Assert.That(Symbol.category scoreSymbol, Is.EqualTo(SymbolCategory.Array))
+    Assert.That(analyzed.Diagnostics |> List.exists (fun d -> d.Code = SemanticDiagnosticCode.InvalidSelectClause), Is.False)
+
+[<Test>]
+[<Category("ProgramFixture")>]
+let ``project planner fixture semantic output keeps folded field width values`` () =
+    let ast = parseAstFromFile "Project Planner.sb"
+    let analyzed = analyzeAstFull ast
+
+    match analyzed.SymTab[globalScope].Symbols[normalizeIdentifier "fieldWidth3"] with
+    | VariableSym sym ->
+        Assert.That(sym.Common.EvaluatedType, Is.EqualTo(SBType.Integer))
+        Assert.That(sym.ValueText, Is.EqualTo(Some "3"))
+    | other -> Assert.Fail($"Expected variable symbol for fieldWidth3, got %A{other}")
+
+    let unresolvedFieldWidthDiagnostic =
+        analyzed.Diagnostics
+        |> List.tryFind (fun diagnostic ->
+            diagnostic.Code = SemanticDiagnosticCode.UnresolvedReference
+            && (diagnostic.SymbolName = Some "fieldWidth3" || diagnostic.SymbolName = Some "fieldwidth3"))
+
+    Assert.That(unresolvedFieldWidthDiagnostic.IsNone, Is.True)
+
+[<Test>]
+[<Category("ProgramFixture")>]
+let ``ssb272 fixture semantic output preserves implicit integer defaults and getenv string usage`` () =
+    let ast = loadFixtureAstThroughPipeline "ssb272.ssb"
+    let analyzed = analyzeAstFull ast
+
+    match analyzed.SymTab[globalScope].Symbols[normalizeIdentifier "d_labels"] with
+    | VariableSym sym ->
+        Assert.That(sym.Common.EvaluatedType, Is.EqualTo(SBType.Integer))
+        Assert.That(sym.ValueText, Is.EqualTo(Some "30"))
+    | other -> Assert.Fail($"Expected variable symbol for d_labels, got %A{other}")
+
+    match analyzed.SymTab[globalScope].Symbols[normalizeIdentifier "d_in$"] with
+    | VariableSym sym ->
+        Assert.That(sym.Common.EvaluatedType, Is.EqualTo(SBType.String))
+        Assert.That(sym.ValueText, Is.EqualTo(None))
+    | other -> Assert.Fail($"Expected variable symbol for d_in$, got %A{other}")
+
+    let getenvResult =
+        analyzed.ExpressionFacts
+        |> List.tryFind (fun fact ->
+            fact.Kind = ExpressionResult
+            && fact.Name = "GETENV$(...)"
+            && fact.EvaluatedType = Some SBType.String)
+
+    Assert.That(getenvResult.IsSome, Is.True)

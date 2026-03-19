@@ -19,6 +19,7 @@ let private variableSymbol name evaluatedType =
             EvaluatedType = evaluatedType
             Position = pos
         }
+        ValueText = None
     }
 
 let private anyAst = Program(pos, [])
@@ -84,6 +85,8 @@ let ``fillImplicitTypesAndModifyNamesInState updates symbol type to Integer when
           InParameterList = false
           ImplicitTyping = Map.ofList [ ("global", { Integers = Set.ofList [ "var" ]; Strings = Set.empty }) ]
           Facts = []
+          ExpressionFacts = []
+          Diagnostics = []
           Errors = [] }
     let updatedState = fillImplicitTypesAndModifyNamesInState state
     let updatedSymbol = updatedState.SymTab["global"].Symbols[normalizeIdentifier "var"]
@@ -106,6 +109,8 @@ let ``fillImplicitTypesAndModifyNamesInState updates symbol type to String when 
           InParameterList = false
           ImplicitTyping = Map.ofList [ ("global", { Integers = Set.empty; Strings = Set.ofList [ "var" ] }) ]
           Facts = []
+          ExpressionFacts = []
+          Diagnostics = []
           Errors = [] }
     let updatedState = fillImplicitTypesAndModifyNamesInState state
     let updatedSymbol = updatedState.SymTab["global"].Symbols[normalizeIdentifier "var"]
@@ -128,6 +133,8 @@ let ``fillImplicitTypesAndModifyNamesInState applies implicit typing case-insens
           InParameterList = false
           ImplicitTyping = Map.ofList [ ("global", { Integers = Set.ofList [ "var" ]; Strings = Set.empty }) ]
           Facts = []
+          ExpressionFacts = []
+          Diagnostics = []
           Errors = [] }
     let updatedState = fillImplicitTypesAndModifyNamesInState state
     let updatedSymbol = updatedState.SymTab["global"].Symbols[normalizeIdentifier "VAR"]

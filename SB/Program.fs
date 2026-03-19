@@ -5,6 +5,7 @@ open System
 open CodeGenerator
 open CompilerPipeline
 open SymbolTableManager
+open SemanticAnalysisFacts
 
 // Thin CLI entry point over the main compiler pipeline.
 let private printParseError error =
@@ -30,7 +31,10 @@ let main argv =
             printSymbolTable state.SymTab
         if not state.Errors.IsEmpty then
             Console.Error.WriteLine("Semantic analysis failed:")
-            state.Errors |> List.iter (Console.Error.WriteLine)
+            if state.Diagnostics.IsEmpty then
+                state.Errors |> List.iter (Console.Error.WriteLine)
+            else
+                state.Diagnostics |> List.iter (formatDiagnostic >> Console.Error.WriteLine)
             1
         else
             let generated = generateCSharp state settings.TemplateFileName

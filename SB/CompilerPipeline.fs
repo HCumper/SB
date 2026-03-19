@@ -99,7 +99,7 @@ let createLexer (input: AntlrInputStream) =
 let private prepareSource (inputFileName: string) : Result<PreparedSource, ParseError> =
     try
         if not (File.Exists(inputFileName)) then
-            Error(FileNotFound inputFileName)
+            Result.Error(FileNotFound inputFileName)
         else
             let sourceText = File.ReadAllText(inputFileName)
             let lines = sourceText.Replace("\r\n", "\n").Split('\n') |> Array.toList
@@ -115,7 +115,7 @@ let private prepareSource (inputFileName: string) : Result<PreparedSource, Parse
                 Kind = kind
             }
     with
-    | ex -> Error(ParseError ex.Message)
+    | ex -> Result.Error(ParseError ex.Message)
 
 let parsePreparedSource (preparedSource: PreparedSource) : Result<IParseTree * AntlrInputStream, ParseError> =
     try
@@ -125,7 +125,7 @@ let parsePreparedSource (preparedSource: PreparedSource) : Result<IParseTree * A
         let parser = SBParser(tokenStream)
         Ok(parser.program(), inputStream)
     with
-    | ex -> Error(ParseError ex.Message)
+    | ex -> Result.Error(ParseError ex.Message)
 
 let processToAST ((tree: IParseTree), _inputStream) verbose : Ast =
     let astNodes = convertTreeToAst tree
@@ -154,6 +154,8 @@ let runSemanticAnalysis (astRoot: Ast) =
           InParameterList = false
           ImplicitTyping = Map.empty
           Facts = []
+          ExpressionFacts = []
+          Diagnostics = []
           Errors = [] }
 
     let (finalState: ProcessingState, _) = run semanticAnalysisState initialState
@@ -176,10 +178,10 @@ let logDiagnostics (config: Configuration) (parseTree, _) (ast: Ast) =
 
 let loadAstFromInput settings =
     match prepareSource settings.InputFileName with
-    | Error parseError -> Error parseError
+    | Result.Error parseError -> Result.Error parseError
     | Ok preparedSource ->
         match parsePreparedSource preparedSource with
-        | Error parseError -> Error parseError
+        | Result.Error parseError -> Result.Error parseError
         | Ok(parseTree, inputStream) ->
             if settings.Verbose then
                 printfn $"Parsing succeeded. Source kind: %A{preparedSource.Kind}"

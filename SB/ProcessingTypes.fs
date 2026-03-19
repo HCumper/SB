@@ -11,5 +11,7 @@ type ProcessingState = {
     InParameterList: bool
     ImplicitTyping: Map<string, ImplicitTypingRule>
     Facts: SemanticFact list
+    ExpressionFacts: SemanticFact list
+    Diagnostics: SemanticDiagnostic list
     Errors: string list
 }

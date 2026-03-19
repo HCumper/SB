@@ -32,6 +32,8 @@ let private analyzeProgram (input: string) =
           InParameterList = false
           ImplicitTyping = Map.empty
           Facts = []
+          ExpressionFacts = []
+          Diagnostics = []
           Errors = [] }
 
     let seededState = prePopulateSymbolTable initialState
@@ -62,6 +64,22 @@ let ``unknown procedure calls are tracked as call sites instead of declarations`
         analyzed.Facts
         |> List.filter (fun fact -> fact.Name = "DoThing" && fact.Kind = CallSite)
     Assert.That(callFacts, Has.Length.EqualTo(1))
+
+[<Test>]
+let ``semantic diagnostics expose structured code scope and position`` () =
+    let analyzed = analyzeProgram "10 PRINT missing\n"
+
+    let unresolvedReference =
+        analyzed.Diagnostics
+        |> List.tryFind (fun diagnostic -> diagnostic.Code = SemanticDiagnosticCode.UnresolvedReference)
+
+    match unresolvedReference with
+    | Some diagnostic ->
+        Assert.That(diagnostic.Message, Does.Contain("Unresolved reference 'missing'"))
+        Assert.That(diagnostic.Scope, Is.EqualTo(globalScope))
+        Assert.That(diagnostic.SymbolName, Is.EqualTo(Some "missing"))
+        Assert.That(diagnostic.Position |> Option.map (fun p -> p.EditorLineNo), Is.EqualTo(Some 1))
+    | None -> Assert.Fail("Expected unresolved reference diagnostic")
 
 [<Test>]
 let ``parameter references resolve within procedure scope`` () =
@@ -267,3 +285,261 @@ let ``procedure implicit typing applies globally to later declarations`` () =
     match analyzed.SymTab[globalScope].Symbols[normalizeIdentifier "score"] with
     | VariableSym sym -> Assert.That(sym.Common.EvaluatedType, Is.EqualTo(SBType.Integer))
     | other -> Assert.Fail($"Expected variable symbol for score, got %A{other}")
+
+[<Test>]
+let ``assignment infers symbol types from expression results`` () =
+    let analyzed =
+        analyzeProgram "10 total = 1 + 2.5\n20 name$ = \"a\" & \"b\"\n"
+
+    Assert.That(analyzed.Errors, Is.Empty)
+
+    match analyzed.SymTab[globalScope].Symbols[normalizeIdentifier "total"] with
+    | VariableSym sym -> Assert.That(sym.Common.EvaluatedType, Is.EqualTo(SBType.Real))
+    | other -> Assert.Fail($"Expected variable symbol for total, got %A{other}")
+
+    match analyzed.SymTab[globalScope].Symbols[normalizeIdentifier "name$"] with
+    | VariableSym sym -> Assert.That(sym.Common.EvaluatedType, Is.EqualTo(SBType.String))
+    | other -> Assert.Fail($"Expected variable symbol for name$, got %A{other}")
+
+    let additionResult =
+        analyzed.ExpressionFacts
+        |> List.tryFind (fun fact ->
+            fact.Kind = ExpressionResult
+            && fact.Name = "+"
+            && fact.Position.EditorLineNo = 1
+            && fact.EvaluatedType = Some SBType.Real
+            && fact.ValueText = Some "3.5")
+
+    let concatResult =
+        analyzed.ExpressionFacts
+        |> List.tryFind (fun fact ->
+            fact.Kind = ExpressionResult
+            && fact.Name = "&"
+            && fact.Position.EditorLineNo = 2
+            && fact.EvaluatedType = Some SBType.String
+            && fact.ValueText = Some "\"ab\"")
+
+    Assert.That(additionResult.IsSome, Is.True)
+    Assert.That(concatResult.IsSome, Is.True)
+
+[<Test>]
+let ``single assignment to foldable expression records constant valued symbol`` () =
+    let analyzed =
+        analyzeProgram "10 base = 1 + 2\n20 total = base + 4\n"
+
+    Assert.That(analyzed.Errors, Is.Empty)
+
+    match analyzed.SymTab[globalScope].Symbols[normalizeIdentifier "base"] with
+    | VariableSym sym ->
+        Assert.That(sym.Common.EvaluatedType, Is.EqualTo(SBType.Integer))
+        Assert.That(sym.ValueText, Is.EqualTo(Some "3"))
+    | other -> Assert.Fail($"Expected variable symbol for base, got %A{other}")
+
+    let foldedUse =
+        analyzed.ExpressionFacts
+        |> List.tryFind (fun fact ->
+            fact.Kind = ExpressionResult
+            && fact.Name = "+"
+            && fact.Position.EditorLineNo = 2
+            && fact.ValueText = Some "7")
+
+    Assert.That(foldedUse.IsSome, Is.True)
+
+[<Test>]
+let ``reassignment clears constant valued symbol state`` () =
+    let analyzed =
+        analyzeProgram "10 base = 3\n20 base = RND(1)\n30 total = base + 4\n"
+
+    match analyzed.SymTab[globalScope].Symbols[normalizeIdentifier "base"] with
+    | VariableSym sym -> Assert.That(sym.ValueText, Is.EqualTo(None))
+    | other -> Assert.Fail($"Expected variable symbol for base, got %A{other}")
+
+    let laterUse =
+        analyzed.ExpressionFacts
+        |> List.tryFind (fun fact ->
+            fact.Kind = ExpressionResult
+            && fact.Name = "+"
+            && fact.Position.EditorLineNo = 3)
+
+    match laterUse with
+    | Some fact -> Assert.That(fact.ValueText, Is.EqualTo(None))
+    | None -> Assert.Fail("Expected expression result fact for later non-folded addition")
+
+[<Test>]
+let ``dim uses folded constant expressions for array bounds`` () =
+    let analyzed =
+        analyzeProgram "10 DIM score(1+2)\n20 PRINT score(3)\n"
+
+    Assert.That(analyzed.Errors, Is.Empty)
+
+    match analyzed.SymTab[globalScope].Symbols[normalizeIdentifier "score"] with
+    | ArraySym sym ->
+        Assert.That(sym.Dimensions.Length, Is.EqualTo(1))
+        Assert.That(sym.Dimensions[0], Is.EqualTo(3))
+    | other -> Assert.Fail($"Expected array symbol for score, got %A{other}")
+
+[<Test>]
+let ``assignment rejects function call result as non writable target`` () =
+    let analyzed =
+        analyzeProgram "10 DEFine FuNction twice(x)\n20 RETurn x*2\n30 END DEFine\n40 twice(2)=10\n"
+
+    Assert.That(analyzed.Errors, Has.Some.Contains("Function 'twice' is not a writable assignment target"))
+
+[<Test>]
+let ``assignment rejects built in call result as non writable target`` () =
+    let analyzed =
+        analyzeProgram "10 LEN(\"abc\")=1\n"
+
+    Assert.That(analyzed.Errors, Has.Some.Contains("Built-in 'LEN' is not a writable assignment target"))
+
+[<Test>]
+let ``assignment rejects built in constant like target`` () =
+    let analyzed =
+        analyzeProgram "10 PI=3\n"
+
+    Assert.That(analyzed.Errors, Has.Some.Contains("Built-in 'PI' is not a writable assignment target"))
+
+[<Test>]
+let ``procedure cannot be used in expression context`` () =
+    let analyzed =
+        analyzeProgram "10 DEFine PROCedure show(x)\n20 END DEFine\n30 total = show(1)\n"
+
+    Assert.That(analyzed.Errors, Has.Some.Contains("Procedure 'show' cannot be used in expression context"))
+
+[<Test>]
+let ``function cannot be used as a statement call`` () =
+    let analyzed =
+        analyzeProgram "10 DEFine FuNction add(a,b)\n20 RETurn a+b\n30 END DEFine\n40 add 1,2\n"
+
+    Assert.That(analyzed.Errors, Has.Some.Contains("Function 'add' cannot be used as a statement call"))
+
+[<Test>]
+let ``assignment reports incompatible string and numeric types`` () =
+    let analyzed =
+        analyzeProgram "10 name$ = 1 + 2\n20 total = \"abc\"\n"
+
+    Assert.That(analyzed.Errors, Has.Some.Contains("Cannot assign Integer expression to String target"))
+
+[<Test>]
+let ``superbasic arithmetic coerces numeric strings for plus`` () =
+    let analyzed =
+        analyzeProgram "10 total = \"3\" + \"4\"\n"
+
+    Assert.That(analyzed.Errors, Is.Empty)
+
+    let additionResult =
+        analyzed.ExpressionFacts
+        |> List.tryFind (fun fact ->
+            fact.Kind = ExpressionResult
+            && fact.Name = "+"
+            && fact.Position.EditorLineNo = 1)
+
+    match additionResult with
+    | Some fact ->
+        Assert.That(fact.EvaluatedType, Is.EqualTo(Some SBType.Real))
+        Assert.That(fact.ValueText, Is.EqualTo(Some "7"))
+    | None -> Assert.Fail("Expected expression result fact for numeric string addition")
+
+[<Test>]
+let ``superbasic arithmetic reports non coercible string operands`` () =
+    let analyzed =
+        analyzeProgram "10 total = \"A\" + 1\n"
+
+    Assert.That(analyzed.Errors, Has.Some.Contains("Operator '+' cannot coerce operand"))
+
+[<Test>]
+let ``if condition rejects string expressions`` () =
+    let analyzed =
+        analyzeProgram "10 IF \"abc\" THEN PRINT 1\n"
+
+    Assert.That(analyzed.Errors, Has.Some.Contains("Condition expression must be numeric"))
+
+[<Test>]
+let ``scalar indexed use is rejected`` () =
+    let analyzed =
+        analyzeProgram "10 score = 1\n20 PRINT score(1)\n"
+
+    Assert.That(analyzed.Errors, Has.Some.Contains("Scalar 'score' cannot be indexed"))
+
+[<Test>]
+let ``array scalar use is rejected`` () =
+    let analyzed =
+        analyzeProgram "10 DIM score(10)\n20 PRINT score\n"
+
+    Assert.That(analyzed.Errors, Has.Some.Contains("Array 'score' used without index"))
+
+[<Test>]
+let ``procedure call arity is validated from declared parameters`` () =
+    let analyzed =
+        analyzeProgram "10 DEFine PROCedure show(x,y)\n20 END DEFine\n30 show 1\n"
+
+    Assert.That(analyzed.Errors, Has.Some.Contains("Call to 'show' expects 2 argument(s) but received 1"))
+
+[<Test>]
+let ``function call arity is validated in expression context`` () =
+    let analyzed =
+        analyzeProgram "10 DEFine FuNction add(a,b)\n20 RETURN a+b\n30 END DEFine\n40 total = add(1)\n"
+
+    Assert.That(analyzed.Errors, Has.Some.Contains("Call to 'add' expects 2 argument(s) but received 1"))
+
+[<Test>]
+let ``fixed arity built in calls are validated where modeled`` () =
+    let analyzed =
+        analyzeProgram "10 value = LEN(\"abc\",1)\n"
+
+    Assert.That(analyzed.Errors, Has.Some.Contains("Call to 'LEN' expects 1 argument(s) but received 2"))
+
+[<Test>]
+let ``built in string arguments are validated where modeled`` () =
+    let analyzed =
+        analyzeProgram "10 value = LEN(1)\n"
+
+    Assert.That(analyzed.Errors, Has.Some.Contains("Built-in 'LEN' argument 1 must be string-compatible"))
+
+[<Test>]
+let ``built in numeric arguments reject non coercible constant strings`` () =
+    let analyzed =
+        analyzeProgram "10 value = ABS(\"A\")\n"
+
+    Assert.That(analyzed.Errors, Has.Some.Contains("Built-in 'ABS' argument 1 must be numeric-compatible"))
+
+[<Test>]
+let ``input arguments must be writable`` () =
+    let analyzed =
+        analyzeProgram "10 INPUT 1\n"
+
+    Assert.That(analyzed.Errors, Has.Some.Contains("Built-in 'INPUT' argument 1 must be writable"))
+
+[<Test>]
+let ``function return and call expressions propagate inferred string type`` () =
+    let analyzed =
+        analyzeProgram "10 DEFine FuNction twice$(value$)\n20 RETURN value$ & value$\n30 END DEFine\n40 result$ = twice$(\"a\")\n"
+
+    Assert.That(analyzed.Errors, Is.Empty)
+
+    match analyzed.SymTab[globalScope].Symbols[normalizeIdentifier "twice$"] with
+    | FunctionSym sym -> Assert.That(sym.ReturnType, Is.EqualTo(SBType.String))
+    | other -> Assert.Fail($"Expected function symbol for twice$, got %A{other}")
+
+    match analyzed.SymTab[globalScope].Symbols[normalizeIdentifier "result$"] with
+    | VariableSym sym -> Assert.That(sym.Common.EvaluatedType, Is.EqualTo(SBType.String))
+    | other -> Assert.Fail($"Expected variable symbol for result$, got %A{other}")
+
+    let returnConcat =
+        analyzed.ExpressionFacts
+        |> List.tryFind (fun fact ->
+            fact.Kind = ExpressionResult
+            && fact.Name = "&"
+            && fact.Position.EditorLineNo = 2
+            && fact.EvaluatedType = Some SBType.String)
+
+    let functionCallResult =
+        analyzed.ExpressionFacts
+        |> List.tryFind (fun fact ->
+            fact.Kind = ExpressionResult
+            && fact.Name = "twice$(...)"
+            && fact.Position.EditorLineNo = 4
+            && fact.EvaluatedType = Some SBType.String)
+
+    Assert.That(returnConcat.IsSome, Is.True)
+    Assert.That(functionCallResult.IsSome, Is.True)

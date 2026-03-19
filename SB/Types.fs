@@ -43,6 +43,7 @@ type CommonSymbol = {
 
 type VariableSymbol = {
     Common: CommonSymbol
+    ValueText: string option
 }
 
 type ConstantSymbol = {
@@ -53,6 +54,7 @@ type ConstantSymbol = {
 type ParameterSymbol = {
     Common: CommonSymbol
     Passing: ParameterPassing option
+    ValueText: string option
 }
 
 type ArraySymbol = {
@@ -110,6 +112,12 @@ module Symbol =
     let normalizedName sym = name sym |> normalizeIdentifier
     let typ sym = (common sym).EvaluatedType
     let position sym = (common sym).Position
+    let valueText sym =
+        match sym with
+        | VariableSym s -> s.ValueText
+        | ConstantSym s -> s.ValueText
+        | ParameterSym s -> s.ValueText
+        | _ -> None
 
 type Scope = {
     Id: string
@@ -129,6 +137,36 @@ type SemanticFactKind =
     | DeclarationSite
     | ReferenceSite
     | CallSite
+    | ExpressionResult
+
+type DiagnosticSeverity =
+    | Error
+    | Warning
+
+type SemanticDiagnosticCode =
+    | Generic
+    | CategoryMismatch
+    | UnresolvedReference
+    | UnresolvedCall
+    | NotCallable
+    | InvalidIndexing
+    | NonWritableTarget
+    | InvalidCallArity
+    | InvalidBuiltInArgument
+    | InvalidOperandCoercion
+    | InvalidOperandTypes
+    | InvalidExpressionContext
+    | InvalidStatementCall
+    | InvalidAssignment
+    | InvalidControlFlowTarget
+    | InvalidCondition
+    | InvalidSelector
+    | InvalidSliceBounds
+    | InvalidForBounds
+    | InvalidSelectClause
+    | InvalidReturn
+    | InvalidRestoreTarget
+    | InvalidChannel
 
 type SemanticFact = {
     Name: string
@@ -136,4 +174,15 @@ type SemanticFact = {
     Position: SourcePosition
     Category: SymbolCategory option
     Kind: SemanticFactKind
+    EvaluatedType: SBType option
+    ValueText: string option
+}
+
+type SemanticDiagnostic = {
+    Code: SemanticDiagnosticCode
+    Severity: DiagnosticSeverity
+    Message: string
+    Position: SourcePosition option
+    Scope: string
+    SymbolName: string option
 }
