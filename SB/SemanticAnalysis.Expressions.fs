@@ -103,6 +103,9 @@ let private coerceOperandType mostGeneral operandSet =
     | SBType.String, StringFloatOrInteger -> Some SBType.String
     | _ -> None
 
+let private isIntegerCompatible operandType =
+    operandType = SBType.Unknown || (coerceOperandType operandType OnlyInteger = Some SBType.Integer)
+
 let mergeTypes existing inferred =
     match existing, inferred with
     | current, SBType.Unknown -> current
@@ -625,7 +628,7 @@ let rec inferExprType (state: ProcessingState) expr =
         let lhsType, stateAfterLhs = inferExprType state lhs
         let rhsType, stateAfterRhs = inferExprType stateAfterLhs rhs
         let nextState =
-            if (lhsType = SBType.Integer || lhsType = SBType.Unknown) && (rhsType = SBType.Integer || rhsType = SBType.Unknown) then
+            if isIntegerCompatible lhsType && isIntegerCompatible rhsType then
                 stateAfterRhs
             else
                 appendDiagnostic SemanticDiagnosticCode.InvalidSliceBounds None (Some pos) $"Slice bounds must be integer expressions at {pos.EditorLineNo}:{pos.Column}" stateAfterRhs

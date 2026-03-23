@@ -385,6 +385,40 @@ let ``dim uses folded constant expressions for array bounds`` () =
     | other -> Assert.Fail($"Expected array symbol for score, got %A{other}")
 
 [<Test>]
+let ``single dimension string dim declares a string variable`` () =
+    let analyzed =
+        analyzeProgram "10 DIM out_file$(100)\n20 out_file$ = \"abc\"\n30 PRINT out_file$\n"
+
+    Assert.That(analyzed.Errors, Is.Empty)
+
+    match analyzed.SymTab[globalScope].Symbols[normalizeIdentifier "out_file$"] with
+    | VariableSym sym ->
+        Assert.That(sym.Common.EvaluatedType, Is.EqualTo(SBType.String))
+    | other -> Assert.Fail($"Expected string variable symbol for out_file$, got %A{other}")
+
+[<Test>]
+let ``multi dimension string dim remains an array`` () =
+    let analyzed =
+        analyzeProgram "10 DIM name$(100,16)\n20 PRINT name$(1,1 TO 10)\n"
+
+    Assert.That(analyzed.Errors, Is.Empty)
+
+    match analyzed.SymTab[globalScope].Symbols[normalizeIdentifier "name$"] with
+    | ArraySym sym ->
+        Assert.That(sym.Dimensions.Length, Is.EqualTo(2))
+        Assert.That(sym.Dimensions[0], Is.EqualTo(100))
+        Assert.That(sym.Dimensions[1], Is.EqualTo(16))
+    | other -> Assert.Fail($"Expected array symbol for name$, got %A{other}")
+
+[<Test>]
+let ``slice bounds accept numeric expressions that coerce to integer`` () =
+    let analyzed =
+        analyzeProgram "10 c=10/2\n20 x=RND(0 TO c)-c/2\n"
+
+    Assert.That(analyzed.Diagnostics |> List.exists (fun d -> d.Code = SemanticDiagnosticCode.InvalidSliceBounds), Is.False)
+    Assert.That(analyzed.Errors, Is.Empty)
+
+[<Test>]
 let ``assignment rejects function call result as non writable target`` () =
     let analyzed =
         analyzeProgram "10 DEFine FuNction twice(x)\n20 RETurn x*2\n30 END DEFine\n40 twice(2)=10\n"

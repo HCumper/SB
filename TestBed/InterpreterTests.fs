@@ -1,6 +1,8 @@
 module TestBed.InterpreterTests
 
 open System
+open System.IO
+open Antlr4.Runtime
 open NUnit.Framework
 
 open Types
@@ -8,6 +10,7 @@ open SyntaxAst
 open CompilerPipeline
 open AstToHir
 open Interpreter
+open ParseTreeVisitor
 
 let private pos =
     { BasicLineNo = None
@@ -19,6 +22,28 @@ let private str value = mkStringLiteral pos value
 let private id name = mkIdentifier pos name
 let private call name args = mkPostfixName pos name (Some args)
 let private binary op lhs rhs = mkBinaryExpr pos op lhs rhs
+
+let private fixturePath fileName =
+    let candidates =
+        [ Path.Combine(__SOURCE_DIRECTORY__, "..", fileName)
+          Path.Combine(__SOURCE_DIRECTORY__, "..", "SB", fileName)
+          Path.Combine(__SOURCE_DIRECTORY__, "..", "SB", Path.GetFileName(fileName)) ]
+        |> List.map Path.GetFullPath
+
+    match candidates |> List.tryFind File.Exists with
+    | Some path -> path
+    | None -> failwith $"Fixture file not found: {fileName}"
+
+let private parseAstFromFile fileName =
+    let input = File.ReadAllText(fixturePath fileName)
+    let inputStream = AntlrInputStream(input)
+    let lexer = CompilerPipeline.createLexer inputStream
+    let tokenStream = CommonTokenStream(lexer)
+    let parser = SBParser(tokenStream)
+
+    parser.program()
+    |> convertTreeToAst
+    |> List.head
 
 let private lowerProgram ast =
     let analyzed = runSemanticAnalysis ast
@@ -125,3 +150,22 @@ let ``interpreter handles input prompts and targets`` () =
     let output = runProgramWithInput [ "42" ] ast
 
     Assert.That(String.concat "|" output, Is.EqualTo("Enter|42"))
+
+[<Test>]
+let ``q3 fixture runtime completes sort check without inversion output`` () =
+    let ast = parseAstFromFile "q3.SB"
+    let hir = lowerProgram ast
+    let outputs = ResizeArray<string>()
+    let inputs = Collections.Generic.Queue<string>([ "25"; "" ])
+    let options =
+        { defaultRuntimeOptions with
+            InputProvider = fun () -> if inputs.Count > 0 then Some(inputs.Dequeue()) else None
+            OutputWriter = fun line -> outputs.Add(line)
+            Random = Random(1234)
+            Clock = fun () -> DateTime(2024, 1, 2, 3, 4, 5, DateTimeKind.Utc) }
+
+    match interpretProgramWithOptions options hir with
+    | Result.Ok result ->
+        Assert.That(result.Output |> List.exists (fun line -> line.StartsWith("Error at")), Is.False)
+    | Result.Error err ->
+        Assert.Fail($"Expected q3 fixture interpretation to succeed, got %A{err}")

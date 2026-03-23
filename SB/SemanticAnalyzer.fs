@@ -90,6 +90,9 @@ let private inferArgumentTypes args state =
 let private inferExprList exprs state =
     inferArgumentTypes exprs state |> snd
 
+let private isSizedStringDeclaration name (dims: Expr list) =
+    suffixDeclaredType name = SBType.String && dims.Length = 1
+
 let rec private stateIter action items =
     state {
         match items with
@@ -197,7 +200,10 @@ and collectDeclarations (mode: SymbolAddMode) (node: Stmt) : State<ProcessingSta
                         dims
                         |> List.choose (tryEvaluateConstantIntegerExpr state)
                     let targetScope = declarationScopeForDim state.CurrentScope name state.SymTab
-                    declareArray mode targetScope name pos sizes state) currentState
+                    if isSizedStringDeclaration name dims then
+                        declareVariable mode targetScope name pos state
+                    else
+                        declareArray mode targetScope name pos sizes state) currentState
             do! putState nextState
 
         | LocalStmt(pos, items) ->
@@ -209,7 +215,10 @@ and collectDeclarations (mode: SymbolAddMode) (node: Stmt) : State<ProcessingSta
                         let sizes =
                             dimExprs
                             |> List.choose (tryEvaluateConstantIntegerExpr state)
-                        declareArray mode state.CurrentScope name pos sizes state
+                        if isSizedStringDeclaration name dimExprs then
+                            declareVariable mode state.CurrentScope name pos state
+                        else
+                            declareArray mode state.CurrentScope name pos sizes state
                     | None -> declareVariable mode state.CurrentScope name pos state) currentState
             do! putState nextState
 

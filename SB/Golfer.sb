@@ -124,7 +124,7 @@
 1330 POKE_W add,color:POKE_W add+128,color1
 1340 PAUSE 10
 1350 POKE_W add,newcol:POKE_W add+128,newcol1
-1360 PAUSE 9:END FOR n
+1360 PAUSE 9
 1370 REMark END DEFine
 1380 :
 1390 DEFine FuNction getcol(x,y)
@@ -378,7 +378,7 @@
 3870   OPEN_NEW #9,"flp1_golf_data"
 3880   FOR n=1 TO 100:PRINT#9 ,score(n):NEXT n
 3890   FOR n=1 TO 100:PRINT#9 ,name$(n, 1 TO 10)
-3900   NEXT n
+3900   REMark NEXT n
 3910   CLOSE#9
 3920 END DEFine datasave
 3930 :
@@ -386,7 +386,7 @@
 3950   OPEN_IN #9,"flp1_golf_data"
 3960   FOR n=1 TO 100:INPUT#9,score(n):NEXT n
 3970   FOR n=1 TO 100:INPUT#9,name$(n,1 TO 10)
-3980   NEXT n
+3980   REMark NEXT n
 3990   CLOSE#9
 4000 END DEFine dataload
 4010 :

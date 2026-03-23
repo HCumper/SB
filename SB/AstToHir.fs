@@ -279,21 +279,36 @@ let rec private lowerExpr ctx expr =
     | StringLiteral(_, pos, value) -> ok (lowerLiteral pos value)
     | Identifier(_, pos, name) ->
         zip (getRecordedExprType ctx expr) (requireSymbolIdForExpr ctx expr name pos)
-        |> map (fun (hirType, symbolId) -> ReadVar(symbolId, hirType, pos))
-    | PostfixName(_, pos, name, None) ->
-        zip (getRecordedExprType ctx expr) (requireSymbolIdForExpr ctx expr name pos)
-        |> map (fun (hirType, symbolId) ->
+        |> bind (fun (hirType, symbolId) ->
             match getRecordedResolvedSymbol ctx expr with
-            | Some resolved when isCallableBuiltIn resolved.Name -> CallFunc(symbolId, [], hirType, pos)
+            | Some resolved when isCallableBuiltIn resolved.Name -> ok (CallFunc(symbolId, [], hirType, pos))
             | Some resolved ->
                 match Map.tryFind resolved.Scope ctx.State.SymTab with
                 | Some scope ->
                     match Map.tryFind resolved.Name scope.Symbols with
                     | Some(FunctionSym _)
-                    | Some(BuiltInSym _) -> CallFunc(symbolId, [], hirType, pos)
-                    | _ -> ReadVar(symbolId, hirType, pos)
-                | None -> ReadVar(symbolId, hirType, pos)
-            | _ -> ReadVar(symbolId, hirType, pos))
+                    | Some(BuiltInSym _) -> ok (CallFunc(symbolId, [], hirType, pos))
+                    | _ -> ok (ReadVar(symbolId, hirType, pos))
+                | None -> ok (ReadVar(symbolId, hirType, pos))
+            | _ when normalizeIdentifier name = "DATE" ->
+                fail ctx.CurrentScope (Some pos) "DATE is about to lower as ReadVar."
+            | _ -> ok (ReadVar(symbolId, hirType, pos)))
+    | PostfixName(_, pos, name, None) ->
+        zip (getRecordedExprType ctx expr) (requireSymbolIdForExpr ctx expr name pos)
+        |> bind (fun (hirType, symbolId) ->
+            match getRecordedResolvedSymbol ctx expr with
+            | Some resolved when isCallableBuiltIn resolved.Name -> ok (CallFunc(symbolId, [], hirType, pos))
+            | Some resolved ->
+                match Map.tryFind resolved.Scope ctx.State.SymTab with
+                | Some scope ->
+                    match Map.tryFind resolved.Name scope.Symbols with
+                    | Some(FunctionSym _)
+                    | Some(BuiltInSym _) -> ok (CallFunc(symbolId, [], hirType, pos))
+                    | _ -> ok (ReadVar(symbolId, hirType, pos))
+                | None -> ok (ReadVar(symbolId, hirType, pos))
+            | _ when normalizeIdentifier name = "DATE" ->
+                fail ctx.CurrentScope (Some pos) "DATE is about to lower as ReadVar."
+            | _ -> ok (ReadVar(symbolId, hirType, pos)))
     | PostfixName(_, pos, name, Some args) ->
         zip (getRecordedExprType ctx expr) (zip (requireSymbolIdForExpr ctx expr name pos) (args |> List.map (lowerExpr ctx) |> collectResults))
         |> map (fun (hirType, (symbolId, loweredArgs)) ->

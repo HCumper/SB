@@ -120,10 +120,13 @@ let private lookupCell state symbolId =
 
     find state.Frames
 
+let private symbolName state symbolId =
+    Map.tryFind symbolId state.Program.SymbolNames |> Option.defaultValue (string symbolId)
+
 let private requireCell state symbolId pos =
     match lookupCell state symbolId with
     | Some cell -> Result.Ok cell
-    | None -> runtimeError (Some pos) $"No storage cell exists for symbol {symbolId}."
+    | None -> runtimeError (Some pos) $"No storage cell exists for symbol {symbolId} ({symbolName state symbolId})."
 
 let private arrayKey indexes =
     indexes |> List.map string |> String.concat ","
@@ -149,9 +152,6 @@ let private popFrame state =
     match state.Frames with
     | _ :: rest -> { state with Frames = rest }
     | [] -> state
-
-let private symbolName state symbolId =
-    Map.tryFind symbolId state.Program.SymbolNames |> Option.defaultValue (string symbolId)
 
 let rec private evalExpr state expr =
     match expr with
@@ -433,12 +433,15 @@ and private executeBuiltInCall state kind channel args targets pos =
              acc |> Result.bind (fun currentState -> assignInput currentState target index)))
         |> Result.map (fun nextState -> Continue, nextState)
     | Reference -> Result.Ok(Continue, state)
-    | NamedBuiltIn name when normalizeIdentifier name = "STOP" -> Result.Ok(StopExecution, state)
+    | NamedBuiltIn name ->
+        let normalized = normalizeIdentifier name
+        if normalized = "STOP" then Result.Ok(StopExecution, state)
+        elif normalized.StartsWith("TURBO") then Result.Ok(Continue, state)
+        else runtimeError (Some pos) $"Built-in statement '{kind}' is not implemented."
     | GotoBuiltIn
     | GosubBuiltIn
     | OnGotoBuiltIn
-    | OnGosubBuiltIn
-    | NamedBuiltIn _ -> runtimeError (Some pos) $"Built-in statement '{kind}' is not implemented."
+    | OnGosubBuiltIn -> runtimeError (Some pos) $"Built-in statement '{kind}' is not implemented."
 
 and private executeStmt state stmt =
     match stmt with
