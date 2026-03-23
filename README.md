@@ -1,82 +1,75 @@
 # SB
 
-An F# compiler pipeline for SuperBASIC and Structured SuperBASIC (`.ssb`) source.
+An F# SuperBASIC / Structured SuperBASIC toolchain targeting `.NET 10`.
 
-The current implementation can:
+The active codebase currently supports:
 
-- preprocess derivative `.ssb` input into numbered SuperBASIC source
-- parse SuperBASIC with ANTLR
-- build a normalized AST
-- run semantic analysis with symbol resolution, expression typing, coercion, constant folding, and diagnostics
+- SSB preprocessing into numbered SuperBASIC
+- ANTLR-based parsing
+- normalized AST construction
+- semantic analysis with symbol resolution, typing, coercion, constant folding, and diagnostics
+- lowering from AST to HIR
+- a partial interpreter for HIR
 
-There is no backend yet. The semantic layer is substantially richer than code generation, and some language constructs still lower to placeholder comments in the generated C#.
+The project is not yet a full SuperBASIC runtime. It can run a meaningful subset of programs, but many built-ins and host-specific behaviors are still incomplete.
 
-## Repository layout
+## Solution layout
 
-- `SB/`: main F# compiler executable
-- `SBLib/`: ANTLR grammar project and generated parser support
-- `Runtime/`: small runtime/support library for generated output
-- `TestBed/`: current NUnit-based test suite
+- `SB/` - main compiler/interpreter executable and core pipeline
+- `SBLib/` - ANTLR grammar and generated parser artifacts
+- `TestBed/` - NUnit regression tests for parser, semantics, lowering, fixtures, and interpreter behavior
 
 ## Current pipeline
 
-The active compiler path is:
+The active path is:
 
-1. load source from `appsettings.json` or command-line arguments
+1. load source
 2. classify input as numbered SuperBASIC or Structured SuperBASIC
-3. preprocess `.ssb` input through the SSB compatibility pass
+3. preprocess `.ssb` when needed
 4. parse with ANTLR
-5. convert the parse tree to the F# AST via `ParseTreeVisitor.fs`
+5. convert parse tree to AST
 6. run semantic analysis
+7. lower AST to HIR
+8. interpret HIR
 
-Key modules in `SB/`:
+Important files in `SB/`:
 
-- `CompilerPipeline.fs`: stage orchestration and CLI-facing pipeline
-- `ParseTreeVisitor.fs`: parse tree to AST lowering
-- `SemanticAnalyzer.fs`: semantic pass orchestration
-- `SemanticAnalysis.Symbols.fs`: scope lookup and symbol updates
-- `SemanticAnalysis.Expressions.fs`: expression typing, coercion, folding, and validation
-- `SemanticAnalysis.Facts.fs`: semantic facts and diagnostics helpers
-- `TypeAnalyzer.fs`: implicit typing normalization
-- `SSB.fs`: legacy Structured SuperBASIC preprocessor
+- `CompilerPipeline.fs` - pipeline orchestration
+- `ParseTreeVisitor.fs` - parse tree to AST lowering
+- `SemanticAnalyzer.fs` - semantic pass orchestration
+- `SemanticAnalysis.Symbols.fs` - scope and symbol rules
+- `SemanticAnalysis.Expressions.fs` - typing, coercion, folding, and expression validation
+- `AstToHir.fs` - semantic AST to HIR lowering
+- `Interpreter.fs` - HIR interpreter
+- `BuiltIns.fs` - built-in name/signature model
 
-## Semantic analysis status
+## Status
 
-The semantic pass currently covers:
+Implemented well enough to be useful:
 
-- declaration collection for globals, locals, procedures, and functions
-- symbol resolution across scopes
-- expression result typing
-- SuperBASIC-style coercion for operators
-- constant folding where values are statically knowable
-- scalar vs array usage validation
-- call arity checks where signatures are known
-- built-in argument validation for a conservative subset
-- assignment target validation for non-writable symbols
-- function/procedure usage-shape validation
-- structured semantic diagnostics
+- symbol and scope analysis
+- many expression rules
+- assignment, loops, conditionals, `DATA`/`READ`/`RESTORE`
+- HIR lowering for the core statement/expression set
+- interpreter support for a subset of function and statement built-ins
 
-Representative fixture programs used in tests include:
+Still incomplete:
 
-- `SB/q3.SB`
-- `SB/Golfer.sb`
-- `SB/Project Planner.sb`
-- `SB/ssb272.ssb`
+- broad built-in coverage
+- full channel/device/file semantics
+- by-reference procedure semantics
+- graphics, sound, and environment-specific runtime behavior
+- faithful Sinclair QL compatibility
 
-## Code generation status
+## Build
 
-Pending
-
-
-The solution targets `.NET 10`.
-
-Build the solution:
+Build the whole solution:
 
 ```powershell
 dotnet build .\SB.sln
 ```
 
-Build just the compiler:
+Build just the main project:
 
 ```powershell
 dotnet build .\SB\SB.fsproj
@@ -84,27 +77,13 @@ dotnet build .\SB\SB.fsproj
 
 ## Run
 
-By default the compiler reads settings from `SB/appsettings.json`. That file currently points at local sample inputs in this repository.
-
-Run using `appsettings.json`:
+Run the main executable:
 
 ```powershell
 dotnet run --project .\SB\SB.fsproj
 ```
 
-Run with explicit arguments:
-
-```powershell
-dotnet run --project .\SB\SB.fsproj -- "C:\path\to\input.sb" "C:\path\to\output.cs" "true"
-```
-
-Argument order:
-
-1. input file
-2. output file
-3. verbose flag
-
-Note: the CLI currently writes generated C# to standard output. The output file setting is still used by some pipeline components and reflects the older tool shape, but `Program.fs` currently prints generated code rather than writing it directly to `OutputFile`.
+The CLI still reflects an older compiler-oriented shape. `SB/appsettings.json` is used by default, and some code paths still print generated/debug output rather than behaving like a finished standalone runtime.
 
 ## Test
 
@@ -117,18 +96,14 @@ dotnet test .\TestBed\TestBed.fsproj
 The `TestBed` project covers:
 
 - parse-tree to AST behavior
-- AST diagnostics
 - semantic analysis
-- pipeline classification and preprocessing
-- real-program fixture coverage
-
-## Parser generation
-
-The grammar lives in `SBLib/SB.g4`.
-
-`SBLib` is configured to generate both ANTLR listeners and visitors, but the active compiler path uses the visitor-based AST builder in `SB/ParseTreeVisitor.fs`.
+- AST to HIR lowering
+- interpreter behavior
+- fixture programs such as `q3.SB`, `Golfer.sb`, `Project Planner.sb`, and `ssb272.ssb`
 
 ## Notes
 
-- The repo still contains historical and transitional pieces. The active work is in `SB/`, `SBLib/`, `Runtime/`, and `TestBed/`.
-- The semantic layer is ahead of the backend. If you are extending the compiler, semantic normalization and a real IR are the next natural areas of work.
+- The grammar is in `SBLib/SB.g4`.
+- The generated ANTLR Java files in `SBLib/` are repository artifacts, not the main implementation surface.
+- The most active implementation areas are `SB/` and `TestBed/`.
+- The most natural next step is a registry/services-based runtime architecture for broader built-in coverage under `.NET`.
