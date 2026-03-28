@@ -14,6 +14,8 @@ open ProcessingTypes
 open ScopeNames
 open AstDiagnostics
 open AstToHir
+open HirCBackend
+open HirCSharpBackend
 open ParseTreeVisitor
 open SymbolTableManager
 open SemanticAnalyzer
@@ -65,6 +67,7 @@ type RuntimeSettings = {
     OutputFileName: string
     TemplateFileName: string
     Verbose: bool
+    Backend: string
     AppName: string
     Logger: Core.Logger
 }
@@ -87,14 +90,25 @@ let getSettings argv : RuntimeSettings =
     let templatesFileName = configSettings.GetValue<string>("AppSettings:TemplatesFile")
     let outputFileName = configSettings.GetValue<string>("AppSettings:OutputFile")
     let verbosityLevel = configSettings.GetValue<bool>("AppSettings:Verbose")
+    let backend = configSettings.GetValue<string>("AppSettings:Backend")
     let logger = configureLogger configSettings
+    let defaultBackend = if String.IsNullOrWhiteSpace backend then "interpret" else backend
 
     match argv with
+    | [| input; output; verbose; backendName |] ->
+        { InputFileName = input
+          OutputFileName = output
+          TemplateFileName = templatesFileName
+          Verbose = Boolean.Parse(verbose)
+          Backend = backendName
+          AppName = appName
+          Logger = logger }
     | [| input; output; verbose |] ->
         { InputFileName = input
           OutputFileName = output
           TemplateFileName = templatesFileName
           Verbose = Boolean.Parse(verbose)
+          Backend = defaultBackend
           AppName = appName
           Logger = logger }
     | _ ->
@@ -102,6 +116,7 @@ let getSettings argv : RuntimeSettings =
           OutputFileName = outputFileName
           TemplateFileName = templatesFileName
           Verbose = verbosityLevel
+          Backend = defaultBackend
           AppName = appName
           Logger = logger }
 
@@ -189,6 +204,16 @@ let runHirLowering (state: ProcessingState) =
         { Message = error.Message
           Scope = error.Scope
           Position = error.Position }))
+
+let generateCSharpFromHir state className =
+    runHirLowering state
+    |> Result.map (HirCSharpBackend.generateCSharpFromHir className)
+
+let generateCSharpFromLoweredHir className hirProgram =
+    HirCSharpBackend.generateCSharpFromHir className hirProgram
+
+let generateCFromLoweredHir programName hirProgram =
+    HirCBackend.generateCFromHir programName hirProgram
 
 let generateAstOutput (config: Configuration) (ast: Ast) =
     File.Delete config.OutputFile

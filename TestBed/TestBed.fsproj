@@ -9,6 +9,9 @@
     <ItemGroup>
         <Compile Include="ParseTreeVisitorTests.fs" />
         <Compile Include="AstToHirTests.fs" />
+        <Compile Include="CompilerPipelineTests.fs" />
+        <Compile Include="HirCBackendTests.fs" />
+        <Compile Include="HirCSharpBackendTests.fs" />
         <Compile Include="InterpreterTests.fs" />
         <Compile Include="UtilityTests.fs" />
         <Compile Include="AstVerificationTests.fs" />

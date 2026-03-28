@@ -25,6 +25,7 @@ let private testSettings inputFile =
       OutputFileName = Path.GetTempFileName()
       TemplateFileName = "unused"
       Verbose = false
+      Backend = "interpret"
       AppName = "Test"
       Logger = LoggerConfiguration().CreateLogger() }
 

@@ -1,6 +1,7 @@
 module Program
 
 open System
+open System.IO
 
 open CompilerPipeline
 open HIRPrettyPrinter
@@ -40,6 +41,12 @@ let private formatRuntimeError (error: RuntimeError) =
 
     $"{error.Message}{location}"
 
+let private normalizeBackendName (backend: string) =
+    if String.IsNullOrWhiteSpace backend then
+        "interpret"
+    else
+        backend.Trim().ToLowerInvariant()
+
 [<EntryPoint>]
 let main argv =
     // The CLI currently stops after semantic analysis failure and only emits
@@ -73,9 +80,26 @@ let main argv =
                     Console.WriteLine("HIR:")
                     Console.WriteLine(prettyPrintHir hirProgram)
                     Console.WriteLine($"HIR lowering succeeded. Globals={hirProgram.Globals.Length}, Routines={hirProgram.Routines.Length}, DataEntries={hirProgram.DataEntries.Length}, MainStatements={hirProgram.Main.Length}")
-                match interpretProgram hirProgram with
-                | Ok _ -> 0
-                | Error runtimeError ->
-                    Console.Error.WriteLine("Runtime failed:")
-                    Console.Error.WriteLine(formatRuntimeError runtimeError)
+                match normalizeBackendName settings.Backend with
+                | "interpret" ->
+                    match interpretProgram hirProgram with
+                    | Ok _ -> 0
+                    | Error runtimeError ->
+                        Console.Error.WriteLine("Runtime failed:")
+                        Console.Error.WriteLine(formatRuntimeError runtimeError)
+                        1
+                | "csharp" ->
+                    let generated = generateCSharpFromLoweredHir settings.AppName hirProgram
+                    File.WriteAllText(settings.OutputFileName, generated)
+                    if settings.Verbose then
+                        Console.WriteLine($"Generated C# written to {settings.OutputFileName}")
+                    0
+                | "c" ->
+                    let generated = generateCFromLoweredHir settings.AppName hirProgram
+                    File.WriteAllText(settings.OutputFileName, generated)
+                    if settings.Verbose then
+                        Console.WriteLine($"Generated C written to {settings.OutputFileName}")
+                    0
+                | backend ->
+                    Console.Error.WriteLine($"Unknown backend '{backend}'. Supported backends: interpret, csharp, c.")
                     1

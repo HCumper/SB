@@ -10,6 +10,8 @@ The active codebase currently supports:
 - semantic analysis with symbol resolution, typing, coercion, constant folding, and diagnostics
 - lowering from AST to HIR
 - a partial interpreter for HIR
+- alternate C# generation from lowered HIR
+- alternate plain C generation from lowered HIR
 
 The project is not yet a full SuperBASIC runtime. It can run a meaningful subset of programs, but many built-ins and host-specific behaviors are still incomplete.
 
@@ -31,6 +33,8 @@ The active path is:
 6. run semantic analysis
 7. lower AST to HIR
 8. interpret HIR
+
+The CLI can also emit C# or plain C from HIR instead of interpreting.
 
 Important files in `SB/`:
 
@@ -83,7 +87,17 @@ Run the main executable:
 dotnet run --project .\SB\SB.fsproj
 ```
 
-The CLI still reflects an older compiler-oriented shape. `SB/appsettings.json` is used by default, and some code paths still print generated/debug output rather than behaving like a finished standalone runtime.
+`SB/appsettings.json` is used by default. The backend is selected by `AppSettings:Backend` or by a fourth CLI argument:
+
+```powershell
+dotnet run --project .\SB\SB.fsproj -- input.sb output.cs false csharp
+```
+
+Supported backends:
+
+- `interpret` - lower to HIR and run the interpreter
+- `csharp` - lower to HIR and write generated C# to the configured output path
+- `c` - lower to HIR and write generated C to the configured output path
 
 ## Test
 
