@@ -14,6 +14,7 @@ let private pos =
       Column = 0 }
 
 let private num value = mkNumberLiteral pos value
+let private binary op lhs rhs = mkBinaryExpr pos op lhs rhs
 
 let private lowerProgram ast =
     let analyzed = runSemanticAnalysis ast
@@ -128,3 +129,126 @@ let ``lowerToHir supports channel input prompts`` () =
     | [ LineNumber(10, _)
         Input(Some(Literal(ConstInt 1, Int, _)), [ Literal(ConstString "Name", String, _) ], [ WriteVar(_, _, _) ], _) ] -> ()
     | other -> Assert.Fail($"Unexpected channel INPUT HIR: %A{other}")
+
+[<Test>]
+let ``lowerToHir preserves parameter binding metadata from reference statements`` () =
+    let ast =
+        Program(
+            pos,
+            [ Line(
+                pos,
+                Some 10,
+                [ ProcedureDef(
+                    pos,
+                    "swap",
+                    [ "left"; "right" ],
+                    [ Line(pos, Some 20, [ ReferenceStmt(pos, [ mkIdentifier pos "right" ]) ]) ]) ]) ])
+
+    let hir = lowerProgram ast
+
+    match hir.Routines with
+    | [ routine ] ->
+        match routine.Parameters with
+        | [ left; right ] ->
+            Assert.That(left.Binding, Is.EqualTo(FlexibleBinding))
+            Assert.That(right.Binding, Is.EqualTo(ReferenceBinding))
+        | other -> Assert.Fail($"Unexpected lowered parameters: %A{other}")
+    | other -> Assert.Fail($"Unexpected lowered routines: %A{other}")
+
+[<Test>]
+let ``lowerToHir uses dynamic scoped reads and writes for caller visible locals`` () =
+    let ast =
+        Program(
+            pos,
+            [ Line(
+                pos,
+                Some 10,
+                [ ProcedureDef(
+                    pos,
+                    "show",
+                    [],
+                    [ Line(pos, Some 100, [ Assignment(pos, mkIdentifier pos "score", num "9") ])
+                      Line(pos, Some 110, [ ProcedureCall(pos, "PRINT", [ mkIdentifier pos "score" ]) ]) ]) ])
+              Line(
+                pos,
+                Some 20,
+                [ ProcedureDef(
+                    pos,
+                    "main",
+                    [],
+                    [ Line(pos, Some 200, [ LocalStmt(pos, [ "score", None ]) ])
+                      Line(pos, Some 210, [ ProcedureCall(pos, "show", []) ]) ]) ]) ])
+
+    let hir = lowerProgram ast
+
+    match hir.Routines |> List.tryFind (fun routine -> routine.Name = "show") with
+    | Some routine ->
+        match routine.Body with
+        | [ LineNumber(100, _)
+            Assign(DynamicWriteVar("SCORE", _, _), Literal(ConstInt 9, HirType.Int, _), _)
+            LineNumber(110, _)
+            BuiltInCall(Print, None, [ DynamicReadVar("SCORE", HirType.Int, _) ], _) ] -> ()
+        | other -> Assert.Fail($"Unexpected lowered show body: %A{other}")
+    | None -> Assert.Fail("Expected lowered routine 'show'")
+
+[<Test>]
+let ``lowerToHir distinguishes reference and value call arguments`` () =
+    let ast =
+        Program(
+            pos,
+            [ Line(
+                pos,
+                Some 10,
+                [ ProcedureDef(
+                    pos,
+                    "bump",
+                    [ "a"; "b" ],
+                    [ Line(pos, Some 100, [ ReferenceStmt(pos, [ mkIdentifier pos "a" ]) ]) ]) ])
+              Line(pos, Some 20, [ Assignment(pos, mkIdentifier pos "x", num "1") ])
+              Line(pos, Some 30, [ ProcedureCall(pos, "bump", [ mkIdentifier pos "x"; binary "+" (mkIdentifier pos "x") (num "0") ]) ]) ])
+
+    let hir = lowerProgram ast
+
+    match hir.Main with
+    | [ LineNumber(10, _)
+        LineNumber(20, _)
+        Assign(WriteVar(_, _, _), Literal(ConstInt 1, HirType.Int, _), _)
+        LineNumber(30, _)
+        ProcCall(_, None, [ RefArg(WriteVar(_, HirType.Int, _)); ValueArg(Binary(Add, ReadVar(_, HirType.Int, _), Literal(ConstInt 0, HirType.Int, _), HirType.Int, _)) ], _) ] -> ()
+    | other -> Assert.Fail($"Unexpected lowered main for mixed call args: %A{other}")
+
+[<Test>]
+let ``lowerToHir lowers dynamic scoped array access`` () =
+    let ast =
+        Program(
+            pos,
+            [ Line(
+                pos,
+                Some 10,
+                [ ProcedureDef(
+                    pos,
+                    "show",
+                    [],
+                    [ Line(pos, Some 100, [ Assignment(pos, mkPostfixName pos "scores" (Some [ num "1" ]), num "5") ])
+                      Line(pos, Some 110, [ ProcedureCall(pos, "PRINT", [ mkPostfixName pos "scores" (Some [ num "1" ]) ]) ]) ]) ])
+              Line(
+                pos,
+                Some 20,
+                [ ProcedureDef(
+                    pos,
+                    "main",
+                    [],
+                    [ Line(pos, Some 200, [ LocalStmt(pos, [ "scores", Some [ num "5" ] ]) ])
+                      Line(pos, Some 210, [ ProcedureCall(pos, "show", []) ]) ]) ]) ])
+
+    let hir = lowerProgram ast
+
+    match hir.Routines |> List.tryFind (fun routine -> routine.Name = "show") with
+    | Some routine ->
+        match routine.Body with
+        | [ LineNumber(100, _)
+            Assign(DynamicWriteArrayElem("SCORES", [ Literal(ConstInt 1, HirType.Int, _) ], _, _), Literal(ConstInt 5, HirType.Int, _), _)
+            LineNumber(110, _)
+            BuiltInCall(Print, None, [ DynamicReadArrayElem("SCORES", [ Literal(ConstInt 1, HirType.Int, _) ], _, _) ], _) ] -> ()
+        | other -> Assert.Fail($"Unexpected lowered dynamic array body: %A{other}")
+    | None -> Assert.Fail("Expected lowered routine 'show'")

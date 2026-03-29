@@ -10,6 +10,9 @@ The active codebase currently supports:
 - semantic analysis with symbol resolution, typing, coercion, constant folding, and diagnostics
 - lowering from AST to HIR
 - a partial interpreter for HIR
+- caller-dependent procedure argument binding in the interpreter and HIR
+- `REFERENCE`-driven parameter binding metadata in semantic analysis and HIR
+- interpreter support for `GOTO`, `GOSUB`, `RETURN`, `ON GOTO`, and `ON GOSUB`
 - alternate C# generation from lowered HIR
 - alternate plain C generation from lowered HIR
 - published `.NET` executable generation from lowered HIR
@@ -59,6 +62,8 @@ Implemented well enough to be useful:
 - symbol and scope analysis
 - many expression rules
 - assignment, loops, conditionals, `DATA`/`READ`/`RESTORE`
+- numbered control flow in the interpreter, including `GOTO`, `GOSUB`, `RETURN`, `ON GOTO`, and `ON GOSUB`
+- flexible and by-reference parameter binding metadata through semantics and HIR
 - HIR lowering for the core statement/expression set
 - interpreter support for a subset of function and statement built-ins
 
@@ -66,7 +71,7 @@ Still incomplete:
 
 - broad built-in coverage
 - full channel/device/file semantics
-- by-reference procedure semantics
+- code generation parity for by-reference procedure semantics
 - graphics, sound, and environment-specific runtime behavior
 - faithful Sinclair QL compatibility
 

@@ -95,7 +95,7 @@ let private buildContext programName (program: HirProgram) =
     let routineStorage =
         program.Routines
         |> List.collect (fun routine ->
-            (routine.Parameters @ routine.Locals)
+            ((routine.Parameters |> List.map _.Storage) @ routine.Locals)
             |> List.map (fun storage -> storage.Symbol, storageFieldName program.SymbolNames storage))
 
     let routines =
@@ -150,7 +150,18 @@ let private emitCall targetName args =
         let argsText = String.concat ", " args
         $"{targetName}({argsText})"
 
-let rec private emitExpr ctx = function
+let rec private emitTargetRead ctx = function
+    | WriteVar(symbolId, _, _) -> storageName ctx symbolId
+    | WriteArrayElem(symbolId, indexes, _, _) ->
+        emitCall "get_array_value" ([ "&" + storageName ctx symbolId; string indexes.Length ] @ (indexes |> List.map (emitExpr ctx)))
+    | DynamicWriteVar(name, _, _) -> $"unsupported_dynamic_write(\"{escapeCString name}\")"
+    | DynamicWriteArrayElem(name, _, _, _) -> $"unsupported_dynamic_write(\"{escapeCString name}\")"
+
+and private emitCallArg ctx = function
+    | ValueArg expr -> emitExpr ctx expr
+    | RefArg target -> emitTargetRead ctx target
+
+and private emitExpr ctx = function
     | Literal(ConstInt value, _, _) -> $"make_int({value})"
     | Literal(ConstFloat value, _, _) ->
         let rendered = value.ToString("G17", CultureInfo.InvariantCulture)
@@ -159,6 +170,8 @@ let rec private emitExpr ctx = function
     | ReadVar(symbolId, _, _) -> storageName ctx symbolId
     | ReadArrayElem(symbolId, indexes, _, _) ->
         emitCall "get_array_value" ([ "&" + storageName ctx symbolId; string indexes.Length ] @ (indexes |> List.map (emitExpr ctx)))
+    | DynamicReadVar(name, _, _) -> $"unsupported_dynamic_read(\"{escapeCString name}\")"
+    | DynamicReadArrayElem(name, _, _, _) -> $"unsupported_dynamic_read(\"{escapeCString name}\")"
     | Unary(op, inner, _, _) ->
         let value = emitExpr ctx inner
         match op with
@@ -191,7 +204,7 @@ let rec private emitExpr ctx = function
         | SliceRange -> $"slice_range_value({left}, {right})"
         | BinaryUnknown name -> $"unsupported_binary(\"{escapeCString name}\", {left}, {right})"
     | CallFunc(symbolId, args, _, _) ->
-        let renderedArgs = args |> List.map (emitExpr ctx)
+        let renderedArgs = args |> List.map (emitCallArg ctx)
         if Set.contains symbolId ctx.RoutineSymbols then
             emitCall (routineName ctx symbolId) renderedArgs
         else
@@ -202,6 +215,8 @@ let private emitTargetWrite ctx target valueExpr =
     | WriteVar(symbolId, _, _) -> $"{storageName ctx symbolId} = {valueExpr};"
     | WriteArrayElem(symbolId, indexes, _, _) ->
         emitCall "set_array_value" ([ "&" + storageName ctx symbolId; valueExpr; string indexes.Length ] @ (indexes |> List.map (emitExpr ctx))) + ";"
+    | DynamicWriteVar(name, _, _) -> $"runtime_not_supported(\"Dynamic scoped write '{escapeCString name}' is not supported by the generated C backend yet.\");"
+    | DynamicWriteArrayElem(name, _, _, _) -> $"runtime_not_supported(\"Dynamic scoped array write '{escapeCString name}' is not supported by the generated C backend yet.\");"
 
 let rec private emitBlock ctx builder level block =
     block |> List.iter (emitStmt ctx builder level)
@@ -266,7 +281,7 @@ and private emitStmt ctx builder level stmt =
     | Assign(target, value, _) ->
         appendLine builder level (emitTargetWrite ctx target (emitExpr ctx value))
     | ProcCall(symbolId, _, args, _) ->
-        appendLine builder level (emitCall (routineName ctx symbolId) (args |> List.map (emitExpr ctx)) + ";")
+        appendLine builder level (emitCall (routineName ctx symbolId) (args |> List.map (emitCallArg ctx)) + ";")
     | BuiltInCall(kind, channel, args, _) ->
         let kindName =
             match kind with
@@ -294,7 +309,9 @@ and private emitStmt ctx builder level stmt =
             let valueExpr =
                 match target with
                 | WriteVar(_, typ, _)
-                | WriteArrayElem(_, _, typ, _) -> $"read_input_value({index}, {typeTag typ})"
+                | WriteArrayElem(_, _, typ, _)
+                | DynamicWriteVar(_, typ, _)
+                | DynamicWriteArrayElem(_, _, typ, _) -> $"read_input_value({index}, {typeTag typ})"
             appendLine builder level (emitTargetWrite ctx target valueExpr))
     | If(condition, thenBlock, elseBlock, _) ->
         emitIf ctx builder level condition thenBlock elseBlock
@@ -335,7 +352,9 @@ and private emitStmt ctx builder level stmt =
             let valueExpr =
                 match target with
                 | WriteVar(_, typ, _)
-                | WriteArrayElem(_, _, typ, _) -> $"read_data_value({typeTag typ})"
+                | WriteArrayElem(_, _, typ, _)
+                | DynamicWriteVar(_, typ, _)
+                | DynamicWriteArrayElem(_, _, typ, _) -> $"read_data_value({typeTag typ})"
             appendLine builder level (emitTargetWrite ctx target valueExpr))
     | Remark(text, _) ->
         appendLine builder level $"/* {escapeCString text} */"
@@ -347,14 +366,14 @@ let private emitRoutinePrototype (ctx: EmitterContext) (builder: StringBuilder) 
     let parameters =
         match routine.Parameters with
         | [] -> "void"
-        | items -> items |> List.map (fun storage -> $"Value {storageName ctx storage.Symbol}") |> String.concat ", "
+        | items -> items |> List.map (fun parameter -> $"Value {storageName ctx parameter.Storage.Symbol}") |> String.concat ", "
     appendLine builder level $"static Value {routineName ctx routine.Symbol}({parameters});"
 
 let private emitRoutine (ctx: EmitterContext) (builder: StringBuilder) (routine: HirRoutine) =
     let parameters =
         match routine.Parameters with
         | [] -> "void"
-        | items -> items |> List.map (fun storage -> $"Value {storageName ctx storage.Symbol}") |> String.concat ", "
+        | items -> items |> List.map (fun parameter -> $"Value {storageName ctx parameter.Storage.Symbol}") |> String.concat ", "
     appendLine builder 0 $"static Value {routineName ctx routine.Symbol}({parameters})"
     appendLine builder 0 "{"
     routine.Locals

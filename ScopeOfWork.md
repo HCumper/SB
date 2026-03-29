@@ -2,74 +2,95 @@
 
 ## Objective
 
-Develop the project from a broad prototype into a more faithful and robust SuperBASIC toolchain by prioritizing semantic correctness over feature breadth.
+Develop the project from a broad prototype into a more faithful and robust SuperBASIC toolchain by hardening the interpreter semantics that now exist and then bringing the generated backends up to the same behavioral standard.
 
-## Recommended Direction
+## Current State
 
-The highest-value next step is to stop adding surface features and tighten the semantic core. The project already has the major compiler stages in place, but key language behaviors are still only partially modeled. The most useful work now is to make one compatibility slice correct end to end.
+The interpreter path now has meaningful support for core SuperBASIC semantics, including:
+
+- caller-dependent parameter binding
+- `REFERENCE`-driven by-reference parameter intent in semantics and HIR
+- numbered control flow with `GOTO`, `GOSUB`, `RETURN`, `ON GOTO`, and `ON GOSUB`
+- dynamic `LOCal` lookup across routine calls
+
+That means the immediate priority is no longer first implementation of these features. The immediate priority is securing them with deeper tests and making backend behavior match the interpreter.
 
 ## Priority Order
 
-1. Finish parameter semantics.
+1. Harden the interpreter semantics with deeper regression coverage.
 
-Implement SuperBASIC and Turbo-style argument binding correctly:
+The current implementation is good enough to exercise real language behavior, but it still needs stronger coverage around:
 
-- bare variable actuals alias caller storage
-- expression actuals pass values
-- `REFERENCE` forces writable actuals
+- dynamic `LOCal` lookup across multi-level call chains
+- local/global/parameter shadowing rules
+- array-element aliasing and `REFERENCE`
+- invalid argument forms for by-reference parameters
+- negative control-flow cases such as missing line targets and out-of-range `ON` selectors
 
-This improves the interpreter, semantic model, and both code generators at the same time.
+2. Strengthen the HIR model for locations.
 
-2. Introduce first-class storage locations in HIR.
+The current HIR now distinguishes value arguments from reference-capable arguments, but it still does not have a single first-class location abstraction. A dedicated location model would make dynamic scope, aliasing, reads, and writes more coherent across lowering, interpretation, and code generation.
 
-The current representation handles values and assignments, but by-reference behavior needs an explicit notion of storage location or cell. Once HIR can distinguish "read this value" from "alias this location", several difficult language behaviors become easier to model correctly.
+3. Make the interpreter the explicit semantic oracle.
 
-3. Make the interpreter the reference implementation.
+The interpreter should define the intended language behavior. New semantic work should follow this order:
 
-Use the interpreter as the semantic oracle and treat the C and C# backends as targets that must match it. That gives a stable development loop:
+- add a failing regression test
+- implement or correct the interpreter behavior
+- add or update HIR lowering assertions
+- then port the behavior to generated C# and C
 
-- add a language rule
-- make the interpreter correct
-- add focused regression tests
-- update code generators to match
+4. Bring the generated backends toward parity.
 
-4. Build a compatibility test corpus.
+The largest remaining functional gap is that generated C and C# do not yet match the interpreter for:
 
-The project will benefit more from many small semantic tests than from large sample programs. Priority areas:
+- by-reference procedure semantics
+- dynamic `LOCal` lookup
+- `GOSUB` / `RETURN`
+- parts of numbered control flow
 
-- `LOCal` and dynamic scope
-- parameter aliasing and value-passing cases
-- `REFERENCE`
-- `DATA` / `READ` / `RESTORE`
-- `ON GOTO` / `ON GOSUB`
-- arrays, strings, and numeric coercions
+5. Keep separating language semantics from host/runtime behavior.
 
-5. Separate language semantics from host runtime behavior.
-
-Keep core SuperBASIC rules distinct from Sinclair QL environment features such as devices, channels, graphics, and sound. That separation will simplify both implementation and documentation.
+Core SuperBASIC rules should remain distinct from QL-specific environment behavior such as files, devices, graphics, and sound. That separation will continue to simplify both implementation and documentation.
 
 ## Suggested Implementation Sequence
 
-1. Add failing tests for parameter aliasing and `REFERENCE`.
-2. Extend symbols and HIR to represent by-reference or location bindings.
-3. Implement the model in the interpreter first.
-4. Port the same model to the C# backend.
-5. Port the same model to the C backend.
-6. Document the supported semantics in `README.md`.
+1. Add more interpreter regression tests for `LOCal`, `REFERENCE`, and negative control-flow cases.
+2. Add direct HIR lowering tests for dynamic-scope and by-reference cases.
+3. Introduce a first-class location abstraction in HIR.
+4. Port parameter-binding semantics to the C# backend.
+5. Port parameter-binding semantics to the C backend.
+6. Port `GOSUB` / `RETURN` semantics to generated C# and C.
+7. Document backend parity and remaining gaps in `README.md`.
+
+## Immediate Test Gaps
+
+The most important missing tests on the interpreter path are:
+
+- multi-level dynamic `LOCal` visibility
+- shadowing between locals, parameters, and globals
+- local arrays under dynamic scope
+- invalid `REFERENCE` actuals
+- nested `GOSUB`
+- missing jump targets
+- `ON GOTO` / `ON GOSUB` selector edge cases
 
 ## Strategic Advice
 
-Do not prioritize graphics, sound, or a large expansion of built-ins yet. The semantic core should come first, especially:
+Do not prioritize graphics, sound, or broad built-in expansion yet.
+
+The project will benefit more from securing the semantic core that is already implemented:
 
 - dynamic scope
 - caller-dependent parameter binding
 - explicit `REFERENCE` handling
+- numbered control flow
 
-Those areas are central to the identity of the project and will influence the correctness of every backend.
+These semantics are central to the identity of the project and affect every backend.
 
 ## Longer-Term Options
 
-After the semantic core is stable, the project can develop in one of two main directions.
+After the semantic core and backend parity are stable, the project can develop in one of two main directions.
 
 Compiler-oriented direction:
 
@@ -89,9 +110,9 @@ Compatibility-oriented direction:
 
 The best immediate roadmap is:
 
-- add tests for parameter semantics
-- implement a location-based model in HIR
-- make the interpreter correct first
-- make both code generators match
+- keep expanding semantic regression tests
+- strengthen HIR around first-class locations
+- use the interpreter as the reference model
+- make both code generators match it
 
 This is the most effective way to turn the project into a dependable language implementation rather than a partially working translation pipeline.

@@ -81,6 +81,12 @@ let private recordParameterSymbol routineName parameterName resolvedName (state:
           Name = normalizeIdentifier resolvedName }
     { state with ParameterSymbols = Map.add (normalizeIdentifier routineName, normalizeIdentifier parameterName) resolved state.ParameterSymbols }
 
+let private canUseDynamicScopeFallback (state: ProcessingState) =
+    state.CurrentScope <> globalScope
+
+let private isStaticallyResolved state name =
+    tryResolveSymbol state.CurrentScope name state.SymTab |> Option.isSome
+
 let private inferArgumentTypes args state =
     (([], state), args)
     ||> List.fold (fun (collectedTypes, currentState) arg ->
@@ -92,6 +98,43 @@ let private inferExprList exprs state =
 
 let private isSizedStringDeclaration name (dims: Expr list) =
     suffixDeclaredType name = SBType.String && dims.Length = 1
+
+let rec private collectReferenceParameterNamesFromExpr expr =
+    match expr with
+    | Identifier(_, _, name)
+    | PostfixName(_, _, name, None) -> [ normalizeIdentifier name ]
+    | _ -> []
+
+let rec private collectReferenceParameterNamesFromStmt stmt =
+    match stmt with
+    | ReferenceStmt(_, exprs) ->
+        exprs |> List.collect collectReferenceParameterNamesFromExpr
+    | IfStmt(_, _, thenBlock, elseBlock) ->
+        collectReferenceParameterNamesFromBlock thenBlock
+        @ (elseBlock |> Option.map collectReferenceParameterNamesFromBlock |> Option.defaultValue [])
+    | ForStmt(_, _, _, _, _, body)
+    | RepeatStmt(_, _, body) ->
+        collectReferenceParameterNamesFromBlock body
+    | SelectStmt(_, _, clauses) ->
+        clauses
+        |> List.collect (fun (SelectClause(_, _, _, body)) ->
+            body |> Option.map collectReferenceParameterNamesFromBlock |> Option.defaultValue [])
+    | WhenStmt(_, _, lines) ->
+        collectReferenceParameterNamesFromLines lines
+    | ProcedureDef _
+    | FunctionDef _ -> []
+    | _ -> []
+
+and private collectReferenceParameterNamesFromLine (Line(_, _, stmts)) =
+    stmts |> List.collect collectReferenceParameterNamesFromStmt
+
+and private collectReferenceParameterNamesFromLines lines =
+    lines |> List.collect collectReferenceParameterNamesFromLine
+
+and private collectReferenceParameterNamesFromBlock block =
+    match block with
+    | StatementBlock stmts -> stmts |> List.collect collectReferenceParameterNamesFromStmt
+    | LineBlock lines -> collectReferenceParameterNamesFromLines lines
 
 let rec private stateIter action items =
     state {
@@ -105,6 +148,8 @@ let rec private stateIter action items =
 let rec private collectRoutineDeclaration mode declareRoutine pos name parameters body =
     state {
         let! currentState = getState
+        let referenceParameters =
+            collectReferenceParameterNamesFromLines body |> Set.ofList
         let stateWithRoutine =
             currentState
             |> declareRoutine mode name pos
@@ -113,9 +158,14 @@ let rec private collectRoutineDeclaration mode declareRoutine pos name parameter
         let parameterSymbols : ParameterSymbol list =
             parameters
             |> List.map (fun parameter ->
-                match createParameterSymbol parameter pos (inferredVariableType currentState name parameter) with
-                | ParameterSym symbol -> symbol
-                | _ -> failwith "unreachable")
+                let parameterSymbol =
+                    match createParameterSymbol parameter pos (inferredVariableType currentState name parameter) with
+                    | ParameterSym symbol -> symbol
+                    | _ -> failwith "unreachable"
+                if referenceParameters.Contains(normalizeIdentifier parameter) then
+                    { parameterSymbol with Passing = ByReference }
+                else
+                    parameterSymbol)
         let stateWithParameters =
             parameterSymbols
             |> List.fold (fun state parameter -> declareSymbol mode name (ParameterSym parameter) state) stateWithRoutine
@@ -302,7 +352,11 @@ and private resolveExpr mode expr : State<ProcessingState, unit> =
         // Type inference, coercion, constant folding, and most operator rules are
         // deferred to inferExprType so those concerns stay centralized.
         | PostfixName(_, pos, name, None) ->
-            let nextState = referenceSymbol None name pos currentState
+            let nextState =
+                if canUseDynamicScopeFallback currentState && not (isStaticallyResolved currentState name) then
+                    currentState
+                else
+                    referenceSymbol None name pos currentState
             let validatedState =
                 match tryResolveSymbol nextState.CurrentScope name nextState.SymTab with
                 | Some(_, symbol) -> validateScalarVsArrayUsage name pos false symbol nextState
@@ -314,7 +368,11 @@ and private resolveExpr mode expr : State<ProcessingState, unit> =
                 | None -> validatedState
             do! putState recordedState
         | PostfixName(_, pos, name, Some args) ->
-            let nextState = referenceSymbol None name pos currentState
+            let nextState =
+                if canUseDynamicScopeFallback currentState && not (isStaticallyResolved currentState name) then
+                    currentState
+                else
+                    referenceSymbol None name pos currentState
             let validatedState =
                 match tryResolveSymbol nextState.CurrentScope name nextState.SymTab with
                 | Some(_, symbol) ->
@@ -339,7 +397,11 @@ and private resolveExpr mode expr : State<ProcessingState, unit> =
         | UnaryExpr(_, _, _, inner) ->
             do! resolveExpr mode inner
         | Identifier(_, pos, name) ->
-            let nextState = referenceSymbol None name pos currentState
+            let nextState =
+                if canUseDynamicScopeFallback currentState && not (isStaticallyResolved currentState name) then
+                    currentState
+                else
+                    referenceSymbol None name pos currentState
             let validatedState =
                 match tryResolveSymbol nextState.CurrentScope name nextState.SymTab with
                 | Some(_, symbol) -> validateScalarVsArrayUsage name pos false symbol nextState
@@ -379,7 +441,15 @@ and private resolveBlock mode block : State<ProcessingState, unit> =
 and private resolveWritableExpr mode expr : State<ProcessingState, unit> =
     state {
         let! currentState = getState
-        let nextState, args = resolveWritableTarget expr currentState
+        let nextState, args =
+            match expr with
+            | Identifier(_, _, name)
+            | PostfixName(_, _, name, _) when canUseDynamicScopeFallback currentState && not (isStaticallyResolved currentState name) ->
+                currentState,
+                match expr with
+                | PostfixName(_, _, _, Some args) -> args
+                | _ -> []
+            | _ -> resolveWritableTarget expr currentState
         let targetType = inferWritableTargetType nextState expr
         let recordedState =
             let withTargetType = recordTargetType currentState.CurrentScope expr targetType nextState

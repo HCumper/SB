@@ -34,6 +34,10 @@ let private formatStorageClass = function
     | RoutineLocalStorage scope -> $"local({scope})"
     | RoutineParameterStorage scope -> $"param({scope})"
 
+let private formatParameterBinding = function
+    | FlexibleBinding -> "flexible"
+    | ReferenceBinding -> "reference"
+
 let private formatConst = function
     | ConstInt value -> string value
     | ConstFloat value -> value.ToString("G17", Globalization.CultureInfo.InvariantCulture)
@@ -88,19 +92,31 @@ let rec private formatExpr expr =
     | ReadArrayElem(symbolId, args, hirType, _) ->
         let argsText = args |> List.map formatExpr |> String.concat ", "
         $"{formatSymbolId symbolId}[{argsText}]:{formatType hirType}"
+    | DynamicReadVar(name, hirType, _) -> $"{name}:{formatType hirType}"
+    | DynamicReadArrayElem(name, args, hirType, _) ->
+        let argsText = args |> List.map formatExpr |> String.concat ", "
+        $"{name}[{argsText}]:{formatType hirType}"
     | Unary(op, inner, hirType, _) ->
         $"({formatUnaryOp op} {formatExpr inner}):{formatType hirType}"
     | Binary(op, lhs, rhs, hirType, _) ->
         $"({formatExpr lhs} {formatBinaryOp op} {formatExpr rhs}):{formatType hirType}"
     | CallFunc(symbolId, args, hirType, _) ->
-        let argsText = args |> List.map formatExpr |> String.concat ", "
+        let argsText = args |> List.map formatCallArg |> String.concat ", "
         $"{formatSymbolId symbolId}({argsText}):{formatType hirType}"
 
-let private formatTarget = function
+and private formatTarget = function
     | WriteVar(symbolId, hirType, _) -> $"{formatSymbolId symbolId}:{formatType hirType}"
     | WriteArrayElem(symbolId, args, hirType, _) ->
         let argsText = args |> List.map formatExpr |> String.concat ", "
         $"{formatSymbolId symbolId}[{argsText}]:{formatType hirType}"
+    | DynamicWriteVar(name, hirType, _) -> $"{name}:{formatType hirType}"
+    | DynamicWriteArrayElem(name, args, hirType, _) ->
+        let argsText = args |> List.map formatExpr |> String.concat ", "
+        $"{name}[{argsText}]:{formatType hirType}"
+
+and private formatCallArg = function
+    | ValueArg expr -> formatExpr expr
+    | RefArg target -> $"ref {formatTarget target}"
 
 let private formatChannel = function
     | Some channel -> $" channel={formatExpr channel}"
@@ -118,6 +134,9 @@ let private formatTargetList targets =
 let private formatExprList exprs =
     exprs |> List.map formatExpr |> String.concat ", "
 
+let private formatCallArgList args =
+    args |> List.map formatCallArg |> String.concat ", "
+
 let rec private appendBlock (builder: StringBuilder) level (block: HirBlock) =
     block |> List.iter (appendStmt builder level)
 
@@ -126,7 +145,7 @@ and private appendStmt (builder: StringBuilder) level stmt =
     | Assign(target, value, pos) ->
         appendLine builder level $"Assign {formatTarget target} <- {formatExpr value} @{formatPosition pos}"
     | ProcCall(symbolId, channel, args, pos) ->
-        appendLine builder level $"ProcCall {formatSymbolId symbolId}{formatChannel channel} ({formatExprList args}) @{formatPosition pos}"
+        appendLine builder level $"ProcCall {formatSymbolId symbolId}{formatChannel channel} ({formatCallArgList args}) @{formatPosition pos}"
     | BuiltInCall(kind, channel, args, pos) ->
         appendLine builder level $"BuiltIn {formatBuiltInKind kind}{formatChannel channel} ({formatExprList args}) @{formatPosition pos}"
     | Input(channel, prompts, targets, pos) ->
@@ -180,6 +199,10 @@ and private appendStmt (builder: StringBuilder) level stmt =
 let private appendStorage (builder: StringBuilder) level (storage: HirStorage) =
     appendLine builder level $"{formatSymbolId storage.Symbol} {storage.Name} {formatType storage.Type} {formatStorageClass storage.Class} {formatSlotId storage.Slot} @{formatPosition storage.Position}"
 
+let private appendParameter (builder: StringBuilder) level (parameter: HirParameter) =
+    appendLine builder level $"{formatParameterBinding parameter.Binding}"
+    appendStorage builder level parameter.Storage
+
 let private appendRoutine (builder: StringBuilder) level (routine: HirRoutine) =
     let returnText =
         match routine.ReturnType with
@@ -188,7 +211,7 @@ let private appendRoutine (builder: StringBuilder) level (routine: HirRoutine) =
 
     appendLine builder level $"Routine {routine.Name} {formatSymbolId routine.Symbol} returns={returnText} @{formatPosition routine.Position}"
     appendLine builder (level + 1) "Parameters"
-    routine.Parameters |> List.iter (appendStorage builder (level + 2))
+    routine.Parameters |> List.iter (appendParameter builder (level + 2))
     appendLine builder (level + 1) "Locals"
     routine.Locals |> List.iter (appendStorage builder (level + 2))
     appendLine builder (level + 1) "Body"

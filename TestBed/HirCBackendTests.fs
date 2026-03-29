@@ -22,6 +22,10 @@ let private storage symbol name hirType storageClass =
       Class = storageClass
       Position = pos }
 
+let private parameter symbol name hirType storageClass binding =
+    { Storage = storage symbol name hirType storageClass
+      Binding = binding }
+
 [<Test>]
 let ``generateCFromHir emits globals routines labels and loop jumps`` () =
     let globalSymbol = SymbolId 0
@@ -34,7 +38,7 @@ let ``generateCFromHir emits globals routines labels and loop jumps`` () =
           Routines =
             [ { Name = "PROC"
                 Symbol = routineSymbol
-                Parameters = [ storage parameterSymbol "P" HirType.Int (RoutineParameterStorage "PROC") ]
+                Parameters = [ parameter parameterSymbol "P" HirType.Int (RoutineParameterStorage "PROC") FlexibleBinding ]
                 Locals = []
                 Body = [ Return(Some(ReadVar(parameterSymbol, HirType.Int, pos)), pos) ]
                 ReturnType = Some HirType.Int
@@ -93,7 +97,7 @@ let ``generateCFromHir emits arrays routine calls and builtin function calls`` (
           RestorePoints = []
           Main =
             [ Assign(WriteArrayElem(arraySymbol, [ literalInt 1 ], HirType.Int, pos), CallFunc(routineSymbol, [], HirType.Int, pos), pos)
-              Assign(WriteVar(globalSymbol, HirType.Int, pos), CallFunc(builtInSymbol, [ Unary(Negate, literalInt 4, HirType.Int, pos) ], HirType.Int, pos), pos)
+              Assign(WriteVar(globalSymbol, HirType.Int, pos), CallFunc(builtInSymbol, [ ValueArg(Unary(Negate, literalInt 4, HirType.Int, pos)) ], HirType.Int, pos), pos)
               Assign(WriteVar(globalSymbol, HirType.Int, pos), ReadArrayElem(arraySymbol, [ literalInt 1 ], HirType.Int, pos), pos) ] }
 
     let generated = generateCFromHir "expr_program" program

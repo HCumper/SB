@@ -11,9 +11,32 @@ type RuntimeValue =
     | IntValue of int
     | FloatValue of double
     | StringValue of string
-    | ArrayValue of HirType * Dictionary<string, RuntimeValue>
+    | ArrayValue of HirType * Dictionary<string, Cell>
+
+and Cell = { mutable Value: RuntimeValue }
+
+type RuntimeErrorCode =
+    | MissingStorageCell
+    | MissingDynamicStorageCell
+    | InvalidArrayTarget
+    | BuiltInArityMismatch
+    | BuiltInUnsupportedArguments
+    | BuiltInFunctionNotImplemented
+    | InvalidReferenceActual
+    | EscapedStop
+    | MissingGotoTarget
+    | MissingGosubTarget
+    | EscapedLoopControl
+    | UnsupportedChannelExecution
+    | BuiltInStatementNotImplemented
+    | ProcedureNotImplemented
+    | InvalidForBounds
+    | InvalidRestoreTarget
+    | ReadPastData
+    | EscapedReturn
 
 type RuntimeError = {
+    Code: RuntimeErrorCode
     Message: string
     Position: SourcePosition option
 }
@@ -35,8 +58,6 @@ let defaultRuntimeOptions =
       Random = Random()
       Clock = fun () -> DateTime.UtcNow }
 
-type private Cell = { mutable Value: RuntimeValue }
-
 type private Frame = {
     Cells: Map<SymbolId, Cell>
     ReturnType: HirType option
@@ -54,12 +75,43 @@ type private RuntimeState = {
 type private ControlFlow =
     | Continue
     | ReturnFromRoutine of RuntimeValue option
+    | BareReturn
     | ExitLoop of LoopId
     | NextLoop of LoopId
+    | JumpToLine of int
+    | GosubToLine of int
     | StopExecution
 
-let private runtimeError position message =
-    Result.Error { Message = message; Position = position }
+let private formatRuntimeErrorCode = function
+    | MissingStorageCell -> "MissingStorageCell"
+    | MissingDynamicStorageCell -> "MissingDynamicStorageCell"
+    | InvalidArrayTarget -> "InvalidArrayTarget"
+    | BuiltInArityMismatch -> "BuiltInArityMismatch"
+    | BuiltInUnsupportedArguments -> "BuiltInUnsupportedArguments"
+    | BuiltInFunctionNotImplemented -> "BuiltInFunctionNotImplemented"
+    | InvalidReferenceActual -> "InvalidReferenceActual"
+    | EscapedStop -> "EscapedStop"
+    | MissingGotoTarget -> "MissingGotoTarget"
+    | MissingGosubTarget -> "MissingGosubTarget"
+    | EscapedLoopControl -> "EscapedLoopControl"
+    | UnsupportedChannelExecution -> "UnsupportedChannelExecution"
+    | BuiltInStatementNotImplemented -> "BuiltInStatementNotImplemented"
+    | ProcedureNotImplemented -> "ProcedureNotImplemented"
+    | InvalidForBounds -> "InvalidForBounds"
+    | InvalidRestoreTarget -> "InvalidRestoreTarget"
+    | ReadPastData -> "ReadPastData"
+    | EscapedReturn -> "EscapedReturn"
+
+let private formatRuntimeErrorLocation = function
+    | Some { BasicLineNo = Some basicLineNo } -> $" at BASIC line {basicLineNo}"
+    | Some { EditorLineNo = editorLineNo; Column = column } -> $" at editor line {editorLineNo}, column {column}"
+    | None -> ""
+
+let private runtimeError code position detail =
+    let message =
+        $"Runtime error [{formatRuntimeErrorCode code}]{formatRuntimeErrorLocation position}: {detail}"
+
+    Result.Error { Code = code; Message = message; Position = position }
 
 let private defaultValue hirType =
     match hirType with
@@ -67,7 +119,7 @@ let private defaultValue hirType =
     | HIR.HirType.Float -> FloatValue 0.0
     | HIR.HirType.String -> StringValue ""
     | HIR.HirType.Void -> IntValue 0
-    | HIR.HirType.Array inner -> ArrayValue(inner, Dictionary<string, RuntimeValue>())
+    | HIR.HirType.Array inner -> ArrayValue(inner, Dictionary<string, Cell>())
 
 let private normalizeNumber value =
     match value with
@@ -126,15 +178,51 @@ let private symbolName state symbolId =
 let private requireCell state symbolId pos =
     match lookupCell state symbolId with
     | Some cell -> Result.Ok cell
-    | None -> runtimeError (Some pos) $"No storage cell exists for symbol {symbolId} ({symbolName state symbolId})."
+    | None -> runtimeError MissingStorageCell (Some pos) $"No storage cell exists for symbol {symbolId} ({symbolName state symbolId})."
+
+let private lookupDynamicCell state name =
+    let normalized = normalizeIdentifier name
+    let tryFindByName cells =
+        cells
+        |> Map.toList
+        |> List.tryPick (fun (symbolId, cell) ->
+            if normalizeIdentifier (symbolName state symbolId) = normalized then Some cell else None)
+
+    let rec findInFrames frames =
+        match frames with
+        | frame :: tail ->
+            match tryFindByName frame.Cells with
+            | Some cell -> Some cell
+            | None -> findInFrames tail
+        | [] -> tryFindByName state.Globals
+
+    findInFrames state.Frames
+
+let private requireDynamicCell state name pos =
+    match lookupDynamicCell state name with
+    | Some cell -> Result.Ok cell
+    | None -> runtimeError MissingDynamicStorageCell (Some pos) $"No dynamic storage cell exists for '{name}'."
 
 let private arrayKey indexes =
     indexes |> List.map string |> String.concat ","
 
-let private tryGetArrayCell (value: RuntimeValue) =
+let private tryGetArrayEntries (value: RuntimeValue) =
     match value with
     | ArrayValue(_, cells) -> Result.Ok cells
-    | _ -> runtimeError None "Target is not an array."
+    | _ -> runtimeError InvalidArrayTarget None "Target is not an array."
+
+let private getArrayElementType (value: RuntimeValue) =
+    match value with
+    | ArrayValue(innerType, _) -> innerType
+    | _ -> HIR.HirType.Int
+
+let private getOrCreateArrayEntry (entries: Dictionary<string, Cell>) innerType key =
+    match entries.TryGetValue key with
+    | true, existing -> existing
+    | _ ->
+        let created = { Value = defaultValue innerType }
+        entries[key] <- created
+        created
 
 let private allocateCells (storages: HirStorage list) =
     storages
@@ -153,6 +241,15 @@ let private popFrame state =
     | _ :: rest -> { state with Frames = rest }
     | [] -> state
 
+let private buildLineIndex (block: HirBlock) =
+    block
+    |> List.mapi (fun index stmt ->
+        match stmt with
+        | LineNumber(value, _) -> Some(value, index)
+        | _ -> None)
+    |> List.choose id
+    |> Map.ofList
+
 let rec private evalExpr state expr =
     match expr with
     | Literal(ConstInt n, _, _) -> Result.Ok(IntValue n, state)
@@ -164,19 +261,26 @@ let rec private evalExpr state expr =
     | ReadArrayElem(symbolId, indexes, _, pos) ->
         requireCell state symbolId pos
         |> Result.bind (fun cell ->
-            tryGetArrayCell cell.Value
+            tryGetArrayEntries cell.Value
             |> Result.bind (fun entries ->
                 evalExprList state indexes
                 |> Result.map (fun (indexValues, nextState) ->
                     let key = indexValues |> List.map asInt |> arrayKey
-                    let value =
-                        match entries.TryGetValue key with
-                        | true, existing -> existing
-                        | _ ->
-                            match cell.Value with
-                            | ArrayValue(innerType, _) -> defaultValue innerType
-                            | _ -> IntValue 0
-                    value, nextState)))
+                    let entry = getOrCreateArrayEntry entries (getArrayElementType cell.Value) key
+                    entry.Value, nextState)))
+    | DynamicReadVar(name, _, pos) ->
+        requireDynamicCell state name pos
+        |> Result.map (fun cell -> cell.Value, state)
+    | DynamicReadArrayElem(name, indexes, _, pos) ->
+        requireDynamicCell state name pos
+        |> Result.bind (fun cell ->
+            tryGetArrayEntries cell.Value
+            |> Result.bind (fun entries ->
+                evalExprList state indexes
+                |> Result.map (fun (indexValues, nextState) ->
+                    let key = indexValues |> List.map asInt |> arrayKey
+                    let entry = getOrCreateArrayEntry entries (getArrayElementType cell.Value) key
+                    entry.Value, nextState)))
     | Unary(op, inner, hirType, _) ->
         evalExpr state inner
         |> Result.map (fun (value, nextState) ->
@@ -244,9 +348,10 @@ let rec private evalExpr state expr =
     | CallFunc(symbolId, args, _, pos) ->
         match state.Program.Routines |> List.tryFind (fun (routine: HirRoutine) -> routine.Symbol = symbolId) with
         | Some routine ->
-            evalExprList state args
-            |> Result.bind (fun (argValues, nextState) -> callRoutine nextState routine argValues pos)
-        | None -> evalBuiltInFunction state symbolId args pos
+            callRoutine state routine args pos
+        | None ->
+            let valueArgs = args |> List.choose (function | ValueArg expr -> Some expr | RefArg _ -> None)
+            evalBuiltInFunction state symbolId valueArgs pos
 
 and private evalExprList state exprs =
     let folder acc expr =
@@ -256,6 +361,10 @@ and private evalExprList state exprs =
             |> Result.map (fun (value, nextState) -> values @ [ value ], nextState))
 
     List.fold folder (Result.Ok([], state)) exprs
+
+and private evalLineNumber state expr pos =
+    evalExpr state expr
+    |> Result.map (fun (value, nextState) -> asInt value, nextState)
 
 and private evalBuiltInFunction state symbolId argExprs pos =
     let name = symbolName state symbolId
@@ -267,7 +376,7 @@ and private evalBuiltInFunction state symbolId argExprs pos =
         | [ _ ] ->
             evalArgs ()
             |> Result.map (fun (values, nextState) -> f values[0], nextState)
-        | _ -> runtimeError (Some pos) $"Built-in function '{name}' expects one argument."
+        | _ -> runtimeError BuiltInArityMismatch (Some pos) $"Built-in function '{name}' expects one argument."
 
     match normalized with
     | "ABS" -> expectOneNumeric (fun value -> makeNumericValue HIR.HirType.Int (abs (normalizeNumber value)))
@@ -278,7 +387,7 @@ and private evalBuiltInFunction state symbolId argExprs pos =
         | [ _ ] ->
             evalArgs ()
             |> Result.map (fun (values, nextState) -> StringValue (asString values[0]), nextState)
-        | _ -> runtimeError (Some pos) $"Built-in function '{name}' expects one argument."
+        | _ -> runtimeError BuiltInArityMismatch (Some pos) $"Built-in function '{name}' expects one argument."
     | "VAL" ->
         match argExprs with
         | [ _ ] ->
@@ -287,7 +396,7 @@ and private evalBuiltInFunction state symbolId argExprs pos =
                 match Double.TryParse(asString values[0], NumberStyles.Float ||| NumberStyles.AllowThousands, CultureInfo.InvariantCulture) with
                 | true, number -> FloatValue number, nextState
                 | _ -> IntValue 0, nextState)
-        | _ -> runtimeError (Some pos) $"Built-in function '{name}' expects one argument."
+        | _ -> runtimeError BuiltInArityMismatch (Some pos) $"Built-in function '{name}' expects one argument."
     | "LEFT$" ->
         match argExprs with
         | [ _; _ ] ->
@@ -296,7 +405,7 @@ and private evalBuiltInFunction state symbolId argExprs pos =
                 let source = asString values[0]
                 let length = max 0 (min source.Length (asInt values[1]))
                 StringValue(source.Substring(0, length)), nextState)
-        | _ -> runtimeError (Some pos) $"Built-in function '{name}' expects two arguments."
+        | _ -> runtimeError BuiltInArityMismatch (Some pos) $"Built-in function '{name}' expects two arguments."
     | "RIGHT$" ->
         match argExprs with
         | [ _; _ ] ->
@@ -305,7 +414,7 @@ and private evalBuiltInFunction state symbolId argExprs pos =
                 let source = asString values[0]
                 let length = max 0 (min source.Length (asInt values[1]))
                 StringValue(source.Substring(source.Length - length, length)), nextState)
-        | _ -> runtimeError (Some pos) $"Built-in function '{name}' expects two arguments."
+        | _ -> runtimeError BuiltInArityMismatch (Some pos) $"Built-in function '{name}' expects two arguments."
     | "DATE" ->
         let seconds = int (state.Options.Clock().Subtract(DateTime.UnixEpoch).TotalSeconds)
         Result.Ok(IntValue seconds, state)
@@ -326,58 +435,96 @@ and private evalBuiltInFunction state symbolId argExprs pos =
                 let upper = max 1 (asInt values[0])
                 IntValue (nextState.Options.Random.Next(1, upper + 1)), nextState)
         | [] -> Result.Ok(FloatValue (state.Options.Random.NextDouble()), state)
-        | _ -> runtimeError (Some pos) $"Built-in function '{name}' received unsupported arguments."
-    | _ -> runtimeError (Some pos) $"Built-in function '{name}' is not implemented."
+        | _ -> runtimeError BuiltInUnsupportedArguments (Some pos) $"Built-in function '{name}' received unsupported arguments."
+    | _ -> runtimeError BuiltInFunctionNotImplemented (Some pos) $"Built-in function '{name}' is not implemented."
 
-and private writeTarget state target value =
+and private resolveTargetCell state target =
     match target with
     | WriteVar(symbolId, _, pos) ->
         requireCell state symbolId pos
-        |> Result.map (fun cell ->
-            cell.Value <- value
-            state)
+        |> Result.map (fun cell -> cell, state)
     | WriteArrayElem(symbolId, indexes, _, pos) ->
         requireCell state symbolId pos
         |> Result.bind (fun cell ->
-            tryGetArrayCell cell.Value
+            tryGetArrayEntries cell.Value
             |> Result.bind (fun entries ->
                 evalExprList state indexes
                 |> Result.map (fun (indexValues, nextState) ->
                     let key = indexValues |> List.map asInt |> arrayKey
-                    entries[key] <- value
-                    nextState)))
+                    let entry = getOrCreateArrayEntry entries (getArrayElementType cell.Value) key
+                    entry, nextState)))
+    | DynamicWriteVar(name, _, pos) ->
+        requireDynamicCell state name pos
+        |> Result.map (fun cell -> cell, state)
+    | DynamicWriteArrayElem(name, indexes, _, pos) ->
+        requireDynamicCell state name pos
+        |> Result.bind (fun cell ->
+            tryGetArrayEntries cell.Value
+            |> Result.bind (fun entries ->
+                evalExprList state indexes
+                |> Result.map (fun (indexValues, nextState) ->
+                    let key = indexValues |> List.map asInt |> arrayKey
+                    let entry = getOrCreateArrayEntry entries (getArrayElementType cell.Value) key
+                    entry, nextState)))
 
-and private callRoutine state (routine: HirRoutine) argValues pos =
-    let parameterCells =
-        (routine.Parameters, argValues)
-        ||> List.map2 (fun storage value -> storage.Symbol, { Value = value })
-        |> Map.ofList
+and private writeTarget state target value =
+    resolveTargetCell state target
+    |> Result.map (fun (cell, nextState) ->
+        cell.Value <- value
+        nextState)
 
-    let localCells =
-        allocateCells routine.Locals
+and private callRoutine state (routine: HirRoutine) args pos =
+    let bindCallArg currentState parameter arg =
+        match parameter.Binding, arg with
+        | ReferenceBinding, RefArg target
+        | FlexibleBinding, RefArg target ->
+            resolveTargetCell currentState target
+            |> Result.map (fun (cell, nextState) -> (parameter.Storage.Symbol, cell), nextState)
+        | ReferenceBinding, ValueArg _ ->
+            runtimeError InvalidReferenceActual (Some parameter.Storage.Position) $"Parameter '{parameter.Storage.Name}' requires a writable argument."
+        | FlexibleBinding, ValueArg expr ->
+            evalExpr currentState expr
+            |> Result.map (fun (value, nextState) -> (parameter.Storage.Symbol, { Value = value }), nextState)
 
-    let frame =
-        { Cells = Map.fold (fun acc key value -> Map.add key value acc) localCells parameterCells
-          ReturnType = routine.ReturnType }
+    let parameterCellsResult =
+        ((Result.Ok([], state), List.zip routine.Parameters args)
+         ||> List.fold (fun acc (parameter, arg) ->
+             acc
+             |> Result.bind (fun (pairs, currentState) ->
+                 bindCallArg currentState parameter arg
+                 |> Result.map (fun (pair, nextState) -> pairs @ [ pair ], nextState))))
+        |> Result.map (fun (pairs, nextState) -> Map.ofList pairs, nextState)
 
-    let stateWithFrame = withFrame frame state
+    parameterCellsResult
+    |> Result.bind (fun (parameterCells, stateAfterArgs) ->
+        let localCells =
+            allocateCells routine.Locals
 
-    executeBlock stateWithFrame routine.Body
-    |> Result.bind (fun (flow, afterBody) ->
-        let finalState = popFrame afterBody
-        match flow, routine.ReturnType with
-        | ReturnFromRoutine value, Some _ -> Result.Ok(value |> Option.defaultValue (IntValue 0), finalState)
-        | ReturnFromRoutine _, None -> Result.Ok(IntValue 0, finalState)
-        | Continue, Some _ -> Result.Ok(IntValue 0, finalState)
-        | Continue, None -> Result.Ok(IntValue 0, finalState)
-        | StopExecution, _ -> runtimeError (Some pos) $"STOP escaped from routine '{routine.Name}'."
-        | ExitLoop _, _
-        | NextLoop _, _ -> runtimeError (Some pos) $"Loop control escaped from routine '{routine.Name}'.")
+        let frame =
+            { Cells = Map.fold (fun acc key value -> Map.add key value acc) localCells parameterCells
+              ReturnType = routine.ReturnType }
+
+        let stateWithFrame = withFrame frame stateAfterArgs
+
+        executeBlock stateWithFrame routine.Body
+        |> Result.bind (fun (flow, afterBody) ->
+            let finalState = popFrame afterBody
+            match flow, routine.ReturnType with
+            | ReturnFromRoutine value, Some _ -> Result.Ok(value |> Option.defaultValue (IntValue 0), finalState)
+            | ReturnFromRoutine _, None -> Result.Ok(IntValue 0, finalState)
+            | BareReturn, _ -> Result.Ok(IntValue 0, finalState)
+            | Continue, Some _ -> Result.Ok(IntValue 0, finalState)
+            | Continue, None -> Result.Ok(IntValue 0, finalState)
+            | StopExecution, _ -> runtimeError EscapedStop (Some pos) $"STOP escaped from routine '{routine.Name}'."
+            | JumpToLine lineNumber, _ -> runtimeError MissingGotoTarget (Some pos) $"GOTO target line {lineNumber} does not exist in routine '{routine.Name}'."
+            | GosubToLine lineNumber, _ -> runtimeError MissingGosubTarget (Some pos) $"GOSUB target line {lineNumber} does not exist in routine '{routine.Name}'."
+            | ExitLoop _, _
+            | NextLoop _, _ -> runtimeError EscapedLoopControl (Some pos) $"Loop control escaped from routine '{routine.Name}'."))
 
 and private executeBuiltInCall state kind channel args targets pos =
     let unsupportedChannel name =
         match channel with
-        | Some _ -> runtimeError (Some pos) $"Built-in '{name}' does not support channel execution in the interpreter yet."
+        | Some _ -> runtimeError UnsupportedChannelExecution (Some pos) $"Built-in '{name}' does not support channel execution in the interpreter yet."
         | None -> Result.Ok(Continue, state)
 
     match kind with
@@ -437,11 +584,11 @@ and private executeBuiltInCall state kind channel args targets pos =
         let normalized = normalizeIdentifier name
         if normalized = "STOP" then Result.Ok(StopExecution, state)
         elif normalized.StartsWith("TURBO") then Result.Ok(Continue, state)
-        else runtimeError (Some pos) $"Built-in statement '{kind}' is not implemented."
+        else runtimeError BuiltInStatementNotImplemented (Some pos) $"Built-in statement '{kind}' is not implemented."
     | GotoBuiltIn
     | GosubBuiltIn
     | OnGotoBuiltIn
-    | OnGosubBuiltIn -> runtimeError (Some pos) $"Built-in statement '{kind}' is not implemented."
+    | OnGosubBuiltIn -> runtimeError BuiltInStatementNotImplemented (Some pos) $"Built-in statement '{kind}' is not implemented."
 
 and private executeStmt state stmt =
     match stmt with
@@ -451,13 +598,11 @@ and private executeStmt state stmt =
             writeTarget nextState target value
             |> Result.map (fun finalState -> Continue, finalState))
     | ProcCall(symbolId, _, args, pos) ->
-        evalExprList state args
-        |> Result.bind (fun (values, nextState) ->
-            match nextState.Program.Routines |> List.tryFind (fun routine -> routine.Symbol = symbolId) with
-            | Some routine ->
-                callRoutine nextState routine values pos
-                |> Result.map (fun (_, finalState) -> Continue, finalState)
-            | None -> runtimeError (Some pos) $"Procedure '{symbolName nextState symbolId}' is not implemented.")
+        match state.Program.Routines |> List.tryFind (fun routine -> routine.Symbol = symbolId) with
+        | Some routine ->
+            callRoutine state routine args pos
+            |> Result.map (fun (_, finalState) -> Continue, finalState)
+        | None -> runtimeError ProcedureNotImplemented (Some pos) $"Procedure '{symbolName state symbolId}' is not implemented."
     | BuiltInCall(kind, channel, args, pos) ->
         executeBuiltInCall state kind channel args [] pos
     | Input(channel, prompts, targets, pos) ->
@@ -494,7 +639,7 @@ and private executeStmt state stmt =
                                 | ExitLoop flowId when flowId = loopId -> Result.Ok(Continue, bodyState)
                                 | _ -> Result.Ok(flow, bodyState))
                     iterate nextState (asInt startValue))
-            | _ -> runtimeError (Some pos) "FOR requires start, end, and step values.")
+            | _ -> runtimeError InvalidForBounds (Some pos) "FOR requires start, end, and step values.")
     | Repeat(loopId, _, body, _) ->
         let rec iterate currentState =
             executeBlock currentState body
@@ -507,15 +652,35 @@ and private executeStmt state stmt =
         iterate state
     | Exit(loopId, _) -> Result.Ok(ExitLoop loopId, state)
     | Next(loopId, _) -> Result.Ok(NextLoop loopId, state)
-    | Goto(_, pos) -> runtimeError (Some pos) "GOTO is not implemented in the interpreter yet."
-    | OnGoto(_, _, pos) -> runtimeError (Some pos) "ON GOTO is not implemented in the interpreter yet."
-    | Gosub(_, pos) -> runtimeError (Some pos) "GOSUB is not implemented in the interpreter yet."
-    | OnGosub(_, _, pos) -> runtimeError (Some pos) "ON GOSUB is not implemented in the interpreter yet."
+    | Goto(target, pos) ->
+        evalLineNumber state target pos
+        |> Result.map (fun (lineNumber, nextState) -> JumpToLine lineNumber, nextState)
+    | OnGoto(selector, targets, pos) ->
+        evalExpr state selector
+        |> Result.bind (fun (selectorValue, nextState) ->
+            let index = asInt selectorValue
+            if index < 1 || index > targets.Length then
+                Result.Ok(Continue, nextState)
+            else
+                evalLineNumber nextState targets[index - 1] pos
+                |> Result.map (fun (lineNumber, finalState) -> JumpToLine lineNumber, finalState))
+    | Gosub(target, pos) ->
+        evalLineNumber state target pos
+        |> Result.map (fun (lineNumber, nextState) -> GosubToLine lineNumber, nextState)
+    | OnGosub(selector, targets, pos) ->
+        evalExpr state selector
+        |> Result.bind (fun (selectorValue, nextState) ->
+            let index = asInt selectorValue
+            if index < 1 || index > targets.Length then
+                Result.Ok(Continue, nextState)
+            else
+                evalLineNumber nextState targets[index - 1] pos
+                |> Result.map (fun (lineNumber, finalState) -> GosubToLine lineNumber, finalState))
     | Return(expr, _) ->
         match expr with
         | Some valueExpr ->
             evalExpr state valueExpr |> Result.map (fun (value, nextState) -> ReturnFromRoutine(Some value), nextState)
-        | None -> Result.Ok(ReturnFromRoutine None, state)
+        | None -> Result.Ok(BareReturn, state)
     | LineNumber _ -> Result.Ok(Continue, state)
     | Restore(lineNumberExpr, pos) ->
         match lineNumberExpr with
@@ -528,7 +693,7 @@ and private executeStmt state stmt =
                 | Some point ->
                     let (DataSlotId slot) = point.Slot
                     Result.Ok(Continue, { nextState with DataPointer = slot })
-                | None -> runtimeError (Some pos) $"RESTORE line {lineNumber} does not exist.")
+                | None -> runtimeError InvalidRestoreTarget (Some pos) $"RESTORE line {lineNumber} does not exist.")
     | Read(targets, pos) ->
         let rec assign currentState remaining =
             match remaining with
@@ -540,22 +705,36 @@ and private executeStmt state stmt =
                     |> Result.bind (fun (value, nextState) ->
                         writeTarget { nextState with DataPointer = nextState.DataPointer + 1 } target value
                         |> Result.bind (fun updated -> assign updated tail))
-                | None -> runtimeError (Some pos) "READ moved past the end of DATA."
+                | None -> runtimeError ReadPastData (Some pos) "READ moved past the end of DATA."
         assign state targets
     | Remark _ -> Result.Ok(Continue, state)
 
 and private executeBlock state block =
-    let rec loop currentState remaining =
-        match remaining with
-        | [] -> Result.Ok(Continue, currentState)
-        | stmt :: tail ->
-            executeStmt currentState stmt
+    let lineIndex = buildLineIndex block
+
+    let rec loop currentState pc gosubStack =
+        if pc >= block.Length then
+            Result.Ok(Continue, currentState)
+        else
+            executeStmt currentState block[pc]
             |> Result.bind (fun (flow, nextState) ->
                 match flow with
-                | Continue -> loop nextState tail
+                | Continue -> loop nextState (pc + 1) gosubStack
+                | JumpToLine lineNumber ->
+                    match Map.tryFind lineNumber lineIndex with
+                    | Some targetPc -> loop nextState targetPc gosubStack
+                    | None -> Result.Ok(JumpToLine lineNumber, nextState)
+                | GosubToLine lineNumber ->
+                    match Map.tryFind lineNumber lineIndex with
+                    | Some targetPc -> loop nextState targetPc ((pc + 1) :: gosubStack)
+                    | None -> Result.Ok(GosubToLine lineNumber, nextState)
+                | BareReturn ->
+                    match gosubStack with
+                    | returnPc :: rest -> loop nextState returnPc rest
+                    | [] -> Result.Ok(BareReturn, nextState)
                 | _ -> Result.Ok(flow, nextState))
 
-    loop state block
+    loop state 0 []
 
 let interpretProgramWithOptions options (program: HirProgram) =
     let initialState =
@@ -571,9 +750,12 @@ let interpretProgramWithOptions options (program: HirProgram) =
         match flow with
         | Continue
         | StopExecution -> Result.Ok { Output = finalState.Output }
-        | ReturnFromRoutine _ -> runtimeError None "Return escaped the top-level program."
+        | ReturnFromRoutine _
+        | BareReturn -> runtimeError EscapedReturn None "Return escaped the top-level program."
+        | JumpToLine lineNumber -> runtimeError MissingGotoTarget None $"GOTO target line {lineNumber} does not exist."
+        | GosubToLine lineNumber -> runtimeError MissingGosubTarget None $"GOSUB target line {lineNumber} does not exist."
         | ExitLoop _
-        | NextLoop _ -> runtimeError None "Loop control escaped the top-level program.")
+        | NextLoop _ -> runtimeError EscapedLoopControl None "Loop control escaped the top-level program.")
 
 let interpretProgram program =
     interpretProgramWithOptions defaultRuntimeOptions program

@@ -1,0 +1,7 @@
+100 x=3
+105 test (x)
+110 PRINT x
+120 STOP
+130 DEFine PROCedure test (y)
+140 y = 7
+150 END DEFine test

@@ -36,7 +36,7 @@ type SymbolCategory =
     | BuiltIn
 
 type ParameterPassing =
-    | ByValue
+    | Flexible
     | ByReference
 
 let normalizeIdentifier (name: string) =
@@ -61,7 +61,7 @@ type ConstantSymbol = {
 
 type ParameterSymbol = {
     Common: CommonSymbol
-    Passing: ParameterPassing option
+    Passing: ParameterPassing
     ValueText: string option
 }
 

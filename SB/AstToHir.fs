@@ -208,6 +208,28 @@ let private lowerStorageType (symbol: Symbol) =
     | ArraySym arr -> Array(lowerSBType arr.ElementType)
     | _ -> lowerSBType (Symbol.typ symbol)
 
+let private lowerParameterBinding = function
+    | ByReference -> ReferenceBinding
+    | Flexible -> FlexibleBinding
+
+let private canLowerDynamically ctx name =
+    ctx.CurrentScope <> globalScope
+    && not (isCallableBuiltIn name)
+
+let private shouldLowerDynamicStorage ctx expr name =
+    match getRecordedResolvedSymbol ctx expr with
+    | None -> canLowerDynamically ctx name
+    | Some resolved when canLowerDynamically ctx name && resolved.Scope = globalScope ->
+        match Map.tryFind resolved.Scope ctx.State.SymTab with
+        | Some scope ->
+            match Map.tryFind resolved.Name scope.Symbols with
+            | Some(VariableSym _)
+            | Some(ArraySym _)
+            | Some(ConstantSym _) -> true
+            | _ -> false
+        | None -> false
+    | _ -> false
+
 let private lowerStorageSlotMap (symTab: SymbolTable) (symbolIds: Map<string * string, SymbolId>) =
     symTab
     |> Map.toList
@@ -278,52 +300,81 @@ let rec private lowerExpr ctx expr =
     | NumberLiteral(_, pos, value) -> ok (lowerLiteral pos value)
     | StringLiteral(_, pos, value) -> ok (lowerLiteral pos value)
     | Identifier(_, pos, name) ->
-        zip (getRecordedExprType ctx expr) (requireSymbolIdForExpr ctx expr name pos)
-        |> bind (fun (hirType, symbolId) ->
-            match getRecordedResolvedSymbol ctx expr with
-            | Some resolved when isCallableBuiltIn resolved.Name -> ok (CallFunc(symbolId, [], hirType, pos))
-            | Some resolved ->
-                match Map.tryFind resolved.Scope ctx.State.SymTab with
-                | Some scope ->
-                    match Map.tryFind resolved.Name scope.Symbols with
-                    | Some(FunctionSym _)
-                    | Some(BuiltInSym _) -> ok (CallFunc(symbolId, [], hirType, pos))
-                    | _ -> ok (ReadVar(symbolId, hirType, pos))
-                | None -> ok (ReadVar(symbolId, hirType, pos))
-            | _ when normalizeIdentifier name = "DATE" ->
-                fail ctx.CurrentScope (Some pos) "DATE is about to lower as ReadVar."
-            | _ -> ok (ReadVar(symbolId, hirType, pos)))
+        match getRecordedResolvedSymbol ctx expr with
+        | _ when shouldLowerDynamicStorage ctx expr name ->
+            getRecordedExprType ctx expr |> map (fun hirType -> DynamicReadVar(normalizeIdentifier name, hirType, pos))
+        | _ ->
+            zip (getRecordedExprType ctx expr) (requireSymbolIdForExpr ctx expr name pos)
+            |> bind (fun (hirType, symbolId) ->
+                match getRecordedResolvedSymbol ctx expr with
+                | Some resolved when isCallableBuiltIn resolved.Name -> ok (CallFunc(symbolId, [], hirType, pos))
+                | Some resolved ->
+                    match Map.tryFind resolved.Scope ctx.State.SymTab with
+                    | Some scope ->
+                        match Map.tryFind resolved.Name scope.Symbols with
+                        | Some(FunctionSym _)
+                        | Some(BuiltInSym _) -> ok (CallFunc(symbolId, [], hirType, pos))
+                        | _ -> ok (ReadVar(symbolId, hirType, pos))
+                    | None -> ok (ReadVar(symbolId, hirType, pos))
+                | _ when normalizeIdentifier name = "DATE" ->
+                    fail ctx.CurrentScope (Some pos) "DATE is about to lower as ReadVar."
+                | _ -> ok (ReadVar(symbolId, hirType, pos)))
     | PostfixName(_, pos, name, None) ->
-        zip (getRecordedExprType ctx expr) (requireSymbolIdForExpr ctx expr name pos)
-        |> bind (fun (hirType, symbolId) ->
-            match getRecordedResolvedSymbol ctx expr with
-            | Some resolved when isCallableBuiltIn resolved.Name -> ok (CallFunc(symbolId, [], hirType, pos))
-            | Some resolved ->
-                match Map.tryFind resolved.Scope ctx.State.SymTab with
-                | Some scope ->
-                    match Map.tryFind resolved.Name scope.Symbols with
-                    | Some(FunctionSym _)
-                    | Some(BuiltInSym _) -> ok (CallFunc(symbolId, [], hirType, pos))
-                    | _ -> ok (ReadVar(symbolId, hirType, pos))
-                | None -> ok (ReadVar(symbolId, hirType, pos))
-            | _ when normalizeIdentifier name = "DATE" ->
-                fail ctx.CurrentScope (Some pos) "DATE is about to lower as ReadVar."
-            | _ -> ok (ReadVar(symbolId, hirType, pos)))
+        match getRecordedResolvedSymbol ctx expr with
+        | _ when shouldLowerDynamicStorage ctx expr name ->
+            getRecordedExprType ctx expr |> map (fun hirType -> DynamicReadVar(normalizeIdentifier name, hirType, pos))
+        | _ ->
+            zip (getRecordedExprType ctx expr) (requireSymbolIdForExpr ctx expr name pos)
+            |> bind (fun (hirType, symbolId) ->
+                match getRecordedResolvedSymbol ctx expr with
+                | Some resolved when isCallableBuiltIn resolved.Name -> ok (CallFunc(symbolId, [], hirType, pos))
+                | Some resolved ->
+                    match Map.tryFind resolved.Scope ctx.State.SymTab with
+                    | Some scope ->
+                        match Map.tryFind resolved.Name scope.Symbols with
+                        | Some(FunctionSym _)
+                        | Some(BuiltInSym _) -> ok (CallFunc(symbolId, [], hirType, pos))
+                        | _ -> ok (ReadVar(symbolId, hirType, pos))
+                    | None -> ok (ReadVar(symbolId, hirType, pos))
+                | _ when normalizeIdentifier name = "DATE" ->
+                    fail ctx.CurrentScope (Some pos) "DATE is about to lower as ReadVar."
+                | _ -> ok (ReadVar(symbolId, hirType, pos)))
     | PostfixName(_, pos, name, Some args) ->
-        zip (getRecordedExprType ctx expr) (zip (requireSymbolIdForExpr ctx expr name pos) (args |> List.map (lowerExpr ctx) |> collectResults))
-        |> map (fun (hirType, (symbolId, loweredArgs)) ->
-            match getRecordedResolvedSymbol ctx expr with
-            | Some resolved when isCallableBuiltIn resolved.Name -> CallFunc(symbolId, loweredArgs, hirType, pos)
-            | Some resolved ->
-                match Map.tryFind resolved.Scope ctx.State.SymTab with
-                | Some scope ->
-                    match Map.tryFind resolved.Name scope.Symbols with
-                    | Some(ArraySym _) -> ReadArrayElem(symbolId, loweredArgs, hirType, pos)
-                    | Some(FunctionSym _)
-                    | Some(BuiltInSym _) -> CallFunc(symbolId, loweredArgs, hirType, pos)
-                    | _ -> ReadArrayElem(symbolId, loweredArgs, hirType, pos)
-                | None -> ReadArrayElem(symbolId, loweredArgs, hirType, pos)
-            | _ -> ReadArrayElem(symbolId, loweredArgs, hirType, pos))
+        match getRecordedResolvedSymbol ctx expr with
+        | _ when shouldLowerDynamicStorage ctx expr name ->
+            zip (getRecordedExprType ctx expr) (args |> List.map (lowerExpr ctx) |> collectResults)
+            |> map (fun (hirType, loweredIndexes) -> DynamicReadArrayElem(normalizeIdentifier name, loweredIndexes, hirType, pos))
+        | _ ->
+            zip (getRecordedExprType ctx expr) (zip (requireSymbolIdForExpr ctx expr name pos) (args |> List.map (fun arg -> lowerExpr ctx arg |> map ValueArg) |> collectResults))
+            |> map (fun (hirType, (symbolId, loweredArgs)) ->
+                match getRecordedResolvedSymbol ctx expr with
+                | Some resolved when isCallableBuiltIn resolved.Name -> CallFunc(symbolId, loweredArgs, hirType, pos)
+                | Some resolved ->
+                    match Map.tryFind resolved.Scope ctx.State.SymTab with
+                    | Some scope ->
+                        match Map.tryFind resolved.Name scope.Symbols with
+                        | Some(ArraySym _) ->
+                            let loweredIndexes =
+                                loweredArgs
+                                |> List.choose (function | ValueArg arg -> Some arg | RefArg _ -> None)
+                            ReadArrayElem(symbolId, loweredIndexes, hirType, pos)
+                        | Some(FunctionSym _)
+                        | Some(BuiltInSym _) -> CallFunc(symbolId, loweredArgs, hirType, pos)
+                        | _ ->
+                            let loweredIndexes =
+                                loweredArgs
+                                |> List.choose (function | ValueArg arg -> Some arg | RefArg _ -> None)
+                            ReadArrayElem(symbolId, loweredIndexes, hirType, pos)
+                    | None ->
+                        let loweredIndexes =
+                            loweredArgs
+                            |> List.choose (function | ValueArg arg -> Some arg | RefArg _ -> None)
+                        ReadArrayElem(symbolId, loweredIndexes, hirType, pos)
+                | _ ->
+                    let loweredIndexes =
+                        loweredArgs
+                        |> List.choose (function | ValueArg arg -> Some arg | RefArg _ -> None)
+                    ReadArrayElem(symbolId, loweredIndexes, hirType, pos))
     | SliceRange(_, pos, lhs, rhs) ->
         zip (getRecordedExprType ctx expr) (zip (lowerExpr ctx lhs) (lowerExpr ctx rhs))
         |> map (fun (hirType, (left, right)) -> Binary(HirBinaryOp.SliceRange, left, right, hirType, pos))
@@ -338,11 +389,20 @@ let private lowerTarget ctx expr =
     match expr with
     | Identifier(_, pos, name)
     | PostfixName(_, pos, name, None) ->
-        zip (getRecordedTargetType ctx expr) (requireSymbolIdForExpr ctx expr name pos)
-        |> map (fun (hirType, symbolId) -> WriteVar(symbolId, hirType, pos))
+        match getRecordedResolvedSymbol ctx expr with
+        | _ when shouldLowerDynamicStorage ctx expr name ->
+            getRecordedTargetType ctx expr |> map (fun hirType -> DynamicWriteVar(normalizeIdentifier name, hirType, pos))
+        | _ ->
+            zip (getRecordedTargetType ctx expr) (requireSymbolIdForExpr ctx expr name pos)
+            |> map (fun (hirType, symbolId) -> WriteVar(symbolId, hirType, pos))
     | PostfixName(_, pos, name, Some args) ->
-        zip (getRecordedTargetType ctx expr) (zip (requireSymbolIdForExpr ctx expr name pos) (args |> List.map (lowerExpr ctx) |> collectResults))
-        |> map (fun (hirType, (symbolId, loweredArgs)) -> WriteArrayElem(symbolId, loweredArgs, hirType, pos))
+        match getRecordedResolvedSymbol ctx expr with
+        | _ when shouldLowerDynamicStorage ctx expr name ->
+            zip (getRecordedTargetType ctx expr) (args |> List.map (lowerExpr ctx) |> collectResults)
+            |> map (fun (hirType, loweredArgs) -> DynamicWriteArrayElem(normalizeIdentifier name, loweredArgs, hirType, pos))
+        | _ ->
+            zip (getRecordedTargetType ctx expr) (zip (requireSymbolIdForExpr ctx expr name pos) (args |> List.map (lowerExpr ctx) |> collectResults))
+            |> map (fun (hirType, (symbolId, loweredArgs)) -> WriteArrayElem(symbolId, loweredArgs, hirType, pos))
     | _ ->
         fail ctx.CurrentScope (Some(exprPosition expr)) "Expression is not a writable target."
 
@@ -354,6 +414,27 @@ let private lowerTargetList ctx exprs =
 
 let private canLowerAsTarget ctx expr =
     Map.containsKey (nodeIdOfExpr expr) ctx.State.TargetTypes
+
+let private tryLookupResolvedSymbol ctx expr =
+    match getRecordedResolvedSymbol ctx expr with
+    | Some resolved ->
+        Map.tryFind resolved.Scope ctx.State.SymTab
+        |> Option.bind (fun scope -> Map.tryFind resolved.Name scope.Symbols)
+    | None -> None
+
+let private lowerCallArg ctx expr =
+    match expr, tryLookupResolvedSymbol ctx expr with
+    | (Identifier(_, pos, name) | PostfixName(_, pos, name, None)), Some(VariableSym _ | ParameterSym _) ->
+        zip (getRecordedExprType ctx expr) (requireSymbolIdForExpr ctx expr name pos)
+        |> map (fun (hirType, symbolId) -> RefArg(WriteVar(symbolId, hirType, pos)))
+    | PostfixName(_, pos, name, Some args), Some(ArraySym _) ->
+        zip (getRecordedExprType ctx expr) (zip (requireSymbolIdForExpr ctx expr name pos) (args |> List.map (lowerExpr ctx) |> collectResults))
+        |> map (fun (hirType, (symbolId, loweredArgs)) -> RefArg(WriteArrayElem(symbolId, loweredArgs, hirType, pos)))
+    | _ ->
+        lowerExpr ctx expr |> map ValueArg
+
+let private lowerCallArgList ctx exprs =
+    exprs |> List.map (lowerCallArg ctx) |> collectResults
 
 let private lowerInputArgs ctx pos args =
     let rec loop prompts targets inTargetPhase remaining =
@@ -400,24 +481,28 @@ let rec private lowerStmt ctx stmt =
             lowerInputArgs ctx pos args
             |> map (fun (prompts, loweredTargets) -> [ Input(None, prompts, loweredTargets, pos) ])
         else
-            lowerExprList ctx args
-            |> bind (fun loweredArgs ->
-                if isCallableBuiltIn name then
-                    ok [ BuiltInCall(lowerBuiltInKind name, None, loweredArgs, pos) ]
-                else
+            if isCallableBuiltIn name then
+                lowerExprList ctx args
+                |> map (fun loweredArgs -> [ BuiltInCall(lowerBuiltInKind name, None, loweredArgs, pos) ])
+            else
+                lowerCallArgList ctx args
+                |> bind (fun loweredArgs ->
                     requireSymbolIdForName ctx ctx.CurrentScope name pos
                     |> map (fun symbolId -> [ ProcCall(symbolId, None, loweredArgs, pos) ]))
     | ChannelProcedureCall(pos, name, channel, args) ->
-        zip (lowerExpr ctx channel) (lowerExprList ctx args)
-        |> bind (fun (loweredChannel, loweredArgs) ->
+        lowerExpr ctx channel
+        |> bind (fun loweredChannel ->
             if normalizeIdentifier name = "INPUT" then
                 lowerInputArgs ctx pos args
                 |> map (fun (prompts, loweredTargets) -> [ Input(Some loweredChannel, prompts, loweredTargets, pos) ])
             elif isCallableBuiltIn name then
-                ok [ BuiltInCall(lowerBuiltInKind name, Some loweredChannel, loweredArgs, pos) ]
+                lowerExprList ctx args
+                |> map (fun loweredArgs -> [ BuiltInCall(lowerBuiltInKind name, Some loweredChannel, loweredArgs, pos) ])
             else
-                requireSymbolIdForName ctx ctx.CurrentScope name pos
-                |> map (fun symbolId -> [ ProcCall(symbolId, Some loweredChannel, loweredArgs, pos) ]))
+                lowerCallArgList ctx args
+                |> bind (fun loweredArgs ->
+                    requireSymbolIdForName ctx ctx.CurrentScope name pos
+                    |> map (fun symbolId -> [ ProcCall(symbolId, Some loweredChannel, loweredArgs, pos) ])))
     | ForStmt(pos, name, startExpr, endExpr, stepExpr, body) ->
         let loopId = nextLoopId ctx
         let loopCtx = withLoop ctx (NamedLoop name) loopId
@@ -532,7 +617,15 @@ let private lowerRoutine symbolIds state routine =
                 match Map.tryFind (normalizeKey resolved.Scope resolved.Name) symbolIds with
                 | Some symbolId ->
                     match Map.tryFind symbolId slotMap with
-                    | Some storage -> Result.Ok storage
+                    | Some storage ->
+                        match Map.tryFind resolved.Scope state.SymTab with
+                        | Some scope ->
+                            match Map.tryFind resolved.Name scope.Symbols with
+                            | Some(ParameterSym symbol) ->
+                                Result.Ok { Storage = storage; Binding = lowerParameterBinding symbol.Passing }
+                            | Some _ -> fail name (Some pos) $"Resolved parameter '{parameter}' was not a parameter symbol in routine '{name}'."
+                            | None -> fail name (Some pos) $"Missing parameter symbol '{parameter}' in routine '{name}'."
+                        | None -> fail name (Some pos) $"Missing parameter scope '{resolved.Scope}' while lowering routine '{name}'."
                     | None -> fail name (Some pos) $"Missing storage slot for parameter '{parameter}' in routine '{name}'."
                 | None -> fail name (Some pos) $"Unable to resolve parameter '{parameter}' in routine '{name}'."
             | None -> fail name (Some pos) $"Unable to resolve parameter '{parameter}' in routine '{name}'."

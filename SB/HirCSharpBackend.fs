@@ -77,7 +77,7 @@ let private buildContext className (program: HirProgram) =
     let routineStorage =
         program.Routines
         |> List.collect (fun routine ->
-            (routine.Parameters @ routine.Locals)
+            ((routine.Parameters |> List.map _.Storage) @ routine.Locals)
             |> List.map (fun storage -> storage.Symbol, storageFieldName program.SymbolNames storage))
 
     let routines =
@@ -112,13 +112,26 @@ let private emitInvocation targetName args =
         let argsText = String.concat ", " args
         $"{targetName}({argsText})"
 
-let rec private emitExpr ctx = function
+let rec private emitTargetRead ctx = function
+    | WriteVar(symbolId, _, _) -> storageName ctx symbolId
+    | WriteArrayElem(symbolId, indexes, _, _) ->
+        emitInvocation "GetArrayValue" (storageName ctx symbolId :: (indexes |> List.map (emitExpr ctx)))
+    | DynamicWriteVar(name, _, _) -> $"throw new NotSupportedException(\"Dynamic scoped write '{name}' is not supported by the generated C# backend yet.\")"
+    | DynamicWriteArrayElem(name, _, _, _) -> $"throw new NotSupportedException(\"Dynamic scoped array write '{name}' is not supported by the generated C# backend yet.\")"
+
+and private emitCallArg ctx = function
+    | ValueArg expr -> emitExpr ctx expr
+    | RefArg target -> emitTargetRead ctx target
+
+and private emitExpr ctx = function
     | Literal(ConstInt value, _, _) -> string value
     | Literal(ConstFloat value, _, _) -> value.ToString("G17", CultureInfo.InvariantCulture)
     | Literal(ConstString value, _, _) -> $"\"{escapeStringLiteral value}\""
     | ReadVar(symbolId, _, _) -> storageName ctx symbolId
     | ReadArrayElem(symbolId, indexes, _, _) ->
         emitInvocation "GetArrayValue" (storageName ctx symbolId :: (indexes |> List.map (emitExpr ctx)))
+    | DynamicReadVar(name, _, _) -> $"throw new NotSupportedException(\"Dynamic scoped read '{name}' is not supported by the generated C# backend yet.\")"
+    | DynamicReadArrayElem(name, _, _, _) -> $"throw new NotSupportedException(\"Dynamic scoped array read '{name}' is not supported by the generated C# backend yet.\")"
     | Unary(op, inner, _, _) ->
         match op with
         | Identity -> $"Identity({emitExpr ctx inner})"
@@ -150,7 +163,7 @@ let rec private emitExpr ctx = function
         | SliceRange -> $"SliceRange({left}, {right})"
         | BinaryUnknown name -> $"ApplyBinary(\"{name}\", {left}, {right})"
     | CallFunc(symbolId, args, _, _) ->
-        let argsText = args |> List.map (emitExpr ctx)
+        let argsText = args |> List.map (emitCallArg ctx)
         if Set.contains symbolId ctx.RoutineSymbols then
             emitInvocation (routineName ctx symbolId) argsText
         else
@@ -162,6 +175,8 @@ let private emitTargetWrite ctx target valueExpr =
     | WriteArrayElem(symbolId, indexes, _, _) ->
         let invocation = emitInvocation "SetArrayValue" ([ storageName ctx symbolId; valueExpr ] @ (indexes |> List.map (emitExpr ctx)))
         invocation + ";"
+    | DynamicWriteVar(name, _, _) -> $"throw new NotSupportedException(\"Dynamic scoped write '{name}' is not supported by the generated C# backend yet.\");"
+    | DynamicWriteArrayElem(name, _, _, _) -> $"throw new NotSupportedException(\"Dynamic scoped array write '{name}' is not supported by the generated C# backend yet.\");"
 
 let private emitLoopTransfer loopId isNext =
     let (LoopId id) = loopId
@@ -257,7 +272,7 @@ and private emitStmt ctx builder level stmt =
     | Assign(target, value, _) ->
         appendLine builder level (emitTargetWrite ctx target (emitExpr ctx value))
     | ProcCall(symbolId, _, args, _) ->
-        let argsText = args |> List.map (emitExpr ctx)
+        let argsText = args |> List.map (emitCallArg ctx)
         appendLine builder level $"{emitInvocation (routineName ctx symbolId) argsText};"
     | BuiltInCall(kind, channel, args, _) ->
         let channelText =
@@ -286,7 +301,8 @@ and private emitStmt ctx builder level stmt =
         appendLine builder level $"ExecuteInput({channelText}, new object?[] {{ {promptText} }});"
         targets
         |> List.iteri (fun index target ->
-            let reader = $"ReadInputValue({index}, {hirTypeToken (match target with | WriteVar(_, t, _) | WriteArrayElem(_, _, t, _) -> t)})"
+            let reader =
+                $"ReadInputValue({index}, {hirTypeToken (match target with | WriteVar(_, t, _) | WriteArrayElem(_, _, t, _) | DynamicWriteVar(_, t, _) | DynamicWriteArrayElem(_, _, t, _) -> t)})"
             appendLine builder level (emitTargetWrite ctx target reader))
     | If(condition, thenBlock, elseBlock, _) ->
         emitIf ctx builder level condition thenBlock elseBlock
@@ -323,8 +339,10 @@ and private emitStmt ctx builder level stmt =
         |> List.iter (fun target ->
             let valueExpr =
                 match target with
-                | WriteVar(_, targetType, _) -> $"ReadDataValue({hirTypeToken targetType})"
-                | WriteArrayElem(_, _, targetType, _) -> $"ReadDataValue({hirTypeToken targetType})"
+                | WriteVar(_, targetType, _)
+                | WriteArrayElem(_, _, targetType, _)
+                | DynamicWriteVar(_, targetType, _)
+                | DynamicWriteArrayElem(_, _, targetType, _) -> $"ReadDataValue({hirTypeToken targetType})"
             appendLine builder level (emitTargetWrite ctx target valueExpr))
     | Remark(text, _) ->
         appendLine builder level $"// {text}"
@@ -339,7 +357,7 @@ let private emitStorageDeclarations ctx builder level storages =
 let private emitRoutine ctx builder (routine: HirRoutine) =
     let parameterText =
         routine.Parameters
-        |> List.map (fun storage -> $"object? {storageName ctx storage.Symbol}")
+        |> List.map (fun parameter -> $"object? {storageName ctx parameter.Storage.Symbol}")
         |> String.concat ", "
 
     appendLine builder 1 $"private static object? {routineName ctx routine.Symbol}({parameterText})"

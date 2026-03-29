@@ -46,7 +46,7 @@ let createVariableSymbol name position evaluatedType =
     VariableSym { Common = createCommonSymbol name position evaluatedType; ValueText = None }
 
 let createParameterSymbol name position evaluatedType =
-    ParameterSym { Common = createCommonSymbol name position evaluatedType; Passing = None; ValueText = None }
+    ParameterSym { Common = createCommonSymbol name position evaluatedType; Passing = Flexible; ValueText = None }
 
 let createArraySymbol name position elementType dimensions =
     ArraySym {

@@ -115,6 +115,19 @@ let ``parameter references resolve within procedure scope`` () =
     Assert.That(printCall.IsSome, Is.True)
 
 [<Test>]
+let ``reference statement marks referenced parameter as by reference`` () =
+    let analyzed =
+        analyzeProgram "10 DEFine PROCedure main(value,total)\n20 REFERENCE total\n30 END DEFine\n"
+
+    match analyzed.SymTab["main"].Symbols[normalizeIdentifier "value"] with
+    | ParameterSym sym -> Assert.That(sym.Passing, Is.EqualTo(Flexible))
+    | other -> Assert.Fail($"Expected parameter symbol for value, got %A{other}")
+
+    match analyzed.SymTab["main"].Symbols[normalizeIdentifier "total"] with
+    | ParameterSym sym -> Assert.That(sym.Passing, Is.EqualTo(ByReference))
+    | other -> Assert.Fail($"Expected parameter symbol for total, got %A{other}")
+
+[<Test>]
 let ``dim inside procedure without local remains globally resolvable`` () =
     let analyzed =
         analyzeProgram "10 DEFine PROCedure initialise\n20 DIM score(100)\n30 END DEFine\n40 PRINT score(1)\n"

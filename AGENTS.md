@@ -10,6 +10,8 @@ F# SuperBASIC / Structured SuperBASIC toolchain targeting `.NET 10`.
 - runs semantic analysis with symbol resolution, typing, coercion, constant folding, and diagnostics
 - lowers AST to HIR
 - interprets a subset of HIR
+- models flexible versus by-reference routine parameters in semantics and HIR
+- interprets `GOTO`, `GOSUB`, `RETURN`, `ON GOTO`, and `ON GOSUB`
 - generates alternate C# from lowered HIR
 - generates alternate plain C from lowered HIR
 - generates a published `.NET` executable from lowered HIR
@@ -78,6 +80,6 @@ dotnet test .\TestBed\TestBed.fsproj
 
 - broad built-in coverage
 - full channel/device/file semantics
-- by-reference procedure semantics
+- code generation parity for by-reference procedure semantics
 - graphics, sound, and environment-specific runtime behavior
 - faithful Sinclair QL compatibility

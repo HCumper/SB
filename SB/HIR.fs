@@ -86,6 +86,15 @@ type HirStorage = {
     Position: SourcePosition
 }
 
+type HirParameterBinding =
+    | FlexibleBinding
+    | ReferenceBinding
+
+type HirParameter = {
+    Storage: HirStorage
+    Binding: HirParameterBinding
+}
+
 type HirRestorePoint = {
     LineNumber: int
     Slot: DataSlotId
@@ -95,9 +104,21 @@ type HirExpr =
     | Literal of HirConst * HirType * SourcePosition
     | ReadVar of SymbolId * HirType * SourcePosition
     | ReadArrayElem of SymbolId * HirExpr list * HirType * SourcePosition
+    | DynamicReadVar of string * HirType * SourcePosition
+    | DynamicReadArrayElem of string * HirExpr list * HirType * SourcePosition
     | Unary of HirUnaryOp * HirExpr * HirType * SourcePosition
     | Binary of HirBinaryOp * HirExpr * HirExpr * HirType * SourcePosition
-    | CallFunc of SymbolId * HirExpr list * HirType * SourcePosition
+    | CallFunc of SymbolId * HirCallArg list * HirType * SourcePosition
+
+and HirTarget =
+    | WriteVar of SymbolId * HirType * SourcePosition
+    | WriteArrayElem of SymbolId * HirExpr list * HirType * SourcePosition
+    | DynamicWriteVar of string * HirType * SourcePosition
+    | DynamicWriteArrayElem of string * HirExpr list * HirType * SourcePosition
+
+and HirCallArg =
+    | ValueArg of HirExpr
+    | RefArg of HirTarget
 
 type HirDataEntry = {
     Slot: DataSlotId
@@ -105,10 +126,6 @@ type HirDataEntry = {
     Position: SourcePosition
     LineNumber: int option
 }
-
-type HirTarget =
-    | WriteVar of SymbolId * HirType * SourcePosition
-    | WriteArrayElem of SymbolId * HirExpr list * HirType * SourcePosition
 
 type HirBlock = HirStmt list
 
@@ -121,7 +138,7 @@ and HirSelectClause = {
 
 and HirStmt =
     | Assign of HirTarget * HirExpr * SourcePosition
-    | ProcCall of SymbolId * HirExpr option * HirExpr list * SourcePosition
+    | ProcCall of SymbolId * HirExpr option * HirCallArg list * SourcePosition
     | BuiltInCall of BuiltInKind * HirExpr option * HirExpr list * SourcePosition
     | Input of HirExpr option * HirExpr list * HirTarget list * SourcePosition
     | If of HirExpr * HirBlock * HirBlock option * SourcePosition
@@ -142,7 +159,7 @@ and HirStmt =
 type HirRoutine = {
     Name: string
     Symbol: SymbolId
-    Parameters: HirStorage list
+    Parameters: HirParameter list
     Locals: HirStorage list
     Body: HirBlock
     ReturnType: HirType option
