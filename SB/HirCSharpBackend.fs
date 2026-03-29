@@ -313,7 +313,7 @@ and private emitStmt ctx builder level stmt =
         | Some expr -> appendLine builder level $"return {emitExpr ctx expr};"
         | None -> appendLine builder level "return null;"
     | LineNumber(value, _) ->
-        appendLine builder level $"line_{value}:"
+        appendLine builder level $"line_{value}: ;"
     | Restore(value, _) ->
         match value with
         | Some expr -> appendLine builder level $"RestoreToLine(AsInt({emitExpr ctx expr}));"

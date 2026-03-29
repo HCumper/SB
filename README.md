@@ -12,6 +12,7 @@ The active codebase currently supports:
 - a partial interpreter for HIR
 - alternate C# generation from lowered HIR
 - alternate plain C generation from lowered HIR
+- published `.NET` executable generation from lowered HIR
 
 The project is not yet a full SuperBASIC runtime. It can run a meaningful subset of programs, but many built-ins and host-specific behaviors are still incomplete.
 
@@ -32,9 +33,9 @@ The active path is:
 5. convert parse tree to AST
 6. run semantic analysis
 7. lower AST to HIR
-8. interpret HIR
+8. interpret HIR or emit C# / C / `.NET exe`
 
-The CLI can also emit C# or plain C from HIR instead of interpreting.
+The CLI can also emit C#, plain C, or a published `.NET` executable from HIR instead of interpreting.
 
 Important files in `SB/`:
 
@@ -46,6 +47,10 @@ Important files in `SB/`:
 - `AstToHir.fs` - semantic AST to HIR lowering
 - `Interpreter.fs` - HIR interpreter
 - `BuiltIns.fs` - built-in name/signature model
+- `HirCSharpBackend.fs` - HIR to C#
+- `HirCBackend.fs` - HIR to C
+- `CSharpRuntime.stg` - C# runtime helper template
+- `CTemplates.stg` - C runtime helper template
 
 ## Status
 
@@ -98,6 +103,28 @@ Supported backends:
 - `interpret` - lower to HIR and run the interpreter
 - `csharp` - lower to HIR and write generated C# to the configured output path
 - `c` - lower to HIR and write generated C to the configured output path
+- `dotnetexe` - lower to HIR, generate C#, and publish a single-file `.NET` executable to the configured output path
+
+Example:
+
+```powershell
+dotnet run --project .\SB\SB.fsproj -- input.sb output.exe false dotnetexe
+```
+
+Or via `SB/appsettings.json`:
+
+```json
+{
+  "ApplicationName": "SB",
+  "AppSettings": {
+    "InputFile": "C:\\Source\\SB\\SB\\q3.sb",
+    "OutputFile": "C:\\Source\\SB\\SB\\q3-generated.exe",
+    "TemplatesFile": "C:\\Source\\SB\\SB\\CSharpTemplates.stg",
+    "Verbose": true,
+    "Backend": "dotnetexe"
+  }
+}
+```
 
 ## Test
 

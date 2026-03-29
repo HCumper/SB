@@ -1,7 +1,9 @@
 module CompilerPipeline
 
 open System
+open System.Diagnostics
 open System.IO
+open System.Runtime.InteropServices
 open Microsoft.Extensions.Configuration
 open Serilog
 open Antlr4.Runtime
@@ -214,6 +216,131 @@ let generateCSharpFromLoweredHir className hirProgram =
 
 let generateCFromLoweredHir programName hirProgram =
     HirCBackend.generateCFromHir programName hirProgram
+
+let private sanitizeManagedAssemblyName (value: string) =
+    let chars =
+        value
+        |> Seq.map (fun ch -> if Char.IsLetterOrDigit ch || ch = '_' then ch else '_')
+        |> Seq.toArray
+        |> System.String
+
+    if String.IsNullOrWhiteSpace chars then "GeneratedProgram"
+    elif Char.IsDigit chars[0] then "_" + chars
+    else chars
+
+let private runProcess (fileName: string) (arguments: string list) (workingDirectory: string) =
+    let startInfo = ProcessStartInfo()
+    startInfo.FileName <- fileName
+    startInfo.WorkingDirectory <- workingDirectory
+    startInfo.RedirectStandardOutput <- true
+    startInfo.RedirectStandardError <- true
+    startInfo.UseShellExecute <- false
+
+    arguments |> List.iter startInfo.ArgumentList.Add
+
+    use childProcess = new Process()
+    childProcess.StartInfo <- startInfo
+
+    let output = Text.StringBuilder()
+    let errors = Text.StringBuilder()
+
+    childProcess.OutputDataReceived.Add(fun args ->
+        if not (isNull args.Data) then
+            output.AppendLine(args.Data) |> ignore)
+
+    childProcess.ErrorDataReceived.Add(fun args ->
+        if not (isNull args.Data) then
+            errors.AppendLine(args.Data) |> ignore)
+
+    if not (childProcess.Start()) then
+        Result.Error $"Failed to start process '{fileName}'."
+    else
+        childProcess.BeginOutputReadLine()
+        childProcess.BeginErrorReadLine()
+        childProcess.WaitForExit()
+
+        let stdout = output.ToString().Trim()
+        let stderr = errors.ToString().Trim()
+
+        if childProcess.ExitCode = 0 then
+            Result.Ok stdout
+        else
+            let details =
+                [ if not (String.IsNullOrWhiteSpace stdout) then yield stdout
+                  if not (String.IsNullOrWhiteSpace stderr) then yield stderr ]
+                |> String.concat Environment.NewLine
+
+            Result.Error $"Process '{fileName}' failed with exit code {childProcess.ExitCode}.{if String.IsNullOrWhiteSpace details then String.Empty else Environment.NewLine + details}"
+
+let generateDotNetExeFromLoweredHir appName outputPath hirProgram =
+    let outputFullPath = Path.GetFullPath(outputPath)
+    let outputDirectory =
+        match Path.GetDirectoryName(outputFullPath) with
+        | null
+        | "" -> Directory.GetCurrentDirectory()
+        | directory -> directory
+
+    let requestedBaseName = Path.GetFileNameWithoutExtension(outputFullPath)
+    let assemblyName = sanitizeManagedAssemblyName requestedBaseName
+    let className =
+        if String.IsNullOrWhiteSpace appName then assemblyName else sanitizeManagedAssemblyName appName
+
+    let generatedSource = HirCSharpBackend.generateCSharpFromHir className hirProgram
+    let tempDirectory = Path.Combine(Path.GetTempPath(), "sb-dotnetexe", Guid.NewGuid().ToString("N"))
+    let publishDirectory = Path.Combine(tempDirectory, "publish")
+    let projectPath = Path.Combine(tempDirectory, $"{assemblyName}.csproj")
+    let sourcePath = Path.Combine(tempDirectory, "Program.cs")
+    let runtimeIdentifier = RuntimeInformation.RuntimeIdentifier
+
+    let projectText =
+        $"""<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>{assemblyName}</AssemblyName>
+    <RootNamespace>{assemblyName}</RootNamespace>
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>true</SelfContained>
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+  </PropertyGroup>
+</Project>
+"""
+
+    try
+        Directory.CreateDirectory(tempDirectory) |> ignore
+        Directory.CreateDirectory(outputDirectory) |> ignore
+        File.WriteAllText(projectPath, projectText)
+        File.WriteAllText(sourcePath, generatedSource)
+
+        match runProcess
+                  "dotnet"
+                  [ "publish"
+                    projectPath
+                    "-c"
+                    "Release"
+                    "-r"
+                    runtimeIdentifier
+                    "-o"
+                    publishDirectory
+                    "--nologo" ]
+                  tempDirectory with
+        | Result.Error message ->
+            Result.Error message
+        | Result.Ok _ ->
+            let publishedExe = Path.Combine(publishDirectory, $"{assemblyName}.exe")
+
+            if not (File.Exists(publishedExe)) then
+                Result.Error $"dotnet publish completed but did not produce '{publishedExe}'."
+            else
+                File.Copy(publishedExe, outputFullPath, true)
+                Result.Ok outputFullPath
+    finally
+        if Directory.Exists(tempDirectory) then
+            Directory.Delete(tempDirectory, true)
 
 let generateAstOutput (config: Configuration) (ast: Ast) =
     File.Delete config.OutputFile

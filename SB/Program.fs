@@ -100,6 +100,18 @@ let main argv =
                     if settings.Verbose then
                         Console.WriteLine($"Generated C written to {settings.OutputFileName}")
                     0
+                | "dotnetexe"
+                | "dotnet-exe"
+                | "exe" ->
+                    match generateDotNetExeFromLoweredHir settings.AppName settings.OutputFileName hirProgram with
+                    | Result.Ok generatedPath ->
+                        if settings.Verbose then
+                            Console.WriteLine($".NET executable written to {generatedPath}")
+                        0
+                    | Result.Error message ->
+                        Console.Error.WriteLine("Failed to generate .NET executable:")
+                        Console.Error.WriteLine(message : string)
+                        1
                 | backend ->
-                    Console.Error.WriteLine($"Unknown backend '{backend}'. Supported backends: interpret, csharp, c.")
+                    Console.Error.WriteLine($"Unknown backend '{backend}'. Supported backends: interpret, csharp, c, dotnetexe.")
                     1

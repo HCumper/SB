@@ -12,6 +12,7 @@ F# SuperBASIC / Structured SuperBASIC toolchain targeting `.NET 10`.
 - interprets a subset of HIR
 - generates alternate C# from lowered HIR
 - generates alternate plain C from lowered HIR
+- generates a published `.NET` executable from lowered HIR
 
 The runtime is incomplete. Many built-ins and host-specific behaviors are still partial.
 
@@ -30,7 +31,7 @@ The runtime is incomplete. Many built-ins and host-specific behaviors are still 
 5. lower parse tree to AST
 6. run semantic analysis
 7. lower AST to HIR
-8. either interpret HIR or emit C#/C
+8. either interpret HIR or emit C# / C / `.NET exe`
 
 ## Important files
 
@@ -44,17 +45,26 @@ The runtime is incomplete. Many built-ins and host-specific behaviors are still 
 - `SB/Interpreter.fs` - HIR interpreter
 - `SB/HirCSharpBackend.fs` - HIR to C#
 - `SB/HirCBackend.fs` - HIR to C
+- `SB/CSharpRuntime.stg` - C# runtime helper template
+- `SB/CTemplates.stg` - C runtime helper template
 
 ## Backends
 
 - `interpret` - lower to HIR and run the interpreter
 - `csharp` - lower to HIR and write generated C# to the output path
 - `c` - lower to HIR and write generated C to the output path
+- `dotnetexe` - lower to HIR, generate C#, and publish a single-file `.NET` executable to the output path
 
 `SB/appsettings.json` provides defaults. The CLI also accepts a fourth argument for backend selection:
 
 ```powershell
 dotnet run --project .\SB\SB.fsproj -- input.sb output.c false c
+```
+
+Example for the `.NET exe` backend:
+
+```powershell
+dotnet run --project .\SB\SB.fsproj -- input.sb output.exe false dotnetexe
 ```
 
 ## Build and test
