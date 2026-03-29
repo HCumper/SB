@@ -119,8 +119,7 @@ Or via `SB/appsettings.json`:
   "AppSettings": {
     "InputFile": "C:\\Source\\SB\\SB\\q3.sb",
     "OutputFile": "C:\\Source\\SB\\SB\\q3-generated.exe",
-    "TemplatesFile": "C:\\Source\\SB\\SB\\CSharpTemplates.stg",
-    "Verbose": true,
+    "Verbose": false,
     "Backend": "dotnetexe"
   }
 }

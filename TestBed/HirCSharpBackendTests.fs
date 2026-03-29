@@ -1,0 +1,124 @@
+module TestBed.HirCSharpBackendTests
+
+open NUnit.Framework
+
+open Types
+open HIR
+open HirCSharpBackend
+
+let private pos =
+    { BasicLineNo = None
+      EditorLineNo = 1
+      Column = 0 }
+
+let private literalInt value = Literal(ConstInt value, HirType.Int, pos)
+let private literalString value = Literal(ConstString value, HirType.String, pos)
+
+let private storage symbol name hirType storageClass =
+    { Symbol = symbol
+      Slot = StorageSlotId 0
+      Name = name
+      Type = hirType
+      Class = storageClass
+      Position = pos }
+
+[<Test>]
+let ``generateCSharpFromHir emits globals routines data and structured control flow`` () =
+    let globalSymbol = SymbolId 0
+    let routineSymbol = SymbolId 1
+    let parameterSymbol = SymbolId 2
+
+    let program =
+        { SymbolNames =
+            [ globalSymbol, "X"
+              routineSymbol, "PROC"
+              parameterSymbol, "P" ]
+            |> Map.ofList
+          Globals = [ storage globalSymbol "X" HirType.Int GlobalStorage ]
+          Routines =
+            [ { Name = "PROC"
+                Symbol = routineSymbol
+                Parameters = [ storage parameterSymbol "P" HirType.Int (RoutineParameterStorage "PROC") ]
+                Locals = []
+                Body = [ Return(Some(ReadVar(parameterSymbol, HirType.Int, pos)), pos) ]
+                ReturnType = Some HirType.Int
+                Position = pos } ]
+          DataEntries =
+            [ { Slot = DataSlotId 0
+                Value = literalInt 2
+                Position = pos
+                LineNumber = Some 20 }
+              { Slot = DataSlotId 1
+                Value = literalString "HELLO"
+                Position = pos
+                LineNumber = Some 20 } ]
+          RestorePoints = [ { LineNumber = 20; Slot = DataSlotId 0 } ]
+          Main =
+            [ LineNumber(10, pos)
+              Assign(WriteVar(globalSymbol, HirType.Int, pos), literalInt 1, pos)
+              For(LoopId 0, globalSymbol, literalInt 1, literalInt 3, literalInt 1, [ Next(LoopId 0, pos) ], pos)
+              Repeat(LoopId 1, AnonymousLoop, [ Exit(LoopId 1, pos) ], pos)
+              Input(None, [ literalString "How many?" ], [ WriteVar(globalSymbol, HirType.Int, pos) ], pos)
+              Read([ WriteVar(globalSymbol, HirType.Int, pos) ], pos)
+              Restore(Some(literalInt 20), pos)
+              Goto(literalInt 10, pos)
+              OnGoto(literalInt 2, [ literalInt 10; literalInt 20 ], pos)
+              Gosub(literalInt 10, pos) ] }
+
+    let generated = generateCSharpFromHir "SampleProgram" program
+
+    Assert.That(generated, Does.Contain("public static class SampleProgram"))
+    Assert.That(generated, Does.Contain("private static object? v0_X;"))
+    Assert.That(generated, Does.Contain("private static readonly object?[] __data = new object?[] { 2, \"HELLO\" };"))
+    Assert.That(generated, Does.Contain("private static readonly Dictionary<int, int> __restorePoints = new Dictionary<int, int> { { 20, 0 } };"))
+    Assert.That(generated, Does.Contain("private static object? r1_PROC(object? v2_P)"))
+    Assert.That(generated, Does.Contain("return v2_P;"))
+    Assert.That(generated, Does.Contain("line_10: ;"))
+    Assert.That(generated, Does.Contain("throw new LoopControlException(0, true);"))
+    Assert.That(generated, Does.Contain("throw new LoopControlException(1, false);"))
+    Assert.That(generated, Does.Contain("ExecuteInput(null, new object?[] { \"How many?\" });"))
+    Assert.That(generated, Does.Contain("v0_X = ReadDataValue(\"int\");"))
+    Assert.That(generated, Does.Contain("RestoreToLine(AsInt(20));"))
+    Assert.That(generated, Does.Contain("goto line_10;"))
+    Assert.That(generated, Does.Contain("case 2: goto line_20;"))
+    Assert.That(generated, Does.Contain("throw new NotSupportedException(\"GOSUB is not supported by the generated backend yet.\");"))
+
+[<Test>]
+let ``generateCSharpFromHir emits array access routine calls and builtin function calls from hir expressions`` () =
+    let globalSymbol = SymbolId 0
+    let arraySymbol = SymbolId 1
+    let routineSymbol = SymbolId 2
+    let builtInSymbol = SymbolId 3
+
+    let program =
+        { SymbolNames =
+            [ globalSymbol, "TOTAL"
+              arraySymbol, "A"
+              routineSymbol, "DOUBLEIT"
+              builtInSymbol, "ABS" ]
+            |> Map.ofList
+          Globals =
+            [ storage globalSymbol "TOTAL" HirType.Int GlobalStorage
+              storage arraySymbol "A" (HirType.Array HirType.Int) GlobalStorage ]
+          Routines =
+            [ { Name = "DOUBLEIT"
+                Symbol = routineSymbol
+                Parameters = []
+                Locals = []
+                Body = [ Return(Some(Binary(Add, literalInt 1, literalInt 1, HirType.Int, pos)), pos) ]
+                ReturnType = Some HirType.Int
+                Position = pos } ]
+          DataEntries = []
+          RestorePoints = []
+          Main =
+            [ Assign(WriteArrayElem(arraySymbol, [ literalInt 1 ], HirType.Int, pos), CallFunc(routineSymbol, [], HirType.Int, pos), pos)
+              Assign(WriteVar(globalSymbol, HirType.Int, pos), CallFunc(builtInSymbol, [ Unary(Negate, literalInt 4, HirType.Int, pos) ], HirType.Int, pos), pos)
+              BuiltInCall(Print, None, [ ReadArrayElem(arraySymbol, [ literalInt 1 ], HirType.Int, pos); ReadVar(globalSymbol, HirType.Int, pos) ], pos) ] }
+
+    let generated = generateCSharpFromHir "ExprProgram" program
+
+    Assert.That(generated, Does.Contain("private static readonly Dictionary<string, object?> v1_A = new();"))
+    Assert.That(generated, Does.Contain("SetArrayValue(v1_A, r2_DOUBLEIT(), 1);"))
+    Assert.That(generated, Does.Contain("v0_TOTAL = InvokeBuiltInFunction(\"ABS\", Negate(4));"))
+    Assert.That(generated, Does.Contain("Console.WriteLine"))
+    Assert.That(generated, Does.Contain("GetArrayValue(v1_A, 1)"))

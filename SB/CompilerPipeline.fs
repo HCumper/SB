@@ -8,7 +8,6 @@ open Microsoft.Extensions.Configuration
 open Serilog
 open Antlr4.Runtime
 open Antlr4.Runtime.Tree
-open Antlr4.StringTemplate
 open FSharpPlus.Data
 
 open Types
@@ -67,7 +66,6 @@ type PreparedSource = {
 type RuntimeSettings = {
     InputFileName: string
     OutputFileName: string
-    TemplateFileName: string
     Verbose: bool
     Backend: string
     AppName: string
@@ -89,7 +87,6 @@ let getSettings argv : RuntimeSettings =
     let configSettings = buildConfig ()
     let appName = configSettings.GetValue<string>("ApplicationName")
     let inputFileName = configSettings.GetValue<string>("AppSettings:InputFile")
-    let templatesFileName = configSettings.GetValue<string>("AppSettings:TemplatesFile")
     let outputFileName = configSettings.GetValue<string>("AppSettings:OutputFile")
     let verbosityLevel = configSettings.GetValue<bool>("AppSettings:Verbose")
     let backend = configSettings.GetValue<string>("AppSettings:Backend")
@@ -100,7 +97,6 @@ let getSettings argv : RuntimeSettings =
     | [| input; output; verbose; backendName |] ->
         { InputFileName = input
           OutputFileName = output
-          TemplateFileName = templatesFileName
           Verbose = Boolean.Parse(verbose)
           Backend = backendName
           AppName = appName
@@ -108,7 +104,6 @@ let getSettings argv : RuntimeSettings =
     | [| input; output; verbose |] ->
         { InputFileName = input
           OutputFileName = output
-          TemplateFileName = templatesFileName
           Verbose = Boolean.Parse(verbose)
           Backend = defaultBackend
           AppName = appName
@@ -116,7 +111,6 @@ let getSettings argv : RuntimeSettings =
     | _ ->
         { InputFileName = inputFileName
           OutputFileName = outputFileName
-          TemplateFileName = templatesFileName
           Verbose = verbosityLevel
           Backend = defaultBackend
           AppName = appName
@@ -369,6 +363,3 @@ let loadAstFromInput settings =
                 printfn $"Parsing succeeded. Source kind: %A{preparedSource.Kind}"
             let ast = processToAST (parseTree, inputStream) settings.Verbose
             Ok(parseTree, inputStream, ast)
-
-let createTemplateGroup settings =
-    new TemplateGroupFile(settings.TemplateFileName)

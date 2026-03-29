@@ -23,7 +23,6 @@ let private fixturePath fileName =
 let private testSettings inputFile =
     { InputFileName = inputFile
       OutputFileName = Path.GetTempFileName()
-      TemplateFileName = "unused"
       Verbose = false
       Backend = "interpret"
       AppName = "Test"
