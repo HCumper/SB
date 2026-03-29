@@ -2,7 +2,9 @@ module HirCBackend
 
 open System
 open System.Globalization
+open System.IO
 open System.Text
+open Antlr4.StringTemplate
 
 open HIR
 
@@ -12,12 +14,18 @@ type private EmitterContext = {
     StorageNames: Map<SymbolId, string>
     RoutineNames: Map<SymbolId, string>
     RoutineSymbols: Set<SymbolId>
+    ReferencedLineNumbers: Set<int>
 }
 
 let private indent level = String.replicate (level * 4) " "
 
 let private appendLine (builder: StringBuilder) level (text: string) =
     builder.Append(indent level).Append(text).AppendLine() |> ignore
+
+let private cTemplateGroup =
+    lazy
+        let templatePath = Path.Combine(AppContext.BaseDirectory, "CTemplates.stg")
+        TemplateGroupFile(templatePath)
 
 let private sanitizeIdentifier (value: string) =
     let normalized =
@@ -55,6 +63,30 @@ let private tryGetConstInt = function
     | Literal(ConstInt value, _, _) -> Some value
     | _ -> None
 
+let rec private collectReferencedLineNumbers (block: HirBlock) =
+    let collectFromStmt = function
+        | If(_, thenBlock, elseBlock, _) ->
+            let elseLines =
+                elseBlock
+                |> Option.map collectReferencedLineNumbers
+                |> Option.defaultValue Set.empty
+            Set.union (collectReferencedLineNumbers thenBlock) elseLines
+        | For(_, _, _, _, _, body, _)
+        | Repeat(_, _, body, _) ->
+            collectReferencedLineNumbers body
+        | Goto(target, _) ->
+            tryGetConstInt target |> Option.map Set.singleton |> Option.defaultValue Set.empty
+        | OnGoto(_, targets, _) ->
+            targets
+            |> List.choose tryGetConstInt
+            |> Set.ofList
+        | Restore(Some target, _) ->
+            tryGetConstInt target |> Option.map Set.singleton |> Option.defaultValue Set.empty
+        | _ ->
+            Set.empty
+
+    block |> List.fold (fun acc stmt -> Set.union acc (collectFromStmt stmt)) Set.empty
+
 let private buildContext programName (program: HirProgram) =
     let globals =
         program.Globals
@@ -70,11 +102,27 @@ let private buildContext programName (program: HirProgram) =
         program.Routines
         |> List.map (fun routine -> routine.Symbol, routineMethodName program.SymbolNames routine)
 
+    let referencedLineNumbers =
+        let restoreLines =
+            program.RestorePoints
+            |> List.map _.LineNumber
+            |> Set.ofList
+
+        let routineLines =
+            program.Routines
+            |> List.map (fun routine -> collectReferencedLineNumbers routine.Body)
+            |> List.fold Set.union Set.empty
+
+        restoreLines
+        |> Set.union (collectReferencedLineNumbers program.Main)
+        |> Set.union routineLines
+
     { ProgramName = if String.IsNullOrWhiteSpace programName then "generated_program" else sanitizeIdentifier programName
       SymbolNames = program.SymbolNames
       StorageNames = Map.ofList (globals @ routineStorage)
       RoutineNames = Map.ofList routines
-      RoutineSymbols = routines |> List.map fst |> Set.ofList }
+      RoutineSymbols = routines |> List.map fst |> Set.ofList
+      ReferencedLineNumbers = referencedLineNumbers }
 
 let private storageName ctx symbolId =
     Map.tryFind symbolId ctx.StorageNames
@@ -275,11 +323,12 @@ and private emitStmt ctx builder level stmt =
         | Some expr -> appendLine builder level $"return {emitExpr ctx expr};"
         | None -> appendLine builder level "return make_null();"
     | LineNumber(value, _) ->
-        appendLine builder level $"line_{value}: ;"
+        if Set.contains value ctx.ReferencedLineNumbers then
+            appendLine builder level $"line_{value}: ;"
     | Restore(value, _) ->
         match value with
         | Some expr -> appendLine builder level $"restore_to_line(as_int({emitExpr ctx expr}));"
-        | None -> appendLine builder level "__data_pointer = 0;"
+        | None -> appendLine builder level "sb_data_pointer = 0;"
     | Read(targets, _) ->
         targets
         |> List.iter (fun target ->
@@ -340,258 +389,34 @@ let private emitDataLayout builder (program: HirProgram) =
         |> String.concat ", "
 
     let dataItems = String.concat ", " (program.DataEntries |> List.map renderEntry)
-    appendLine builder 0 $"static DataValue __data[] = {{ {dataItems} }};"
-    appendLine builder 0 $"static int __data_count = {program.DataEntries.Length};"
-    appendLine builder 0 $"static RestorePoint __restore_points[] = {{ {restorePoints} }};"
-    appendLine builder 0 $"static int __restore_point_count = {program.RestorePoints.Length};"
-    appendLine builder 0 "static int __data_pointer = 0;"
-    appendLine builder 0 "static char __input_buffer[4096];"
-    appendLine builder 0 "static char* __input_parts[256];"
-    appendLine builder 0 "static int __input_part_count = 0;"
+    appendLine builder 0 $"static DataValue sb_data[] = {{ {dataItems} }};"
+    appendLine builder 0 $"static int sb_data_count = {program.DataEntries.Length};"
+    appendLine builder 0 $"static RestorePoint sb_restore_points[] = {{ {restorePoints} }};"
+    appendLine builder 0 $"static int sb_restore_point_count = {program.RestorePoints.Length};"
+    appendLine builder 0 "static int sb_data_pointer = 0;"
+    appendLine builder 0 "static char sb_input_buffer[4096];"
+    appendLine builder 0 "static char* sb_input_parts[256];"
+    appendLine builder 0 "static int sb_input_part_count = 0;"
     appendLine builder 0 ""
 
-let private emitRuntime builder =
-    let lines =
-        [ "#include <ctype.h>"
-          "#include <math.h>"
-          "#include <stdarg.h>"
-          "#include <stdio.h>"
-          "#include <stdlib.h>"
-          "#include <string.h>"
-          ""
-          "typedef struct ArrayEntry ArrayEntry;"
-          "typedef enum ValueType { TYPE_NULL, TYPE_INT, TYPE_FLOAT, TYPE_STRING, TYPE_ARRAY } ValueType;"
-          "typedef struct Value { ValueType type; int int_value; double float_value; const char* string_value; ArrayEntry* array_value; } Value;"
-          "struct ArrayEntry { char* key; Value value; ArrayEntry* next; };"
-          "typedef Value DataValue;"
-          "typedef struct RestorePoint { int line; int slot; } RestorePoint;"
-          ""
-          "static char* duplicate_string(const char* source)"
-          "{"
-          "    size_t length = strlen(source) + 1;"
-          "    char* copy = (char*)malloc(length);"
-          "    memcpy(copy, source, length);"
-          "    return copy;"
-          "}"
-          "static int ci_compare(const char* left, const char* right)"
-          "{"
-          "    while (*left && *right)"
-          "    {"
-          "        int diff = toupper((unsigned char)*left) - toupper((unsigned char)*right);"
-          "        if (diff != 0) return diff;"
-          "        left++;"
-          "        right++;"
-          "    }"
-          "    return toupper((unsigned char)*left) - toupper((unsigned char)*right);"
-          "}"
-          "static int ci_starts_with(const char* value, const char* prefix)"
-          "{"
-          "    while (*prefix)"
-          "    {"
-          "        if (toupper((unsigned char)*value) != toupper((unsigned char)*prefix)) return 0;"
-          "        value++;"
-          "        prefix++;"
-          "    }"
-          "    return 1;"
-          "}"
-          "static Value make_null(void) { Value v = { TYPE_NULL, 0, 0.0, NULL, NULL }; return v; }"
-          "static Value make_int(int value) { Value v = { TYPE_INT, value, (double)value, NULL, NULL }; return v; }"
-          "static Value make_float(double value) { Value v = { TYPE_FLOAT, 0, value, NULL, NULL }; return v; }"
-          "static Value make_string(const char* value) { Value v = { TYPE_STRING, 0, 0.0, value, NULL }; return v; }"
-          "static Value make_array(void) { Value v = { TYPE_ARRAY, 0, 0.0, NULL, NULL }; return v; }"
-          "static void runtime_not_supported(const char* message) { fprintf(stderr, \"%s\\n\", message); exit(1); }"
-          "static int as_int(Value value)"
-          "{"
-          "    switch (value.type)"
-          "    {"
-          "        case TYPE_INT: return value.int_value;"
-          "        case TYPE_FLOAT: return (int)llround(value.float_value);"
-          "        case TYPE_STRING: return value.string_value ? atoi(value.string_value) : 0;"
-          "        default: return 0;"
-          "    }"
-          "}"
-          "static double as_double(Value value)"
-          "{"
-          "    switch (value.type)"
-          "    {"
-          "        case TYPE_INT: return (double)value.int_value;"
-          "        case TYPE_FLOAT: return value.float_value;"
-          "        case TYPE_STRING: return value.string_value ? atof(value.string_value) : 0.0;"
-          "        default: return 0.0;"
-          "    }"
-          "}"
-          "static const char* as_string(Value value)"
-          "{"
-          "    static char buffers[8][128];"
-          "    static int next_buffer = 0;"
-          "    char* buffer = buffers[next_buffer++ % 8];"
-          "    switch (value.type)"
-          "    {"
-          "        case TYPE_STRING: return value.string_value ? value.string_value : \"\";"
-          "        case TYPE_INT: snprintf(buffer, 128, \"%d\", value.int_value); return buffer;"
-          "        case TYPE_FLOAT: snprintf(buffer, 128, \"%.17g\", value.float_value); return buffer;"
-          "        case TYPE_NULL: return \"\";"
-          "        default: return \"<array>\";"
-          "    }"
-          "}"
-          "static int is_true(Value value)"
-          "{"
-          "    if (value.type == TYPE_STRING) return value.string_value && value.string_value[0] != '\\0';"
-          "    if (value.type == TYPE_ARRAY) return 1;"
-          "    return fabs(as_double(value)) > 0.0000001;"
-          "}"
-          "static Value negate_value(Value value) { return make_float(-as_double(value)); }"
-          "static Value bitwise_not_value(Value value) { return make_int(~as_int(value)); }"
-          "static Value concat_value(Value left, Value right)"
-          "{"
-          "    static char buffers[8][512];"
-          "    static int next_buffer = 0;"
-          "    char* buffer = buffers[next_buffer++ % 8];"
-          "    snprintf(buffer, 512, \"%s%s\", as_string(left), as_string(right));"
-          "    return make_string(buffer);"
-          "}"
-          "static Value add_value(Value left, Value right) { return (left.type == TYPE_STRING || right.type == TYPE_STRING) ? concat_value(left, right) : make_float(as_double(left) + as_double(right)); }"
-          "static Value subtract_value(Value left, Value right) { return make_float(as_double(left) - as_double(right)); }"
-          "static Value multiply_value(Value left, Value right) { return make_float(as_double(left) * as_double(right)); }"
-          "static Value divide_value(Value left, Value right) { return make_float(as_double(left) / as_double(right)); }"
-          "static Value power_value(Value left, Value right) { return make_float(pow(as_double(left), as_double(right))); }"
-          "static Value integer_divide_value(Value left, Value right) { return make_int(as_int(left) / as_int(right)); }"
-          "static Value modulo_value(Value left, Value right) { return make_int(as_int(left) % as_int(right)); }"
-          "static Value bitwise_and_value(Value left, Value right) { return make_int(as_int(left) & as_int(right)); }"
-          "static Value bitwise_or_value(Value left, Value right) { return make_int(as_int(left) | as_int(right)); }"
-          "static Value bitwise_xor_value(Value left, Value right) { return make_int(as_int(left) ^ as_int(right)); }"
-          "static Value compare_equal(Value left, Value right) { return make_int((left.type == TYPE_STRING || right.type == TYPE_STRING) ? strcmp(as_string(left), as_string(right)) == 0 : fabs(as_double(left) - as_double(right)) < 0.0000001); }"
-          "static Value compare_not_equal(Value left, Value right) { return make_int(as_int(compare_equal(left, right)) == 0); }"
-          "static Value compare_less_than(Value left, Value right) { return make_int((left.type == TYPE_STRING || right.type == TYPE_STRING) ? strcmp(as_string(left), as_string(right)) < 0 : as_double(left) < as_double(right)); }"
-          "static Value compare_less_than_or_equal(Value left, Value right) { return make_int((left.type == TYPE_STRING || right.type == TYPE_STRING) ? strcmp(as_string(left), as_string(right)) <= 0 : as_double(left) <= as_double(right)); }"
-          "static Value compare_greater_than(Value left, Value right) { return make_int((left.type == TYPE_STRING || right.type == TYPE_STRING) ? strcmp(as_string(left), as_string(right)) > 0 : as_double(left) > as_double(right)); }"
-          "static Value compare_greater_than_or_equal(Value left, Value right) { return make_int((left.type == TYPE_STRING || right.type == TYPE_STRING) ? strcmp(as_string(left), as_string(right)) >= 0 : as_double(left) >= as_double(right)); }"
-          "static Value instr_value(Value left, Value right) { const char* source = as_string(left); const char* found = strstr(source, as_string(right)); return make_int(found ? (int)(found - source) + 1 : 0); }"
-          "static Value slice_range_value(Value left, Value right) { (void)left; return right; }"
-          "static Value unsupported_unary(const char* name, Value value) { runtime_not_supported(name); return value; }"
-          "static Value unsupported_binary(const char* name, Value left, Value right) { runtime_not_supported(name); return left; }"
-          "static char* build_array_key(int count, va_list args)"
-          "{"
-          "    static char buffer[256];"
-          "    buffer[0] = '\\0';"
-          "    for (int i = 0; i < count; i++)"
-          "    {"
-          "        Value value = va_arg(args, Value);"
-          "        char part[32];"
-          "        snprintf(part, sizeof(part), i == 0 ? \"%d\" : \",%d\", as_int(value));"
-          "        strncat(buffer, part, sizeof(buffer) - strlen(buffer) - 1);"
-          "    }"
-          "    return buffer;"
-          "}"
-          "static Value get_array_value(Value* array_value, int count, ...)"
-          "{"
-          "    if (array_value->type != TYPE_ARRAY) *array_value = make_array();"
-          "    va_list args;"
-          "    va_start(args, count);"
-          "    char* key = build_array_key(count, args);"
-          "    va_end(args);"
-          "    for (ArrayEntry* entry = array_value->array_value; entry; entry = entry->next)"
-          "        if (strcmp(entry->key, key) == 0) return entry->value;"
-          "    return make_null();"
-          "}"
-          "static void set_array_value(Value* array_value, Value value, int count, ...)"
-          "{"
-          "    if (array_value->type != TYPE_ARRAY) *array_value = make_array();"
-          "    va_list args;"
-          "    va_start(args, count);"
-          "    char* key = build_array_key(count, args);"
-          "    va_end(args);"
-          "    for (ArrayEntry* entry = array_value->array_value; entry; entry = entry->next)"
-          "    {"
-          "        if (strcmp(entry->key, key) == 0) { entry->value = value; return; }"
-          "    }"
-          "    ArrayEntry* entry = (ArrayEntry*)calloc(1, sizeof(ArrayEntry));"
-          "    entry->key = duplicate_string(key);"
-          "    entry->value = value;"
-          "    entry->next = array_value->array_value;"
-          "    array_value->array_value = entry;"
-          "}"
-          "static Value invoke_builtin_function(const char* name, ...)"
-          "{"
-          "    va_list args;"
-          "    va_start(args, name);"
-          "    if (ci_compare(name, \"ABS\") == 0) { Value v = va_arg(args, Value); va_end(args); return make_float(fabs(as_double(v))); }"
-          "    if (ci_compare(name, \"INT\") == 0) { Value v = va_arg(args, Value); va_end(args); return make_int((int)floor(as_double(v))); }"
-          "    if (ci_compare(name, \"ROUND\") == 0) { Value v = va_arg(args, Value); va_end(args); return make_int((int)llround(as_double(v))); }"
-          "    if (ci_compare(name, \"STR$\") == 0) { Value v = va_arg(args, Value); va_end(args); return make_string(as_string(v)); }"
-          "    if (ci_compare(name, \"VAL\") == 0) { Value v = va_arg(args, Value); va_end(args); return make_float(atof(as_string(v))); }"
-          "    va_end(args);"
-          "    runtime_not_supported(\"Built-in function is not supported by the generated C backend yet.\");"
-          "    return make_null();"
-          "}"
-          "static void execute_builtin_statement(const char* name, Value channel, int arg_count, ...)"
-          "{"
-          "    (void)channel;"
-          "    (void)arg_count;"
-          "    if (ci_compare(name, \"REFERENCE\") == 0) return;"
-          "    if (ci_starts_with(name, \"TURBO\")) return;"
-          "    runtime_not_supported(\"Built-in statement is not supported by the generated C backend yet.\");"
-          "}"
-          "static void execute_input(Value channel, int prompt_count, ...)"
-          "{"
-          "    (void)channel;"
-          "    va_list args;"
-          "    va_start(args, prompt_count);"
-          "    for (int i = 0; i < prompt_count; i++)"
-          "    {"
-          "        Value prompt = va_arg(args, Value);"
-          "        fputs(as_string(prompt), stdout);"
-          "        if (i + 1 < prompt_count) fputc(' ', stdout);"
-          "    }"
-          "    va_end(args);"
-          "    if (fgets(__input_buffer, sizeof(__input_buffer), stdin) == NULL) __input_buffer[0] = '\\0';"
-          "    __input_part_count = 0;"
-          "    char* token = strtok(__input_buffer, \",\\r\\n\");"
-          "    while (token && __input_part_count < 256)"
-          "    {"
-          "        while (*token == ' ') token++;"
-          "        __input_parts[__input_part_count++] = token;"
-          "        token = strtok(NULL, \",\\r\\n\");"
-          "    }"
-          "}"
-          "static Value read_input_value(int index, ValueType target_type)"
-          "{"
-          "    const char* raw = index < __input_part_count ? __input_parts[index] : \"\";"
-          "    switch (target_type)"
-          "    {"
-          "        case TYPE_STRING: return make_string(raw);"
-          "        case TYPE_FLOAT: return make_float(atof(raw));"
-          "        default: return make_int(atoi(raw));"
-          "    }"
-          "}"
-          "static Value read_data_value(ValueType target_type)"
-          "{"
-          "    if (__data_pointer >= __data_count) runtime_not_supported(\"READ moved past the end of DATA.\");"
-          "    Value value = __data[__data_pointer++];"
-          "    switch (target_type)"
-          "    {"
-          "        case TYPE_STRING: return make_string(as_string(value));"
-          "        case TYPE_FLOAT: return make_float(as_double(value));"
-          "        default: return make_int(as_int(value));"
-          "    }"
-          "}"
-          "static void restore_to_line(int line)"
-          "{"
-          "    for (int i = 0; i < __restore_point_count; i++)"
-          "    {"
-          "        if (__restore_points[i].line == line) { __data_pointer = __restore_points[i].slot; return; }"
-          "    }"
-          "    runtime_not_supported(\"RESTORE target does not exist in generated C backend.\");"
-          "}" ]
-    lines |> List.iter (appendLine builder 0)
-    appendLine builder 0 ""
+let private emitTemplate (builder: StringBuilder) templateName =
+    let template =
+        match cTemplateGroup.Value.GetInstanceOf(templateName) with
+        | null -> failwith $"Failed to load StringTemplate '{templateName}' from CTemplates.stg."
+        | template -> template
+    let rendered = template.Render()
+    builder.Append(rendered) |> ignore
+    if not (rendered.EndsWith("\n")) then
+        builder.AppendLine() |> ignore
+    builder.AppendLine() |> ignore
 
 let generateCFromHir programName (program: HirProgram) =
     let ctx = buildContext programName program
     let builder = StringBuilder()
 
-    emitRuntime builder
+    emitTemplate builder "runtimePrelude"
     emitDataLayout builder program
+    emitTemplate builder "runtimeSupport"
     emitStorageDeclarations ctx builder 0 program.Globals
     if not (List.isEmpty program.Globals) then
         appendLine builder 0 ""
