@@ -22,7 +22,7 @@ let ``procedure definitions preserve parameters and body structure`` () =
     Assert.That(ast, Has.Length.EqualTo(1))
 
     match ast[0] with
-    | Program(_, [ Line(_, Some 10, [ ProcedureDef(_, "main", [ "paramtype" ], [ Line(_, Some 20, [ ProcedureCall(_, "PRINT", [ Identifier(_, _, "paramtype") ]) ]) ], _) ]) ]) ->
+    | Program(_, [ Line(_, Some 10, [ ProcedureDef(_, "main", [ "paramtype" ], [ Line(_, Some 20, [ ProcedureCall(_, "PRINT", [ Identifier(_, _, "paramtype") ]) ]) ], _, _) ]) ]) ->
         Assert.Pass()
     | other -> Assert.Fail($"Unexpected AST: %A{other}")
 
@@ -37,3 +37,5 @@ let ``if statements preserve then and else branches separately`` () =
     | Program(_, [ Line(_, Some 10, [ IfStmt(_, BinaryExpr(_, _, "=", Identifier(_, _, "ptr"), Identifier(_, _, "low")), StatementBlock [ Assignment(_, Identifier(_, _, "high"), BinaryExpr(_, _, "-", Identifier(_, _, "high"), NumberLiteral(_, _, "1"))) ], Some (StatementBlock [ Assignment(_, Identifier(_, _, "low"), BinaryExpr(_, _, "+", Identifier(_, _, "low"), NumberLiteral(_, _, "1"))) ])) ]) ]) ->
         Assert.Pass()
     | other -> Assert.Fail($"Unexpected AST: %A{other}")
+
+

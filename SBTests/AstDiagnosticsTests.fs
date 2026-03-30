@@ -33,7 +33,7 @@ let private sampleAst =
                         bin 2 5 "=" (id 2 5 "x") (num 2 9 "3"),
                         StatementBlock [ ProcedureCall(pos 2 12, "PRINT", [ id 2 18 "paramtype" ]) ],
                         Some (StatementBlock [ Remark(pos 2 28, "done") ])) ]) ],
-                None) ]) ])
+                None, None) ]) ])
 
 [<Test>]
 let ``prettyPrintAst renders canonical structural output`` () =
@@ -55,3 +55,5 @@ let ``serializeAst emits stable json structure`` () =
     Assert.That(serialized, Does.Contain("\"parameters\": ["))
     Assert.That(serialized, Does.Contain("\"kind\": \"IfStmt\""))
     Assert.That(serialized, Does.Contain("\"kind\": \"StatementBlock\""))
+
+

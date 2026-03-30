@@ -46,6 +46,7 @@ let ``generateCSharpFromHir emits globals routines data and structured control f
                 Locals = []
                 Body = [ Return(Some(ReadVar(parameterSymbol, HirType.Int, pos)), pos) ]
                 ReturnType = Some HirType.Int
+                EndLineNumber = None
                 Position = pos } ]
           DataEntries =
             [ { Slot = DataSlotId 0
@@ -111,6 +112,7 @@ let ``generateCSharpFromHir emits array access routine calls and builtin functio
                 Locals = []
                 Body = [ Return(Some(Binary(Add, literalInt 1, literalInt 1, HirType.Int, pos)), pos) ]
                 ReturnType = Some HirType.Int
+                EndLineNumber = None
                 Position = pos } ]
           DataEntries = []
           RestorePoints = []

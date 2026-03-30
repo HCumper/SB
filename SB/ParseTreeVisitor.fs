@@ -248,6 +248,10 @@ type ASTBuildingVisitor() =
             match ids with
             | _ :: closing :: [] -> Some(closing.GetText())
             | _ -> None
+        let closingLineNumber =
+            match ctx.lineNumber() with
+            | null -> None
+            | lineNumber -> lineNumber.GetText() |> int |> Some
 
         let parms =
             match ctx.formalParams() with
@@ -261,7 +265,7 @@ type ASTBuildingVisitor() =
                 | null -> None
                 | line -> Some (singleLine line (line.Accept(this))))
             |> Seq.toList
-        single (StmtNode(ProcedureDef(p, name, parms, body, closingName)))
+        single (StmtNode(ProcedureDef(p, name, parms, body, closingName, closingLineNumber)))
 
     override this.VisitFunctionDef(ctx: SBParser.FunctionDefContext) =
         let p = posOfTree ctx
@@ -274,6 +278,10 @@ type ASTBuildingVisitor() =
             match ids with
             | _ :: closing :: [] -> Some(closing.GetText())
             | _ -> None
+        let closingLineNumber =
+            match ctx.lineNumber() with
+            | null -> None
+            | lineNumber -> lineNumber.GetText() |> int |> Some
 
         let parms =
             match ctx.formalParams() with
@@ -287,7 +295,7 @@ type ASTBuildingVisitor() =
                 | null -> None
                 | line -> Some (singleLine line (line.Accept(this))))
             |> Seq.toList
-        single (StmtNode(FunctionDef(p, name, parms, body, closingName)))
+        single (StmtNode(FunctionDef(p, name, parms, body, closingName, closingLineNumber)))
 
     override this.VisitDim(ctx: SBParser.DimContext) =
         // Declaration-style statements are normalized into compact tuples rather

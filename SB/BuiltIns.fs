@@ -122,6 +122,7 @@ let private fixedArityBuiltIns =
       "DEG", 1
       "EOF", 1
       "EXP", 1
+      "FILL$", 2
       "GETENV$", 1
       "INKEY", 1
       "INT", 1
@@ -174,6 +175,7 @@ let private builtInSignatures =
       signature "DEG" (Some 1) (Some [ Numeric ])
       signature "EOF" (Some 1) (Some [ Numeric ])
       signature "EXP" (Some 1) (Some [ Numeric ])
+      signature "FILL$" (Some 2) (Some [ String; Numeric ])
       signature "GETENV$" (Some 1) (Some [ String ])
       signature "INKEY" (Some 1) (Some [ Numeric ])
       signature "INKEY$" None None

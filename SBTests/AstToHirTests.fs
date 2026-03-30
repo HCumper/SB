@@ -191,7 +191,7 @@ let ``lowerToHir preserves parameter binding metadata from reference statements`
                     "swap",
                     [ "left"; "right" ],
                     [ Line(pos, Some 20, [ ReferenceStmt(pos, [ mkIdentifier pos "right" ]) ]) ],
-                    None) ]) ])
+                    None, None) ]) ])
 
     let hir = lowerProgram ast
 
@@ -218,7 +218,7 @@ let ``lowerToHir uses dynamic scoped reads and writes for caller visible locals`
                     [],
                     [ Line(pos, Some 100, [ Assignment(pos, mkIdentifier pos "score", num "9") ])
                       Line(pos, Some 110, [ ProcedureCall(pos, "PRINT", [ mkIdentifier pos "score" ]) ]) ],
-                    None) ])
+                    None, None) ])
               Line(
                 pos,
                 Some 20,
@@ -228,7 +228,7 @@ let ``lowerToHir uses dynamic scoped reads and writes for caller visible locals`
                     [],
                     [ Line(pos, Some 200, [ LocalStmt(pos, [ "score", None ]) ])
                       Line(pos, Some 210, [ ProcedureCall(pos, "show", []) ]) ],
-                    None) ]) ])
+                    None, None) ]) ])
 
     let hir = lowerProgram ast
 
@@ -255,7 +255,7 @@ let ``lowerToHir distinguishes reference and value call arguments`` () =
                     "bump",
                     [ "a"; "b" ],
                     [ Line(pos, Some 100, [ ReferenceStmt(pos, [ mkIdentifier pos "a" ]) ]) ],
-                    None) ])
+                    None, None) ])
               Line(pos, Some 20, [ Assignment(pos, mkIdentifier pos "x", num "1") ])
               Line(pos, Some 30, [ ProcedureCall(pos, "bump", [ mkIdentifier pos "x"; binary "+" (mkIdentifier pos "x") (num "0") ]) ]) ])
 
@@ -283,7 +283,7 @@ let ``lowerToHir lowers dynamic scoped array access`` () =
                     [],
                     [ Line(pos, Some 100, [ Assignment(pos, mkPostfixName pos "scores" (Some [ num "1" ]), num "5") ])
                       Line(pos, Some 110, [ ProcedureCall(pos, "PRINT", [ mkPostfixName pos "scores" (Some [ num "1" ]) ]) ]) ],
-                    None) ])
+                    None, None) ])
               Line(
                 pos,
                 Some 20,
@@ -293,7 +293,7 @@ let ``lowerToHir lowers dynamic scoped array access`` () =
                     [],
                     [ Line(pos, Some 200, [ LocalStmt(pos, [ "scores", Some [ num "5" ] ]) ])
                       Line(pos, Some 210, [ ProcedureCall(pos, "show", []) ]) ],
-                    None) ]) ])
+                    None, None) ]) ])
 
     let hir = lowerProgram ast
 
@@ -341,7 +341,7 @@ let ``lowerToHir keeps parameter accesses static inside routines`` () =
                     [ "score" ],
                     [ Line(pos, Some 100, [ Assignment(pos, id "score", binary "+" (id "score") (num "1")) ])
                       Line(pos, Some 110, [ ProcedureCall(pos, "PRINT", [ id "score" ]) ]) ],
-                    None) ]) ])
+                    None, None) ]) ])
 
     let hir = lowerProgram ast
 
@@ -368,7 +368,7 @@ let ``lowerToHir does not lower built in names as dynamic storage`` () =
                     "show",
                     [],
                     [ Line(pos, Some 100, [ ProcedureCall(pos, "PRINT", [ mkPostfixName pos "DATE" None ]) ]) ],
-                    None) ]) ])
+                    None, None) ]) ])
 
     let hir = lowerProgram ast
 
@@ -393,7 +393,7 @@ let ``lowerToHir uses reference args for array element actuals`` () =
                     "bump",
                     [ "a" ],
                     [ Line(pos, Some 100, [ ReferenceStmt(pos, [ id "a" ]) ]) ],
-                    None) ])
+                    None, None) ])
               Line(pos, Some 20, [ DimStmt(pos, [ "scores", [ num "5" ] ]) ])
               Line(pos, Some 30, [ ProcedureCall(pos, "bump", [ mkPostfixName pos "scores" (Some [ num "1" ]) ]) ]) ])
 
@@ -461,3 +461,5 @@ let ``lowerToHir preserves spaced rnd range call syntax`` () =
             CallFunc(_, [ ValueArg(Binary(SliceRange, Literal(ConstInt 0, HirType.Int, _), ReadVar(_, HirType.Int, _), _, _)) ], _, _),
             _) ] -> ()
     | other -> Assert.Fail($"Unexpected lowered spaced RND HIR: %A{other}")
+
+

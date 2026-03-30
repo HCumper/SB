@@ -163,6 +163,7 @@ type HirRoutine = {
     Locals: HirStorage list
     Body: HirBlock
     ReturnType: HirType option
+    EndLineNumber: int option
     Position: SourcePosition
 }
 

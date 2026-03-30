@@ -441,3 +441,27 @@ let ``interpreter return after goto inside gosub still returns to caller`` () =
     let output = runProgram ast
 
     Assert.That(String.concat "|" output, Is.EqualTo("sub|after"))
+
+[<Test>]
+let ``interpreter goto to end define line exits the routine`` () =
+    let ast =
+        Program(
+            pos,
+            [ Line(
+                pos,
+                Some 10,
+                [ ProcedureDef(
+                    pos,
+                    "water",
+                    [],
+                    [ Line(pos, Some 1920, [ Assignment(pos, id "x", num "1") ])
+                      Line(pos, Some 1950, [ GotoStmt(pos, num "1970") ])
+                      Line(pos, Some 1960, [ Assignment(pos, id "x", num "2") ]) ],
+                    None,
+                    Some 1970) ])
+              Line(pos, Some 20, [ ProcedureCall(pos, "water", []) ])
+              Line(pos, Some 30, [ ProcedureCall(pos, "PRINT", [ num "42" ]) ]) ])
+
+    let output = runProgram ast
+
+    Assert.That(String.concat "|" output, Is.EqualTo("42"))

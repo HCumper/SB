@@ -111,7 +111,7 @@ let private topLevelStatements ast =
 let private tryFindProcedure name ast =
     topLevelStatements ast
     |> List.tryPick (function
-        | ProcedureDef(_, procName, parameters, body, _) when procName = name -> Some(parameters, body)
+        | ProcedureDef(_, procName, parameters, body, _, _) when procName = name -> Some(parameters, body)
         | _ -> None)
 
 let private tryFindLine lineNumber lines =
@@ -431,3 +431,5 @@ let ``ssb272 fixture semantic output preserves implicit integer defaults and get
             && fact.EvaluatedType = Some SBType.String)
 
     Assert.That(getenvResult.IsSome, Is.True)
+
+

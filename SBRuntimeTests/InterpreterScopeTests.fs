@@ -19,7 +19,7 @@ let ``interpreter aliases bare variable procedure arguments without reference`` 
                     "bump",
                     [ "a" ],
                     [ Line(pos, Some 100, [ Assignment(pos, id "a", binary "+" (id "a") (num "1")) ]) ],
-                    None) ])
+                    None, None) ])
               Line(pos, Some 20, [ Assignment(pos, id "x", num "3") ])
               Line(pos, Some 30, [ ProcedureCall(pos, "bump", [ id "x" ]) ])
               Line(pos, Some 40, [ ProcedureCall(pos, "PRINT", [ id "x" ]) ]) ])
@@ -41,7 +41,7 @@ let ``interpreter aliases bare array element procedure arguments without referen
                     "bump",
                     [ "a" ],
                     [ Line(pos, Some 100, [ Assignment(pos, id "a", binary "+" (id "a") (num "1")) ]) ],
-                    None) ])
+                    None, None) ])
               Line(pos, Some 20, [ DimStmt(pos, [ "scores", [ num "5" ] ]) ])
               Line(pos, Some 30, [ Assignment(pos, mkPostfixName pos "scores" (Some [ num "1" ]), num "3") ])
               Line(pos, Some 40, [ ProcedureCall(pos, "bump", [ mkPostfixName pos "scores" (Some [ num "1" ]) ]) ])
@@ -64,7 +64,7 @@ let ``interpreter local is dynamically visible to called procedure`` () =
                     "show",
                     [],
                     [ Line(pos, Some 100, [ ProcedureCall(pos, "PRINT", [ id "score" ]) ]) ],
-                    None) ])
+                    None, None) ])
               Line(
                 pos,
                 Some 20,
@@ -75,7 +75,7 @@ let ``interpreter local is dynamically visible to called procedure`` () =
                     [ Line(pos, Some 200, [ LocalStmt(pos, [ "score", None ]) ])
                       Line(pos, Some 210, [ Assignment(pos, id "score", num "7") ])
                       Line(pos, Some 220, [ ProcedureCall(pos, "show", []) ]) ],
-                    None) ])
+                    None, None) ])
               Line(pos, Some 30, [ ProcedureCall(pos, "main", []) ]) ])
 
     let output = runProgram ast
@@ -96,7 +96,7 @@ let ``interpreter local shadows global in called procedure`` () =
                     "show",
                     [],
                     [ Line(pos, Some 100, [ ProcedureCall(pos, "PRINT", [ id "score" ]) ]) ],
-                    None) ])
+                    None, None) ])
               Line(
                 pos,
                 Some 30,
@@ -107,7 +107,7 @@ let ``interpreter local shadows global in called procedure`` () =
                     [ Line(pos, Some 200, [ LocalStmt(pos, [ "score", None ]) ])
                       Line(pos, Some 210, [ Assignment(pos, id "score", num "9") ])
                       Line(pos, Some 220, [ ProcedureCall(pos, "show", []) ]) ],
-                    None) ])
+                    None, None) ])
               Line(pos, Some 40, [ ProcedureCall(pos, "main", []) ])
               Line(pos, Some 50, [ ProcedureCall(pos, "PRINT", [ id "score" ]) ]) ])
 
@@ -128,7 +128,7 @@ let ``interpreter dynamic local lookup walks multiple caller levels`` () =
                     "leaf",
                     [],
                     [ Line(pos, Some 100, [ ProcedureCall(pos, "PRINT", [ id "score" ]) ]) ],
-                    None) ])
+                    None, None) ])
               Line(
                 pos,
                 Some 20,
@@ -137,7 +137,7 @@ let ``interpreter dynamic local lookup walks multiple caller levels`` () =
                     "middle",
                     [],
                     [ Line(pos, Some 200, [ ProcedureCall(pos, "leaf", []) ]) ],
-                    None) ])
+                    None, None) ])
               Line(
                 pos,
                 Some 30,
@@ -148,7 +148,7 @@ let ``interpreter dynamic local lookup walks multiple caller levels`` () =
                     [ Line(pos, Some 300, [ LocalStmt(pos, [ "score", None ]) ])
                       Line(pos, Some 310, [ Assignment(pos, id "score", num "11") ])
                       Line(pos, Some 320, [ ProcedureCall(pos, "middle", []) ]) ],
-                    None) ])
+                    None, None) ])
               Line(pos, Some 40, [ ProcedureCall(pos, "root", []) ]) ])
 
     let output = runProgram ast
@@ -169,7 +169,7 @@ let ``interpreter parameter shadows caller local which shadows global`` () =
                     "show",
                     [ "score" ],
                     [ Line(pos, Some 100, [ ProcedureCall(pos, "PRINT", [ id "score" ]) ]) ],
-                    None) ])
+                    None, None) ])
               Line(
                 pos,
                 Some 30,
@@ -180,7 +180,7 @@ let ``interpreter parameter shadows caller local which shadows global`` () =
                     [ Line(pos, Some 200, [ LocalStmt(pos, [ "score", None ]) ])
                       Line(pos, Some 210, [ Assignment(pos, id "score", num "2") ])
                       Line(pos, Some 220, [ ProcedureCall(pos, "show", [ num "3" ]) ]) ],
-                    None) ])
+                    None, None) ])
               Line(pos, Some 40, [ ProcedureCall(pos, "main", []) ])
               Line(pos, Some 50, [ ProcedureCall(pos, "PRINT", [ id "score" ]) ]) ])
 
@@ -201,7 +201,7 @@ let ``interpreter local array is dynamically visible to called procedure`` () =
                     "show",
                     [],
                     [ Line(pos, Some 100, [ ProcedureCall(pos, "PRINT", [ mkPostfixName pos "scores" (Some [ num "1" ]) ]) ]) ],
-                    None) ])
+                    None, None) ])
               Line(
                 pos,
                 Some 20,
@@ -212,7 +212,7 @@ let ``interpreter local array is dynamically visible to called procedure`` () =
                     [ Line(pos, Some 200, [ LocalStmt(pos, [ "scores", Some [ num "5" ] ]) ])
                       Line(pos, Some 210, [ Assignment(pos, mkPostfixName pos "scores" (Some [ num "1" ]), num "8") ])
                       Line(pos, Some 220, [ ProcedureCall(pos, "show", []) ]) ],
-                    None) ])
+                    None, None) ])
               Line(pos, Some 30, [ ProcedureCall(pos, "main", []) ]) ])
 
     let output = runProgram ast
@@ -232,7 +232,7 @@ let ``interpreter callee can write caller local and grandchild reads updated val
                     "leaf",
                     [],
                     [ Line(pos, Some 100, [ ProcedureCall(pos, "PRINT", [ id "score" ]) ]) ],
-                    None) ])
+                    None, None) ])
               Line(
                 pos,
                 Some 20,
@@ -242,7 +242,7 @@ let ``interpreter callee can write caller local and grandchild reads updated val
                     [],
                     [ Line(pos, Some 200, [ Assignment(pos, id "score", num "17") ])
                       Line(pos, Some 210, [ ProcedureCall(pos, "leaf", []) ]) ],
-                    None) ])
+                    None, None) ])
               Line(
                 pos,
                 Some 30,
@@ -254,7 +254,7 @@ let ``interpreter callee can write caller local and grandchild reads updated val
                       Line(pos, Some 310, [ Assignment(pos, id "score", num "11") ])
                       Line(pos, Some 320, [ ProcedureCall(pos, "middle", []) ])
                       Line(pos, Some 330, [ ProcedureCall(pos, "PRINT", [ id "score" ]) ]) ],
-                    None) ])
+                    None, None) ])
               Line(pos, Some 40, [ ProcedureCall(pos, "root", []) ]) ])
 
     let output = runProgram ast
@@ -274,7 +274,7 @@ let ``interpreter callee can write caller local array element and grandchild rea
                     "leaf",
                     [],
                     [ Line(pos, Some 100, [ ProcedureCall(pos, "PRINT", [ mkPostfixName pos "scores" (Some [ num "2" ]) ]) ]) ],
-                    None) ])
+                    None, None) ])
               Line(
                 pos,
                 Some 20,
@@ -284,7 +284,7 @@ let ``interpreter callee can write caller local array element and grandchild rea
                     [],
                     [ Line(pos, Some 200, [ Assignment(pos, mkPostfixName pos "scores" (Some [ num "2" ]), num "23") ])
                       Line(pos, Some 210, [ ProcedureCall(pos, "leaf", []) ]) ],
-                    None) ])
+                    None, None) ])
               Line(
                 pos,
                 Some 30,
@@ -296,7 +296,7 @@ let ``interpreter callee can write caller local array element and grandchild rea
                       Line(pos, Some 310, [ Assignment(pos, mkPostfixName pos "scores" (Some [ num "2" ]), num "7") ])
                       Line(pos, Some 320, [ ProcedureCall(pos, "middle", []) ])
                       Line(pos, Some 330, [ ProcedureCall(pos, "PRINT", [ mkPostfixName pos "scores" (Some [ num "2" ]) ]) ]) ],
-                    None) ])
+                    None, None) ])
               Line(pos, Some 40, [ ProcedureCall(pos, "root", []) ]) ])
 
     let output = runProgram ast
@@ -318,7 +318,7 @@ let ``interpreter dynamic writes target nearest caller local before outer local 
                     [],
                     [ Line(pos, Some 100, [ Assignment(pos, id "score", num "99") ])
                       Line(pos, Some 110, [ ProcedureCall(pos, "PRINT", [ id "score" ]) ]) ],
-                    None) ])
+                    None, None) ])
               Line(
                 pos,
                 Some 30,
@@ -330,7 +330,7 @@ let ``interpreter dynamic writes target nearest caller local before outer local 
                       Line(pos, Some 210, [ Assignment(pos, id "score", num "5") ])
                       Line(pos, Some 220, [ ProcedureCall(pos, "leaf", []) ])
                       Line(pos, Some 230, [ ProcedureCall(pos, "PRINT", [ id "score" ]) ]) ],
-                    None) ])
+                    None, None) ])
               Line(
                 pos,
                 Some 40,
@@ -342,7 +342,7 @@ let ``interpreter dynamic writes target nearest caller local before outer local 
                       Line(pos, Some 310, [ Assignment(pos, id "score", num "7") ])
                       Line(pos, Some 320, [ ProcedureCall(pos, "middle", []) ])
                       Line(pos, Some 330, [ ProcedureCall(pos, "PRINT", [ id "score" ]) ]) ],
-                    None) ])
+                    None, None) ])
               Line(pos, Some 50, [ ProcedureCall(pos, "root", []) ])
               Line(pos, Some 60, [ ProcedureCall(pos, "PRINT", [ id "score" ]) ]) ])
 
@@ -365,7 +365,7 @@ let ``interpreter locals are isolated across repeated procedure calls`` () =
                     [ Line(pos, Some 100, [ LocalStmt(pos, [ "score", None ]) ])
                       Line(pos, Some 110, [ Assignment(pos, id "score", binary "+" (id "score") (num "1")) ])
                       Line(pos, Some 120, [ ProcedureCall(pos, "PRINT", [ id "score" ]) ]) ],
-                    None) ])
+                    None, None) ])
               Line(pos, Some 20, [ ProcedureCall(pos, "main", []) ])
               Line(pos, Some 30, [ ProcedureCall(pos, "main", []) ]) ])
 
@@ -387,7 +387,7 @@ let ``interpreter rejects literal actual for reference parameter`` () =
                     [ "a" ],
                     [ Line(pos, Some 100, [ ReferenceStmt(pos, [ id "a" ]) ])
                       Line(pos, Some 110, [ Assignment(pos, id "a", binary "+" (id "a") (num "1")) ]) ],
-                    None) ])
+                    None, None) ])
               Line(pos, Some 20, [ ProcedureCall(pos, "bump", [ num "7" ]) ]) ])
 
     let hir = lowerProgram ast
@@ -410,7 +410,7 @@ let ``interpreter rejects expression actual for reference parameter`` () =
                     [ "a" ],
                     [ Line(pos, Some 100, [ ReferenceStmt(pos, [ id "a" ]) ])
                       Line(pos, Some 110, [ Assignment(pos, id "a", binary "+" (id "a") (num "1")) ]) ],
-                    None) ])
+                    None, None) ])
               Line(pos, Some 20, [ Assignment(pos, id "x", num "7") ])
               Line(pos, Some 30, [ ProcedureCall(pos, "bump", [ binary "+" (id "x") (num "0") ]) ]) ])
 
@@ -434,7 +434,7 @@ let ``interpreter accepts array element actual for reference parameter`` () =
                     [ "a" ],
                     [ Line(pos, Some 100, [ ReferenceStmt(pos, [ id "a" ]) ])
                       Line(pos, Some 110, [ Assignment(pos, id "a", binary "+" (id "a") (num "1")) ]) ],
-                    None) ])
+                    None, None) ])
               Line(pos, Some 20, [ DimStmt(pos, [ "scores", [ num "5" ] ]) ])
               Line(pos, Some 30, [ Assignment(pos, mkPostfixName pos "scores" (Some [ num "2" ]), num "9") ])
               Line(pos, Some 40, [ ProcedureCall(pos, "bump", [ mkPostfixName pos "scores" (Some [ num "2" ]) ]) ])
@@ -459,7 +459,7 @@ let ``interpreter supports mixed flexible and reference parameters in one routin
                     [ Line(pos, Some 100, [ ReferenceStmt(pos, [ id "total" ]) ])
                       Line(pos, Some 110, [ Assignment(pos, id "value", binary "+" (id "value") (num "10")) ])
                       Line(pos, Some 120, [ Assignment(pos, id "total", binary "+" (id "total") (id "value")) ]) ],
-                    None) ])
+                    None, None) ])
               Line(pos, Some 20, [ Assignment(pos, id "x", num "2") ])
               Line(pos, Some 30, [ Assignment(pos, id "sum", num "5") ])
               Line(pos, Some 40, [ ProcedureCall(pos, "mix", [ binary "+" (id "x") (num "0"); id "sum" ]) ])
@@ -483,7 +483,7 @@ let ``interpreter repeated nested reference aliasing updates caller storage`` ()
                     [ "a" ],
                     [ Line(pos, Some 100, [ ReferenceStmt(pos, [ id "a" ]) ])
                       Line(pos, Some 110, [ Assignment(pos, id "a", binary "+" (id "a") (num "1")) ]) ],
-                    None) ])
+                    None, None) ])
               Line(
                 pos,
                 Some 20,
@@ -494,7 +494,7 @@ let ``interpreter repeated nested reference aliasing updates caller storage`` ()
                     [ Line(pos, Some 200, [ ReferenceStmt(pos, [ id "a" ]) ])
                       Line(pos, Some 210, [ ProcedureCall(pos, "inc", [ id "a" ]) ])
                       Line(pos, Some 220, [ ProcedureCall(pos, "inc", [ id "a" ]) ]) ],
-                    None) ])
+                    None, None) ])
               Line(pos, Some 30, [ Assignment(pos, id "x", num "4") ])
               Line(pos, Some 40, [ ProcedureCall(pos, "inc2", [ id "x" ]) ])
               Line(pos, Some 50, [ ProcedureCall(pos, "PRINT", [ id "x" ]) ]) ])
@@ -517,7 +517,7 @@ let ``interpreter reference parameter shadows globals and caller locals`` () =
                     "leaf",
                     [],
                     [ Line(pos, Some 100, [ ProcedureCall(pos, "PRINT", [ id "score" ]) ]) ],
-                    None) ])
+                    None, None) ])
               Line(
                 pos,
                 Some 30,
@@ -529,7 +529,7 @@ let ``interpreter reference parameter shadows globals and caller locals`` () =
                       Line(pos, Some 210, [ Assignment(pos, id "score", num "99") ])
                       Line(pos, Some 220, [ ProcedureCall(pos, "leaf", []) ])
                       Line(pos, Some 230, [ ProcedureCall(pos, "PRINT", [ id "score" ]) ]) ],
-                    None) ])
+                    None, None) ])
               Line(
                 pos,
                 Some 40,
@@ -541,10 +541,12 @@ let ``interpreter reference parameter shadows globals and caller locals`` () =
                       Line(pos, Some 310, [ Assignment(pos, id "score", num "7") ])
                       Line(pos, Some 320, [ ProcedureCall(pos, "show", [ id "score" ]) ])
                       Line(pos, Some 330, [ ProcedureCall(pos, "PRINT", [ id "score" ]) ]) ],
-                    None) ])
+                    None, None) ])
               Line(pos, Some 50, [ ProcedureCall(pos, "root", []) ])
               Line(pos, Some 60, [ ProcedureCall(pos, "PRINT", [ id "score" ]) ]) ])
 
     let output = runProgram ast
 
     Assert.That(String.concat "|" output, Is.EqualTo("99|99|99|1"))
+
+

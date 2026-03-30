@@ -494,7 +494,13 @@ and private evalBuiltInFunction state symbolId argExprs hirType pos =
             (hirType = HIR.HirType.Float)
             nextState.Options.Clock
             (fun () -> nextState.RandomSource)
+            (fun variable -> Environment.GetEnvironmentVariable(variable) |> Option.ofObj)
             nextState.Options.Host.Input.ReadKey
+            (fun _ -> 0)
+            (fun channelNumber ->
+                match nextState.Options.Host.Channels.Get(ChannelId channelNumber) with
+                | Result.Ok _ -> false
+                | Result.Error _ -> true)
             allowRangePair
             (values |> List.map toRuntimeBuiltInValue)
         |> function
@@ -591,6 +597,7 @@ and private callRoutine state (routine: HirRoutine) args pos =
             | Continue, None -> Result.Ok(IntValue 0, finalState)
             | TransferredContinue, Some _ -> Result.Ok(IntValue 0, finalState)
             | TransferredContinue, None -> Result.Ok(IntValue 0, finalState)
+            | JumpToLine lineNumber, _ when routine.EndLineNumber = Some lineNumber -> Result.Ok(IntValue 0, finalState)
             | StopExecution, _ -> runtimeError EscapedStop (Some pos) $"STOP escaped from routine '{routine.Name}'."
             | JumpToLine lineNumber, _ -> runtimeError MissingGotoTarget (Some pos) $"GOTO target line {lineNumber} does not exist in routine '{routine.Name}'."
             | GosubToLine lineNumber, _ -> runtimeError MissingGosubTarget (Some pos) $"GOSUB target line {lineNumber} does not exist in routine '{routine.Name}'."

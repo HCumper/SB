@@ -214,8 +214,8 @@ let private validateLineSequence ast =
         stmts
         |> List.collect (fun stmt ->
             match stmt with
-            | ProcedureDef(_, name, _, body, _)
-            | FunctionDef(_, name, _, body, _) ->
+            | ProcedureDef(_, name, _, body, _, _)
+            | FunctionDef(_, name, _, body, _, _) ->
                 collectLines $"routine '{name}'" body
             | ForStmt(_, name, _, _, _, body, _) ->
                 collectBlock $"FOR loop '{name}'" body

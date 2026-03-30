@@ -236,10 +236,10 @@ and collectDeclarations (mode: SymbolAddMode) (node: Stmt) : State<ProcessingSta
         // That ordering matters because later statements in the same routine may
         // refer to parameters or locals introduced earlier in the body, and the
         // resolution pass expects the enclosing scope structure to already exist.
-        | ProcedureDef(pos, name, parameters, body, _) ->
+        | ProcedureDef(pos, name, parameters, body, _, _) ->
             do! collectRoutineDeclaration mode declareProcedure pos name parameters body
 
-        | FunctionDef(pos, name, parameters, body, _) ->
+        | FunctionDef(pos, name, parameters, body, _, _) ->
             do! collectRoutineDeclaration mode declareFunction pos name parameters body
 
         // Declaration-like statements only shape the symbol table in this pass.
@@ -476,8 +476,8 @@ and private resolveStmt (mode: SymbolAddMode) (node: Stmt) : State<ProcessingSta
     state {
         let! currentState = getState
         match node with
-        | ProcedureDef(pos, name, _, body, closingName)
-        | FunctionDef(pos, name, _, body, closingName) ->
+        | ProcedureDef(pos, name, _, body, closingName, _)
+        | FunctionDef(pos, name, _, body, closingName, _) ->
             do! putState (validateClosingName "routine" name closingName pos currentState)
             do! resolveRoutineBody mode name body
 

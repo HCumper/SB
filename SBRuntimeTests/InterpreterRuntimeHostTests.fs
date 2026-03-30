@@ -37,7 +37,7 @@ let ``interpreter missing dynamic local reports runtime error code`` () =
                     "show",
                     [],
                     [ Line(pos, Some 100, [ ProcedureCall(pos, "PRINT", [ id "score" ]) ]) ],
-                    None) ])
+                    None, None) ])
               Line(pos, Some 20, [ ProcedureCall(pos, "show", []) ]) ])
 
     let hir = lowerProgram ast
@@ -65,7 +65,7 @@ let ``interpreter runtime errors prefer BASIC line numbers in messages`` () =
                     "show",
                     [],
                     [ Line(posWithBasicLine, Some 130, [ ProcedureCall(posWithBasicLine, "PRINT", [ mkIdentifier posWithBasicLine "score" ]) ]) ],
-                    None) ])
+                    None, None) ])
               Line(posWithBasicLine, Some 140, [ ProcedureCall(posWithBasicLine, "show", []) ]) ])
 
     let hir = lowerProgram ast
@@ -95,7 +95,7 @@ let ``interpreter runtime errors fall back to editor line and column in messages
                     [ "a" ],
                     [ Line(posWithoutBasicLine, Some 20, [ ReferenceStmt(posWithoutBasicLine, [ mkIdentifier posWithoutBasicLine "a" ]) ])
                       Line(posWithoutBasicLine, Some 30, [ Assignment(posWithoutBasicLine, mkIdentifier posWithoutBasicLine "a", binary "+" (mkIdentifier posWithoutBasicLine "a") (num "1")) ]) ],
-                    None) ])
+                    None, None) ])
               Line(posWithoutBasicLine, Some 40, [ ProcedureCall(posWithoutBasicLine, "bump", [ num "7" ]) ]) ])
 
     let hir = lowerProgram ast
@@ -664,3 +664,5 @@ let ``interpreter pause uses runtime sleeper`` () =
         Assert.That(pauses |> Seq.toList = [ 50; 0 ], Is.True)
     | Result.Error err ->
         Assert.Fail($"Expected interpretation to succeed, got %A{err}")
+
+

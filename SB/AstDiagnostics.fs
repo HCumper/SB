@@ -80,17 +80,19 @@ and private prettyStmt level stmt =
     match stmt with
     // Definitions and control-flow constructs are rendered in a tree shape so
     // nested statements and expressions stay easy to inspect.
-    | ProcedureDef(pos, name, parameters, body, closingName) ->
+    | ProcedureDef(pos, name, parameters, body, closingName, closingLineNumber) ->
         let parameterText = String.concat ", " parameters
         let closingText = closingName |> Option.map (fun value -> $" end={value}") |> Option.defaultValue ""
+        let closingLineText = closingLineNumber |> Option.map (fun value -> $" endLine={value}") |> Option.defaultValue ""
         String.concat ""
-            [ $"{pad}ProcedureDef {name}({parameterText}){closingText} @{formatPosition pos}\n"
+            [ $"{pad}ProcedureDef {name}({parameterText}){closingText}{closingLineText} @{formatPosition pos}\n"
               body |> List.map (prettyLine (level + 2)) |> String.concat "" ]
-    | FunctionDef(pos, name, parameters, body, closingName) ->
+    | FunctionDef(pos, name, parameters, body, closingName, closingLineNumber) ->
         let parameterText = String.concat ", " parameters
         let closingText = closingName |> Option.map (fun value -> $" end={value}") |> Option.defaultValue ""
+        let closingLineText = closingLineNumber |> Option.map (fun value -> $" endLine={value}") |> Option.defaultValue ""
         String.concat ""
-            [ $"{pad}FunctionDef {name}({parameterText}){closingText} @{formatPosition pos}\n"
+            [ $"{pad}FunctionDef {name}({parameterText}){closingText}{closingLineText} @{formatPosition pos}\n"
               body |> List.map (prettyLine (level + 2)) |> String.concat "" ]
     | DimStmt(pos, items) ->
         let itemText =
@@ -316,11 +318,14 @@ and private writeSelectClause (writer: Utf8JsonWriter) (SelectClause(pos, select
 and private writeStmt (writer: Utf8JsonWriter) stmt =
     writer.WriteStartObject()
     match stmt with
-    | ProcedureDef(pos, name, parameters, body, closingName) ->
+    | ProcedureDef(pos, name, parameters, body, closingName, closingLineNumber) ->
         writer.WriteString("kind", "ProcedureDef")
         writer.WriteString("name", name)
         match closingName with
         | Some value -> writer.WriteString("closingName", value)
+        | None -> ()
+        match closingLineNumber with
+        | Some value -> writer.WriteNumber("closingLineNumber", value)
         | None -> ()
         writer.WritePropertyName("position")
         writePosition writer pos
@@ -329,11 +334,14 @@ and private writeStmt (writer: Utf8JsonWriter) stmt =
         writer.WriteStartArray()
         body |> List.iter (writeLine writer)
         writer.WriteEndArray()
-    | FunctionDef(pos, name, parameters, body, closingName) ->
+    | FunctionDef(pos, name, parameters, body, closingName, closingLineNumber) ->
         writer.WriteString("kind", "FunctionDef")
         writer.WriteString("name", name)
         match closingName with
         | Some value -> writer.WriteString("closingName", value)
+        | None -> ()
+        match closingLineNumber with
+        | Some value -> writer.WriteNumber("closingLineNumber", value)
         | None -> ()
         writer.WritePropertyName("position")
         writePosition writer pos

@@ -612,7 +612,7 @@ and private lowerOptionalBlock ctx block =
 
 let private lowerRoutine symbolIds state routine =
     let slotMap = lowerStorageSlotMap state.SymTab symbolIds
-    let buildRoutine pos name parameters body returnType =
+    let buildRoutine pos name parameters body returnType endLineNumber =
         let ctx =
             { State = state
               SymbolIds = symbolIds
@@ -666,20 +666,21 @@ let private lowerRoutine symbolIds state routine =
                           Locals = locals
                           Body = loweredBody
                           ReturnType = returnType
+                          EndLineNumber = endLineNumber
                           Position = pos }))
             | None -> fail name (Some pos) $"Unable to resolve routine symbol id for '{name}'."
         | None -> fail name (Some pos) $"Unable to resolve routine '{name}'."
 
     match routine with
-    | ProcedureDef(pos, name, parameters, body, _) ->
-        buildRoutine pos name parameters body None
-    | FunctionDef(pos, name, parameters, body, _) ->
+    | ProcedureDef(pos, name, parameters, body, _, endLineNumber) ->
+        buildRoutine pos name parameters body None endLineNumber
+    | FunctionDef(pos, name, parameters, body, _, endLineNumber) ->
         let returnType =
             match tryResolveSymbol globalScope name state.SymTab with
             | Some(_, FunctionSym symbol) -> Some(lowerSBType symbol.ReturnType)
             | _ -> Some HirType.Void
 
-        buildRoutine pos name parameters body returnType
+        buildRoutine pos name parameters body returnType endLineNumber
     | _ ->
         fail globalScope None "Expected a routine definition."
 
@@ -731,8 +732,8 @@ let private collectDataItems ctx lines =
                           LineNumber = currentLineNumber })
 
                 slotIndex + lowered.Length, entries @ newEntries, restorePoints)
-        | ProcedureDef(_, _, _, body, _)
-        | FunctionDef(_, _, _, body, _) ->
+        | ProcedureDef(_, _, _, body, _, _)
+        | FunctionDef(_, _, _, body, _, _) ->
             collectLines (slotIndex, entries, restorePoints) body
         | ForStmt(_, _, _, _, _, body, _)
         | RepeatStmt(_, _, body, _) ->
