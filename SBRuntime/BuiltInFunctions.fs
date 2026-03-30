@@ -16,6 +16,7 @@ module BuiltInFunctions =
         (isFloat: bool)
         (clock: unit -> DateTime)
         (random: unit -> Random)
+        (readKey: unit -> KeyInfo option)
         (allowRangePair: bool)
         (args: SBValue list)
         =
@@ -55,6 +56,19 @@ module BuiltInFunctions =
                 let seconds = int (clock().Subtract(DateTime.UnixEpoch).TotalSeconds)
                 Result.Ok(RuntimeValues.ofInt seconds)
             | _ -> Result.Error(ArityMismatch $"Built-in function '{name}' expects no arguments.")
+        | "INKEY$" ->
+            match args with
+            | []
+            | [ _ ]
+            | [ _; _ ] ->
+                let text =
+                    match readKey() with
+                    | Some { Character = Some ch } -> string ch
+                    | Some { Character = None; KeyCode = keyCode } when keyCode >= 0 && keyCode <= 255 -> string (char keyCode)
+                    | Some _ -> ""
+                    | None -> ""
+                Result.Ok(Text text)
+            | _ -> Result.Error(ArityMismatch $"Built-in function '{name}' expects zero, one, or two arguments.")
         | "RND" ->
             match args with
             | [] -> Result.Ok(RuntimeValues.ofFloat (random().NextDouble()))

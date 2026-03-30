@@ -63,6 +63,8 @@ let runProgramWithInput input ast =
             Host =
                 DefaultHost.create {
                     ReadLine = fun () -> if inputs.Count > 0 then Some(inputs.Dequeue()) else None
+                    ReadKey = fun () -> None
+                    KeyAvailable = fun () -> false
                     WriteLine = fun line -> outputs.Add(line)
                 }
             Random = Random(1234)
@@ -76,10 +78,16 @@ let runProgram ast =
     runProgramWithInput [] ast
 
 type ScreenWindowState = {
+    mutable Window: int * int * int * int
+    mutable Scroll: int
+    mutable Width: int option
+    mutable Pan: int
+    mutable Recolor: int option
+    mutable Palette: int list option
     mutable Cursor: int * int
     mutable CharacterSize: int * int
     mutable ClearCount: int
-    mutable Ink: int option
+    mutable Ink: int list option
     mutable Paper: int option
     mutable Border: int option
     Writes: ResizeArray<string>
@@ -89,6 +97,15 @@ type ScreenState = {
     mutable Mode: ScreenModeInfo
     Inputs: Collections.Generic.Queue<string>
     Windows: Map<int, ScreenWindowState>
+    GraphicsOps: ResizeArray<string>
+    mutable GraphicsInk: int list
+    mutable FillMode: int
+    mutable Scale: double * double * double
+    mutable OverMode: int
+    mutable UnderMode: int
+    mutable FlashMode: int
+    mutable PenDown: bool
+    mutable Heading: double
 }
 
 let createScreenHost (inputs: string list) =
@@ -100,6 +117,12 @@ let createScreenHost (inputs: string list) =
 
     let makeWindowState () =
         { Cursor = 0, 0
+          Window = 0, 0, 0, 0
+          Scroll = 0
+          Width = None
+          Pan = 0
+          Recolor = None
+          Palette = None
           CharacterSize = 0, 0
           ClearCount = 0
           Ink = None
@@ -116,7 +139,16 @@ let createScreenHost (inputs: string list) =
     let state =
         { Mode = supportedModes[0]
           Inputs = Collections.Generic.Queue<string>(inputs)
-          Windows = windows }
+          Windows = windows
+          GraphicsOps = ResizeArray<string>()
+          GraphicsInk = []
+          FillMode = 0
+          Scale = 0.0, 0.0, 0.0
+          OverMode = 0
+          UnderMode = 0
+          FlashMode = 0
+          PenDown = true
+          Heading = 0.0 }
 
     let reader () =
         if state.Inputs.Count > 0 then Some(state.Inputs.Dequeue()) else None
@@ -138,6 +170,54 @@ let createScreenHost (inputs: string list) =
                 match Map.tryFind channelId state.Windows with
                 | Some window -> window.ClearCount <- window.ClearCount + 1
                 | None -> ()
+            member _.SetWindow(width, height, x, y) =
+                match Map.tryFind channelId state.Windows with
+                | Some window -> window.Window <- width, height, x, y
+                | None -> ()
+            member _.GetWindow() =
+                match Map.tryFind channelId state.Windows with
+                | Some window -> window.Window
+                | None -> 0, 0, 0, 0
+            member _.SetScroll(value) =
+                match Map.tryFind channelId state.Windows with
+                | Some window -> window.Scroll <- value
+                | None -> ()
+            member _.GetScroll() =
+                match Map.tryFind channelId state.Windows with
+                | Some window -> window.Scroll
+                | None -> 0
+            member _.SetWidth(value) =
+                match Map.tryFind channelId state.Windows with
+                | Some window -> window.Width <- Some value
+                | None -> ()
+            member _.GetWidth() =
+                match Map.tryFind channelId state.Windows with
+                | Some window -> window.Width
+                | None -> None
+            member _.SetPan(value) =
+                match Map.tryFind channelId state.Windows with
+                | Some window -> window.Pan <- value
+                | None -> ()
+            member _.GetPan() =
+                match Map.tryFind channelId state.Windows with
+                | Some window -> window.Pan
+                | None -> 0
+            member _.SetRecolor(value) =
+                match Map.tryFind channelId state.Windows with
+                | Some window -> window.Recolor <- Some value
+                | None -> ()
+            member _.GetRecolor() =
+                match Map.tryFind channelId state.Windows with
+                | Some window -> window.Recolor
+                | None -> None
+            member _.SetPalette(values) =
+                match Map.tryFind channelId state.Windows with
+                | Some window -> window.Palette <- Some values
+                | None -> ()
+            member _.GetPalette() =
+                match Map.tryFind channelId state.Windows with
+                | Some window -> window.Palette
+                | None -> None
             member _.SetCursor(x, y) =
                 match Map.tryFind channelId state.Windows with
                 | Some window -> window.Cursor <- x, y
@@ -154,9 +234,9 @@ let createScreenHost (inputs: string list) =
                 match Map.tryFind channelId state.Windows with
                 | Some window -> window.CharacterSize
                 | None -> 0, 0
-            member _.SetInk(value: int) =
+            member _.SetInk(values: int list) =
                 match Map.tryFind channelId state.Windows with
-                | Some window -> window.Ink <- Some value
+                | Some window -> window.Ink <- Some values
                 | None -> ()
             member _.SetPaper(value: int) =
                 match Map.tryFind channelId state.Windows with
@@ -179,6 +259,54 @@ let createScreenHost (inputs: string list) =
                 match Map.tryFind channelId state.Windows with
                 | Some window -> window.ClearCount <- window.ClearCount + 1
                 | None -> ()
+            member _.SetWindow(width, height, x, y) =
+                match Map.tryFind channelId state.Windows with
+                | Some window -> window.Window <- width, height, x, y
+                | None -> ()
+            member _.GetWindow() =
+                match Map.tryFind channelId state.Windows with
+                | Some window -> window.Window
+                | None -> 0, 0, 0, 0
+            member _.SetScroll(value) =
+                match Map.tryFind channelId state.Windows with
+                | Some window -> window.Scroll <- value
+                | None -> ()
+            member _.GetScroll() =
+                match Map.tryFind channelId state.Windows with
+                | Some window -> window.Scroll
+                | None -> 0
+            member _.SetWidth(value) =
+                match Map.tryFind channelId state.Windows with
+                | Some window -> window.Width <- Some value
+                | None -> ()
+            member _.GetWidth() =
+                match Map.tryFind channelId state.Windows with
+                | Some window -> window.Width
+                | None -> None
+            member _.SetPan(value) =
+                match Map.tryFind channelId state.Windows with
+                | Some window -> window.Pan <- value
+                | None -> ()
+            member _.GetPan() =
+                match Map.tryFind channelId state.Windows with
+                | Some window -> window.Pan
+                | None -> 0
+            member _.SetRecolor(value) =
+                match Map.tryFind channelId state.Windows with
+                | Some window -> window.Recolor <- Some value
+                | None -> ()
+            member _.GetRecolor() =
+                match Map.tryFind channelId state.Windows with
+                | Some window -> window.Recolor
+                | None -> None
+            member _.SetPalette(values) =
+                match Map.tryFind channelId state.Windows with
+                | Some window -> window.Palette <- Some values
+                | None -> ()
+            member _.GetPalette() =
+                match Map.tryFind channelId state.Windows with
+                | Some window -> window.Palette
+                | None -> None
             member _.SetCursor(x, y) =
                 match Map.tryFind channelId state.Windows with
                 | Some window -> window.Cursor <- x, y
@@ -195,9 +323,9 @@ let createScreenHost (inputs: string list) =
                 match Map.tryFind channelId state.Windows with
                 | Some window -> window.CharacterSize
                 | None -> 0, 0
-            member _.SetInk(value: int) =
+            member _.SetInk(values: int list) =
                 match Map.tryFind channelId state.Windows with
-                | Some window -> window.Ink <- Some value
+                | Some window -> window.Ink <- Some values
                 | None -> ()
             member _.SetPaper(value: int) =
                 match Map.tryFind channelId state.Windows with
@@ -236,6 +364,54 @@ let createScreenHost (inputs: string list) =
                         match Map.tryFind 0 state.Windows with
                         | Some window -> window.ClearCount <- window.ClearCount + 1
                         | None -> ()
+                    member _.SetWindow(width, height, x, y) =
+                        match Map.tryFind 0 state.Windows with
+                        | Some window -> window.Window <- width, height, x, y
+                        | None -> ()
+                    member _.GetWindow() =
+                        match Map.tryFind 0 state.Windows with
+                        | Some window -> window.Window
+                        | None -> 0, 0, 0, 0
+                    member _.SetScroll(value) =
+                        match Map.tryFind 0 state.Windows with
+                        | Some window -> window.Scroll <- value
+                        | None -> ()
+                    member _.GetScroll() =
+                        match Map.tryFind 0 state.Windows with
+                        | Some window -> window.Scroll
+                        | None -> 0
+                    member _.SetWidth(value) =
+                        match Map.tryFind 0 state.Windows with
+                        | Some window -> window.Width <- Some value
+                        | None -> ()
+                    member _.GetWidth() =
+                        match Map.tryFind 0 state.Windows with
+                        | Some window -> window.Width
+                        | None -> None
+                    member _.SetPan(value) =
+                        match Map.tryFind 0 state.Windows with
+                        | Some window -> window.Pan <- value
+                        | None -> ()
+                    member _.GetPan() =
+                        match Map.tryFind 0 state.Windows with
+                        | Some window -> window.Pan
+                        | None -> 0
+                    member _.SetRecolor(value) =
+                        match Map.tryFind 0 state.Windows with
+                        | Some window -> window.Recolor <- Some value
+                        | None -> ()
+                    member _.GetRecolor() =
+                        match Map.tryFind 0 state.Windows with
+                        | Some window -> window.Recolor
+                        | None -> None
+                    member _.SetPalette(values) =
+                        match Map.tryFind 0 state.Windows with
+                        | Some window -> window.Palette <- Some values
+                        | None -> ()
+                    member _.GetPalette() =
+                        match Map.tryFind 0 state.Windows with
+                        | Some window -> window.Palette
+                        | None -> None
                     member _.SetCursor(x, y) =
                         match Map.tryFind 0 state.Windows with
                         | Some window -> window.Cursor <- x, y
@@ -253,9 +429,9 @@ let createScreenHost (inputs: string list) =
                         | Some window -> window.CharacterSize
                         | None -> 0, 0
                     member _.WriteText text = writeWindow 0 text
-                    member _.SetInk(value: int) =
+                    member _.SetInk(values: int list) =
                         match Map.tryFind 0 state.Windows with
-                        | Some window -> window.Ink <- Some value
+                        | Some window -> window.Ink <- Some values
                         | None -> ()
                     member _.SetPaper(value: int) =
                         match Map.tryFind 0 state.Windows with
@@ -276,12 +452,53 @@ let createScreenHost (inputs: string list) =
                             Result.Error(UnsupportedHostOperation $"Mode '{mode}' is not supported in the test host.") }
             member _.Graphics =
                 { new IGraphicsDevice with
-                    member _.Plot(_x, _y) = ()
-                    member _.Draw(_x, _y) = ()
-                    member _.Line(_x1, _y1, _x2, _y2) = ()
-                    member _.Circle(_x, _y, _radius) = ()
-                    member _.Fill(_x, _y) = ()
-                    member _.Clear() = () }
+                    member _.Plot(x, y) = state.GraphicsOps.Add($"PLOT {x:G17},{y:G17}")
+                    member _.Point(x, y) = state.GraphicsOps.Add($"POINT {x:G17},{y:G17}")
+                    member _.PointRelative(dx, dy) = state.GraphicsOps.Add($"POINT_R {dx:G17},{dy:G17}")
+                    member _.Draw(x, y) = state.GraphicsOps.Add($"DRAW {x:G17},{y:G17}")
+                    member _.LineRelative(values) =
+                        let valueText = values |> List.map (fun value -> value.ToString("G17")) |> String.concat ","
+                        state.GraphicsOps.Add($"LINE_R {valueText}")
+                    member _.DLine(values) =
+                        let valueText = values |> List.map (fun value -> value.ToString("G17")) |> String.concat ","
+                        state.GraphicsOps.Add($"DLINE {valueText}")
+                    member _.Line(x1, y1, x2, y2) = state.GraphicsOps.Add($"LINE {x1:G17},{y1:G17} TO {x2:G17},{y2:G17}")
+                    member _.Circle(x, y, radius) = state.GraphicsOps.Add($"CIRCLE {x:G17},{y:G17},{radius:G17}")
+                    member _.CircleRelative(dx, dy, radius) = state.GraphicsOps.Add($"CIRCLE_R {dx:G17},{dy:G17},{radius:G17}")
+                    member _.Ellipse(x, y, radius, ratio, angle) = state.GraphicsOps.Add($"ELLIPSE {x:G17},{y:G17},{radius:G17},{ratio:G17},{angle:G17}")
+                    member _.EllipseRelative(dx, dy, radius, ratio, angle) = state.GraphicsOps.Add($"ELLIPSE_R {dx:G17},{dy:G17},{radius:G17},{ratio:G17},{angle:G17}")
+                    member _.Arc(x, y, radius, startAngle, endAngle) = state.GraphicsOps.Add($"ARC {x:G17},{y:G17},{radius:G17},{startAngle:G17},{endAngle:G17}")
+                    member _.ArcRelative(dx, dy, radius, startAngle, endAngle) = state.GraphicsOps.Add($"ARC_R {dx:G17},{dy:G17},{radius:G17},{startAngle:G17},{endAngle:G17}")
+                    member _.Block(width, height, x, y, color) = state.GraphicsOps.Add($"BLOCK {width:G17},{height:G17},{x:G17},{y:G17},{color}")
+                    member _.SetInk(values: int list) =
+                        let valueText = values |> List.map string |> String.concat ","
+                        state.GraphicsInk <- values
+                        state.GraphicsOps.Add($"INK {valueText}")
+                    member _.SetFill(value: int) =
+                        state.FillMode <- value
+                        state.GraphicsOps.Add($"FILL {value}")
+                    member _.SetScale(x, y, z) =
+                        state.Scale <- x, y, z
+                        state.GraphicsOps.Add($"SCALE {x:G17},{y:G17},{z:G17}")
+                    member _.SetOver(value: int) =
+                        state.OverMode <- value
+                        state.GraphicsOps.Add($"OVER {value}")
+                    member _.SetUnder(value: int) =
+                        state.UnderMode <- value
+                        state.GraphicsOps.Add($"UNDER {value}")
+                    member _.SetFlash(value: int) =
+                        state.FlashMode <- value
+                        state.GraphicsOps.Add($"FLASH {value}")
+                    member _.SetPenDown(value: bool) =
+                        state.PenDown <- value
+                        state.GraphicsOps.Add(if value then "PENDOWN" else "PENUP")
+                    member _.Turn(angle) =
+                        state.Heading <- state.Heading + angle
+                        state.GraphicsOps.Add($"TURN {angle:G17}")
+                    member _.TurnTo(angle) =
+                        state.Heading <- angle
+                        state.GraphicsOps.Add($"TURNTO {angle:G17}")
+                    member _.Clear() = state.GraphicsOps.Add("CLEAR") }
             member _.Input =
                 { new IInputDevice with
                     member _.ReadLine() = reader ()

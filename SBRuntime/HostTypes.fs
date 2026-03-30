@@ -55,11 +55,23 @@ type IChannel =
 type IScreenChannel =
     inherit IChannel
     abstract Clear: unit -> unit
+    abstract SetWindow: int * int * int * int -> unit
+    abstract GetWindow: unit -> int * int * int * int
+    abstract SetScroll: int -> unit
+    abstract GetScroll: unit -> int
+    abstract SetWidth: int -> unit
+    abstract GetWidth: unit -> int option
+    abstract SetPan: int -> unit
+    abstract GetPan: unit -> int
+    abstract SetRecolor: int -> unit
+    abstract GetRecolor: unit -> int option
+    abstract SetPalette: int list -> unit
+    abstract GetPalette: unit -> int list option
     abstract SetCursor: int * int -> unit
     abstract GetCursor: unit -> int * int
     abstract SetCharacterSize: int * int -> unit
     abstract GetCharacterSize: unit -> int * int
-    abstract SetInk: int -> unit
+    abstract SetInk: int list -> unit
     abstract SetPaper: int -> unit
     abstract SetBorder: int -> unit
 
@@ -70,12 +82,24 @@ type IChannelManager =
 
 type IScreenDevice =
     abstract Clear: unit -> unit
+    abstract SetWindow: int * int * int * int -> unit
+    abstract GetWindow: unit -> int * int * int * int
+    abstract SetScroll: int -> unit
+    abstract GetScroll: unit -> int
+    abstract SetWidth: int -> unit
+    abstract GetWidth: unit -> int option
+    abstract SetPan: int -> unit
+    abstract GetPan: unit -> int
+    abstract SetRecolor: int -> unit
+    abstract GetRecolor: unit -> int option
+    abstract SetPalette: int list -> unit
+    abstract GetPalette: unit -> int list option
     abstract SetCursor: int * int -> unit
     abstract GetCursor: unit -> int * int
     abstract SetCharacterSize: int * int -> unit
     abstract GetCharacterSize: unit -> int * int
     abstract WriteText: string -> unit
-    abstract SetInk: int -> unit
+    abstract SetInk: int list -> unit
     abstract SetPaper: int -> unit
     abstract SetBorder: int -> unit
     abstract GetSupportedModes: unit -> ScreenModeInfo list
@@ -83,11 +107,29 @@ type IScreenDevice =
     abstract SetMode: ScreenMode -> Result<unit, RuntimeHostError>
 
 type IGraphicsDevice =
-    abstract Plot: int * int -> unit
-    abstract Draw: int * int -> unit
-    abstract Line: int * int * int * int -> unit
-    abstract Circle: int * int * int -> unit
-    abstract Fill: int * int -> unit
+    abstract Plot: double * double -> unit
+    abstract Point: double * double -> unit
+    abstract PointRelative: double * double -> unit
+    abstract Draw: double * double -> unit
+    abstract Line: double * double * double * double -> unit
+    abstract LineRelative: double list -> unit
+    abstract DLine: double list -> unit
+    abstract Circle: double * double * double -> unit
+    abstract CircleRelative: double * double * double -> unit
+    abstract Ellipse: double * double * double * double * double -> unit
+    abstract EllipseRelative: double * double * double * double * double -> unit
+    abstract Arc: double * double * double * double * double -> unit
+    abstract ArcRelative: double * double * double * double * double -> unit
+    abstract Block: double * double * double * double * int -> unit
+    abstract SetInk: int list -> unit
+    abstract SetFill: int -> unit
+    abstract SetScale: double * double * double -> unit
+    abstract SetOver: int -> unit
+    abstract SetUnder: int -> unit
+    abstract SetFlash: int -> unit
+    abstract SetPenDown: bool -> unit
+    abstract Turn: double -> unit
+    abstract TurnTo: double -> unit
     abstract Clear: unit -> unit
 
 type IInputDevice =

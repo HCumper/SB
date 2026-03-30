@@ -1,5 +1,6 @@
 module SBTests.AstToHirTests
 
+open Antlr4.Runtime
 open NUnit.Framework
 
 open Types
@@ -7,6 +8,7 @@ open SyntaxAst
 open CompilerPipeline
 open AstToHir
 open HIR
+open ParseTreeVisitor
 
 let private pos =
     { BasicLineNo = None
@@ -22,6 +24,16 @@ let private lowerProgram ast =
     match lowerToHir analyzed with
     | Result.Ok hir -> hir
     | Result.Error errs -> Assert.Fail($"Expected HIR lowering to succeed, got %A{errs}"); Unchecked.defaultof<_>
+
+let private parseProgram (source: string) =
+    let inputStream = AntlrInputStream(source)
+    let lexer = CompilerPipeline.createLexer inputStream
+    let tokenStream = CommonTokenStream(lexer)
+    let parser = SBParser(tokenStream)
+
+    parser.program()
+    |> convertTreeToAst
+    |> List.head
 
 [<Test>]
 let ``lowerToHir lowers select when exit and next into dedicated hir nodes`` () =
@@ -99,6 +111,41 @@ let ``lowerToHir builds explicit storage and data layout`` () =
     match hir.RestorePoints with
     | [ { LineNumber = 20; Slot = DataSlotId 0 } ] -> ()
     | other -> Assert.Fail($"Unexpected restore points: %A{other}")
+
+[<Test>]
+let ``lowerToHir collects nested data entries and restore points inside structured blocks`` () =
+    let ast =
+        Program(
+            pos,
+            [ Line(
+                pos,
+                Some 10,
+                [ ForStmt(
+                    pos,
+                    "f",
+                    num "1",
+                    num "1",
+                    None,
+                    LineBlock
+                        [ Line(pos, Some 20, [ DataStmt(pos, [ num "2"; num "3" ]) ])
+                          Line(pos, Some 30, [ IfStmt(pos, num "1", LineBlock [ Line(pos, Some 40, [ DataStmt(pos, [ num "4" ]) ]) ], None) ]) ],
+                    None) ]) ])
+
+    let hir = lowerProgram ast
+
+    Assert.That(hir.DataEntries, Has.Length.EqualTo(3))
+    Assert.That(hir.RestorePoints, Has.Length.EqualTo(2))
+
+    match hir.DataEntries with
+    | [ { Slot = DataSlotId 0; Value = Literal(ConstInt 2, Int, _); LineNumber = Some 20 }
+        { Slot = DataSlotId 1; Value = Literal(ConstInt 3, Int, _); LineNumber = Some 20 }
+        { Slot = DataSlotId 2; Value = Literal(ConstInt 4, Int, _); LineNumber = Some 40 } ] -> ()
+    | other -> Assert.Fail($"Unexpected nested data entries: %A{other}")
+
+    match hir.RestorePoints with
+    | [ { LineNumber = 20; Slot = DataSlotId 0 }
+        { LineNumber = 40; Slot = DataSlotId 2 } ] -> ()
+    | other -> Assert.Fail($"Unexpected nested restore points: %A{other}")
 
 [<Test>]
 let ``lowerToHir splits input prompts from writable targets`` () =
@@ -358,3 +405,59 @@ let ``lowerToHir uses reference args for array element actuals`` () =
         LineNumber(30, _)
         ProcCall(_, None, [ RefArg(WriteArrayElem(_, [ Literal(ConstInt 1, HirType.Int, _) ], _, _)) ], _) ] -> ()
     | other -> Assert.Fail($"Unexpected lowered main for array-element ref arg: %A{other}")
+
+[<Test>]
+let ``lowerToHir expands line to syntax into four built in arguments`` () =
+    let ast =
+        Program(
+            pos,
+            [ Line(
+                pos,
+                Some 5,
+                [ Assignment(pos, id "f", num "1")
+                  Assignment(pos, id "a", num "2")
+                  Assignment(pos, id "b", num "3") ])
+              Line(
+                pos,
+                Some 10,
+                [ ProcedureCall(
+                    pos,
+                    "LINE",
+                    [ id "f"
+                      mkSliceRange pos (id "a") (id "f")
+                      binary "-" (id "a") (id "b") ]) ]) ])
+
+    let hir = lowerProgram ast
+
+    match hir.Main with
+    | [ LineNumber(5, _)
+        Assign(_, _, _)
+        Assign(_, _, _)
+        Assign(_, _, _)
+        LineNumber(10, _)
+        BuiltInCall(
+            NamedBuiltIn "LINE",
+            None,
+            [ ReadVar(_, _, _)
+              ReadVar(_, _, _)
+              ReadVar(_, _, _)
+              Binary(Subtract, ReadVar(_, _, _), ReadVar(_, _, _), _, _) ],
+            _) ] -> ()
+    | other -> Assert.Fail($"Unexpected lowered LINE HIR: %A{other}")
+
+[<Test>]
+let ``lowerToHir preserves spaced rnd range call syntax`` () =
+    let ast =
+        parseProgram "10 b=5\n20 x=RND (0 TO b)\n"
+
+    let hir = lowerProgram ast
+
+    match hir.Main with
+    | [ LineNumber(10, _)
+        Assign(WriteVar(_, _, _), Literal(ConstInt 5, HirType.Int, _), _)
+        LineNumber(20, _)
+        Assign(
+            WriteVar(_, _, _),
+            CallFunc(_, [ ValueArg(Binary(SliceRange, Literal(ConstInt 0, HirType.Int, _), ReadVar(_, HirType.Int, _), _, _)) ], _, _),
+            _) ] -> ()
+    | other -> Assert.Fail($"Unexpected lowered spaced RND HIR: %A{other}")

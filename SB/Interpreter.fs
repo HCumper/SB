@@ -46,6 +46,7 @@ type RuntimeOptions = {
     Host: IRuntimeHost
     Random: Random
     Clock: unit -> DateTime
+    Sleeper: int -> unit
 }
 
 type ExecutionResult = {
@@ -56,10 +57,29 @@ let defaultRuntimeOptions =
     { Host =
         DefaultHost.create {
             ReadLine = fun () -> Console.ReadLine() |> Option.ofObj
+            ReadKey =
+                fun () ->
+                    try
+                        if Console.KeyAvailable then
+                            let key = Console.ReadKey(true)
+                            Some {
+                                KeyCode = int key.KeyChar
+                                Character = Some key.KeyChar
+                                Shift = key.Modifiers.HasFlag(ConsoleModifiers.Shift)
+                                Control = key.Modifiers.HasFlag(ConsoleModifiers.Control)
+                            }
+                        else
+                            None
+                    with
+                    | _ -> None
+            KeyAvailable =
+                fun () ->
+                    try Console.KeyAvailable with _ -> false
             WriteLine = Console.WriteLine
         }
       Random = Random()
-      Clock = fun () -> DateTime.UtcNow }
+      Clock = fun () -> DateTime.UtcNow
+      Sleeper = fun milliseconds -> System.Threading.Thread.Sleep(milliseconds) }
 
 type private Frame = {
     Cells: Map<SymbolId, Cell>
@@ -72,6 +92,7 @@ type private RuntimeState = {
     Frames: Frame list
     DataPointer: int
     Output: string list
+    RandomSource: Random
     Options: RuntimeOptions
 }
 
@@ -319,6 +340,17 @@ let private executeChannelScreenOp channelId state pos (channelAction: IScreenCh
         | Result.Error hostError ->
             runtimeError UnsupportedChannelExecution (Some pos) (hostErrorText hostError)
 
+let private executeGraphicsOp channelId state pos (action: IGraphicsDevice -> unit) =
+    let run nextState =
+        action nextState.Options.Host.Graphics
+        Result.Ok nextState
+
+    match channelId with
+    | None -> run state
+    | Some _ ->
+        validateScreenChannel channelId state pos
+        |> Result.bind (fun () -> run state)
+
 let private withFrame frame state =
     { state with Frames = frame :: state.Frames }
 
@@ -461,7 +493,8 @@ and private evalBuiltInFunction state symbolId argExprs hirType pos =
             name
             (hirType = HIR.HirType.Float)
             nextState.Options.Clock
-            (fun () -> nextState.Options.Random)
+            (fun () -> nextState.RandomSource)
+            nextState.Options.Host.Input.ReadKey
             allowRangePair
             (values |> List.map toRuntimeBuiltInValue)
         |> function
@@ -664,9 +697,42 @@ and private executeBuiltInCall state kind channel args targets pos =
                         | Result.Ok() -> Result.Ok(Continue, nextState)
                         | Result.Error hostError ->
                             runtimeError BuiltInStatementNotImplemented (Some pos) (hostErrorText hostError))))
+        | "RANDOMISE" ->
+            unsupportedChannel ()
+            |> Result.bind (fun _ ->
+                evalExprList state args
+                |> Result.bind (fun (values, nextState) ->
+                    match values with
+                    | [] ->
+                        let seed = int (nextState.Options.Clock().Subtract(DateTime.UnixEpoch).TotalSeconds)
+                        Result.Ok(Continue, { nextState with RandomSource = Random(seed) })
+                    | [ seedValue ] ->
+                        Result.Ok(Continue, { nextState with RandomSource = Random(asInt seedValue) })
+                    | _ ->
+                        runtimeError BuiltInArityMismatch (Some pos) $"Built-in statement '{name}' expects zero or one argument."))
+        | "PAUSE" ->
+            unsupportedChannel ()
+            |> Result.bind (fun _ ->
+                evalExprList state args
+                |> Result.bind (fun (values, nextState) ->
+                    requireArity 1 values.Length
+                    |> Result.map (fun () ->
+                        let duration =
+                            values
+                            |> List.head
+                            |> asInt
+                            |> max 0
+                        nextState.Options.Sleeper duration
+                        Continue, nextState)))
         | "CLS" ->
             executeScreenOp 0 false (fun resolvedChannel nextState _ ->
                 executeChannelScreenOp resolvedChannel nextState pos (fun screenChannel -> screenChannel.Clear()) (fun screen -> screen.Clear()))
+        | "WINDOW" ->
+            executeScreenOp 4 false (fun resolvedChannel nextState numericArgs ->
+                match numericArgs with
+                | [ width; height; x; y ] ->
+                    executeChannelScreenOp resolvedChannel nextState pos (fun screenChannel -> screenChannel.SetWindow(width, height, x, y)) (fun screen -> screen.SetWindow(width, height, x, y))
+                | _ -> Result.Ok nextState)
         | "AT" ->
             executeScreenOp 2 false (fun resolvedChannel nextState numericArgs ->
                 match numericArgs with
@@ -688,9 +754,11 @@ and private executeBuiltInCall state kind channel args targets pos =
         | "INK" ->
             executeScreenOp 1 true (fun resolvedChannel nextState numericArgs ->
                 match numericArgs with
-                | first :: _ ->
-                    executeChannelScreenOp resolvedChannel nextState pos (fun screenChannel -> screenChannel.SetInk(first)) (fun screen -> screen.SetInk(first))
-                | _ -> Result.Ok nextState)
+                | [] -> Result.Ok nextState
+                | _ ->
+                    executeChannelScreenOp resolvedChannel nextState pos (fun screenChannel -> screenChannel.SetInk(numericArgs)) (fun screen -> screen.SetInk(numericArgs))
+                    |> Result.bind (fun stateAfterScreen ->
+                        executeGraphicsOp resolvedChannel stateAfterScreen pos (fun graphics -> graphics.SetInk(numericArgs))))
         | "PAPER" ->
             executeScreenOp 1 true (fun resolvedChannel nextState numericArgs ->
                 match numericArgs with
@@ -703,6 +771,372 @@ and private executeBuiltInCall state kind channel args targets pos =
                 | first :: _ ->
                     executeChannelScreenOp resolvedChannel nextState pos (fun screenChannel -> screenChannel.SetBorder(first)) (fun screen -> screen.SetBorder(first))
                 | _ -> Result.Ok nextState)
+        | "CLEAR" ->
+            resolveChannelId state channel
+            |> Result.bind (fun (resolvedChannel, stateAfterChannel) ->
+                validateScreenChannel resolvedChannel stateAfterChannel pos
+                |> Result.bind (fun () ->
+                    requireArity 0 args.Length
+                    |> Result.bind (fun () ->
+                        executeGraphicsOp resolvedChannel stateAfterChannel pos (fun graphics -> graphics.Clear())
+                        |> Result.map (fun finalState -> Continue, finalState))))
+        | "SCROLL" ->
+            executeScreenOp 1 true (fun resolvedChannel nextState numericArgs ->
+                match numericArgs with
+                | first :: _ ->
+                    executeChannelScreenOp resolvedChannel nextState pos (fun screenChannel -> screenChannel.SetScroll(first)) (fun screen -> screen.SetScroll(first))
+                | _ -> Result.Ok nextState)
+        | "WIDTH" ->
+            executeScreenOp 1 true (fun resolvedChannel nextState numericArgs ->
+                match numericArgs with
+                | first :: _ ->
+                    executeChannelScreenOp resolvedChannel nextState pos (fun screenChannel -> screenChannel.SetWidth(first)) (fun screen -> screen.SetWidth(first))
+                | _ -> Result.Ok nextState)
+        | "PAN" ->
+            executeScreenOp 1 true (fun resolvedChannel nextState numericArgs ->
+                match numericArgs with
+                | first :: _ ->
+                    executeChannelScreenOp resolvedChannel nextState pos (fun screenChannel -> screenChannel.SetPan(first)) (fun screen -> screen.SetPan(first))
+                | _ -> Result.Ok nextState)
+        | "RECOL" ->
+            executeScreenOp 1 true (fun resolvedChannel nextState numericArgs ->
+                match numericArgs with
+                | first :: _ ->
+                    executeChannelScreenOp resolvedChannel nextState pos (fun screenChannel -> screenChannel.SetRecolor(first)) (fun screen -> screen.SetRecolor(first))
+                | _ -> Result.Ok nextState)
+        | "PALETTE" ->
+            executeScreenOp 1 true (fun resolvedChannel nextState numericArgs ->
+                match numericArgs with
+                | [] -> Result.Ok nextState
+                | _ ->
+                    executeChannelScreenOp resolvedChannel nextState pos (fun screenChannel -> screenChannel.SetPalette(numericArgs)) (fun screen -> screen.SetPalette(numericArgs)))
+        | "PLOT" ->
+            resolveChannelId state channel
+            |> Result.bind (fun (resolvedChannel, stateAfterChannel) ->
+                validateScreenChannel resolvedChannel stateAfterChannel pos
+                |> Result.bind (fun () ->
+                    evalExprList stateAfterChannel args
+                    |> Result.bind (fun (values, nextState) ->
+                        requireArity 2 values.Length
+                        |> Result.bind (fun () ->
+                            match values with
+                            | [ x; y ] ->
+                                executeGraphicsOp resolvedChannel nextState pos (fun graphics -> graphics.Plot(normalizeNumber x, normalizeNumber y))
+                                |> Result.map (fun finalState -> Continue, finalState)
+                            | _ -> Result.Ok(Continue, nextState)))))
+        | "POINT" ->
+            resolveChannelId state channel
+            |> Result.bind (fun (resolvedChannel, stateAfterChannel) ->
+                validateScreenChannel resolvedChannel stateAfterChannel pos
+                |> Result.bind (fun () ->
+                    evalExprList stateAfterChannel args
+                    |> Result.bind (fun (values, nextState) ->
+                        requireArity 2 values.Length
+                        |> Result.bind (fun () ->
+                            match values with
+                            | [ x; y ] ->
+                                executeGraphicsOp resolvedChannel nextState pos (fun graphics -> graphics.Point(normalizeNumber x, normalizeNumber y))
+                                |> Result.map (fun finalState -> Continue, finalState)
+                            | _ -> Result.Ok(Continue, nextState)))))
+        | "POINT_R" ->
+            resolveChannelId state channel
+            |> Result.bind (fun (resolvedChannel, stateAfterChannel) ->
+                validateScreenChannel resolvedChannel stateAfterChannel pos
+                |> Result.bind (fun () ->
+                    evalExprList stateAfterChannel args
+                    |> Result.bind (fun (values, nextState) ->
+                        requireArity 2 values.Length
+                        |> Result.bind (fun () ->
+                            match values with
+                            | [ dx; dy ] ->
+                                executeGraphicsOp resolvedChannel nextState pos (fun graphics -> graphics.PointRelative(normalizeNumber dx, normalizeNumber dy))
+                                |> Result.map (fun finalState -> Continue, finalState)
+                            | _ -> Result.Ok(Continue, nextState)))))
+        | "DRAW" ->
+            resolveChannelId state channel
+            |> Result.bind (fun (resolvedChannel, stateAfterChannel) ->
+                validateScreenChannel resolvedChannel stateAfterChannel pos
+                |> Result.bind (fun () ->
+                    evalExprList stateAfterChannel args
+                    |> Result.bind (fun (values, nextState) ->
+                        requireArity 2 values.Length
+                        |> Result.bind (fun () ->
+                            match values with
+                            | [ x; y ] ->
+                                executeGraphicsOp resolvedChannel nextState pos (fun graphics -> graphics.Draw(normalizeNumber x, normalizeNumber y))
+                                |> Result.map (fun finalState -> Continue, finalState)
+                            | _ -> Result.Ok(Continue, nextState)))))
+        | "DLINE" ->
+            resolveChannelId state channel
+            |> Result.bind (fun (resolvedChannel, stateAfterChannel) ->
+                validateScreenChannel resolvedChannel stateAfterChannel pos
+                |> Result.bind (fun () ->
+                    evalExprList stateAfterChannel args
+                    |> Result.bind (fun (values, nextState) ->
+                        requireAtLeast 4 values.Length
+                        |> Result.bind (fun () ->
+                            if values.Length % 2 <> 0 then
+                                runtimeError BuiltInArityMismatch (Some pos) $"Built-in statement '{name}' expects an even number of coordinate arguments."
+                            else
+                                executeGraphicsOp resolvedChannel nextState pos (fun graphics -> graphics.DLine(values |> List.map normalizeNumber))
+                                |> Result.map (fun finalState -> Continue, finalState)))))
+        | "LINE" ->
+            resolveChannelId state channel
+            |> Result.bind (fun (resolvedChannel, stateAfterChannel) ->
+                validateScreenChannel resolvedChannel stateAfterChannel pos
+                |> Result.bind (fun () ->
+                    evalExprList stateAfterChannel args
+                    |> Result.bind (fun (values, nextState) ->
+                        requireAtLeast 4 values.Length
+                        |> Result.bind (fun () ->
+                            if values.Length % 2 <> 0 then
+                                runtimeError BuiltInArityMismatch (Some pos) $"Built-in statement '{name}' expects an even number of coordinate arguments."
+                            else
+                                let coordinates =
+                                    values
+                                    |> List.map normalizeNumber
+                                    |> List.chunkBySize 2
+                                    |> List.choose (function
+                                        | [ x; y ] -> Some(x, y)
+                                        | _ -> None)
+
+                                coordinates
+                                |> List.pairwise
+                                |> List.fold
+                                    (fun acc ((x1, y1), (x2, y2)) ->
+                                        acc
+                                        |> Result.bind (fun currentState ->
+                                            executeGraphicsOp resolvedChannel currentState pos (fun graphics -> graphics.Line(x1, y1, x2, y2))))
+                                    (Result.Ok nextState)
+                                |> Result.map (fun finalState -> Continue, finalState)))))
+        | "LINE_R" ->
+            resolveChannelId state channel
+            |> Result.bind (fun (resolvedChannel, stateAfterChannel) ->
+                validateScreenChannel resolvedChannel stateAfterChannel pos
+                |> Result.bind (fun () ->
+                    evalExprList stateAfterChannel args
+                    |> Result.bind (fun (values, nextState) ->
+                        requireAtLeast 2 values.Length
+                        |> Result.bind (fun () ->
+                            if values.Length % 2 <> 0 then
+                                runtimeError BuiltInArityMismatch (Some pos) $"Built-in statement '{name}' expects an even number of coordinate arguments."
+                            else
+                                executeGraphicsOp resolvedChannel nextState pos (fun graphics -> graphics.LineRelative(values |> List.map normalizeNumber))
+                                |> Result.map (fun finalState -> Continue, finalState)))))
+        | "CIRCLE" ->
+            resolveChannelId state channel
+            |> Result.bind (fun (resolvedChannel, stateAfterChannel) ->
+                validateScreenChannel resolvedChannel stateAfterChannel pos
+                |> Result.bind (fun () ->
+                    evalExprList stateAfterChannel args
+                    |> Result.bind (fun (values, nextState) ->
+                        requireArity 3 values.Length
+                        |> Result.bind (fun () ->
+                            match values with
+                            | [ x; y; radius ] ->
+                                executeGraphicsOp resolvedChannel nextState pos (fun graphics -> graphics.Circle(normalizeNumber x, normalizeNumber y, normalizeNumber radius))
+                                |> Result.map (fun finalState -> Continue, finalState)
+                            | _ -> Result.Ok(Continue, nextState)))))
+        | "CIRCLE_R" ->
+            resolveChannelId state channel
+            |> Result.bind (fun (resolvedChannel, stateAfterChannel) ->
+                validateScreenChannel resolvedChannel stateAfterChannel pos
+                |> Result.bind (fun () ->
+                    evalExprList stateAfterChannel args
+                    |> Result.bind (fun (values, nextState) ->
+                        requireArity 3 values.Length
+                        |> Result.bind (fun () ->
+                            match values with
+                            | [ dx; dy; radius ] ->
+                                executeGraphicsOp resolvedChannel nextState pos (fun graphics -> graphics.CircleRelative(normalizeNumber dx, normalizeNumber dy, normalizeNumber radius))
+                                |> Result.map (fun finalState -> Continue, finalState)
+                            | _ -> Result.Ok(Continue, nextState)))))
+        | "ELLIPSE" ->
+            resolveChannelId state channel
+            |> Result.bind (fun (resolvedChannel, stateAfterChannel) ->
+                validateScreenChannel resolvedChannel stateAfterChannel pos
+                |> Result.bind (fun () ->
+                    evalExprList stateAfterChannel args
+                    |> Result.bind (fun (values, nextState) ->
+                        requireArity 5 values.Length
+                        |> Result.bind (fun () ->
+                            match values with
+                            | [ x; y; radius; ratio; angle ] ->
+                                executeGraphicsOp resolvedChannel nextState pos (fun graphics -> graphics.Ellipse(normalizeNumber x, normalizeNumber y, normalizeNumber radius, normalizeNumber ratio, normalizeNumber angle))
+                                |> Result.map (fun finalState -> Continue, finalState)
+                            | _ -> Result.Ok(Continue, nextState)))))
+        | "ELLIPSE_R" ->
+            resolveChannelId state channel
+            |> Result.bind (fun (resolvedChannel, stateAfterChannel) ->
+                validateScreenChannel resolvedChannel stateAfterChannel pos
+                |> Result.bind (fun () ->
+                    evalExprList stateAfterChannel args
+                    |> Result.bind (fun (values, nextState) ->
+                        requireArity 5 values.Length
+                        |> Result.bind (fun () ->
+                            match values with
+                            | [ dx; dy; radius; ratio; angle ] ->
+                                executeGraphicsOp resolvedChannel nextState pos (fun graphics -> graphics.EllipseRelative(normalizeNumber dx, normalizeNumber dy, normalizeNumber radius, normalizeNumber ratio, normalizeNumber angle))
+                                |> Result.map (fun finalState -> Continue, finalState)
+                            | _ -> Result.Ok(Continue, nextState)))))
+        | "ARC" ->
+            resolveChannelId state channel
+            |> Result.bind (fun (resolvedChannel, stateAfterChannel) ->
+                validateScreenChannel resolvedChannel stateAfterChannel pos
+                |> Result.bind (fun () ->
+                    evalExprList stateAfterChannel args
+                    |> Result.bind (fun (values, nextState) ->
+                        requireArity 5 values.Length
+                        |> Result.bind (fun () ->
+                            match values with
+                            | [ x; y; radius; startAngle; endAngle ] ->
+                                executeGraphicsOp resolvedChannel nextState pos (fun graphics -> graphics.Arc(normalizeNumber x, normalizeNumber y, normalizeNumber radius, normalizeNumber startAngle, normalizeNumber endAngle))
+                                |> Result.map (fun finalState -> Continue, finalState)
+                            | _ -> Result.Ok(Continue, nextState)))))
+        | "ARC_R" ->
+            resolveChannelId state channel
+            |> Result.bind (fun (resolvedChannel, stateAfterChannel) ->
+                validateScreenChannel resolvedChannel stateAfterChannel pos
+                |> Result.bind (fun () ->
+                    evalExprList stateAfterChannel args
+                    |> Result.bind (fun (values, nextState) ->
+                        requireArity 5 values.Length
+                        |> Result.bind (fun () ->
+                            match values with
+                            | [ dx; dy; radius; startAngle; endAngle ] ->
+                                executeGraphicsOp resolvedChannel nextState pos (fun graphics -> graphics.ArcRelative(normalizeNumber dx, normalizeNumber dy, normalizeNumber radius, normalizeNumber startAngle, normalizeNumber endAngle))
+                                |> Result.map (fun finalState -> Continue, finalState)
+                            | _ -> Result.Ok(Continue, nextState)))))
+        | "BLOCK" ->
+            resolveChannelId state channel
+            |> Result.bind (fun (resolvedChannel, stateAfterChannel) ->
+                validateScreenChannel resolvedChannel stateAfterChannel pos
+                |> Result.bind (fun () ->
+                    evalExprList stateAfterChannel args
+                    |> Result.bind (fun (values, nextState) ->
+                        requireArity 5 values.Length
+                        |> Result.bind (fun () ->
+                            match values with
+                            | [ width; height; x; y; color ] ->
+                                executeGraphicsOp resolvedChannel nextState pos (fun graphics -> graphics.Block(normalizeNumber width, normalizeNumber height, normalizeNumber x, normalizeNumber y, asInt color))
+                                |> Result.map (fun finalState -> Continue, finalState)
+                            | _ -> Result.Ok(Continue, nextState)))))
+        | "FILL" ->
+            resolveChannelId state channel
+            |> Result.bind (fun (resolvedChannel, stateAfterChannel) ->
+                validateScreenChannel resolvedChannel stateAfterChannel pos
+                |> Result.bind (fun () ->
+                    evalExprList stateAfterChannel args
+                    |> Result.bind (fun (values, nextState) ->
+                        requireArity 1 values.Length
+                        |> Result.bind (fun () ->
+                            match values with
+                            | [ fillValue ] ->
+                                executeGraphicsOp resolvedChannel nextState pos (fun graphics -> graphics.SetFill(asInt fillValue))
+                                |> Result.map (fun finalState -> Continue, finalState)
+                            | _ -> Result.Ok(Continue, nextState)))))
+        | "SCALE" ->
+            resolveChannelId state channel
+            |> Result.bind (fun (resolvedChannel, stateAfterChannel) ->
+                validateScreenChannel resolvedChannel stateAfterChannel pos
+                |> Result.bind (fun () ->
+                    evalExprList stateAfterChannel args
+                    |> Result.bind (fun (values, nextState) ->
+                        requireArity 3 values.Length
+                        |> Result.bind (fun () ->
+                            match values with
+                            | [ x; y; z ] ->
+                                executeGraphicsOp resolvedChannel nextState pos (fun graphics -> graphics.SetScale(normalizeNumber x, normalizeNumber y, normalizeNumber z))
+                                |> Result.map (fun finalState -> Continue, finalState)
+                            | _ -> Result.Ok(Continue, nextState)))))
+        | "OVER" ->
+            resolveChannelId state channel
+            |> Result.bind (fun (resolvedChannel, stateAfterChannel) ->
+                validateScreenChannel resolvedChannel stateAfterChannel pos
+                |> Result.bind (fun () ->
+                    evalExprList stateAfterChannel args
+                    |> Result.bind (fun (values, nextState) ->
+                        requireAtLeast 1 values.Length
+                        |> Result.bind (fun () ->
+                            match values with
+                            | mode :: _ ->
+                                executeGraphicsOp resolvedChannel nextState pos (fun graphics -> graphics.SetOver(asInt mode))
+                                |> Result.map (fun finalState -> Continue, finalState)
+                            | _ -> Result.Ok(Continue, nextState)))))
+        | "UNDER" ->
+            resolveChannelId state channel
+            |> Result.bind (fun (resolvedChannel, stateAfterChannel) ->
+                validateScreenChannel resolvedChannel stateAfterChannel pos
+                |> Result.bind (fun () ->
+                    evalExprList stateAfterChannel args
+                    |> Result.bind (fun (values, nextState) ->
+                        requireAtLeast 1 values.Length
+                        |> Result.bind (fun () ->
+                            match values with
+                            | mode :: _ ->
+                                executeGraphicsOp resolvedChannel nextState pos (fun graphics -> graphics.SetUnder(asInt mode))
+                                |> Result.map (fun finalState -> Continue, finalState)
+                            | _ -> Result.Ok(Continue, nextState)))))
+        | "FLASH" ->
+            resolveChannelId state channel
+            |> Result.bind (fun (resolvedChannel, stateAfterChannel) ->
+                validateScreenChannel resolvedChannel stateAfterChannel pos
+                |> Result.bind (fun () ->
+                    evalExprList stateAfterChannel args
+                    |> Result.bind (fun (values, nextState) ->
+                        requireAtLeast 1 values.Length
+                        |> Result.bind (fun () ->
+                            match values with
+                            | mode :: _ ->
+                                executeGraphicsOp resolvedChannel nextState pos (fun graphics -> graphics.SetFlash(asInt mode))
+                                |> Result.map (fun finalState -> Continue, finalState)
+                            | _ -> Result.Ok(Continue, nextState)))))
+        | "PENDOWN" ->
+            resolveChannelId state channel
+            |> Result.bind (fun (resolvedChannel, stateAfterChannel) ->
+                validateScreenChannel resolvedChannel stateAfterChannel pos
+                |> Result.bind (fun () ->
+                    requireArity 0 args.Length
+                    |> Result.bind (fun () ->
+                        executeGraphicsOp resolvedChannel stateAfterChannel pos (fun graphics -> graphics.SetPenDown(true))
+                        |> Result.map (fun finalState -> Continue, finalState))))
+        | "PENUP" ->
+            resolveChannelId state channel
+            |> Result.bind (fun (resolvedChannel, stateAfterChannel) ->
+                validateScreenChannel resolvedChannel stateAfterChannel pos
+                |> Result.bind (fun () ->
+                    requireArity 0 args.Length
+                    |> Result.bind (fun () ->
+                        executeGraphicsOp resolvedChannel stateAfterChannel pos (fun graphics -> graphics.SetPenDown(false))
+                        |> Result.map (fun finalState -> Continue, finalState))))
+        | "TURN" ->
+            resolveChannelId state channel
+            |> Result.bind (fun (resolvedChannel, stateAfterChannel) ->
+                validateScreenChannel resolvedChannel stateAfterChannel pos
+                |> Result.bind (fun () ->
+                    evalExprList stateAfterChannel args
+                    |> Result.bind (fun (values, nextState) ->
+                        requireArity 1 values.Length
+                        |> Result.bind (fun () ->
+                            match values with
+                            | [ angle ] ->
+                                executeGraphicsOp resolvedChannel nextState pos (fun graphics -> graphics.Turn(normalizeNumber angle))
+                                |> Result.map (fun finalState -> Continue, finalState)
+                            | _ -> Result.Ok(Continue, nextState)))))
+        | "TURNTO" ->
+            resolveChannelId state channel
+            |> Result.bind (fun (resolvedChannel, stateAfterChannel) ->
+                validateScreenChannel resolvedChannel stateAfterChannel pos
+                |> Result.bind (fun () ->
+                    evalExprList stateAfterChannel args
+                    |> Result.bind (fun (values, nextState) ->
+                        requireArity 1 values.Length
+                        |> Result.bind (fun () ->
+                            match values with
+                            | [ angle ] ->
+                                executeGraphicsOp resolvedChannel nextState pos (fun graphics -> graphics.TurnTo(normalizeNumber angle))
+                                |> Result.map (fun finalState -> Continue, finalState)
+                            | _ -> Result.Ok(Continue, nextState)))))
         | _ when normalized.StartsWith("TURBO") -> Result.Ok(Continue, state)
         | _ ->
             unsupportedChannel ()
@@ -908,6 +1342,7 @@ let interpretProgramWithOptions options (program: HirProgram) =
           Frames = []
           DataPointer = 0
           Output = []
+          RandomSource = options.Random
           Options = options }
 
     let resolveLine = buildLineTargets program.Main

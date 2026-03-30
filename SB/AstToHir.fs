@@ -100,6 +100,15 @@ let private lowerBuiltInKind name =
     | "ON-GOSUB" -> BuiltInKind.OnGosubBuiltIn
     | normalized -> BuiltInKind.NamedBuiltIn normalized
 
+let private normalizeBuiltInArgs name args =
+    match normalizeIdentifier name with
+    | "LINE" ->
+        args
+        |> List.collect (function
+            | SliceRange(_, _, lhs, rhs) -> [ lhs; rhs ]
+            | expr -> [ expr ])
+    | _ -> args
+
 let private lowerLoopName = function
     | null
     | "" -> LoopName.AnonymousLoop
@@ -482,7 +491,7 @@ let rec private lowerStmt ctx stmt =
             |> map (fun (prompts, loweredTargets) -> [ Input(None, prompts, loweredTargets, pos) ])
         else
             if isCallableBuiltIn name then
-                lowerExprList ctx args
+                lowerExprList ctx (normalizeBuiltInArgs name args)
                 |> map (fun loweredArgs -> [ BuiltInCall(lowerBuiltInKind name, None, loweredArgs, pos) ])
             else
                 lowerCallArgList ctx args
@@ -496,7 +505,7 @@ let rec private lowerStmt ctx stmt =
                 lowerInputArgs ctx pos args
                 |> map (fun (prompts, loweredTargets) -> [ Input(Some loweredChannel, prompts, loweredTargets, pos) ])
             elif isCallableBuiltIn name then
-                lowerExprList ctx args
+                lowerExprList ctx (normalizeBuiltInArgs name args)
                 |> map (fun loweredArgs -> [ BuiltInCall(lowerBuiltInKind name, Some loweredChannel, loweredArgs, pos) ])
             else
                 lowerCallArgList ctx args
@@ -691,36 +700,72 @@ let private lowerMainLines ctx lines =
     |> lowerLineList ctx
 
 let private collectDataItems ctx lines =
-    let folder (slotIndex, entries, restorePoints) (Line(_, lineNumber, stmts)) =
-        let lineRestorePoints =
-            match lineNumber with
-            | Some n when stmts |> List.exists (function DataStmt _ -> true | _ -> false) ->
-                restorePoints @ [ { LineNumber = n; Slot = DataSlotId slotIndex } ]
-            | _ -> restorePoints
+    let rec collectLines ((slotIndex, entries, restorePoints): int * HirDataEntry list * HirRestorePoint list) currentLines =
+        currentLines
+        |> List.fold (fun acc line ->
+            acc |> bind (fun state -> collectLine state line))
+            (ok (slotIndex, entries, restorePoints))
 
-        let rec lowerStmts currentIndex currentEntries remaining =
-            match remaining with
-            | [] -> ok (currentIndex, currentEntries)
-            | DataStmt(pos, exprs) :: tail ->
-                lowerExprList ctx exprs
-                |> bind (fun lowered ->
-                    let newEntries =
-                        lowered
-                        |> List.mapi (fun offset value ->
-                            { Slot = DataSlotId(currentIndex + offset)
-                              Value = value
-                              Position = pos
-                              LineNumber = lineNumber })
-                    lowerStmts (currentIndex + lowered.Length) (currentEntries @ newEntries) tail)
-            | _ :: tail -> lowerStmts currentIndex currentEntries tail
+    and collectBlock (state: int * HirDataEntry list * HirRestorePoint list) block =
+        match block with
+        | StatementBlock stmts -> collectStmts state (None: int option) stmts
+        | LineBlock blockLines -> collectLines state blockLines
 
-        lowerStmts slotIndex entries stmts
-        |> map (fun (nextIndex, nextEntries) -> nextIndex, nextEntries, lineRestorePoints)
+    and collectStmt ((slotIndex, entries, restorePoints): int * HirDataEntry list * HirRestorePoint list) (currentLineNumber: int option) stmt =
+        match stmt with
+        | DataStmt(pos, exprs) ->
+            let restorePoints =
+                match currentLineNumber with
+                | Some n when not (restorePoints |> List.exists (fun point -> point.LineNumber = n)) ->
+                    restorePoints @ [ { LineNumber = n; Slot = DataSlotId slotIndex } ]
+                | _ -> restorePoints
 
-    lines
-    |> List.fold (fun acc line ->
-        acc |> bind (fun state -> folder state line))
-        (ok (0, [], []))
+            lowerExprList ctx exprs
+            |> map (fun lowered ->
+                let newEntries =
+                    lowered
+                    |> List.mapi (fun offset value ->
+                        { Slot = DataSlotId(slotIndex + offset)
+                          Value = value
+                          Position = pos
+                          LineNumber = currentLineNumber })
+
+                slotIndex + lowered.Length, entries @ newEntries, restorePoints)
+        | ProcedureDef(_, _, _, body, _)
+        | FunctionDef(_, _, _, body, _) ->
+            collectLines (slotIndex, entries, restorePoints) body
+        | ForStmt(_, _, _, _, _, body, _)
+        | RepeatStmt(_, _, body, _) ->
+            collectBlock (slotIndex, entries, restorePoints) body
+        | IfStmt(_, _, thenBlock, elseBlock) ->
+            collectBlock (slotIndex, entries, restorePoints) thenBlock
+            |> bind (fun nextState ->
+                match elseBlock with
+                | Some block -> collectBlock nextState block
+                | None -> ok nextState)
+        | SelectStmt(_, _, clauses) ->
+            clauses
+            |> List.fold (fun acc (SelectClause(_, _, _, body)) ->
+                acc
+                |> bind (fun nextState ->
+                    match body with
+                    | Some block -> collectBlock nextState block
+                    | None -> ok nextState))
+                (ok (slotIndex, entries, restorePoints))
+        | WhenStmt(_, _, body) ->
+            collectLines (slotIndex, entries, restorePoints) body
+        | _ -> ok (slotIndex, entries, restorePoints)
+
+    and collectStmts (state: int * HirDataEntry list * HirRestorePoint list) (currentLineNumber: int option) stmts =
+        stmts
+        |> List.fold (fun acc stmt ->
+            acc |> bind (fun nextState -> collectStmt nextState currentLineNumber stmt))
+            (ok state)
+
+    and collectLine (state: int * HirDataEntry list * HirRestorePoint list) (Line(_, lineNumber, stmts)) =
+        collectStmts state lineNumber stmts
+
+    collectLines (0, [], []) lines
     |> map (fun (_, entries, restorePoints) -> entries, restorePoints)
 
 let lowerToHir (state: ProcessingState) : Result<HirProgram, LoweringError list> =

@@ -6,6 +6,8 @@ open System.Collections.Generic
 
 type DefaultHostOptions = {
     ReadLine: unit -> string option
+    ReadKey: unit -> KeyInfo option
+    KeyAvailable: unit -> bool
     WriteLine: string -> unit
 }
 
@@ -19,9 +21,15 @@ type private DefaultChannel(id: ChannelId, kind: ChannelKind, reader: unit -> st
         member _.Close() = ()
 
 type private DefaultScreenChannel(id: ChannelId, kind: ChannelKind, reader: unit -> string option, writer: string -> unit) =
+    let mutable window = 0, 0, 0, 0
+    let mutable scroll = 0
+    let mutable width = None
+    let mutable pan = 0
+    let mutable recolor = None
+    let mutable palette = None
     let mutable cursor = 0, 0
     let mutable characterSize = 0, 0
-    let mutable ink = 7
+    let mutable ink = [ 7 ]
     let mutable paper = 0
     let mutable border = 0
 
@@ -33,11 +41,23 @@ type private DefaultScreenChannel(id: ChannelId, kind: ChannelKind, reader: unit
         member _.Flush() = ()
         member _.Close() = ()
         member _.Clear() = ()
+        member _.SetWindow(width, height, x, y) = window <- width, height, x, y
+        member _.GetWindow() = window
+        member _.SetScroll(value) = scroll <- value
+        member _.GetScroll() = scroll
+        member _.SetWidth(value) = width <- Some value
+        member _.GetWidth() = width
+        member _.SetPan(value) = pan <- value
+        member _.GetPan() = pan
+        member _.SetRecolor(value) = recolor <- Some value
+        member _.GetRecolor() = recolor
+        member _.SetPalette(values) = palette <- Some values
+        member _.GetPalette() = palette
         member _.SetCursor(x, y) = cursor <- x, y
         member _.GetCursor() = cursor
         member _.SetCharacterSize(width, height) = characterSize <- width, height
         member _.GetCharacterSize() = characterSize
-        member _.SetInk(value: int) = ink <- value
+        member _.SetInk(values: int list) = ink <- values
         member _.SetPaper(value: int) = paper <- value
         member _.SetBorder(value: int) = border <- value
 
@@ -70,18 +90,37 @@ type private DefaultScreenDevice(writer: string -> unit) =
           { Mode = QlMode8; Width = 256; Height = 256; Colors = Some 8; Name = "QL Mode 8"; IsQlCompatible = true }
           { Mode = ExtendedMode 256; Width = 256; Height = 256; Colors = Some 8; Name = "Extended Mode 256"; IsQlCompatible = false }
           { Mode = ExtendedMode 512; Width = 512; Height = 256; Colors = Some 4; Name = "Extended Mode 512"; IsQlCompatible = false } ]
+    let mutable window = 0, 0, 0, 0
+    let mutable scroll = 0
+    let mutable width = None
+    let mutable pan = 0
+    let mutable recolor = None
+    let mutable palette = None
     let mutable cursor = 0, 0
     let mutable characterSize = 0, 0
+    let mutable ink = [ 7 ]
     let mutable mode = supportedModes[0]
 
     interface IScreenDevice with
         member _.Clear() = ()
+        member _.SetWindow(width, height, x, y) = window <- width, height, x, y
+        member _.GetWindow() = window
+        member _.SetScroll(value) = scroll <- value
+        member _.GetScroll() = scroll
+        member _.SetWidth(value) = width <- Some value
+        member _.GetWidth() = width
+        member _.SetPan(value) = pan <- value
+        member _.GetPan() = pan
+        member _.SetRecolor(value) = recolor <- Some value
+        member _.GetRecolor() = recolor
+        member _.SetPalette(values) = palette <- Some values
+        member _.GetPalette() = palette
         member _.SetCursor(x, y) = cursor <- x, y
         member _.GetCursor() = cursor
         member _.SetCharacterSize(width, height) = characterSize <- width, height
         member _.GetCharacterSize() = characterSize
         member _.WriteText text = writer text
-        member _.SetInk(_value: int) = ()
+        member _.SetInk(values: int list) = ink <- values
         member _.SetPaper(_value: int) = ()
         member _.SetBorder(_value: int) = ()
         member _.GetSupportedModes() = supportedModes
@@ -94,20 +133,78 @@ type private DefaultScreenDevice(writer: string -> unit) =
             | None ->
                 Result.Error(UnsupportedHostOperation $"Screen mode '{requestedMode}' is not supported by DefaultHost.")
 
-type private NullGraphicsDevice() =
+type private DefaultGraphicsDevice() =
+    let mutable cursor = 0.0, 0.0
+    let mutable ink = [ 7 ]
+    let mutable fillMode = 0
+    let mutable scale = 0.0, 0.0, 0.0
+    let mutable overMode = 0
+    let mutable underMode = 0
+    let mutable flashMode = 0
+    let mutable penDown = true
+    let mutable heading = 0.0
+
     interface IGraphicsDevice with
-        member _.Plot(_x, _y) = ()
-        member _.Draw(_x, _y) = ()
-        member _.Line(_x1, _y1, _x2, _y2) = ()
+        member _.Plot(x, y) = cursor <- x, y
+        member _.Point(x, y) = cursor <- x, y
+        member _.PointRelative(dx, dy) =
+            let x, y = cursor
+            cursor <- x + dx, y + dy
+        member _.Draw(x, y) = cursor <- x, y
+        member _.LineRelative(values) =
+            let pairs =
+                values
+                |> List.chunkBySize 2
+                |> List.choose (function
+                    | [ x; y ] -> Some(x, y)
+                    | _ -> None)
+
+            match List.tryLast pairs with
+            | Some(dx, dy) ->
+                let x, y = cursor
+                cursor <- x + dx, y + dy
+            | None -> ()
+        member _.DLine(values) =
+            let coordinates =
+                values
+                |> List.chunkBySize 2
+                |> List.choose (function
+                    | [ x; y ] -> Some(x, y)
+                    | _ -> None)
+
+            match List.tryLast coordinates with
+            | Some(x, y) -> cursor <- x, y
+            | None -> ()
+        member _.Line(_x1, _y1, x2, y2) = cursor <- x2, y2
         member _.Circle(_x, _y, _radius) = ()
-        member _.Fill(_x, _y) = ()
+        member _.CircleRelative(dx, dy, _radius) =
+            let x, y = cursor
+            cursor <- x + dx, y + dy
+        member _.Ellipse(_x, _y, _radius, _ratio, _angle) = ()
+        member _.EllipseRelative(dx, dy, _radius, _ratio, _angle) =
+            let x, y = cursor
+            cursor <- x + dx, y + dy
+        member _.Arc(_x, _y, _radius, _startAngle, _endAngle) = ()
+        member _.ArcRelative(dx, dy, _radius, _startAngle, _endAngle) =
+            let x, y = cursor
+            cursor <- x + dx, y + dy
+        member _.Block(_width, _height, x, y, _color) = cursor <- x, y
+        member _.SetInk(values: int list) = ink <- values
+        member _.SetFill(value: int) = fillMode <- value
+        member _.SetScale(x, y, z) = scale <- x, y, z
+        member _.SetOver(value: int) = overMode <- value
+        member _.SetUnder(value: int) = underMode <- value
+        member _.SetFlash(value: int) = flashMode <- value
+        member _.SetPenDown(value: bool) = penDown <- value
+        member _.Turn(angle) = heading <- heading + angle
+        member _.TurnTo(angle) = heading <- angle
         member _.Clear() = ()
 
-type private DefaultInputDevice(reader: unit -> string option) =
+type private DefaultInputDevice(reader: unit -> string option, readKey: unit -> KeyInfo option, keyAvailable: unit -> bool) =
     interface IInputDevice with
         member _.ReadLine() = reader ()
-        member _.ReadKey() = None
-        member _.KeyAvailable() = false
+        member _.ReadKey() = readKey ()
+        member _.KeyAvailable() = keyAvailable ()
 
 type private NullSoundDevice() =
     interface ISoundDevice with
@@ -130,8 +227,8 @@ type private DefaultRuntimeHost(options: DefaultHostOptions) =
         |> DefaultChannelManager
         :> IChannelManager
     let screen = DefaultScreenDevice(options.WriteLine) :> IScreenDevice
-    let graphics = NullGraphicsDevice() :> IGraphicsDevice
-    let input = DefaultInputDevice(options.ReadLine) :> IInputDevice
+    let graphics = DefaultGraphicsDevice() :> IGraphicsDevice
+    let input = DefaultInputDevice(options.ReadLine, options.ReadKey, options.KeyAvailable) :> IInputDevice
     let sound = NullSoundDevice() :> ISoundDevice
     let files = NullFileSystem() :> IDeviceFileSystem
 

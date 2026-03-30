@@ -97,6 +97,8 @@ let ``interpreter date uses runtime clock`` () =
             Host =
                 DefaultHost.create {
                     ReadLine = fun () -> None
+                    ReadKey = fun () -> None
+                    KeyAvailable = fun () -> false
                     WriteLine = fun line -> outputs.Add(line)
                 }
             Clock = fun () -> DateTime(2024, 1, 2, 3, 4, 5, DateTimeKind.Utc) }
@@ -121,6 +123,8 @@ let ``interpreter rnd supports deterministic float integer and range forms`` () 
             Host =
                 DefaultHost.create {
                     ReadLine = fun () -> None
+                    ReadKey = fun () -> None
+                    KeyAvailable = fun () -> false
                     WriteLine = fun line -> outputs.Add(line)
                 }
             Random = Random(1234) }
@@ -148,6 +152,8 @@ let ``interpreter rnd without arguments returns deterministic float`` () =
             Host =
                 DefaultHost.create {
                     ReadLine = fun () -> None
+                    ReadKey = fun () -> None
+                    KeyAvailable = fun () -> false
                     WriteLine = fun line -> outputs.Add(line)
                 }
             Random = Random(1234) }
@@ -196,3 +202,102 @@ let ``interpreter rnd unsupported arguments reports coded runtime error`` () =
     interpretProgramWithOptions defaultRuntimeOptions hir
     |> assertRuntimeError BuiltInUnsupportedArguments
     |> ignore
+
+[<Test>]
+let ``interpreter inkey$ returns queued key and then empty string`` () =
+    let inkeyId = H.SymbolId 0
+    let aId = H.SymbolId 1
+    let bId = H.SymbolId 2
+    let aStorage = makeStorage aId 0 "A$" H.HirType.String H.GlobalStorage
+    let bStorage = makeStorage bId 1 "B$" H.HirType.String H.GlobalStorage
+    let keys =
+        Collections.Generic.Queue<KeyInfo>(
+            [ { KeyCode = int 'A'; Character = Some 'A'; Shift = false; Control = false } ])
+    let outputs = ResizeArray<string>()
+    let options =
+        { defaultRuntimeOptions with
+            Host =
+                DefaultHost.create {
+                    ReadLine = fun () -> None
+                    ReadKey = fun () -> if keys.Count > 0 then Some(keys.Dequeue()) else None
+                    KeyAvailable = fun () -> keys.Count > 0
+                    WriteLine = fun line -> outputs.Add(line)
+                } }
+    let hir =
+        makeProgram
+            (Map.ofList [ inkeyId, "INKEY$"; aId, "A$"; bId, "B$" ])
+            [ aStorage; bStorage ]
+            [ H.Assign(H.WriteVar(aId, H.HirType.String, pos), H.CallFunc(inkeyId, [], H.HirType.String, pos), pos)
+              H.Assign(H.WriteVar(bId, H.HirType.String, pos), H.CallFunc(inkeyId, [], H.HirType.String, pos), pos)
+              H.BuiltInCall(H.Print, None, [ H.ReadVar(aId, H.HirType.String, pos) ], pos)
+              H.BuiltInCall(H.Print, None, [ H.ReadVar(bId, H.HirType.String, pos) ], pos) ]
+
+    let output = runHirProgramWithOptions options hir
+
+    Assert.That(String.concat "|" output, Is.EqualTo("A|"))
+
+[<Test>]
+let ``interpreter inkey$ accepts timeout and channel arguments`` () =
+    let inkeyId = H.SymbolId 0
+    let aId = H.SymbolId 1
+    let bId = H.SymbolId 2
+    let aStorage = makeStorage aId 0 "A$" H.HirType.String H.GlobalStorage
+    let bStorage = makeStorage bId 1 "B$" H.HirType.String H.GlobalStorage
+    let keys =
+        Collections.Generic.Queue<KeyInfo>(
+            [ { KeyCode = int 'X'; Character = Some 'X'; Shift = false; Control = false }
+              { KeyCode = int 'Y'; Character = Some 'Y'; Shift = false; Control = false } ])
+    let outputs = ResizeArray<string>()
+    let options =
+        { defaultRuntimeOptions with
+            Host =
+                DefaultHost.create {
+                    ReadLine = fun () -> None
+                    ReadKey = fun () -> if keys.Count > 0 then Some(keys.Dequeue()) else None
+                    KeyAvailable = fun () -> keys.Count > 0
+                    WriteLine = fun line -> outputs.Add(line)
+                } }
+    let hir =
+        makeProgram
+            (Map.ofList [ inkeyId, "INKEY$"; aId, "A$"; bId, "B$" ])
+            [ aStorage; bStorage ]
+            [ H.Assign(
+                H.WriteVar(aId, H.HirType.String, pos),
+                H.CallFunc(inkeyId, [ H.ValueArg(H.Literal(H.ConstInt -1, H.HirType.Int, pos)) ], H.HirType.String, pos),
+                pos)
+              H.Assign(
+                H.WriteVar(bId, H.HirType.String, pos),
+                H.CallFunc(
+                    inkeyId,
+                    [ H.ValueArg(H.Literal(H.ConstInt 3, H.HirType.Int, pos))
+                      H.ValueArg(H.Literal(H.ConstInt -1, H.HirType.Int, pos)) ],
+                    H.HirType.String,
+                    pos),
+                pos)
+              H.BuiltInCall(H.Print, None, [ H.ReadVar(aId, H.HirType.String, pos) ], pos)
+              H.BuiltInCall(H.Print, None, [ H.ReadVar(bId, H.HirType.String, pos) ], pos) ]
+
+    let output = runHirProgramWithOptions options hir
+
+    Assert.That(String.concat "|" output, Is.EqualTo("X|Y"))
+
+[<Test>]
+let ``interpreter randomise reseeds rnd deterministically`` () =
+    let rndId = H.SymbolId 0
+    let aId = H.SymbolId 1
+    let bId = H.SymbolId 2
+    let aStorage = makeStorage aId 0 "A" H.HirType.Int H.GlobalStorage
+    let bStorage = makeStorage bId 1 "B" H.HirType.Int H.GlobalStorage
+    let hir =
+        makeProgram
+            (Map.ofList [ rndId, "RND"; aId, "A"; bId, "B" ])
+            [ aStorage; bStorage ]
+            [ H.BuiltInCall(H.NamedBuiltIn "RANDOMISE", None, [ H.Literal(H.ConstInt 123, H.HirType.Int, pos) ], pos)
+              H.Assign(H.WriteVar(aId, H.HirType.Int, pos), H.CallFunc(rndId, [ H.ValueArg(H.Literal(H.ConstInt 100, H.HirType.Int, pos)) ], H.HirType.Int, pos), pos)
+              H.BuiltInCall(H.NamedBuiltIn "RANDOMISE", None, [ H.Literal(H.ConstInt 123, H.HirType.Int, pos) ], pos)
+              H.Assign(H.WriteVar(bId, H.HirType.Int, pos), H.CallFunc(rndId, [ H.ValueArg(H.Literal(H.ConstInt 100, H.HirType.Int, pos)) ], H.HirType.Int, pos), pos)
+              H.BuiltInCall(H.Print, None, [ H.ReadVar(aId, H.HirType.Int, pos); H.ReadVar(bId, H.HirType.Int, pos) ], pos) ]
+
+    let output = runHirProgramWithOptions defaultRuntimeOptions hir
+
+    Assert.That(String.concat "|" output, Is.EqualTo("99 99"))
