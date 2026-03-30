@@ -1,4 +1,4 @@
-module TestBed.ParseTreeVisitorTests
+module SBTests.ParseTreeVisitorTests
 
 open Antlr4.Runtime
 open NUnit.Framework

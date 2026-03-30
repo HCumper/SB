@@ -1,4 +1,4 @@
-module TestBed.AstVerificationTests
+module SBTests.AstVerificationTests
 
 open Antlr4.Runtime
 open NUnit.Framework

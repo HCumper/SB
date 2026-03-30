@@ -1,4 +1,4 @@
-module TestBed.AstDiagnosticsTests
+module SBTests.AstDiagnosticsTests
 
 open NUnit.Framework
 

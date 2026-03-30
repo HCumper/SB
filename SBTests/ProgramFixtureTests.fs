@@ -1,4 +1,4 @@
-module TestBed.ProgramFixtureTests
+module SBTests.ProgramFixtureTests
 
 open System
 open System.IO

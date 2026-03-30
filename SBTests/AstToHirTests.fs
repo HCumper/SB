@@ -1,4 +1,4 @@
-module TestBed.AstToHirTests
+module SBTests.AstToHirTests
 
 open NUnit.Framework
 

@@ -1,4 +1,4 @@
-module TestBed.UtilityTests
+module SBTests.UtilityTests
 
 open NUnit.Framework
 

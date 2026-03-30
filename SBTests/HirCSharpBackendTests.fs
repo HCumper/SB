@@ -1,10 +1,10 @@
-module TestBed.HirCBackendTests
+module SBTests.HirCSharpBackendTests
 
 open NUnit.Framework
 
 open Types
 open HIR
-open HirCBackend
+open HirCSharpBackend
 
 let private pos =
     { BasicLineNo = None
@@ -27,13 +27,17 @@ let private parameter symbol name hirType storageClass binding =
       Binding = binding }
 
 [<Test>]
-let ``generateCFromHir emits globals routines labels and loop jumps`` () =
+let ``generateCSharpFromHir emits globals routines data and structured control flow`` () =
     let globalSymbol = SymbolId 0
     let routineSymbol = SymbolId 1
     let parameterSymbol = SymbolId 2
 
     let program =
-        { SymbolNames = [ globalSymbol, "X"; routineSymbol, "PROC"; parameterSymbol, "P" ] |> Map.ofList
+        { SymbolNames =
+            [ globalSymbol, "X"
+              routineSymbol, "PROC"
+              parameterSymbol, "P" ]
+            |> Map.ofList
           Globals = [ storage globalSymbol "X" HirType.Int GlobalStorage ]
           Routines =
             [ { Name = "PROC"
@@ -44,8 +48,14 @@ let ``generateCFromHir emits globals routines labels and loop jumps`` () =
                 ReturnType = Some HirType.Int
                 Position = pos } ]
           DataEntries =
-            [ { Slot = DataSlotId 0; Value = literalInt 2; Position = pos; LineNumber = Some 20 }
-              { Slot = DataSlotId 1; Value = literalString "HELLO"; Position = pos; LineNumber = Some 20 } ]
+            [ { Slot = DataSlotId 0
+                Value = literalInt 2
+                Position = pos
+                LineNumber = Some 20 }
+              { Slot = DataSlotId 1
+                Value = literalString "HELLO"
+                Position = pos
+                LineNumber = Some 20 } ]
           RestorePoints = [ { LineNumber = 20; Slot = DataSlotId 0 } ]
           Main =
             [ LineNumber(10, pos)
@@ -59,29 +69,38 @@ let ``generateCFromHir emits globals routines labels and loop jumps`` () =
               OnGoto(literalInt 2, [ literalInt 10; literalInt 20 ], pos)
               Gosub(literalInt 10, pos) ] }
 
-    let generated = generateCFromHir "sample_program" program
+    let generated = generateCSharpFromHir "SampleProgram" program
 
-    Assert.That(generated, Does.Contain("static Value v0_X;"))
-    Assert.That(generated, Does.Contain("static Value r1_PROC(Value v2_P);"))
-    Assert.That(generated, Does.Contain("static DataValue sb_data[] = { { TYPE_INT, 2, 2, NULL, NULL }, { TYPE_STRING, 0, 0.0, \"HELLO\", NULL } };"))
+    Assert.That(generated, Does.Contain("public static class SampleProgram"))
+    Assert.That(generated, Does.Contain("private static object? v0_X;"))
+    Assert.That(generated, Does.Contain("private static readonly object?[] __data = new object?[] { 2, \"HELLO\" };"))
+    Assert.That(generated, Does.Contain("private static readonly Dictionary<int, int> __restorePoints = new Dictionary<int, int> { { 20, 0 } };"))
+    Assert.That(generated, Does.Contain("private static object? r1_PROC(object? v2_P)"))
+    Assert.That(generated, Does.Contain("return v2_P;"))
     Assert.That(generated, Does.Contain("line_10: ;"))
-    Assert.That(generated, Does.Contain("goto loop_0_next;"))
-    Assert.That(generated, Does.Contain("loop_1_exit: ;"))
-    Assert.That(generated, Does.Contain("execute_input(make_null(), 1, make_string(\"How many?\"));"))
-    Assert.That(generated, Does.Contain("v0_X = read_data_value(TYPE_INT);"))
-    Assert.That(generated, Does.Contain("restore_to_line(as_int(make_int(20)));"))
+    Assert.That(generated, Does.Contain("throw new LoopControlException(0, true);"))
+    Assert.That(generated, Does.Contain("throw new LoopControlException(1, false);"))
+    Assert.That(generated, Does.Contain("ExecuteInput(null, new object?[] { \"How many?\" });"))
+    Assert.That(generated, Does.Contain("v0_X = ReadDataValue(\"int\");"))
+    Assert.That(generated, Does.Contain("RestoreToLine(AsInt(20));"))
+    Assert.That(generated, Does.Contain("goto line_10;"))
     Assert.That(generated, Does.Contain("case 2: goto line_20;"))
-    Assert.That(generated, Does.Contain("runtime_not_supported(\"GOSUB is not supported by the generated C backend yet.\");"))
+    Assert.That(generated, Does.Contain("throw new NotSupportedException(\"GOSUB is not supported by the generated backend yet.\");"))
 
 [<Test>]
-let ``generateCFromHir emits arrays routine calls and builtin function calls`` () =
+let ``generateCSharpFromHir emits array access routine calls and builtin function calls from hir expressions`` () =
     let globalSymbol = SymbolId 0
     let arraySymbol = SymbolId 1
     let routineSymbol = SymbolId 2
     let builtInSymbol = SymbolId 3
 
     let program =
-        { SymbolNames = [ globalSymbol, "TOTAL"; arraySymbol, "A"; routineSymbol, "DOUBLEIT"; builtInSymbol, "ABS" ] |> Map.ofList
+        { SymbolNames =
+            [ globalSymbol, "TOTAL"
+              arraySymbol, "A"
+              routineSymbol, "DOUBLEIT"
+              builtInSymbol, "ABS" ]
+            |> Map.ofList
           Globals =
             [ storage globalSymbol "TOTAL" HirType.Int GlobalStorage
               storage arraySymbol "A" (HirType.Array HirType.Int) GlobalStorage ]
@@ -98,11 +117,12 @@ let ``generateCFromHir emits arrays routine calls and builtin function calls`` (
           Main =
             [ Assign(WriteArrayElem(arraySymbol, [ literalInt 1 ], HirType.Int, pos), CallFunc(routineSymbol, [], HirType.Int, pos), pos)
               Assign(WriteVar(globalSymbol, HirType.Int, pos), CallFunc(builtInSymbol, [ ValueArg(Unary(Negate, literalInt 4, HirType.Int, pos)) ], HirType.Int, pos), pos)
-              Assign(WriteVar(globalSymbol, HirType.Int, pos), ReadArrayElem(arraySymbol, [ literalInt 1 ], HirType.Int, pos), pos) ] }
+              BuiltInCall(Print, None, [ ReadArrayElem(arraySymbol, [ literalInt 1 ], HirType.Int, pos); ReadVar(globalSymbol, HirType.Int, pos) ], pos) ] }
 
-    let generated = generateCFromHir "expr_program" program
+    let generated = generateCSharpFromHir "ExprProgram" program
 
-    Assert.That(generated, Does.Contain("v1_A = make_array();"))
-    Assert.That(generated, Does.Contain("set_array_value(&v1_A, r2_DOUBLEIT(), 1, make_int(1));"))
-    Assert.That(generated, Does.Contain("v0_TOTAL = invoke_builtin_function(\"ABS\", negate_value(make_int(4)));"))
-    Assert.That(generated, Does.Contain("get_array_value(&v1_A, 1, make_int(1))"))
+    Assert.That(generated, Does.Contain("private static readonly Dictionary<string, object?> v1_A = new();"))
+    Assert.That(generated, Does.Contain("SetArrayValue(v1_A, r2_DOUBLEIT(), 1);"))
+    Assert.That(generated, Does.Contain("v0_TOTAL = InvokeBuiltInFunction(\"ABS\", Negate(4));"))
+    Assert.That(generated, Does.Contain("Console.WriteLine"))
+    Assert.That(generated, Does.Contain("GetArrayValue(v1_A, 1)"))

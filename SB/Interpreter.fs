@@ -5,6 +5,7 @@ open System.Collections.Generic
 open System.Globalization
 
 open HIR
+open SBRuntime
 open Types
 
 type RuntimeValue =
@@ -42,8 +43,7 @@ type RuntimeError = {
 }
 
 type RuntimeOptions = {
-    InputProvider: unit -> string option
-    OutputWriter: string -> unit
+    Host: IRuntimeHost
     Random: Random
     Clock: unit -> DateTime
 }
@@ -53,8 +53,11 @@ type ExecutionResult = {
 }
 
 let defaultRuntimeOptions =
-    { InputProvider = fun () -> Console.ReadLine() |> Option.ofObj
-      OutputWriter = Console.WriteLine
+    { Host =
+        DefaultHost.create {
+            ReadLine = fun () -> Console.ReadLine() |> Option.ofObj
+            WriteLine = Console.WriteLine
+        }
       Random = Random()
       Clock = fun () -> DateTime.UtcNow }
 
@@ -163,6 +166,20 @@ let private makeNumericValue hirType number =
     | HIR.HirType.Float -> FloatValue number
     | _ -> IntValue (int (Math.Round(number)))
 
+let private toRuntimeBuiltInValue value =
+    match value with
+    | IntValue n -> RuntimeValues.ofInt n
+    | FloatValue f -> RuntimeValues.ofFloat f
+    | StringValue s -> RuntimeValues.ofString s
+    | ArrayValue _ -> Uninitialized
+
+let private fromRuntimeBuiltInValue value =
+    match value with
+    | Numeric(IntNumber n) -> IntValue n
+    | Numeric(FloatNumber f) -> FloatValue f
+    | Text s -> StringValue s
+    | Uninitialized -> IntValue 0
+
 let private formatOutputValue value = asString value
 
 let private lookupCell state symbolId =
@@ -234,8 +251,36 @@ let private allocateCells (storages: HirStorage list) =
     |> Map.ofList
 
 let private updateOutput line state =
-    state.Options.OutputWriter line
+    state.Options.Host.Screen.WriteText line
     { state with Output = state.Output @ [ line ] }
+
+let private hostErrorText = function
+    | ChannelNotFound(ChannelId channelId) -> $"Channel #{channelId} does not exist."
+    | DeviceOpenFailed detail -> detail
+    | UnsupportedHostOperation detail -> detail
+    | InvalidHostArgument detail -> detail
+
+let private writeOutputToChannel channelId line state pos =
+    match channelId with
+    | None ->
+        state.Options.Host.Screen.WriteText line
+        Result.Ok { state with Output = state.Output @ [ line ] }
+    | Some resolvedChannelId ->
+        match state.Options.Host.Channels.Get resolvedChannelId with
+        | Result.Ok channel ->
+            channel.WriteText line
+            Result.Ok { state with Output = state.Output @ [ line ] }
+        | Result.Error hostError ->
+            runtimeError UnsupportedChannelExecution (Some pos) (hostErrorText hostError)
+
+let private readInputFromChannel channelId state pos =
+    match channelId with
+    | None -> Result.Ok(state.Options.Host.Input.ReadLine())
+    | Some resolvedChannelId ->
+        match state.Options.Host.Channels.Get resolvedChannelId with
+        | Result.Ok channel -> Result.Ok(channel.ReadText())
+        | Result.Error hostError ->
+            runtimeError UnsupportedChannelExecution (Some pos) (hostErrorText hostError)
 
 let private withFrame frame state =
     { state with Frames = frame :: state.Frames }
@@ -363,75 +408,37 @@ and private evalLineNumber state expr pos =
 
 and private evalBuiltInFunction state symbolId argExprs hirType pos =
     let name = symbolName state symbolId
-    let normalized = normalizeIdentifier name
+    let allowRangePair =
+        match normalizeIdentifier name, argExprs with
+        | "RND", [ Binary(SliceRange, _, _, _, _) ] -> true
+        | _ -> false
+    let runtimeArgs =
+        argExprs
+        |> List.collect (function
+            | Binary(SliceRange, lhs, rhs, _, _) -> [ lhs; rhs ]
+            | expr -> [ expr ])
 
-    let evalArgs () = evalExprList state argExprs
-    let expectOneNumeric f =
-        match argExprs with
-        | [ _ ] ->
-            evalArgs ()
-            |> Result.map (fun (values, nextState) -> f values[0], nextState)
-        | _ -> runtimeError BuiltInArityMismatch (Some pos) $"Built-in function '{name}' expects one argument."
+    evalExprList state runtimeArgs
+    |> Result.bind (fun (values, nextState) ->
+        BuiltInFunctions.evaluate
+            name
+            (hirType = HIR.HirType.Float)
+            nextState.Options.Clock
+            (fun () -> nextState.Options.Random)
+            allowRangePair
+            (values |> List.map toRuntimeBuiltInValue)
+        |> function
+            | Result.Ok value -> Result.Ok(fromRuntimeBuiltInValue value, nextState)
+            | Result.Error(ArityMismatch message) -> runtimeError BuiltInArityMismatch (Some pos) message
+            | Result.Error(UnsupportedArguments message) -> runtimeError BuiltInUnsupportedArguments (Some pos) message
+            | Result.Error(NotImplemented message) -> runtimeError BuiltInFunctionNotImplemented (Some pos) message)
 
-    match normalized with
-    | "ABS" -> expectOneNumeric (fun value -> makeNumericValue hirType (abs (normalizeNumber value)))
-    | "INT" -> expectOneNumeric (fun value -> makeNumericValue hirType (Math.Floor(normalizeNumber value)))
-    | "ROUND" -> expectOneNumeric (fun value -> makeNumericValue hirType (Math.Round(normalizeNumber value)))
-    | "STR$" ->
-        match argExprs with
-        | [ _ ] ->
-            evalArgs ()
-            |> Result.map (fun (values, nextState) -> StringValue (asString values[0]), nextState)
-        | _ -> runtimeError BuiltInArityMismatch (Some pos) $"Built-in function '{name}' expects one argument."
-    | "VAL" ->
-        match argExprs with
-        | [ _ ] ->
-            evalArgs ()
-            |> Result.map (fun (values, nextState) ->
-                match Double.TryParse(asString values[0], NumberStyles.Float ||| NumberStyles.AllowThousands, CultureInfo.InvariantCulture) with
-                | true, number -> FloatValue number, nextState
-                | _ -> IntValue 0, nextState)
-        | _ -> runtimeError BuiltInArityMismatch (Some pos) $"Built-in function '{name}' expects one argument."
-    | "LEFT$" ->
-        match argExprs with
-        | [ _; _ ] ->
-            evalArgs ()
-            |> Result.map (fun (values, nextState) ->
-                let source = asString values[0]
-                let length = max 0 (min source.Length (asInt values[1]))
-                StringValue(source.Substring(0, length)), nextState)
-        | _ -> runtimeError BuiltInArityMismatch (Some pos) $"Built-in function '{name}' expects two arguments."
-    | "RIGHT$" ->
-        match argExprs with
-        | [ _; _ ] ->
-            evalArgs ()
-            |> Result.map (fun (values, nextState) ->
-                let source = asString values[0]
-                let length = max 0 (min source.Length (asInt values[1]))
-                StringValue(source.Substring(source.Length - length, length)), nextState)
-        | _ -> runtimeError BuiltInArityMismatch (Some pos) $"Built-in function '{name}' expects two arguments."
-    | "DATE" ->
-        let seconds = int (state.Options.Clock().Subtract(DateTime.UnixEpoch).TotalSeconds)
-        Result.Ok(IntValue seconds, state)
-    | "RND" ->
-        match argExprs with
-        | [ Binary(SliceRange, lhs, rhs, _, _) ] ->
-            evalExpr state lhs
-            |> Result.bind (fun (low, lowState) ->
-                evalExpr lowState rhs
-                |> Result.map (fun (high, highState) ->
-                    let minValue = asInt low
-                    let maxValue = asInt high
-                    let value = highState.Options.Random.Next(minValue, maxValue + 1)
-                    makeNumericValue hirType (double value), highState))
-        | [ _ ] ->
-            evalArgs ()
-            |> Result.map (fun (values, nextState) ->
-                let upper = max 1 (asInt values[0])
-                makeNumericValue hirType (double (nextState.Options.Random.Next(1, upper + 1))), nextState)
-        | [] -> Result.Ok(FloatValue (state.Options.Random.NextDouble()), state)
-        | _ -> runtimeError BuiltInUnsupportedArguments (Some pos) $"Built-in function '{name}' received unsupported arguments."
-    | _ -> runtimeError BuiltInFunctionNotImplemented (Some pos) $"Built-in function '{name}' is not implemented."
+and private resolveChannelId state channelExpr =
+    match channelExpr with
+    | None -> Result.Ok(None, state)
+    | Some expr ->
+        evalExpr state expr
+        |> Result.map (fun (value, nextState) -> Some(ChannelId(asInt value)), nextState)
 
 and private resolveTargetCell state target =
     match target with
@@ -521,69 +528,67 @@ and private callRoutine state (routine: HirRoutine) args pos =
             | NextLoop _, _ -> runtimeError EscapedLoopControl (Some pos) $"Loop control escaped from routine '{routine.Name}'."))
 
 and private executeBuiltInCall state kind channel args targets pos =
-    let unsupportedChannel name =
-        match channel with
-        | Some _ -> runtimeError UnsupportedChannelExecution (Some pos) $"Built-in '{name}' does not support channel execution in the interpreter yet."
-        | None -> Result.Ok(Continue, state)
-
     match kind with
     | Print ->
-        unsupportedChannel "PRINT"
-        |> Result.bind (fun _ ->
-            evalExprList state args
-            |> Result.map (fun (values, nextState) ->
-                let line = values |> List.map formatOutputValue |> String.concat " "
-                Continue, updateOutput line nextState))
+        resolveChannelId state channel
+        |> Result.bind (fun (resolvedChannel, stateAfterChannel) ->
+            evalExprList stateAfterChannel args
+            |> Result.bind (fun (values, nextState) ->
+                let line =
+                    values
+                    |> List.map toRuntimeBuiltInValue
+                    |> BuiltInStatements.formatPrintLine
+                writeOutputToChannel resolvedChannel line nextState pos
+                |> Result.map (fun finalState -> Continue, finalState)))
     | BuiltInKind.Input ->
-        let promptState =
-            if List.isEmpty args then state
-            else
-                let promptText =
-                    args
-                    |> List.map (fun expr ->
-                        match evalExpr state expr with
-                        | Result.Ok(value, _) -> formatOutputValue value
-                        | Result.Error _ -> "")
-                    |> String.concat " "
-                updateOutput promptText state
+        resolveChannelId state channel
+        |> Result.bind (fun (resolvedChannel, stateAfterChannel) ->
+            let promptStateResult =
+                if List.isEmpty args then
+                    Result.Ok stateAfterChannel
+                else
+                    let promptText =
+                        args
+                        |> List.map (fun expr ->
+                            match evalExpr stateAfterChannel expr with
+                            | Result.Ok(value, _) -> formatOutputValue value
+                            | Result.Error _ -> "")
+                        |> String.concat " "
+                    writeOutputToChannel resolvedChannel promptText stateAfterChannel pos
 
-        let readValues (line: string) =
-            line.Split([| ',' |], StringSplitOptions.None)
-            |> Array.toList
-            |> List.map (fun segment -> segment.Trim())
+            promptStateResult
+            |> Result.bind (fun promptState ->
+                readInputFromChannel resolvedChannel promptState pos
+                |> Result.map BuiltInStatements.splitInputLine
+                |> Result.bind (fun sourceValues ->
+                    let assignInput currentState target index =
+                        let raw = if index < sourceValues.Length then sourceValues[index] else ""
+                        let expectedType =
+                            match target with
+                            | WriteVar(_, HIR.HirType.String, _)
+                            | WriteArrayElem(_, _, HIR.HirType.String, _) -> BuiltInInputType.InputString
+                            | WriteVar(_, HIR.HirType.Float, _)
+                            | WriteArrayElem(_, _, HIR.HirType.Float, _) -> BuiltInInputType.InputFloat
+                            | _ -> BuiltInInputType.InputInt
+                        writeTarget currentState target (BuiltInStatements.parseInputValue expectedType raw |> fromRuntimeBuiltInValue)
 
-        let sourceValues =
-            match promptState.Options.InputProvider() with
-            | Some line -> readValues line
-            | None -> []
-
-        let assignInput currentState target index =
-            let raw = if index < sourceValues.Length then sourceValues[index] else ""
-            let parsed =
-                match target with
-                | WriteVar(_, HIR.HirType.String, _)
-                | WriteArrayElem(_, _, HIR.HirType.String, _) -> StringValue raw
-                | WriteVar(_, HIR.HirType.Float, _)
-                | WriteArrayElem(_, _, HIR.HirType.Float, _) ->
-                    match Double.TryParse(raw, NumberStyles.Float ||| NumberStyles.AllowThousands, CultureInfo.InvariantCulture) with
-                    | true, number -> FloatValue number
-                    | _ -> FloatValue 0.0
-                | _ ->
-                    match Int32.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture) with
-                    | true, number -> IntValue number
-                    | _ -> IntValue 0
-            writeTarget currentState target parsed
-
-        ((Result.Ok promptState, targets |> List.indexed)
-         ||> List.fold (fun acc (index, target) ->
-             acc |> Result.bind (fun currentState -> assignInput currentState target index)))
-        |> Result.map (fun nextState -> Continue, nextState)
+                    ((Result.Ok promptState, targets |> List.indexed)
+                     ||> List.fold (fun acc (index, target) ->
+                         acc |> Result.bind (fun currentState -> assignInput currentState target index)))
+                    |> Result.map (fun nextState -> Continue, nextState))))
     | Reference -> Result.Ok(Continue, state)
     | NamedBuiltIn name ->
-        let normalized = normalizeIdentifier name
-        if normalized = "STOP" then Result.Ok(StopExecution, state)
-        elif normalized.StartsWith("TURBO") then Result.Ok(Continue, state)
-        else runtimeError BuiltInStatementNotImplemented (Some pos) $"Built-in statement '{kind}' is not implemented."
+        let unsupportedChannel () =
+            match channel with
+            | Some _ -> runtimeError UnsupportedChannelExecution (Some pos) $"Built-in '{name}' does not support channel execution in the interpreter yet."
+            | None -> Result.Ok(Continue, state)
+
+        unsupportedChannel ()
+        |> Result.bind (fun _ ->
+            let normalized = normalizeIdentifier name
+            if normalized = "STOP" then Result.Ok(StopExecution, state)
+            elif normalized.StartsWith("TURBO") then Result.Ok(Continue, state)
+            else runtimeError BuiltInStatementNotImplemented (Some pos) $"Built-in statement '{kind}' is not implemented.")
     | GotoBuiltIn
     | GosubBuiltIn
     | OnGotoBuiltIn

@@ -1,4 +1,4 @@
-module TestBed.InterpreterTests
+module SBRuntimeTests.InterpreterTests
 
 open System
 open System.IO
@@ -11,6 +11,7 @@ open CompilerPipeline
 open AstToHir
 open Interpreter
 open ParseTreeVisitor
+open SBRuntime
 
 module H = HIR
 
@@ -59,8 +60,11 @@ let private runProgramWithInput input ast =
     let inputs = Collections.Generic.Queue<string>(input : string list)
     let options =
         { defaultRuntimeOptions with
-            InputProvider = fun () -> if inputs.Count > 0 then Some(inputs.Dequeue()) else None
-            OutputWriter = fun line -> outputs.Add(line)
+            Host =
+                DefaultHost.create {
+                    ReadLine = fun () -> if inputs.Count > 0 then Some(inputs.Dequeue()) else None
+                    WriteLine = fun line -> outputs.Add(line)
+                }
             Random = Random(1234)
             Clock = fun () -> DateTime(2024, 1, 2, 3, 4, 5, DateTimeKind.Utc) }
 
@@ -186,7 +190,11 @@ let ``interpreter date uses runtime clock`` () =
     let outputs = ResizeArray<string>()
     let options =
         { defaultRuntimeOptions with
-            OutputWriter = fun line -> outputs.Add(line)
+            Host =
+                DefaultHost.create {
+                    ReadLine = fun () -> None
+                    WriteLine = fun line -> outputs.Add(line)
+                }
             Clock = fun () -> DateTime(2024, 1, 2, 3, 4, 5, DateTimeKind.Utc) }
 
     let hir = lowerProgram ast
@@ -206,7 +214,11 @@ let ``interpreter rnd supports deterministic float integer and range forms`` () 
     let outputs = ResizeArray<string>()
     let options =
         { defaultRuntimeOptions with
-            OutputWriter = fun line -> outputs.Add(line)
+            Host =
+                DefaultHost.create {
+                    ReadLine = fun () -> None
+                    WriteLine = fun line -> outputs.Add(line)
+                }
             Random = Random(1234) }
 
     let hir = lowerProgram ast
@@ -229,7 +241,11 @@ let ``interpreter rnd without arguments returns deterministic float`` () =
     let outputs = ResizeArray<string>()
     let options =
         { defaultRuntimeOptions with
-            OutputWriter = fun line -> outputs.Add(line)
+            Host =
+                DefaultHost.create {
+                    ReadLine = fun () -> None
+                    WriteLine = fun line -> outputs.Add(line)
+                }
             Random = Random(1234) }
 
     let output = runHirProgramWithOptions options hir
@@ -1381,6 +1397,87 @@ let ``interpreter handles input prompts and targets`` () =
     Assert.That(String.concat "|" output, Is.EqualTo("Enter|42"))
 
 [<Test>]
+let ``default host exposes default channels zero through two`` () =
+    let host =
+        DefaultHost.create {
+            ReadLine = fun () -> None
+            WriteLine = ignore
+        }
+
+    let channel0 =
+        match host.Channels.Get(ChannelId 0) with
+        | Result.Ok channel -> channel
+        | Result.Error err -> Assert.Fail($"Expected channel #0, got %A{err}"); Unchecked.defaultof<_>
+
+    let channel1 =
+        match host.Channels.Get(ChannelId 1) with
+        | Result.Ok channel -> channel
+        | Result.Error err -> Assert.Fail($"Expected channel #1, got %A{err}"); Unchecked.defaultof<_>
+
+    let channel2 =
+        match host.Channels.Get(ChannelId 2) with
+        | Result.Ok channel -> channel
+        | Result.Error err -> Assert.Fail($"Expected channel #2, got %A{err}"); Unchecked.defaultof<_>
+
+    Assert.That(channel0.Kind, Is.EqualTo(ChannelKind.ConsoleChannel))
+    Assert.That(channel1.Kind, Is.EqualTo(ChannelKind.ScreenChannel))
+    Assert.That(channel2.Kind, Is.EqualTo(ChannelKind.ScreenChannel))
+
+[<Test>]
+let ``interpreter print to default channels uses host channel manager`` () =
+    let outputs = ResizeArray<string>()
+    let hir =
+        makeProgram
+            Map.empty
+            []
+            [ H.BuiltInCall(H.Print, Some(H.Literal(H.ConstInt 1, H.HirType.Int, pos)), [ H.Literal(H.ConstString "hello", H.HirType.String, pos) ], pos)
+              H.BuiltInCall(H.Print, Some(H.Literal(H.ConstInt 2, H.HirType.Int, pos)), [ H.Literal(H.ConstString "world", H.HirType.String, pos) ], pos) ]
+
+    let result =
+        interpretProgramWithOptions
+            { defaultRuntimeOptions with
+                Host =
+                    DefaultHost.create {
+                        ReadLine = fun () -> None
+                        WriteLine = fun line -> outputs.Add(line)
+                    } }
+            hir
+
+    match result with
+    | Result.Ok execution -> Assert.That(String.concat "|" execution.Output, Is.EqualTo("hello|world"))
+    | Result.Error err -> Assert.Fail($"Expected interpretation to succeed, got %A{err}")
+
+[<Test>]
+let ``interpreter input from default channel uses host channel manager`` () =
+    let xId = H.SymbolId 0
+    let xStorage = makeStorage xId 0 "X" H.HirType.Int H.GlobalStorage
+    let outputs = ResizeArray<string>()
+    let inputs = Collections.Generic.Queue<string>([ "42" ])
+    let channelExpr = H.Literal(H.ConstInt 2, H.HirType.Int, pos)
+    let promptExpr = H.Literal(H.ConstString "Enter", H.HirType.String, pos)
+    let target = H.WriteVar(xId, H.HirType.Int, pos)
+    let hir =
+        makeProgram
+            (Map.ofList [ xId, "X" ])
+            [ xStorage ]
+            [ H.HirStmt.Input(Some(channelExpr), [ promptExpr ], [ target ], pos)
+              H.BuiltInCall(H.Print, None, [ H.ReadVar(xId, H.HirType.Int, pos) ], pos) ]
+
+    let result =
+        interpretProgramWithOptions
+            { defaultRuntimeOptions with
+                Host =
+                    DefaultHost.create {
+                        ReadLine = fun () -> if inputs.Count > 0 then Some(inputs.Dequeue()) else None
+                        WriteLine = fun line -> outputs.Add(line)
+                    } }
+            hir
+
+    match result with
+    | Result.Ok execution -> Assert.That(String.concat "|" execution.Output, Is.EqualTo("Enter|42"))
+    | Result.Error err -> Assert.Fail($"Expected interpretation to succeed, got %A{err}")
+
+[<Test>]
 let ``q3 fixture runtime completes sort check without inversion output`` () =
     let ast = parseAstFromFile "q3.SB"
     let hir = lowerProgram ast
@@ -1388,8 +1485,11 @@ let ``q3 fixture runtime completes sort check without inversion output`` () =
     let inputs = Collections.Generic.Queue<string>([ "25"; "" ])
     let options =
         { defaultRuntimeOptions with
-            InputProvider = fun () -> if inputs.Count > 0 then Some(inputs.Dequeue()) else None
-            OutputWriter = fun line -> outputs.Add(line)
+            Host =
+                DefaultHost.create {
+                    ReadLine = fun () -> if inputs.Count > 0 then Some(inputs.Dequeue()) else None
+                    WriteLine = fun line -> outputs.Add(line)
+                }
             Random = Random(1234)
             Clock = fun () -> DateTime(2024, 1, 2, 3, 4, 5, DateTimeKind.Utc) }
 

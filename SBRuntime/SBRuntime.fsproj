@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="RuntimeErrors.fs" />
+    <Compile Include="RuntimeValues.fs" />
+    <Compile Include="HostTypes.fs" />
+    <Compile Include="ChannelDevices.fs" />
+    <Compile Include="BuiltInFunctions.fs" />
+    <Compile Include="BuiltInStatements.fs" />
+    <Compile Include="RuntimeState.fs" />
+    <Compile Include="DefaultHost.fs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Update="FSharp.Core" Version="9.0.202" />
+  </ItemGroup>
+
+</Project>

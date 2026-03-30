@@ -1,4 +1,4 @@
-module TestBed.PipelineSourceTests
+module SBTests.PipelineSourceTests
 
 open System
 open System.IO

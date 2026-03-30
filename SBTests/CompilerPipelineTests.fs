@@ -1,4 +1,4 @@
-module TestBed.CompilerPipelineTests
+module SBTests.CompilerPipelineTests
 
 open NUnit.Framework
 

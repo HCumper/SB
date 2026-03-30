@@ -1,4 +1,4 @@
-module TestBed.SemanticAnalyzerTests
+module SBTests.SemanticAnalyzerTests
 
 open Antlr4.Runtime
 open NUnit.Framework

@@ -70,6 +70,7 @@
 
     <ItemGroup>
       <ProjectReference Include="..\SBLib\SBLib.csproj" />
+      <ProjectReference Include="..\SBRuntime\SBRuntime.fsproj" />
     </ItemGroup>
 
 </Project>

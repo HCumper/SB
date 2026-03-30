@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
         <OutputType>Library</OutputType>
@@ -12,7 +12,6 @@
         <Compile Include="CompilerPipelineTests.fs" />
         <Compile Include="HirCBackendTests.fs" />
         <Compile Include="HirCSharpBackendTests.fs" />
-        <Compile Include="InterpreterTests.fs" />
         <Compile Include="UtilityTests.fs" />
         <Compile Include="AstVerificationTests.fs" />
         <Compile Include="AstDiagnosticsTests.fs" />
