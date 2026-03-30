@@ -7,7 +7,12 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <Compile Include="InterpreterTests.fs" />
+        <Compile Include="TestSupport.fs" />
+        <Compile Include="InterpreterBuiltInTests.fs" />
+        <Compile Include="InterpreterScopeTests.fs" />
+        <Compile Include="InterpreterControlFlowTests.fs" />
+        <Compile Include="InterpreterRuntimeHostTests.fs" />
+        <Compile Include="InterpreterFixtureTests.fs" />
     </ItemGroup>
 
     <ItemGroup>
