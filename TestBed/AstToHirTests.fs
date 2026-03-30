@@ -14,6 +14,7 @@ let private pos =
       Column = 0 }
 
 let private num value = mkNumberLiteral pos value
+let private id name = mkIdentifier pos name
 let private binary op lhs rhs = mkBinaryExpr pos op lhs rhs
 
 let private lowerProgram ast =
@@ -252,3 +253,99 @@ let ``lowerToHir lowers dynamic scoped array access`` () =
             BuiltInCall(Print, None, [ DynamicReadArrayElem("SCORES", [ Literal(ConstInt 1, HirType.Int, _) ], _, _) ], _) ] -> ()
         | other -> Assert.Fail($"Unexpected lowered dynamic array body: %A{other}")
     | None -> Assert.Fail("Expected lowered routine 'show'")
+
+[<Test>]
+let ``lowerToHir keeps top level globals static`` () =
+    let ast =
+        Program(
+            pos,
+            [ Line(pos, Some 10, [ Assignment(pos, id "score", num "1") ])
+              Line(pos, Some 20, [ Assignment(pos, id "score", binary "+" (id "score") (num "2")) ])
+              Line(pos, Some 30, [ ProcedureCall(pos, "PRINT", [ id "score" ]) ]) ])
+
+    let hir = lowerProgram ast
+
+    match hir.Main with
+    | [ LineNumber(10, _)
+        Assign(WriteVar(_, _, _), Literal(ConstInt 1, HirType.Int, _), _)
+        LineNumber(20, _)
+        Assign(WriteVar(_, HirType.Int, _), Binary(Add, ReadVar(_, HirType.Int, _), Literal(ConstInt 2, HirType.Int, _), HirType.Int, _), _)
+        LineNumber(30, _)
+        BuiltInCall(Print, None, [ ReadVar(_, HirType.Int, _) ], _) ] -> ()
+    | other -> Assert.Fail($"Unexpected lowered main for static globals: %A{other}")
+
+[<Test>]
+let ``lowerToHir keeps parameter accesses static inside routines`` () =
+    let ast =
+        Program(
+            pos,
+            [ Line(
+                pos,
+                Some 10,
+                [ ProcedureDef(
+                    pos,
+                    "show",
+                    [ "score" ],
+                    [ Line(pos, Some 100, [ Assignment(pos, id "score", binary "+" (id "score") (num "1")) ])
+                      Line(pos, Some 110, [ ProcedureCall(pos, "PRINT", [ id "score" ]) ]) ]) ]) ])
+
+    let hir = lowerProgram ast
+
+    match hir.Routines with
+    | [ routine ] ->
+        match routine.Body with
+        | [ LineNumber(100, _)
+            Assign(WriteVar(_, _, _), Binary(Add, ReadVar(_, _, _), Literal(ConstInt 1, HirType.Int, _), HirType.Int, _), _)
+            LineNumber(110, _)
+            BuiltInCall(Print, None, [ ReadVar(_, HirType.Int, _) ], _) ] -> ()
+        | other -> Assert.Fail($"Unexpected lowered routine body for static parameter access: %A{other}")
+    | other -> Assert.Fail($"Unexpected lowered routines: %A{other}")
+
+[<Test>]
+let ``lowerToHir does not lower built in names as dynamic storage`` () =
+    let ast =
+        Program(
+            pos,
+            [ Line(
+                pos,
+                Some 10,
+                [ ProcedureDef(
+                    pos,
+                    "show",
+                    [],
+                    [ Line(pos, Some 100, [ ProcedureCall(pos, "PRINT", [ mkPostfixName pos "DATE" None ]) ]) ]) ]) ])
+
+    let hir = lowerProgram ast
+
+    match hir.Routines with
+    | [ routine ] ->
+        match routine.Body with
+        | [ LineNumber(100, _)
+            BuiltInCall(Print, None, [ CallFunc(_, [], HirType.Int, _) ], _) ] -> ()
+        | other -> Assert.Fail($"Unexpected lowered routine body for built-in call: %A{other}")
+    | other -> Assert.Fail($"Unexpected lowered routines: %A{other}")
+
+[<Test>]
+let ``lowerToHir uses reference args for array element actuals`` () =
+    let ast =
+        Program(
+            pos,
+            [ Line(
+                pos,
+                Some 10,
+                [ ProcedureDef(
+                    pos,
+                    "bump",
+                    [ "a" ],
+                    [ Line(pos, Some 100, [ ReferenceStmt(pos, [ id "a" ]) ]) ]) ])
+              Line(pos, Some 20, [ DimStmt(pos, [ "scores", [ num "5" ] ]) ])
+              Line(pos, Some 30, [ ProcedureCall(pos, "bump", [ mkPostfixName pos "scores" (Some [ num "1" ]) ]) ]) ])
+
+    let hir = lowerProgram ast
+
+    match hir.Main with
+    | [ LineNumber(10, _)
+        LineNumber(20, _)
+        LineNumber(30, _)
+        ProcCall(_, None, [ RefArg(WriteArrayElem(_, [ Literal(ConstInt 1, HirType.Int, _) ], _, _)) ], _) ] -> ()
+    | other -> Assert.Fail($"Unexpected lowered main for array-element ref arg: %A{other}")

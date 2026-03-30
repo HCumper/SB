@@ -74,6 +74,7 @@ type private RuntimeState = {
 
 type private ControlFlow =
     | Continue
+    | TransferredContinue
     | ReturnFromRoutine of RuntimeValue option
     | BareReturn
     | ExitLoop of LoopId
@@ -81,6 +82,9 @@ type private ControlFlow =
     | JumpToLine of int
     | GosubToLine of int
     | StopExecution
+
+type private GosubReturn = RuntimeState -> Result<ControlFlow * RuntimeState, RuntimeError>
+type private LineTarget = RuntimeState -> GosubReturn list -> Result<ControlFlow * RuntimeState, RuntimeError>
 
 let private formatRuntimeErrorCode = function
     | MissingStorageCell -> "MissingStorageCell"
@@ -241,15 +245,6 @@ let private popFrame state =
     | _ :: rest -> { state with Frames = rest }
     | [] -> state
 
-let private buildLineIndex (block: HirBlock) =
-    block
-    |> List.mapi (fun index stmt ->
-        match stmt with
-        | LineNumber(value, _) -> Some(value, index)
-        | _ -> None)
-    |> List.choose id
-    |> Map.ofList
-
 let rec private evalExpr state expr =
     match expr with
     | Literal(ConstInt n, _, _) -> Result.Ok(IntValue n, state)
@@ -345,13 +340,13 @@ let rec private evalExpr state expr =
                     | Instr
                     | BinaryUnknown _ -> IntValue 0
                 result, rightState))
-    | CallFunc(symbolId, args, _, pos) ->
+    | CallFunc(symbolId, args, hirType, pos) ->
         match state.Program.Routines |> List.tryFind (fun (routine: HirRoutine) -> routine.Symbol = symbolId) with
         | Some routine ->
             callRoutine state routine args pos
         | None ->
             let valueArgs = args |> List.choose (function | ValueArg expr -> Some expr | RefArg _ -> None)
-            evalBuiltInFunction state symbolId valueArgs pos
+            evalBuiltInFunction state symbolId valueArgs hirType pos
 
 and private evalExprList state exprs =
     let folder acc expr =
@@ -366,7 +361,7 @@ and private evalLineNumber state expr pos =
     evalExpr state expr
     |> Result.map (fun (value, nextState) -> asInt value, nextState)
 
-and private evalBuiltInFunction state symbolId argExprs pos =
+and private evalBuiltInFunction state symbolId argExprs hirType pos =
     let name = symbolName state symbolId
     let normalized = normalizeIdentifier name
 
@@ -379,9 +374,9 @@ and private evalBuiltInFunction state symbolId argExprs pos =
         | _ -> runtimeError BuiltInArityMismatch (Some pos) $"Built-in function '{name}' expects one argument."
 
     match normalized with
-    | "ABS" -> expectOneNumeric (fun value -> makeNumericValue HIR.HirType.Int (abs (normalizeNumber value)))
-    | "INT" -> expectOneNumeric (fun value -> IntValue (int (Math.Floor(normalizeNumber value))))
-    | "ROUND" -> expectOneNumeric (fun value -> IntValue (int (Math.Round(normalizeNumber value))))
+    | "ABS" -> expectOneNumeric (fun value -> makeNumericValue hirType (abs (normalizeNumber value)))
+    | "INT" -> expectOneNumeric (fun value -> makeNumericValue hirType (Math.Floor(normalizeNumber value)))
+    | "ROUND" -> expectOneNumeric (fun value -> makeNumericValue hirType (Math.Round(normalizeNumber value)))
     | "STR$" ->
         match argExprs with
         | [ _ ] ->
@@ -428,12 +423,12 @@ and private evalBuiltInFunction state symbolId argExprs pos =
                     let minValue = asInt low
                     let maxValue = asInt high
                     let value = highState.Options.Random.Next(minValue, maxValue + 1)
-                    IntValue value, highState))
+                    makeNumericValue hirType (double value), highState))
         | [ _ ] ->
             evalArgs ()
             |> Result.map (fun (values, nextState) ->
                 let upper = max 1 (asInt values[0])
-                IntValue (nextState.Options.Random.Next(1, upper + 1)), nextState)
+                makeNumericValue hirType (double (nextState.Options.Random.Next(1, upper + 1))), nextState)
         | [] -> Result.Ok(FloatValue (state.Options.Random.NextDouble()), state)
         | _ -> runtimeError BuiltInUnsupportedArguments (Some pos) $"Built-in function '{name}' received unsupported arguments."
     | _ -> runtimeError BuiltInFunctionNotImplemented (Some pos) $"Built-in function '{name}' is not implemented."
@@ -506,7 +501,9 @@ and private callRoutine state (routine: HirRoutine) args pos =
 
         let stateWithFrame = withFrame frame stateAfterArgs
 
-        executeBlock stateWithFrame routine.Body
+        let resolveLine = buildLineTargets routine.Body
+
+        executeBlock resolveLine stateWithFrame routine.Body 0 [] (fun state _ -> Result.Ok(Continue, state))
         |> Result.bind (fun (flow, afterBody) ->
             let finalState = popFrame afterBody
             match flow, routine.ReturnType with
@@ -515,6 +512,8 @@ and private callRoutine state (routine: HirRoutine) args pos =
             | BareReturn, _ -> Result.Ok(IntValue 0, finalState)
             | Continue, Some _ -> Result.Ok(IntValue 0, finalState)
             | Continue, None -> Result.Ok(IntValue 0, finalState)
+            | TransferredContinue, Some _ -> Result.Ok(IntValue 0, finalState)
+            | TransferredContinue, None -> Result.Ok(IntValue 0, finalState)
             | StopExecution, _ -> runtimeError EscapedStop (Some pos) $"STOP escaped from routine '{routine.Name}'."
             | JumpToLine lineNumber, _ -> runtimeError MissingGotoTarget (Some pos) $"GOTO target line {lineNumber} does not exist in routine '{routine.Name}'."
             | GosubToLine lineNumber, _ -> runtimeError MissingGosubTarget (Some pos) $"GOSUB target line {lineNumber} does not exist in routine '{routine.Name}'."
@@ -590,7 +589,7 @@ and private executeBuiltInCall state kind channel args targets pos =
     | OnGotoBuiltIn
     | OnGosubBuiltIn -> runtimeError BuiltInStatementNotImplemented (Some pos) $"Built-in statement '{kind}' is not implemented."
 
-and private executeStmt state stmt =
+and private executeStmt resolveLine gosubStack state stmt =
     match stmt with
     | Assign(target, expr, _) ->
         evalExpr state expr
@@ -610,10 +609,10 @@ and private executeStmt state stmt =
     | If(condition, thenBlock, elseBlock, _) ->
         evalExpr state condition
         |> Result.bind (fun (value, nextState) ->
-            if truthy value then executeBlock nextState thenBlock
+            if truthy value then executeBlock resolveLine nextState thenBlock 0 gosubStack (fun state _ -> Result.Ok(Continue, state))
             else
                 match elseBlock with
-                | Some block -> executeBlock nextState block
+                | Some block -> executeBlock resolveLine nextState block 0 gosubStack (fun state _ -> Result.Ok(Continue, state))
                 | None -> Result.Ok(Continue, nextState))
     | For(loopId, symbolId, startExpr, endExpr, stepExpr, body, pos) ->
         evalExprList state [ startExpr; endExpr; stepExpr ]
@@ -631,7 +630,7 @@ and private executeStmt state stmt =
                         if not shouldContinue then
                             Result.Ok(Continue, currentState)
                         else
-                            executeBlock currentState body
+                            executeBlock resolveLine currentState body 0 gosubStack (fun state _ -> Result.Ok(Continue, state))
                             |> Result.bind (fun (flow, bodyState) ->
                                 match flow with
                                 | Continue -> iterate bodyState (currentValue + step)
@@ -642,7 +641,7 @@ and private executeStmt state stmt =
             | _ -> runtimeError InvalidForBounds (Some pos) "FOR requires start, end, and step values.")
     | Repeat(loopId, _, body, _) ->
         let rec iterate currentState =
-            executeBlock currentState body
+            executeBlock resolveLine currentState body 0 gosubStack (fun state _ -> Result.Ok(Continue, state))
             |> Result.bind (fun (flow, nextState) ->
                 match flow with
                 | Continue -> iterate nextState
@@ -709,32 +708,74 @@ and private executeStmt state stmt =
         assign state targets
     | Remark _ -> Result.Ok(Continue, state)
 
-and private executeBlock state block =
-    let lineIndex = buildLineIndex block
+and private executeBlock resolveLine state block pc gosubStack kContinue =
+    if pc >= block.Length then
+        kContinue state gosubStack
+    else
+        executeStmt resolveLine gosubStack state block[pc]
+        |> Result.bind (fun (flow, nextState) ->
+            match flow with
+            | Continue -> executeBlock resolveLine nextState block (pc + 1) gosubStack kContinue
+            | JumpToLine lineNumber ->
+                match resolveLine lineNumber with
+                | Some target ->
+                    target nextState gosubStack
+                    |> Result.map (fun (flow, state) ->
+                        match flow with
+                        | Continue -> TransferredContinue, state
+                        | _ -> flow, state)
+                | None -> Result.Ok(JumpToLine lineNumber, nextState)
+            | GosubToLine lineNumber ->
+                let returnCont returnState =
+                    executeBlock resolveLine returnState block (pc + 1) gosubStack kContinue
 
-    let rec loop currentState pc gosubStack =
-        if pc >= block.Length then
-            Result.Ok(Continue, currentState)
-        else
-            executeStmt currentState block[pc]
-            |> Result.bind (fun (flow, nextState) ->
-                match flow with
-                | Continue -> loop nextState (pc + 1) gosubStack
-                | JumpToLine lineNumber ->
-                    match Map.tryFind lineNumber lineIndex with
-                    | Some targetPc -> loop nextState targetPc gosubStack
-                    | None -> Result.Ok(JumpToLine lineNumber, nextState)
-                | GosubToLine lineNumber ->
-                    match Map.tryFind lineNumber lineIndex with
-                    | Some targetPc -> loop nextState targetPc ((pc + 1) :: gosubStack)
-                    | None -> Result.Ok(GosubToLine lineNumber, nextState)
-                | BareReturn ->
-                    match gosubStack with
-                    | returnPc :: rest -> loop nextState returnPc rest
-                    | [] -> Result.Ok(BareReturn, nextState)
-                | _ -> Result.Ok(flow, nextState))
+                match resolveLine lineNumber with
+                | Some target -> target nextState (returnCont :: gosubStack)
+                | None -> Result.Ok(GosubToLine lineNumber, nextState)
+            | BareReturn ->
+                match gosubStack with
+                | returnCont :: _ -> returnCont nextState
+                | [] -> Result.Ok(BareReturn, nextState)
+            | _ -> Result.Ok(flow, nextState))
 
-    loop state 0 []
+and private buildLineTargets rootBlock =
+    let rec build block kContinue =
+        block
+        |> List.mapi (fun index stmt ->
+            let directTargets =
+                match stmt with
+                | LineNumber(value, _) ->
+                    [ value,
+                      (fun state gosubStack ->
+                          executeBlock resolveLine state block index gosubStack kContinue) ]
+                | _ -> []
+
+            let continueAfter state gosubStack =
+                executeBlock resolveLine state block (index + 1) gosubStack kContinue
+
+            let nestedTargets =
+                match stmt with
+                | If(_, thenBlock, elseBlock, _) ->
+                    let elseTargets =
+                        match elseBlock with
+                        | Some block -> build block continueAfter
+                        | None -> []
+
+                    build thenBlock continueAfter @ elseTargets
+                | For(_, _, _, _, _, body, _)
+                | Repeat(_, _, body, _) -> build body continueAfter
+                | _ -> []
+
+            directTargets @ nestedTargets)
+        |> List.concat
+
+    and resolveLine lineNumber =
+        targets.Value |> Map.tryFind lineNumber
+
+    and targets : Lazy<Map<int, LineTarget>> =
+        lazy (build rootBlock (fun state _ -> Result.Ok(Continue, state)) |> Map.ofList)
+
+    resolveLine
 
 let interpretProgramWithOptions options (program: HirProgram) =
     let initialState =
@@ -745,10 +786,13 @@ let interpretProgramWithOptions options (program: HirProgram) =
           Output = []
           Options = options }
 
-    executeBlock initialState program.Main
+    let resolveLine = buildLineTargets program.Main
+
+    executeBlock resolveLine initialState program.Main 0 [] (fun state _ -> Result.Ok(Continue, state))
     |> Result.bind (fun (flow, finalState) ->
         match flow with
         | Continue
+        | TransferredContinue
         | StopExecution -> Result.Ok { Output = finalState.Output }
         | ReturnFromRoutine _
         | BareReturn -> runtimeError EscapedReturn None "Return escaped the top-level program."
