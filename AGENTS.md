@@ -52,7 +52,7 @@ The runtime is incomplete. Many built-ins and host-specific behaviors are still 
 
 ## Backends
 
-- `interpret` - lower to HIR and run the interpreter
+- `interpret` - lower to HIR and run the interpreter, this is the priority defer support for alternative backends until the interpreter is stable and well-covered with tests
 - `csharp` - lower to HIR and write generated C# to the output path
 - `c` - lower to HIR and write generated C to the output path
 - `dotnetexe` - lower to HIR, generate C#, and publish a single-file `.NET` executable to the output path

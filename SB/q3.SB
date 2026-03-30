@@ -25,11 +25,11 @@
 340 DEFine PROCedure check
 140 DIM a(10001,17)
 150 DIM b(10001)
-350 PRINT "Time" ! DATE-now
 360 FOR loop = 1 TO n-1
 365 PRINT b(loop)
 370 IF b(loop) > b(loop + 1) THEN PRINT "Error at" ! loop
 380 END FOR loop
+385 PRINT "Time taken" ! DATE-now
 390 END DEFine
 400 DEFine PROCedure set_up_tabLe
 410 LOCal entry
