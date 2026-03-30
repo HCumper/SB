@@ -128,6 +128,27 @@ let ``reference statement marks referenced parameter as by reference`` () =
     | other -> Assert.Fail($"Expected parameter symbol for total, got %A{other}")
 
 [<Test>]
+let ``procedure closing name mismatch reports semantic error`` () =
+    let analyzed =
+        analyzeProgram "10 DEFine PROCedure main\n20 END DEFine other\n"
+
+    Assert.That(analyzed.Errors, Has.Some.Contains("Closing name 'other' does not match routine 'main'"))
+
+[<Test>]
+let ``for closing name mismatch reports semantic error`` () =
+    let analyzed =
+        analyzeProgram "10 FOR i = 1 TO 2\n20 END FOR j\n"
+
+    Assert.That(analyzed.Errors, Has.Some.Contains("Closing name 'j' does not match FOR loop 'i'"))
+
+[<Test>]
+let ``repeat closing name mismatch reports semantic error`` () =
+    let analyzed =
+        analyzeProgram "10 REPeat outer\n20 END REPeat inner\n"
+
+    Assert.That(analyzed.Errors, Has.Some.Contains("Closing name 'inner' does not match REPEAT loop 'outer'"))
+
+[<Test>]
 let ``dim inside procedure without local remains globally resolvable`` () =
     let analyzed =
         analyzeProgram "10 DEFine PROCedure initialise\n20 DIM score(100)\n30 END DEFine\n40 PRINT score(1)\n"

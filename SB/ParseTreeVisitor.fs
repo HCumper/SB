@@ -244,6 +244,10 @@ type ASTBuildingVisitor() =
             match ids with
             | id :: _ -> id.GetText()
             | [] -> ""
+        let closingName =
+            match ids with
+            | _ :: closing :: [] -> Some(closing.GetText())
+            | _ -> None
 
         let parms =
             match ctx.formalParams() with
@@ -257,7 +261,7 @@ type ASTBuildingVisitor() =
                 | null -> None
                 | line -> Some (singleLine line (line.Accept(this))))
             |> Seq.toList
-        single (StmtNode(ProcedureDef(p, name, parms, body)))
+        single (StmtNode(ProcedureDef(p, name, parms, body, closingName)))
 
     override this.VisitFunctionDef(ctx: SBParser.FunctionDefContext) =
         let p = posOfTree ctx
@@ -266,6 +270,10 @@ type ASTBuildingVisitor() =
             match ids with
             | id :: _ -> id.GetText()
             | [] -> ""
+        let closingName =
+            match ids with
+            | _ :: closing :: [] -> Some(closing.GetText())
+            | _ -> None
 
         let parms =
             match ctx.formalParams() with
@@ -279,7 +287,7 @@ type ASTBuildingVisitor() =
                 | null -> None
                 | line -> Some (singleLine line (line.Accept(this))))
             |> Seq.toList
-        single (StmtNode(FunctionDef(p, name, parms, body)))
+        single (StmtNode(FunctionDef(p, name, parms, body, closingName)))
 
     override this.VisitDim(ctx: SBParser.DimContext) =
         // Declaration-style statements are normalized into compact tuples rather
@@ -561,7 +569,11 @@ type ASTBuildingVisitor() =
                     | null -> StatementBlock([])
                     | stmtList -> StatementBlock(this.CollectStmtList(stmtList))
 
-                StmtNode(ForStmt(p, name, startExpr, endExpr, stepExpr, body)), []
+                let closingName =
+                    match body with
+                    | _ -> None
+
+                StmtNode(ForStmt(p, name, startExpr, endExpr, stepExpr, body, closingName)), []
             | bodyCtx ->
                 let leadingLines =
                     bodyCtx.forBodyLine()
@@ -584,8 +596,12 @@ type ASTBuildingVisitor() =
                     match terminator.stmtlist() with
                     | null -> []
                     | stmtList -> stmtList.Accept(this)
+                let closingName =
+                    match terminator.ID() with
+                    | null -> None
+                    | id -> Some(id.GetText())
 
-                StmtNode(ForStmt(p, name, startExpr, endExpr, stepExpr, LineBlock(leadingLines @ closingLine))), trailingNodes
+                StmtNode(ForStmt(p, name, startExpr, endExpr, stepExpr, LineBlock(leadingLines @ closingLine), closingName)), trailingNodes
 
         loopStmt :: trailingNodes
 
@@ -596,6 +612,10 @@ type ASTBuildingVisitor() =
             match ids with
             | id :: _ -> id.GetText()
             | [] -> ""
+        let closingName =
+            match ids with
+            | _ :: closing :: [] -> Some(closing.GetText())
+            | _ -> None
         let body =
             match ctx.stmtlist() with
             | null ->
@@ -609,7 +629,7 @@ type ASTBuildingVisitor() =
                 LineBlock(lines)
             | stmtList ->
                 StatementBlock(this.CollectStmtList(stmtList))
-        single (StmtNode(RepeatStmt(p, name, body)))
+        single (StmtNode(RepeatStmt(p, name, body, closingName)))
 
     override this.VisitIfStmt(ctx: SBParser.IfStmtContext) =
         let p = posOfTree ctx

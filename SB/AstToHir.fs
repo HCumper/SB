@@ -503,7 +503,7 @@ let rec private lowerStmt ctx stmt =
                 |> bind (fun loweredArgs ->
                     requireSymbolIdForName ctx ctx.CurrentScope name pos
                     |> map (fun symbolId -> [ ProcCall(symbolId, Some loweredChannel, loweredArgs, pos) ])))
-    | ForStmt(pos, name, startExpr, endExpr, stepExpr, body) ->
+    | ForStmt(pos, name, startExpr, endExpr, stepExpr, body, _) ->
         let loopId = nextLoopId ctx
         let loopCtx = withLoop ctx (NamedLoop name) loopId
         let loweredStep =
@@ -517,7 +517,7 @@ let rec private lowerStmt ctx stmt =
             |> bind (fun loweredBody ->
                 requireSymbolIdForName ctx ctx.CurrentScope name pos
                     |> map (fun symbolId -> [ For(loopId, symbolId, loweredStart, loweredEnd, loweredStepExpr, loweredBody, pos) ])))
-    | RepeatStmt(pos, label, body) ->
+    | RepeatStmt(pos, label, body, _) ->
         let loopName = lowerLoopName label
         let loopId = nextLoopId ctx
         let loopCtx = withLoop ctx loopName loopId
@@ -662,9 +662,9 @@ let private lowerRoutine symbolIds state routine =
         | None -> fail name (Some pos) $"Unable to resolve routine '{name}'."
 
     match routine with
-    | ProcedureDef(pos, name, parameters, body) ->
+    | ProcedureDef(pos, name, parameters, body, _) ->
         buildRoutine pos name parameters body None
-    | FunctionDef(pos, name, parameters, body) ->
+    | FunctionDef(pos, name, parameters, body, _) ->
         let returnType =
             match tryResolveSymbol globalScope name state.SymTab with
             | Some(_, FunctionSym symbol) -> Some(lowerSBType symbol.ReturnType)

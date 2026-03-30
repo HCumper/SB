@@ -25,6 +25,10 @@ open SSB
 open Monads.State
 open SyntaxAst
 
+type SyntaxCheckingMode =
+    | Relaxed
+    | Rigorous
+
 // CompilerPipeline sequences the major compiler stages.
 //
 // It is responsible for moving source text through preprocessing, parsing, AST
@@ -68,6 +72,7 @@ type RuntimeSettings = {
     OutputFileName: string
     Verbose: bool
     Backend: string
+    SyntaxChecking: SyntaxCheckingMode
     AppName: string
     Logger: Core.Logger
 }
@@ -83,6 +88,13 @@ let private configureLogger (config: IConfiguration) =
         .ReadFrom.Configuration(config)
         .CreateLogger()
 
+let private parseSyntaxCheckingMode (value: string) =
+    match (if isNull value then "" else value.Trim().ToLowerInvariant()) with
+    | "rigorous" -> Rigorous
+    | "relaxed"
+    | "" -> Relaxed
+    | _ -> Relaxed
+
 let getSettings argv : RuntimeSettings =
     let configSettings = buildConfig ()
     let appName = configSettings.GetValue<string>("ApplicationName")
@@ -90,6 +102,7 @@ let getSettings argv : RuntimeSettings =
     let outputFileName = configSettings.GetValue<string>("AppSettings:OutputFile")
     let verbosityLevel = configSettings.GetValue<bool>("AppSettings:Verbose")
     let backend = configSettings.GetValue<string>("AppSettings:Backend")
+    let syntaxChecking = parseSyntaxCheckingMode (configSettings.GetValue<string>("AppSettings:SyntaxChecking"))
     let logger = configureLogger configSettings
     let defaultBackend = if String.IsNullOrWhiteSpace backend then "interpret" else backend
 
@@ -99,6 +112,7 @@ let getSettings argv : RuntimeSettings =
           OutputFileName = output
           Verbose = Boolean.Parse(verbose)
           Backend = backendName
+          SyntaxChecking = syntaxChecking
           AppName = appName
           Logger = logger }
     | [| input; output; verbose |] ->
@@ -106,6 +120,7 @@ let getSettings argv : RuntimeSettings =
           OutputFileName = output
           Verbose = Boolean.Parse(verbose)
           Backend = defaultBackend
+          SyntaxChecking = syntaxChecking
           AppName = appName
           Logger = logger }
     | _ ->
@@ -113,6 +128,7 @@ let getSettings argv : RuntimeSettings =
           OutputFileName = outputFileName
           Verbose = verbosityLevel
           Backend = defaultBackend
+          SyntaxChecking = syntaxChecking
           AppName = appName
           Logger = logger }
 
@@ -142,13 +158,41 @@ let private prepareSource (inputFileName: string) : Result<PreparedSource, Parse
     with
     | ex -> Result.Error(ParseError ex.Message)
 
-let parsePreparedSource (preparedSource: PreparedSource) : Result<IParseTree * AntlrInputStream, ParseError> =
+type private CollectingErrorListener() =
+    inherit BaseErrorListener()
+
+    let mutable errors : string list = []
+    
+    let isIgnorableEofError (msg: string) =
+        let normalized = if isNull msg then String.Empty else msg.Trim()
+        normalized.Contains("'<EOF>'")
+
+    member _.Messages = List.rev errors
+
+    override _.SyntaxError(_output, _recognizer, _offendingSymbol, line, charPositionInLine, msg, _e) =
+        if not (isIgnorableEofError msg) then
+            errors <- $"line {line}:{charPositionInLine} {msg}" :: errors
+
+let parsePreparedSource syntaxChecking (preparedSource: PreparedSource) : Result<IParseTree * AntlrInputStream * string list, ParseError> =
     try
         let inputStream = AntlrInputStream(preparedSource.EffectiveText)
         let lexer = createLexer inputStream
         let tokenStream = CommonTokenStream(lexer)
         let parser = SBParser(tokenStream)
-        Ok(parser.program(), inputStream)
+        let errorListener = CollectingErrorListener()
+
+        parser.RemoveErrorListeners()
+        parser.AddErrorListener(errorListener)
+
+        let parseTree = parser.program()
+        let parseMessages = errorListener.Messages
+
+        if syntaxChecking = Rigorous then
+            match parseMessages with
+            | [] -> Ok(parseTree, inputStream, [])
+            | errors -> Result.Error(ParseError(String.concat Environment.NewLine errors))
+        else
+            Ok(parseTree, inputStream, parseMessages)
     with
     | ex -> Result.Error(ParseError ex.Message)
 
@@ -159,6 +203,66 @@ let processToAST ((tree: IParseTree), _inputStream) verbose : Ast =
     let astRoot = List.head astNodes
     if verbose then Console.WriteLine(prettyPrintAst astRoot)
     astRoot
+
+let private validateLineSequence ast =
+    let rec collectBlock contextName block =
+        match block with
+        | StatementBlock stmts -> collectStmts contextName stmts
+        | LineBlock lines -> collectLines contextName lines
+
+    and collectStmts contextName stmts =
+        stmts
+        |> List.collect (fun stmt ->
+            match stmt with
+            | ProcedureDef(_, name, _, body, _)
+            | FunctionDef(_, name, _, body, _) ->
+                collectLines $"routine '{name}'" body
+            | ForStmt(_, name, _, _, _, body, _) ->
+                collectBlock $"FOR loop '{name}'" body
+            | RepeatStmt(_, name, body, _) ->
+                collectBlock $"REPEAT loop '{name}'" body
+            | IfStmt(_, _, thenBlock, elseBlock) ->
+                let thenEntries = collectBlock $"{contextName} IF branch" thenBlock
+                let elseEntries =
+                    match elseBlock with
+                    | Some block -> collectBlock $"{contextName} ELSE branch" block
+                    | None -> []
+                thenEntries @ elseEntries
+            | SelectStmt(_, _, clauses) ->
+                clauses
+                |> List.collect (fun (SelectClause(_, _, _, block)) ->
+                    match block with
+                    | Some clauseBlock -> collectBlock $"{contextName} SELECT clause" clauseBlock
+                    | None -> [])
+            | WhenStmt(_, _, body) ->
+                collectLines $"{contextName} WHEN body" body
+            | _ -> [])
+
+    and collectLines contextName lines =
+        lines
+        |> List.collect (fun (Line(pos, lineNumber, stmts)) ->
+            let currentEntry =
+                match lineNumber with
+                | Some value -> [ value, pos, contextName ]
+                | None -> []
+            currentEntry @ collectStmts contextName stmts)
+
+    match ast with
+    | Program(_, lines) ->
+        let numberedLines = collectLines "program" lines
+
+        let rec loop previous errors remaining =
+            match remaining with
+            | [] -> List.rev errors
+            | (current, pos, contextName) :: tail ->
+                let nextErrors =
+                    match previous with
+                    | Some(prevNumber, _, _) when current <= prevNumber ->
+                        $"Out-of-sequence line number {current} after {prevNumber} in {contextName} at {pos.EditorLineNo}:{pos.Column}" :: errors
+                    | _ -> errors
+                loop (Some(current, pos, contextName)) nextErrors tail
+
+        loop None [] numberedLines
 
 // Semantic analysis is modeled as a state pipeline so symbol-table mutations stay explicit.
 let semanticAnalysisState : State<ProcessingState, ProcessingState> =
@@ -356,10 +460,15 @@ let loadAstFromInput settings =
     match prepareSource settings.InputFileName with
     | Result.Error parseError -> Result.Error parseError
     | Ok preparedSource ->
-        match parsePreparedSource preparedSource with
+        match parsePreparedSource settings.SyntaxChecking preparedSource with
         | Result.Error parseError -> Result.Error parseError
-        | Ok(parseTree, inputStream) ->
+        | Ok(parseTree, inputStream, parseWarnings) ->
+            if parseWarnings |> List.isEmpty |> not then
+                for warning in parseWarnings do
+                    settings.Logger.Warning("Parser recovery warning: {Warning}", warning)
             if settings.Verbose then
                 printfn $"Parsing succeeded. Source kind: %A{preparedSource.Kind}"
             let ast = processToAST (parseTree, inputStream) settings.Verbose
-            Ok(parseTree, inputStream, ast)
+            match validateLineSequence ast with
+            | [] -> Ok(parseTree, inputStream, ast)
+            | errors -> Result.Error(ParseError(String.concat Environment.NewLine errors))

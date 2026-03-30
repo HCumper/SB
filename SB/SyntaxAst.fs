@@ -34,8 +34,8 @@ and SelectClause =
     | SelectClause of SourcePosition * Expr * Expr * Block option
 
 and Stmt =
-    | ProcedureDef of SourcePosition * string * string list * Line list
-    | FunctionDef of SourcePosition * string * string list * Line list
+    | ProcedureDef of SourcePosition * string * string list * Line list * string option
+    | FunctionDef of SourcePosition * string * string list * Line list * string option
     | DimStmt of SourcePosition * (string * Expr list) list
     | LocalStmt of SourcePosition * (string * Expr list option) list
     | ImplicitStmt of SourcePosition * string * string list
@@ -47,8 +47,8 @@ and Stmt =
     | OnGosubStmt of SourcePosition * Expr * Expr list
     | ProcedureCall of SourcePosition * string * Expr list
     | ChannelProcedureCall of SourcePosition * string * Expr * Expr list
-    | ForStmt of SourcePosition * string * Expr * Expr * Expr option * Block
-    | RepeatStmt of SourcePosition * string * Block
+    | ForStmt of SourcePosition * string * Expr * Expr * Expr option * Block * string option
+    | RepeatStmt of SourcePosition * string * Block * string option
     | IfStmt of SourcePosition * Expr * Block * Block option
     | SelectStmt of SourcePosition * Expr * SelectClause list
     | WhenStmt of SourcePosition * Expr option * Line list

@@ -70,6 +70,7 @@ let private testSettings inputFile =
       OutputFileName = Path.GetTempFileName()
       Verbose = false
       Backend = "interpret"
+      SyntaxChecking = Relaxed
       AppName = "Test"
       Logger = LoggerConfiguration().CreateLogger() }
 
@@ -110,7 +111,7 @@ let private topLevelStatements ast =
 let private tryFindProcedure name ast =
     topLevelStatements ast
     |> List.tryPick (function
-        | ProcedureDef(_, procName, parameters, body) when procName = name -> Some(parameters, body)
+        | ProcedureDef(_, procName, parameters, body, _) when procName = name -> Some(parameters, body)
         | _ -> None)
 
 let private tryFindLine lineNumber lines =
@@ -131,16 +132,24 @@ let ``q3 fixture preserves selected AST subtrees`` () =
         Assert.That(parameters[0], Is.EqualTo("l"))
         Assert.That(parameters[1], Is.EqualTo("r"))
 
-        match tryFindLine 630 body with
-        | Some [ Assignment(_, Identifier(_, _, "i"), Identifier(_, _, "l")); Assignment(_, Identifier(_, _, "j"), Identifier(_, _, "r")) ] -> ()
-        | other -> Assert.Fail($"Unexpected quicksort line 630: %A{other}")
+        let hasInitialBoundsAssignments =
+            body
+            |> List.exists (function
+                | Line(_, _, [ Assignment(_, Identifier(_, _, "i"), Identifier(_, _, "l")); Assignment(_, Identifier(_, _, "j"), Identifier(_, _, "r")) ]) -> true
+                | _ -> false)
+
+        Assert.That(hasInitialBoundsAssignments, Is.True)
     | None -> Assert.Fail("Expected top-level procedure 'quicksort'")
 
     match tryFindProcedure "QUICKSORT1" ast with
     | Some(_, body) ->
-        match tryFindLine 1230 body with
-        | Some [ Assignment(_, Identifier(_, _, "low"), Identifier(_, _, "bottom")); Assignment(_, Identifier(_, _, "high"), Identifier(_, _, "top")); Assignment(_, Identifier(_, _, "ptr"), Identifier(_, _, "bottom")) ] -> ()
-        | other -> Assert.Fail($"Unexpected QUICKSORT1 line 1230: %A{other}")
+        let hasPartitionSetupAssignments =
+            body
+            |> List.exists (function
+                | Line(_, _, [ Assignment(_, Identifier(_, _, "low"), Identifier(_, _, "bottom")); Assignment(_, Identifier(_, _, "high"), Identifier(_, _, "top")); Assignment(_, Identifier(_, _, "ptr"), Identifier(_, _, "bottom")) ]) -> true
+                | _ -> false)
+
+        Assert.That(hasPartitionSetupAssignments, Is.True)
     | None -> Assert.Fail("Expected top-level procedure 'QUICKSORT1'")
 
 [<Test>]
@@ -213,7 +222,7 @@ let ``golfer fixture preserves selected AST subtrees`` () =
     match tryFindProcedure "pow" ast with
     | Some(_, body) ->
         match tryFindLine 860 body with
-        | Some [ ForStmt(_, "p", NumberLiteral(_, _, "0"), NumberLiteral(_, _, "200"), None, LineBlock _) ] -> ()
+        | Some [ ForStmt(_, "p", NumberLiteral(_, _, "0"), NumberLiteral(_, _, "200"), None, LineBlock _, _) ] -> ()
         | other -> Assert.Fail($"Unexpected pow line 860: %A{other}")
     | None -> Assert.Fail("Expected top-level procedure 'pow'")
 

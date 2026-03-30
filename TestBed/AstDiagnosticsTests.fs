@@ -32,7 +32,8 @@ let private sampleAst =
                         pos 2 2,
                         bin 2 5 "=" (id 2 5 "x") (num 2 9 "3"),
                         StatementBlock [ ProcedureCall(pos 2 12, "PRINT", [ id 2 18 "paramtype" ]) ],
-                        Some (StatementBlock [ Remark(pos 2 28, "done") ])) ]) ]) ]) ])
+                        Some (StatementBlock [ Remark(pos 2 28, "done") ])) ]) ],
+                None) ]) ])
 
 [<Test>]
 let ``prettyPrintAst renders canonical structural output`` () =

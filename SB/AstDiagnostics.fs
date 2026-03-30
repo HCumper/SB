@@ -80,15 +80,17 @@ and private prettyStmt level stmt =
     match stmt with
     // Definitions and control-flow constructs are rendered in a tree shape so
     // nested statements and expressions stay easy to inspect.
-    | ProcedureDef(pos, name, parameters, body) ->
+    | ProcedureDef(pos, name, parameters, body, closingName) ->
         let parameterText = String.concat ", " parameters
+        let closingText = closingName |> Option.map (fun value -> $" end={value}") |> Option.defaultValue ""
         String.concat ""
-            [ $"{pad}ProcedureDef {name}({parameterText}) @{formatPosition pos}\n"
+            [ $"{pad}ProcedureDef {name}({parameterText}){closingText} @{formatPosition pos}\n"
               body |> List.map (prettyLine (level + 2)) |> String.concat "" ]
-    | FunctionDef(pos, name, parameters, body) ->
+    | FunctionDef(pos, name, parameters, body, closingName) ->
         let parameterText = String.concat ", " parameters
+        let closingText = closingName |> Option.map (fun value -> $" end={value}") |> Option.defaultValue ""
         String.concat ""
-            [ $"{pad}FunctionDef {name}({parameterText}) @{formatPosition pos}\n"
+            [ $"{pad}FunctionDef {name}({parameterText}){closingText} @{formatPosition pos}\n"
               body |> List.map (prettyLine (level + 2)) |> String.concat "" ]
     | DimStmt(pos, items) ->
         let itemText =
@@ -148,16 +150,18 @@ and private prettyStmt level stmt =
             [ $"{pad}ChannelProcedureCall {name} @{formatPosition pos}\n"
               prettyExpr (level + 2) channel
               args |> List.map (prettyExpr (level + 2)) |> String.concat "" ]
-    | ForStmt(pos, name, startExpr, endExpr, stepExpr, body) ->
+    | ForStmt(pos, name, startExpr, endExpr, stepExpr, body, closingName) ->
+        let closingText = closingName |> Option.map (fun value -> $" end={value}") |> Option.defaultValue ""
         String.concat ""
-            [ $"{pad}ForStmt {name} @{formatPosition pos}\n"
+            [ $"{pad}ForStmt {name}{closingText} @{formatPosition pos}\n"
               prettyExpr (level + 2) startExpr
               prettyExpr (level + 2) endExpr
               stepExpr |> Option.map (prettyExpr (level + 2)) |> Option.defaultValue ""
               prettyBlock (level + 2) body ]
-    | RepeatStmt(pos, name, body) ->
+    | RepeatStmt(pos, name, body, closingName) ->
+        let closingText = closingName |> Option.map (fun value -> $" end={value}") |> Option.defaultValue ""
         String.concat ""
-            [ $"{pad}RepeatStmt {name} @{formatPosition pos}\n"
+            [ $"{pad}RepeatStmt {name}{closingText} @{formatPosition pos}\n"
               prettyBlock (level + 2) body ]
     | IfStmt(pos, cond, thenBlock, elseBlock) ->
         String.concat ""
@@ -312,9 +316,12 @@ and private writeSelectClause (writer: Utf8JsonWriter) (SelectClause(pos, select
 and private writeStmt (writer: Utf8JsonWriter) stmt =
     writer.WriteStartObject()
     match stmt with
-    | ProcedureDef(pos, name, parameters, body) ->
+    | ProcedureDef(pos, name, parameters, body, closingName) ->
         writer.WriteString("kind", "ProcedureDef")
         writer.WriteString("name", name)
+        match closingName with
+        | Some value -> writer.WriteString("closingName", value)
+        | None -> ()
         writer.WritePropertyName("position")
         writePosition writer pos
         writeStringArray "parameters" writer parameters
@@ -322,9 +329,12 @@ and private writeStmt (writer: Utf8JsonWriter) stmt =
         writer.WriteStartArray()
         body |> List.iter (writeLine writer)
         writer.WriteEndArray()
-    | FunctionDef(pos, name, parameters, body) ->
+    | FunctionDef(pos, name, parameters, body, closingName) ->
         writer.WriteString("kind", "FunctionDef")
         writer.WriteString("name", name)
+        match closingName with
+        | Some value -> writer.WriteString("closingName", value)
+        | None -> ()
         writer.WritePropertyName("position")
         writePosition writer pos
         writeStringArray "parameters" writer parameters
@@ -439,9 +449,12 @@ and private writeStmt (writer: Utf8JsonWriter) stmt =
         writer.WriteStartArray()
         args |> List.iter (writeExpr writer)
         writer.WriteEndArray()
-    | ForStmt(pos, name, startExpr, endExpr, stepExpr, body) ->
+    | ForStmt(pos, name, startExpr, endExpr, stepExpr, body, closingName) ->
         writer.WriteString("kind", "ForStmt")
         writer.WriteString("name", name)
+        match closingName with
+        | Some value -> writer.WriteString("closingName", value)
+        | None -> ()
         writer.WritePropertyName("position")
         writePosition writer pos
         writer.WritePropertyName("start")
@@ -454,9 +467,12 @@ and private writeStmt (writer: Utf8JsonWriter) stmt =
         | None -> writer.WriteNullValue()
         writer.WritePropertyName("body")
         writeBlock writer body
-    | RepeatStmt(pos, name, body) ->
+    | RepeatStmt(pos, name, body, closingName) ->
         writer.WriteString("kind", "RepeatStmt")
         writer.WriteString("name", name)
+        match closingName with
+        | Some value -> writer.WriteString("closingName", value)
+        | None -> ()
         writer.WritePropertyName("position")
         writePosition writer pos
         writer.WritePropertyName("body")

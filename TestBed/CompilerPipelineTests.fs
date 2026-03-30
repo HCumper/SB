@@ -12,6 +12,7 @@ let ``getSettings accepts explicit backend argument`` () =
     Assert.That(settings.OutputFileName, Is.EqualTo("output.cs"))
     Assert.That(settings.Verbose, Is.False)
     Assert.That(settings.Backend, Is.EqualTo("csharp"))
+    Assert.That(settings.SyntaxChecking, Is.EqualTo(Relaxed))
 
 [<Test>]
 let ``getSettings keeps three-argument cli compatibility`` () =
@@ -21,3 +22,4 @@ let ``getSettings keeps three-argument cli compatibility`` () =
     Assert.That(settings.OutputFileName, Is.EqualTo("output.txt"))
     Assert.That(settings.Verbose, Is.True)
     Assert.That(settings.Backend, Is.Not.Empty)
+    Assert.That(settings.SyntaxChecking, Is.EqualTo(Relaxed))

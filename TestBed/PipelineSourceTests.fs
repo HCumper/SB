@@ -4,6 +4,8 @@ open System
 open System.IO
 open NUnit.Framework
 open Serilog
+open Serilog.Core
+open Serilog.Events
 
 open CompilerPipeline
 open SSB
@@ -25,8 +27,22 @@ let private testSettings inputFile =
       OutputFileName = Path.GetTempFileName()
       Verbose = false
       Backend = "interpret"
+      SyntaxChecking = Relaxed
       AppName = "Test"
       Logger = LoggerConfiguration().CreateLogger() }
+
+let private testSettingsWithSyntaxChecking syntaxChecking inputFile =
+    { testSettings inputFile with
+        SyntaxChecking = syntaxChecking }
+
+type private CollectingSink() =
+    let messages = ResizeArray<string>()
+
+    member _.Messages = messages |> Seq.toList
+
+    interface ILogEventSink with
+        member _.Emit(logEvent: LogEvent) =
+            messages.Add(logEvent.RenderMessage())
 
 let private withTempSource (content: string) action =
     let path = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.sb")
@@ -113,4 +129,63 @@ let ``loadAstFromInput does not crash on ssb272 recovery parse`` () =
             | None -> Assert.Fail("Expected pipeline result to be captured.")
         finally
             Directory.SetCurrentDirectory(originalCurrentDirectory)
+    )
+
+[<Test>]
+let ``loadAstFromInput relaxed syntax checking keeps parser recovery behavior`` () =
+    withTempSource "10 FOR i = 1 TO 2\n20 PRINT i\n30 END\n" (fun path ->
+        match loadAstFromInput (testSettingsWithSyntaxChecking Relaxed path) with
+        | Error err -> Assert.Fail($"Expected relaxed syntax checking to allow parser recovery, got %A{err}")
+        | Ok(_, _, Program(_, lines)) -> Assert.That(lines, Is.Not.Empty)
+    )
+
+[<Test>]
+let ``loadAstFromInput rigorous syntax checking reports parse errors`` () =
+    withTempSource "10 FOR i = 1 TO 2\n20 PRINT i\n30 END\n" (fun path ->
+        match loadAstFromInput (testSettingsWithSyntaxChecking Rigorous path) with
+        | Error(ParseError message) -> Assert.That(message, Does.Contain("line"))
+        | Error(FileNotFound fileName) -> Assert.Fail($"Expected parse failure, got missing file %s{fileName}")
+        | Ok _ -> Assert.Fail("Expected rigorous syntax checking to reject parser recovery input.")
+    )
+
+[<Test>]
+let ``loadAstFromInput rigorous syntax checking ignores eof only parser noise`` () =
+    withTempSource "10 PRINT 1" (fun path ->
+        match loadAstFromInput (testSettingsWithSyntaxChecking Rigorous path) with
+        | Error err -> Assert.Fail($"Expected EOF-only parser noise to be ignored, got %A{err}")
+        | Ok(_, _, Program(_, [ Line(_, Some 10, [ ProcedureCall(_, "PRINT", [ NumberLiteral(_, _, "1") ]) ]) ])) -> ()
+        | Ok(_, _, ast) -> Assert.Fail($"Unexpected AST for rigorous EOF-only input: %A{ast}")
+    )
+
+[<Test>]
+let ``loadAstFromInput relaxed syntax checking logs parser recovery warnings`` () =
+    withTempSource "10 FOR i = 1 TO 2\n20 PRINT i\n30 END\n" (fun path ->
+        let sink = CollectingSink()
+        let logger = LoggerConfiguration().WriteTo.Sink(sink).CreateLogger()
+        let settings =
+            { testSettingsWithSyntaxChecking Relaxed path with
+                Logger = logger }
+
+        match loadAstFromInput settings with
+        | Error err -> Assert.Fail($"Expected relaxed syntax checking to recover, got %A{err}")
+        | Ok _ ->
+            Assert.That(sink.Messages, Has.Some.Contains("line 3:6 missing 'FOR'"))
+    )
+
+[<Test>]
+let ``loadAstFromInput relaxed syntax checking rejects out of sequence top level line numbers`` () =
+    withTempSource "20 PRINT 2\n10 PRINT 1\n" (fun path ->
+        match loadAstFromInput (testSettingsWithSyntaxChecking Relaxed path) with
+        | Error(ParseError message) -> Assert.That(message, Does.Contain("Out-of-sequence line number 10 after 20"))
+        | Error(FileNotFound fileName) -> Assert.Fail($"Expected line sequence error, got missing file %s{fileName}")
+        | Ok _ -> Assert.Fail("Expected relaxed mode to reject out-of-sequence line numbers.")
+    )
+
+[<Test>]
+let ``loadAstFromInput relaxed syntax checking rejects out of sequence routine body line numbers`` () =
+    withTempSource "10 DEFine PROCedure demo\n30 PRINT 3\n20 PRINT 2\n40 END DEFine\n" (fun path ->
+        match loadAstFromInput (testSettingsWithSyntaxChecking Relaxed path) with
+        | Error(ParseError message) -> Assert.That(message, Does.Contain("Out-of-sequence line number 20 after 30 in routine 'demo'"))
+        | Error(FileNotFound fileName) -> Assert.Fail($"Expected line sequence error, got missing file %s{fileName}")
+        | Ok _ -> Assert.Fail("Expected relaxed mode to reject out-of-sequence routine line numbers.")
     )

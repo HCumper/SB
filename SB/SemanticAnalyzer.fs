@@ -57,6 +57,12 @@ let private validateLoopControl name pos (state: ProcessingState) =
     else
         appendDiagnostic SemanticDiagnosticCode.InvalidLoopControl (if normalized = "" then None else Some name) (Some pos) $"Loop control target '{name}' is not active at {pos.EditorLineNo}:{pos.Column}" state
 
+let private validateClosingName construct openingName closingName pos (state: ProcessingState) =
+    match closingName with
+    | Some specified when normalizeIdentifier specified <> normalizeIdentifier openingName ->
+        appendDiagnostic SemanticDiagnosticCode.Generic (Some specified) (Some pos) $"Closing name '{specified}' does not match {construct} '{openingName}' at {pos.EditorLineNo}:{pos.Column}" state
+    | _ -> state
+
 let private recordExprType scope expr exprType (state: ProcessingState) =
     { state with ExprTypes = Map.add (nodeIdOfExpr expr) exprType state.ExprTypes }
 
@@ -112,8 +118,8 @@ let rec private collectReferenceParameterNamesFromStmt stmt =
     | IfStmt(_, _, thenBlock, elseBlock) ->
         collectReferenceParameterNamesFromBlock thenBlock
         @ (elseBlock |> Option.map collectReferenceParameterNamesFromBlock |> Option.defaultValue [])
-    | ForStmt(_, _, _, _, _, body)
-    | RepeatStmt(_, _, body) ->
+    | ForStmt(_, _, _, _, _, body, _)
+    | RepeatStmt(_, _, body, _) ->
         collectReferenceParameterNamesFromBlock body
     | SelectStmt(_, _, clauses) ->
         clauses
@@ -230,10 +236,10 @@ and collectDeclarations (mode: SymbolAddMode) (node: Stmt) : State<ProcessingSta
         // That ordering matters because later statements in the same routine may
         // refer to parameters or locals introduced earlier in the body, and the
         // resolution pass expects the enclosing scope structure to already exist.
-        | ProcedureDef(pos, name, parameters, body) ->
+        | ProcedureDef(pos, name, parameters, body, _) ->
             do! collectRoutineDeclaration mode declareProcedure pos name parameters body
 
-        | FunctionDef(pos, name, parameters, body) ->
+        | FunctionDef(pos, name, parameters, body, _) ->
             do! collectRoutineDeclaration mode declareFunction pos name parameters body
 
         // Declaration-like statements only shape the symbol table in this pass.
@@ -294,12 +300,12 @@ and collectDeclarations (mode: SymbolAddMode) (node: Stmt) : State<ProcessingSta
             if isInputStatement name then
                 do! collectDeclarationWritableList mode args
 
-        | ForStmt(pos, name, _, _, _, body) ->
+        | ForStmt(pos, name, _, _, _, body, _) ->
             let nextState = ensureVariableDeclaredInScope mode currentState.CurrentScope name pos currentState
             do! putState nextState
             do! collectDeclarationBlock mode body
 
-        | RepeatStmt(_, _, body) ->
+        | RepeatStmt(_, _, body, _) ->
             do! collectDeclarationBlock mode body
 
         | IfStmt(_, _, thenBody, elseBody) ->
@@ -470,8 +476,9 @@ and private resolveStmt (mode: SymbolAddMode) (node: Stmt) : State<ProcessingSta
     state {
         let! currentState = getState
         match node with
-        | ProcedureDef(_, name, _, body)
-        | FunctionDef(_, name, _, body) ->
+        | ProcedureDef(pos, name, _, body, closingName)
+        | FunctionDef(pos, name, _, body, closingName) ->
+            do! putState (validateClosingName "routine" name closingName pos currentState)
             do! resolveRoutineBody mode name body
 
         | DimStmt(_, items) ->
@@ -625,7 +632,9 @@ and private resolveStmt (mode: SymbolAddMode) (node: Stmt) : State<ProcessingSta
                 | _ -> inferExprList args stateAfterArgs
             do! putState stateAfterBuiltInValidation
 
-        | ForStmt(pos, name, startExpr, endExpr, stepExpr, body) ->
+        | ForStmt(pos, name, startExpr, endExpr, stepExpr, body, closingName) ->
+            do! putState (validateClosingName "FOR loop" name closingName pos currentState)
+            let! currentState = getState
             do! putState (referenceSymbol None name pos currentState)
             do! resolveExpr mode startExpr
             do! resolveExpr mode endExpr
@@ -658,7 +667,9 @@ and private resolveStmt (mode: SymbolAddMode) (node: Stmt) : State<ProcessingSta
             let! stateAfterBody = getState
             do! putState (popLoop stateAfterBody)
 
-        | RepeatStmt(_, name, body) ->
+        | RepeatStmt(pos, name, body, closingName) ->
+            do! putState (validateClosingName "REPEAT loop" name closingName pos currentState)
+            let! currentState = getState
             do! putState (pushLoop name currentState)
             do! resolveBlock mode body
             let! stateAfterBody = getState

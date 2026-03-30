@@ -22,7 +22,7 @@ let ``procedure definitions preserve parameters and body structure`` () =
     Assert.That(ast, Has.Length.EqualTo(1))
 
     match ast[0] with
-    | Program(_, [ Line(_, Some 10, [ ProcedureDef(_, "main", [ "paramtype" ], [ Line(_, Some 20, [ ProcedureCall(_, "PRINT", [ Identifier(_, _, "paramtype") ]) ]) ]) ]) ]) ->
+    | Program(_, [ Line(_, Some 10, [ ProcedureDef(_, "main", [ "paramtype" ], [ Line(_, Some 20, [ ProcedureCall(_, "PRINT", [ Identifier(_, _, "paramtype") ]) ]) ], _) ]) ]) ->
         Assert.Pass()
     | other -> Assert.Fail($"Unexpected AST: %A{other}")
 

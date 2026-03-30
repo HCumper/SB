@@ -40,8 +40,8 @@ let ``lowerToHir lowers select when exit and next into dedicated hir nodes`` () 
                         num "2",
                         Some(StatementBlock [ GotoStmt(pos, num "100") ])) ])
                   WhenStmt(pos, Some(num "1"), [ Line(pos, Some 20, [ GosubStmt(pos, num "200") ]) ])
-                  RepeatStmt(pos, "outer", StatementBlock [ ExitStmt(pos, "outer") ])
-                  RepeatStmt(pos, "inner", StatementBlock [ NextStmt(pos, "inner") ]) ]) ])
+                  RepeatStmt(pos, "outer", StatementBlock [ ExitStmt(pos, "outer") ], None)
+                  RepeatStmt(pos, "inner", StatementBlock [ NextStmt(pos, "inner") ], None) ]) ])
 
     let hir = lowerProgram ast
 
@@ -143,7 +143,8 @@ let ``lowerToHir preserves parameter binding metadata from reference statements`
                     pos,
                     "swap",
                     [ "left"; "right" ],
-                    [ Line(pos, Some 20, [ ReferenceStmt(pos, [ mkIdentifier pos "right" ]) ]) ]) ]) ])
+                    [ Line(pos, Some 20, [ ReferenceStmt(pos, [ mkIdentifier pos "right" ]) ]) ],
+                    None) ]) ])
 
     let hir = lowerProgram ast
 
@@ -169,7 +170,8 @@ let ``lowerToHir uses dynamic scoped reads and writes for caller visible locals`
                     "show",
                     [],
                     [ Line(pos, Some 100, [ Assignment(pos, mkIdentifier pos "score", num "9") ])
-                      Line(pos, Some 110, [ ProcedureCall(pos, "PRINT", [ mkIdentifier pos "score" ]) ]) ]) ])
+                      Line(pos, Some 110, [ ProcedureCall(pos, "PRINT", [ mkIdentifier pos "score" ]) ]) ],
+                    None) ])
               Line(
                 pos,
                 Some 20,
@@ -178,7 +180,8 @@ let ``lowerToHir uses dynamic scoped reads and writes for caller visible locals`
                     "main",
                     [],
                     [ Line(pos, Some 200, [ LocalStmt(pos, [ "score", None ]) ])
-                      Line(pos, Some 210, [ ProcedureCall(pos, "show", []) ]) ]) ]) ])
+                      Line(pos, Some 210, [ ProcedureCall(pos, "show", []) ]) ],
+                    None) ]) ])
 
     let hir = lowerProgram ast
 
@@ -204,7 +207,8 @@ let ``lowerToHir distinguishes reference and value call arguments`` () =
                     pos,
                     "bump",
                     [ "a"; "b" ],
-                    [ Line(pos, Some 100, [ ReferenceStmt(pos, [ mkIdentifier pos "a" ]) ]) ]) ])
+                    [ Line(pos, Some 100, [ ReferenceStmt(pos, [ mkIdentifier pos "a" ]) ]) ],
+                    None) ])
               Line(pos, Some 20, [ Assignment(pos, mkIdentifier pos "x", num "1") ])
               Line(pos, Some 30, [ ProcedureCall(pos, "bump", [ mkIdentifier pos "x"; binary "+" (mkIdentifier pos "x") (num "0") ]) ]) ])
 
@@ -231,7 +235,8 @@ let ``lowerToHir lowers dynamic scoped array access`` () =
                     "show",
                     [],
                     [ Line(pos, Some 100, [ Assignment(pos, mkPostfixName pos "scores" (Some [ num "1" ]), num "5") ])
-                      Line(pos, Some 110, [ ProcedureCall(pos, "PRINT", [ mkPostfixName pos "scores" (Some [ num "1" ]) ]) ]) ]) ])
+                      Line(pos, Some 110, [ ProcedureCall(pos, "PRINT", [ mkPostfixName pos "scores" (Some [ num "1" ]) ]) ]) ],
+                    None) ])
               Line(
                 pos,
                 Some 20,
@@ -240,7 +245,8 @@ let ``lowerToHir lowers dynamic scoped array access`` () =
                     "main",
                     [],
                     [ Line(pos, Some 200, [ LocalStmt(pos, [ "scores", Some [ num "5" ] ]) ])
-                      Line(pos, Some 210, [ ProcedureCall(pos, "show", []) ]) ]) ]) ])
+                      Line(pos, Some 210, [ ProcedureCall(pos, "show", []) ]) ],
+                    None) ]) ])
 
     let hir = lowerProgram ast
 
@@ -287,7 +293,8 @@ let ``lowerToHir keeps parameter accesses static inside routines`` () =
                     "show",
                     [ "score" ],
                     [ Line(pos, Some 100, [ Assignment(pos, id "score", binary "+" (id "score") (num "1")) ])
-                      Line(pos, Some 110, [ ProcedureCall(pos, "PRINT", [ id "score" ]) ]) ]) ]) ])
+                      Line(pos, Some 110, [ ProcedureCall(pos, "PRINT", [ id "score" ]) ]) ],
+                    None) ]) ])
 
     let hir = lowerProgram ast
 
@@ -313,7 +320,8 @@ let ``lowerToHir does not lower built in names as dynamic storage`` () =
                     pos,
                     "show",
                     [],
-                    [ Line(pos, Some 100, [ ProcedureCall(pos, "PRINT", [ mkPostfixName pos "DATE" None ]) ]) ]) ]) ])
+                    [ Line(pos, Some 100, [ ProcedureCall(pos, "PRINT", [ mkPostfixName pos "DATE" None ]) ]) ],
+                    None) ]) ])
 
     let hir = lowerProgram ast
 
@@ -337,7 +345,8 @@ let ``lowerToHir uses reference args for array element actuals`` () =
                     pos,
                     "bump",
                     [ "a" ],
-                    [ Line(pos, Some 100, [ ReferenceStmt(pos, [ id "a" ]) ]) ]) ])
+                    [ Line(pos, Some 100, [ ReferenceStmt(pos, [ id "a" ]) ]) ],
+                    None) ])
               Line(pos, Some 20, [ DimStmt(pos, [ "scores", [ num "5" ] ]) ])
               Line(pos, Some 30, [ ProcedureCall(pos, "bump", [ mkPostfixName pos "scores" (Some [ num "1" ]) ]) ]) ])
 
