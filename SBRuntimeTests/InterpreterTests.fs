@@ -75,6 +75,229 @@ let private runProgramWithInput input ast =
 let private runProgram ast =
     runProgramWithInput [] ast
 
+type private ScreenWindowState = {
+    mutable Cursor: int * int
+    mutable CharacterSize: int * int
+    mutable ClearCount: int
+    mutable Ink: int option
+    mutable Paper: int option
+    mutable Border: int option
+    Writes: ResizeArray<string>
+}
+
+type private ScreenState = {
+    mutable Mode: ScreenModeInfo
+    Inputs: Collections.Generic.Queue<string>
+    Windows: Map<int, ScreenWindowState>
+}
+
+let private createScreenHost (inputs: string list) =
+    let supportedModes =
+        [ { Mode = QlMode4; Width = 512; Height = 256; Colors = Some 4; Name = "QL Mode 4"; IsQlCompatible = true }
+          { Mode = QlMode8; Width = 256; Height = 256; Colors = Some 8; Name = "QL Mode 8"; IsQlCompatible = true }
+          { Mode = ExtendedMode 256; Width = 256; Height = 256; Colors = Some 8; Name = "Extended Mode 256"; IsQlCompatible = false }
+          { Mode = ExtendedMode 512; Width = 512; Height = 256; Colors = Some 4; Name = "Extended Mode 512"; IsQlCompatible = false } ]
+
+    let makeWindowState () =
+        { Cursor = 0, 0
+          CharacterSize = 0, 0
+          ClearCount = 0
+          Ink = None
+          Paper = None
+          Border = None
+          Writes = ResizeArray<string>() }
+
+    let windows =
+        [ 0, makeWindowState ()
+          1, makeWindowState ()
+          2, makeWindowState () ]
+        |> Map.ofList
+
+    let state =
+        { Mode = supportedModes[0]
+          Inputs = Collections.Generic.Queue<string>(inputs)
+          Windows = windows }
+
+    let reader () =
+        if state.Inputs.Count > 0 then Some(state.Inputs.Dequeue()) else None
+
+    let writeWindow channelId line =
+        match Map.tryFind channelId state.Windows with
+        | Some window -> window.Writes.Add(line)
+        | None -> ()
+
+    let makeConsoleChannel channelId =
+        { new IScreenChannel with
+            member _.Id = ChannelId channelId
+            member _.Kind = ConsoleChannel
+            member _.WriteText text = writeWindow channelId text
+            member _.ReadText() = reader ()
+            member _.Flush() = ()
+            member _.Close() = ()
+            member _.Clear() =
+                match Map.tryFind channelId state.Windows with
+                | Some window -> window.ClearCount <- window.ClearCount + 1
+                | None -> ()
+            member _.SetCursor(x, y) =
+                match Map.tryFind channelId state.Windows with
+                | Some window -> window.Cursor <- x, y
+                | None -> ()
+            member _.GetCursor() =
+                match Map.tryFind channelId state.Windows with
+                | Some window -> window.Cursor
+                | None -> 0, 0
+            member _.SetCharacterSize(width, height) =
+                match Map.tryFind channelId state.Windows with
+                | Some window -> window.CharacterSize <- width, height
+                | None -> ()
+            member _.GetCharacterSize() =
+                match Map.tryFind channelId state.Windows with
+                | Some window -> window.CharacterSize
+                | None -> 0, 0
+            member _.SetInk(value: int) =
+                match Map.tryFind channelId state.Windows with
+                | Some window -> window.Ink <- Some value
+                | None -> ()
+            member _.SetPaper(value: int) =
+                match Map.tryFind channelId state.Windows with
+                | Some window -> window.Paper <- Some value
+                | None -> ()
+            member _.SetBorder(value: int) =
+                match Map.tryFind channelId state.Windows with
+                | Some window -> window.Border <- Some value
+                | None -> () }
+
+    let makeScreenChannel channelId =
+        { new IScreenChannel with
+            member _.Id = ChannelId channelId
+            member _.Kind = ScreenChannel
+            member _.WriteText text = writeWindow channelId text
+            member _.ReadText() = reader ()
+            member _.Flush() = ()
+            member _.Close() = ()
+            member _.Clear() =
+                match Map.tryFind channelId state.Windows with
+                | Some window -> window.ClearCount <- window.ClearCount + 1
+                | None -> ()
+            member _.SetCursor(x, y) =
+                match Map.tryFind channelId state.Windows with
+                | Some window -> window.Cursor <- x, y
+                | None -> ()
+            member _.GetCursor() =
+                match Map.tryFind channelId state.Windows with
+                | Some window -> window.Cursor
+                | None -> 0, 0
+            member _.SetCharacterSize(width, height) =
+                match Map.tryFind channelId state.Windows with
+                | Some window -> window.CharacterSize <- width, height
+                | None -> ()
+            member _.GetCharacterSize() =
+                match Map.tryFind channelId state.Windows with
+                | Some window -> window.CharacterSize
+                | None -> 0, 0
+            member _.SetInk(value: int) =
+                match Map.tryFind channelId state.Windows with
+                | Some window -> window.Ink <- Some value
+                | None -> ()
+            member _.SetPaper(value: int) =
+                match Map.tryFind channelId state.Windows with
+                | Some window -> window.Paper <- Some value
+                | None -> ()
+            member _.SetBorder(value: int) =
+                match Map.tryFind channelId state.Windows with
+                | Some window -> window.Border <- Some value
+                | None -> () }
+
+    let channels =
+        [ makeConsoleChannel 0 :> IChannel
+          makeScreenChannel 1 :> IChannel
+          makeScreenChannel 2 :> IChannel ]
+        |> List.map (fun channel -> channel.Id, channel)
+        |> Map.ofList
+
+    let host =
+        { new IRuntimeHost with
+            member _.Channels =
+                { new IChannelManager with
+                    member _.Open(_name: string) = Result.Error(UnsupportedHostOperation "Open not implemented in test host.")
+                    member _.Get(channelId: ChannelId) =
+                        match Map.tryFind channelId channels with
+                        | Some channel -> Result.Ok channel
+                        | None -> Result.Error(ChannelNotFound channelId)
+                    member _.Close(channelId: ChannelId) =
+                        match Map.tryFind channelId channels with
+                        | Some channel ->
+                            channel.Close()
+                            Result.Ok()
+                        | None -> Result.Error(ChannelNotFound channelId) }
+            member _.Screen =
+                { new IScreenDevice with
+                    member _.Clear() =
+                        match Map.tryFind 0 state.Windows with
+                        | Some window -> window.ClearCount <- window.ClearCount + 1
+                        | None -> ()
+                    member _.SetCursor(x, y) =
+                        match Map.tryFind 0 state.Windows with
+                        | Some window -> window.Cursor <- x, y
+                        | None -> ()
+                    member _.GetCursor() =
+                        match Map.tryFind 0 state.Windows with
+                        | Some window -> window.Cursor
+                        | None -> 0, 0
+                    member _.SetCharacterSize(width, height) =
+                        match Map.tryFind 0 state.Windows with
+                        | Some window -> window.CharacterSize <- width, height
+                        | None -> ()
+                    member _.GetCharacterSize() =
+                        match Map.tryFind 0 state.Windows with
+                        | Some window -> window.CharacterSize
+                        | None -> 0, 0
+                    member _.WriteText text = writeWindow 0 text
+                    member _.SetInk(value: int) =
+                        match Map.tryFind 0 state.Windows with
+                        | Some window -> window.Ink <- Some value
+                        | None -> ()
+                    member _.SetPaper(value: int) =
+                        match Map.tryFind 0 state.Windows with
+                        | Some window -> window.Paper <- Some value
+                        | None -> ()
+                    member _.SetBorder(value: int) =
+                        match Map.tryFind 0 state.Windows with
+                        | Some window -> window.Border <- Some value
+                        | None -> ()
+                    member _.GetSupportedModes() = supportedModes
+                    member _.GetMode() = state.Mode
+                    member _.SetMode(mode: ScreenMode) =
+                        match supportedModes |> List.tryFind (fun candidate -> candidate.Mode = mode) with
+                        | Some selected ->
+                            state.Mode <- selected
+                            Result.Ok()
+                        | None ->
+                            Result.Error(UnsupportedHostOperation $"Mode '{mode}' is not supported in the test host.") }
+            member _.Graphics =
+                { new IGraphicsDevice with
+                    member _.Plot(_x, _y) = ()
+                    member _.Draw(_x, _y) = ()
+                    member _.Line(_x1, _y1, _x2, _y2) = ()
+                    member _.Circle(_x, _y, _radius) = ()
+                    member _.Fill(_x, _y) = ()
+                    member _.Clear() = () }
+            member _.Input =
+                { new IInputDevice with
+                    member _.ReadLine() = reader ()
+                    member _.ReadKey() = None
+                    member _.KeyAvailable() = false }
+            member _.Sound =
+                { new ISoundDevice with
+                    member _.Beep(_pitch, _duration) = () }
+            member _.Files =
+                { new IDeviceFileSystem with
+                    member _.OpenFile(_path, _mode) = Result.Error(UnsupportedHostOperation "Files not implemented in test host.")
+                    member _.Exists(_path) = false
+                    member _.Delete(_path) = Result.Error(UnsupportedHostOperation "Files not implemented in test host.") } }
+
+    host, state
+
 let private makeStorage symbolId slotId name hirType storageClass : H.HirStorage =
     { Symbol = symbolId
       Slot = H.StorageSlotId slotId
@@ -1424,6 +1647,21 @@ let ``default host exposes default channels zero through two`` () =
     Assert.That(channel2.Kind, Is.EqualTo(ChannelKind.ScreenChannel))
 
 [<Test>]
+let ``default host exposes ql and extended screen modes`` () =
+    let host =
+        DefaultHost.create {
+            ReadLine = fun () -> None
+            WriteLine = ignore
+        }
+
+    let modes = host.Screen.GetSupportedModes()
+
+    Assert.That(modes |> List.exists (fun mode -> mode.Mode = QlMode4), Is.True)
+    Assert.That(modes |> List.exists (fun mode -> mode.Mode = QlMode8), Is.True)
+    Assert.That(modes |> List.exists (fun mode -> mode.Mode = ExtendedMode 256), Is.True)
+    Assert.That(modes |> List.exists (fun mode -> mode.Mode = ExtendedMode 512), Is.True)
+
+[<Test>]
 let ``interpreter print to default channels uses host channel manager`` () =
     let outputs = ResizeArray<string>()
     let hir =
@@ -1476,6 +1714,95 @@ let ``interpreter input from default channel uses host channel manager`` () =
     match result with
     | Result.Ok execution -> Assert.That(String.concat "|" execution.Output, Is.EqualTo("Enter|42"))
     | Result.Error err -> Assert.Fail($"Expected interpretation to succeed, got %A{err}")
+
+[<Test>]
+let ``interpreter screen channel operations keep default window state independent`` () =
+    let host, screenState = createScreenHost [ "99" ]
+    let xId = H.SymbolId 0
+    let xStorage = makeStorage xId 0 "X" H.HirType.Int H.GlobalStorage
+    let channel0 = H.Literal(H.ConstInt 0, H.HirType.Int, pos)
+    let channel1 = H.Literal(H.ConstInt 1, H.HirType.Int, pos)
+    let channel2 = H.Literal(H.ConstInt 2, H.HirType.Int, pos)
+    let hir =
+        makeProgram
+            (Map.ofList [ xId, "X" ])
+            [ xStorage ]
+            [ H.BuiltInCall(H.NamedBuiltIn "CLS", Some channel0, [], pos)
+              H.BuiltInCall(H.NamedBuiltIn "AT", Some channel0, [ H.Literal(H.ConstInt 3, H.HirType.Int, pos); H.Literal(H.ConstInt 4, H.HirType.Int, pos) ], pos)
+              H.BuiltInCall(H.NamedBuiltIn "CURSOR", Some channel1, [ H.Literal(H.ConstInt 10, H.HirType.Int, pos); H.Literal(H.ConstInt 20, H.HirType.Int, pos) ], pos)
+              H.BuiltInCall(H.NamedBuiltIn "CSIZE", Some channel1, [ H.Literal(H.ConstInt 2, H.HirType.Int, pos); H.Literal(H.ConstInt 1, H.HirType.Int, pos) ], pos)
+              H.BuiltInCall(H.NamedBuiltIn "INK", Some channel1, [ H.Literal(H.ConstInt 7, H.HirType.Int, pos) ], pos)
+              H.BuiltInCall(H.NamedBuiltIn "CSIZE", Some channel2, [ H.Literal(H.ConstInt 4, H.HirType.Int, pos); H.Literal(H.ConstInt 3, H.HirType.Int, pos) ], pos)
+              H.BuiltInCall(H.NamedBuiltIn "PAPER", Some channel2, [ H.Literal(H.ConstInt 2, H.HirType.Int, pos) ], pos)
+              H.BuiltInCall(H.NamedBuiltIn "BORDER", Some channel2, [ H.Literal(H.ConstInt 1, H.HirType.Int, pos); H.Literal(H.ConstInt 4, H.HirType.Int, pos) ], pos)
+              H.HirStmt.Input(Some channel2, [ H.Literal(H.ConstString "Enter", H.HirType.String, pos) ], [ H.WriteVar(xId, H.HirType.Int, pos) ], pos) ]
+
+    let result =
+        interpretProgramWithOptions
+            { defaultRuntimeOptions with
+                Host = host }
+            hir
+
+    match result with
+    | Result.Ok execution ->
+        Assert.That(String.concat "|" execution.Output, Is.EqualTo("Enter"))
+        let window0 = screenState.Windows[0]
+        let window1 = screenState.Windows[1]
+        let window2 = screenState.Windows[2]
+        Assert.That(window0.ClearCount, Is.EqualTo(1))
+        Assert.That(window0.Cursor, Is.EqualTo((4, 3)))
+        Assert.That(window0.CharacterSize, Is.EqualTo((0, 0)))
+        Assert.That(window0.Ink, Is.EqualTo(None))
+        Assert.That(window1.Cursor, Is.EqualTo((10, 20)))
+        Assert.That(window1.CharacterSize, Is.EqualTo((2, 1)))
+        Assert.That(window1.Ink, Is.EqualTo(Some 7))
+        Assert.That(window1.Paper, Is.EqualTo(None))
+        Assert.That(window2.CharacterSize, Is.EqualTo((4, 3)))
+        Assert.That(window2.Paper, Is.EqualTo(Some 2))
+        Assert.That(window2.Border, Is.EqualTo(Some 1))
+        Assert.That(window2.Writes |> Seq.toList |> String.concat "|", Is.EqualTo("Enter"))
+        Assert.That(window0.Writes |> Seq.toList |> String.concat "|", Is.EqualTo(""))
+        Assert.That(window1.Writes |> Seq.toList |> String.concat "|", Is.EqualTo(""))
+    | Result.Error err ->
+        Assert.Fail($"Expected interpretation to succeed, got %A{err}")
+
+[<Test>]
+let ``interpreter mode changes host screen mode`` () =
+    let host, screenState = createScreenHost []
+    let hir =
+        makeProgram
+            Map.empty
+            []
+            [ H.BuiltInCall(H.NamedBuiltIn "MODE", None, [ H.Literal(H.ConstInt 8, H.HirType.Int, pos) ], pos)
+              H.BuiltInCall(H.NamedBuiltIn "MODE", None, [ H.Literal(H.ConstInt 512, H.HirType.Int, pos) ], pos) ]
+
+    let result =
+        interpretProgramWithOptions
+            { defaultRuntimeOptions with
+                Host = host }
+            hir
+
+    match result with
+    | Result.Ok _ ->
+        Assert.That(screenState.Mode.Mode, Is.EqualTo(ExtendedMode 512))
+    | Result.Error err ->
+        Assert.Fail($"Expected interpretation to succeed, got %A{err}")
+
+[<Test>]
+let ``interpreter unsupported mode reports runtime error`` () =
+    let host, _ = createScreenHost []
+    let hir =
+        makeProgram
+            Map.empty
+            []
+            [ H.BuiltInCall(H.NamedBuiltIn "MODE", None, [ H.Literal(H.ConstInt 1024, H.HirType.Int, pos) ], pos) ]
+
+    interpretProgramWithOptions
+        { defaultRuntimeOptions with
+            Host = host }
+        hir
+    |> assertRuntimeError BuiltInStatementNotImplemented
+    |> ignore
 
 [<Test>]
 let ``q3 fixture runtime completes sort check without inversion output`` () =

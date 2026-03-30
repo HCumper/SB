@@ -260,6 +260,11 @@ let private hostErrorText = function
     | UnsupportedHostOperation detail -> detail
     | InvalidHostArgument detail -> detail
 
+let private screenModeFromNumber = function
+    | 4 -> QlMode4
+    | 8 -> QlMode8
+    | value -> ExtendedMode value
+
 let private writeOutputToChannel channelId line state pos =
     match channelId with
     | None ->
@@ -279,6 +284,38 @@ let private readInputFromChannel channelId state pos =
     | Some resolvedChannelId ->
         match state.Options.Host.Channels.Get resolvedChannelId with
         | Result.Ok channel -> Result.Ok(channel.ReadText())
+        | Result.Error hostError ->
+            runtimeError UnsupportedChannelExecution (Some pos) (hostErrorText hostError)
+
+let private validateScreenChannel channelId state pos =
+    match channelId with
+    | None -> Result.Ok()
+    | Some resolvedChannelId ->
+        match state.Options.Host.Channels.Get resolvedChannelId with
+        | Result.Ok channel ->
+            match channel with
+            | :? IScreenChannel -> Result.Ok()
+            | _ ->
+                runtimeError
+                    UnsupportedChannelExecution
+                    (Some pos)
+                    $"Channel is not a screen channel for screen operation '{resolvedChannelId}'."
+        | Result.Error hostError ->
+            runtimeError UnsupportedChannelExecution (Some pos) (hostErrorText hostError)
+
+let private executeChannelScreenOp channelId state pos (channelAction: IScreenChannel -> unit) (defaultAction: IScreenDevice -> unit) =
+    match channelId with
+    | None ->
+        defaultAction state.Options.Host.Screen
+        Result.Ok state
+    | Some resolvedChannelId ->
+        match state.Options.Host.Channels.Get resolvedChannelId with
+        | Result.Ok (:? IScreenChannel as screenChannel) ->
+            channelAction screenChannel
+            Result.Ok state
+        | Result.Ok _ ->
+            let (ChannelId id) = resolvedChannelId
+            runtimeError UnsupportedChannelExecution (Some pos) $"Channel #{id} is not a screen channel."
         | Result.Error hostError ->
             runtimeError UnsupportedChannelExecution (Some pos) (hostErrorText hostError)
 
@@ -578,17 +615,99 @@ and private executeBuiltInCall state kind channel args targets pos =
                     |> Result.map (fun nextState -> Continue, nextState))))
     | Reference -> Result.Ok(Continue, state)
     | NamedBuiltIn name ->
+        let normalized = normalizeIdentifier name
         let unsupportedChannel () =
             match channel with
             | Some _ -> runtimeError UnsupportedChannelExecution (Some pos) $"Built-in '{name}' does not support channel execution in the interpreter yet."
             | None -> Result.Ok(Continue, state)
 
-        unsupportedChannel ()
-        |> Result.bind (fun _ ->
-            let normalized = normalizeIdentifier name
-            if normalized = "STOP" then Result.Ok(StopExecution, state)
-            elif normalized.StartsWith("TURBO") then Result.Ok(Continue, state)
-            else runtimeError BuiltInStatementNotImplemented (Some pos) $"Built-in statement '{kind}' is not implemented.")
+        let requireArity expected actual =
+            if actual = expected then Result.Ok()
+            else runtimeError BuiltInArityMismatch (Some pos) $"Built-in statement '{name}' expects {expected} argument(s)."
+
+        let requireAtLeast minimum actual =
+            if actual >= minimum then Result.Ok()
+            else runtimeError BuiltInArityMismatch (Some pos) $"Built-in statement '{name}' expects at least {minimum} argument(s)."
+
+        let executeScreenOp expectedArgCount atLeast (action: ChannelId option -> RuntimeState -> int list -> Result<RuntimeState, RuntimeError>) =
+            resolveChannelId state channel
+            |> Result.bind (fun (resolvedChannel, stateAfterChannel) ->
+                validateScreenChannel resolvedChannel stateAfterChannel pos
+                |> Result.bind (fun () ->
+                    evalExprList stateAfterChannel args
+                    |> Result.bind (fun (values, nextState) ->
+                        let arityCheck =
+                            if atLeast then requireAtLeast expectedArgCount values.Length
+                            else requireArity expectedArgCount values.Length
+                        arityCheck
+                        |> Result.bind (fun () ->
+                            let numericArgs = values |> List.map asInt
+                            action resolvedChannel nextState numericArgs
+                            |> Result.map (fun finalState -> Continue, finalState)))))
+
+        match normalized with
+        | "STOP" -> Result.Ok(StopExecution, state)
+        | "MODE" ->
+            unsupportedChannel ()
+            |> Result.bind (fun _ ->
+                evalExprList state args
+                |> Result.bind (fun (values, nextState) ->
+                    requireArity 1 values.Length
+                    |> Result.bind (fun () ->
+                        let requestedMode =
+                            values
+                            |> List.head
+                            |> asInt
+                            |> screenModeFromNumber
+
+                        match nextState.Options.Host.Screen.SetMode requestedMode with
+                        | Result.Ok() -> Result.Ok(Continue, nextState)
+                        | Result.Error hostError ->
+                            runtimeError BuiltInStatementNotImplemented (Some pos) (hostErrorText hostError))))
+        | "CLS" ->
+            executeScreenOp 0 false (fun resolvedChannel nextState _ ->
+                executeChannelScreenOp resolvedChannel nextState pos (fun screenChannel -> screenChannel.Clear()) (fun screen -> screen.Clear()))
+        | "AT" ->
+            executeScreenOp 2 false (fun resolvedChannel nextState numericArgs ->
+                match numericArgs with
+                | [ row; column ] ->
+                    executeChannelScreenOp resolvedChannel nextState pos (fun screenChannel -> screenChannel.SetCursor(column, row)) (fun screen -> screen.SetCursor(column, row))
+                | _ -> Result.Ok nextState)
+        | "CURSOR" ->
+            executeScreenOp 2 false (fun resolvedChannel nextState numericArgs ->
+                match numericArgs with
+                | [ x; y ] ->
+                    executeChannelScreenOp resolvedChannel nextState pos (fun screenChannel -> screenChannel.SetCursor(x, y)) (fun screen -> screen.SetCursor(x, y))
+                | _ -> Result.Ok nextState)
+        | "CSIZE" ->
+            executeScreenOp 2 false (fun resolvedChannel nextState numericArgs ->
+                match numericArgs with
+                | [ width; height ] ->
+                    executeChannelScreenOp resolvedChannel nextState pos (fun screenChannel -> screenChannel.SetCharacterSize(width, height)) (fun screen -> screen.SetCharacterSize(width, height))
+                | _ -> Result.Ok nextState)
+        | "INK" ->
+            executeScreenOp 1 true (fun resolvedChannel nextState numericArgs ->
+                match numericArgs with
+                | first :: _ ->
+                    executeChannelScreenOp resolvedChannel nextState pos (fun screenChannel -> screenChannel.SetInk(first)) (fun screen -> screen.SetInk(first))
+                | _ -> Result.Ok nextState)
+        | "PAPER" ->
+            executeScreenOp 1 true (fun resolvedChannel nextState numericArgs ->
+                match numericArgs with
+                | first :: _ ->
+                    executeChannelScreenOp resolvedChannel nextState pos (fun screenChannel -> screenChannel.SetPaper(first)) (fun screen -> screen.SetPaper(first))
+                | _ -> Result.Ok nextState)
+        | "BORDER" ->
+            executeScreenOp 1 true (fun resolvedChannel nextState numericArgs ->
+                match numericArgs with
+                | first :: _ ->
+                    executeChannelScreenOp resolvedChannel nextState pos (fun screenChannel -> screenChannel.SetBorder(first)) (fun screen -> screen.SetBorder(first))
+                | _ -> Result.Ok nextState)
+        | _ when normalized.StartsWith("TURBO") -> Result.Ok(Continue, state)
+        | _ ->
+            unsupportedChannel ()
+            |> Result.bind (fun _ ->
+                runtimeError BuiltInStatementNotImplemented (Some pos) $"Built-in statement '{kind}' is not implemented.")
     | GotoBuiltIn
     | GosubBuiltIn
     | OnGotoBuiltIn

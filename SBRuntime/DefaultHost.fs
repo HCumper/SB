@@ -18,6 +18,29 @@ type private DefaultChannel(id: ChannelId, kind: ChannelKind, reader: unit -> st
         member _.Flush() = ()
         member _.Close() = ()
 
+type private DefaultScreenChannel(id: ChannelId, kind: ChannelKind, reader: unit -> string option, writer: string -> unit) =
+    let mutable cursor = 0, 0
+    let mutable characterSize = 0, 0
+    let mutable ink = 7
+    let mutable paper = 0
+    let mutable border = 0
+
+    interface IScreenChannel with
+        member _.Id = id
+        member _.Kind = kind
+        member _.WriteText text = writer text
+        member _.ReadText() = reader ()
+        member _.Flush() = ()
+        member _.Close() = ()
+        member _.Clear() = ()
+        member _.SetCursor(x, y) = cursor <- x, y
+        member _.GetCursor() = cursor
+        member _.SetCharacterSize(width, height) = characterSize <- width, height
+        member _.GetCharacterSize() = characterSize
+        member _.SetInk(value: int) = ink <- value
+        member _.SetPaper(value: int) = paper <- value
+        member _.SetBorder(value: int) = border <- value
+
 type private DefaultChannelManager(defaultChannels: IChannel list) =
     let channels = Dictionary<ChannelId, IChannel>()
 
@@ -42,16 +65,34 @@ type private DefaultChannelManager(defaultChannels: IChannel list) =
             | false, _ -> Result.Error(ChannelNotFound channelId)
 
 type private DefaultScreenDevice(writer: string -> unit) =
+    let supportedModes =
+        [ { Mode = QlMode4; Width = 512; Height = 256; Colors = Some 4; Name = "QL Mode 4"; IsQlCompatible = true }
+          { Mode = QlMode8; Width = 256; Height = 256; Colors = Some 8; Name = "QL Mode 8"; IsQlCompatible = true }
+          { Mode = ExtendedMode 256; Width = 256; Height = 256; Colors = Some 8; Name = "Extended Mode 256"; IsQlCompatible = false }
+          { Mode = ExtendedMode 512; Width = 512; Height = 256; Colors = Some 4; Name = "Extended Mode 512"; IsQlCompatible = false } ]
     let mutable cursor = 0, 0
+    let mutable characterSize = 0, 0
+    let mutable mode = supportedModes[0]
 
     interface IScreenDevice with
         member _.Clear() = ()
         member _.SetCursor(x, y) = cursor <- x, y
         member _.GetCursor() = cursor
+        member _.SetCharacterSize(width, height) = characterSize <- width, height
+        member _.GetCharacterSize() = characterSize
         member _.WriteText text = writer text
         member _.SetInk(_value: int) = ()
         member _.SetPaper(_value: int) = ()
         member _.SetBorder(_value: int) = ()
+        member _.GetSupportedModes() = supportedModes
+        member _.GetMode() = mode
+        member _.SetMode requestedMode =
+            match supportedModes |> List.tryFind (fun candidate -> candidate.Mode = requestedMode) with
+            | Some selected ->
+                mode <- selected
+                Result.Ok()
+            | None ->
+                Result.Error(UnsupportedHostOperation $"Screen mode '{requestedMode}' is not supported by DefaultHost.")
 
 type private NullGraphicsDevice() =
     interface IGraphicsDevice with
@@ -83,9 +124,9 @@ type private NullFileSystem() =
 
 type private DefaultRuntimeHost(options: DefaultHostOptions) =
     let channels =
-        [ DefaultChannel(ChannelId 0, ChannelKind.ConsoleChannel, options.ReadLine, options.WriteLine) :> IChannel
-          DefaultChannel(ChannelId 1, ChannelKind.ScreenChannel, options.ReadLine, options.WriteLine) :> IChannel
-          DefaultChannel(ChannelId 2, ChannelKind.ScreenChannel, options.ReadLine, options.WriteLine) :> IChannel ]
+        [ DefaultScreenChannel(ChannelId 0, ChannelKind.ConsoleChannel, options.ReadLine, options.WriteLine) :> IChannel
+          DefaultScreenChannel(ChannelId 1, ChannelKind.ScreenChannel, options.ReadLine, options.WriteLine) :> IChannel
+          DefaultScreenChannel(ChannelId 2, ChannelKind.ScreenChannel, options.ReadLine, options.WriteLine) :> IChannel ]
         |> DefaultChannelManager
         :> IChannelManager
     let screen = DefaultScreenDevice(options.WriteLine) :> IScreenDevice

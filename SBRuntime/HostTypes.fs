@@ -17,6 +17,20 @@ type FileOpenMode =
     | OpenForOutput
     | OpenForUpdate
 
+type ScreenMode =
+    | QlMode4
+    | QlMode8
+    | ExtendedMode of int
+
+type ScreenModeInfo = {
+    Mode: ScreenMode
+    Width: int
+    Height: int
+    Colors: int option
+    Name: string
+    IsQlCompatible: bool
+}
+
 type KeyInfo = {
     KeyCode: int
     Character: char option
@@ -38,6 +52,17 @@ type IChannel =
     abstract Flush: unit -> unit
     abstract Close: unit -> unit
 
+type IScreenChannel =
+    inherit IChannel
+    abstract Clear: unit -> unit
+    abstract SetCursor: int * int -> unit
+    abstract GetCursor: unit -> int * int
+    abstract SetCharacterSize: int * int -> unit
+    abstract GetCharacterSize: unit -> int * int
+    abstract SetInk: int -> unit
+    abstract SetPaper: int -> unit
+    abstract SetBorder: int -> unit
+
 type IChannelManager =
     abstract Open: string -> Result<ChannelId, RuntimeHostError>
     abstract Get: ChannelId -> Result<IChannel, RuntimeHostError>
@@ -47,10 +72,15 @@ type IScreenDevice =
     abstract Clear: unit -> unit
     abstract SetCursor: int * int -> unit
     abstract GetCursor: unit -> int * int
+    abstract SetCharacterSize: int * int -> unit
+    abstract GetCharacterSize: unit -> int * int
     abstract WriteText: string -> unit
     abstract SetInk: int -> unit
     abstract SetPaper: int -> unit
     abstract SetBorder: int -> unit
+    abstract GetSupportedModes: unit -> ScreenModeInfo list
+    abstract GetMode: unit -> ScreenModeInfo
+    abstract SetMode: ScreenMode -> Result<unit, RuntimeHostError>
 
 type IGraphicsDevice =
     abstract Plot: int * int -> unit
