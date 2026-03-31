@@ -1,6 +1,8 @@
 module SBRuntimeTests.InterpreterRuntimeHostTests
 
+open System
 open System.Collections.Generic
+open System.IO
 open NUnit.Framework
 
 open SyntaxAst
@@ -141,6 +143,7 @@ let ``default host exposes default channels zero through two`` () =
             ReadLine = fun () -> None
             ReadKey = fun () -> None
             KeyAvailable = fun () -> false
+            KeyRowState = fun _ -> 0
             WriteLine = ignore
         }
 
@@ -170,6 +173,7 @@ let ``default host exposes ql and extended screen modes`` () =
             ReadLine = fun () -> None
             ReadKey = fun () -> None
             KeyAvailable = fun () -> false
+            KeyRowState = fun _ -> 0
             WriteLine = ignore
         }
 
@@ -198,6 +202,7 @@ let ``interpreter print to default channels uses host channel manager`` () =
                         ReadLine = fun () -> None
                         ReadKey = fun () -> None
                         KeyAvailable = fun () -> false
+                        KeyRowState = fun _ -> 0
                         WriteLine = fun line -> outputs.Add(line)
                     } }
             hir
@@ -230,6 +235,7 @@ let ``interpreter input from default channel uses host channel manager`` () =
                         ReadLine = fun () -> if inputs.Count > 0 then Some(inputs.Dequeue()) else None
                         ReadKey = fun () -> None
                         KeyAvailable = fun () -> false
+                        KeyRowState = fun _ -> 0
                         WriteLine = fun line -> outputs.Add(line)
                     } }
             hir
@@ -278,13 +284,13 @@ let ``interpreter screen channel operations keep default window state independen
         Assert.That(window0.ClearCount, Is.EqualTo(1))
         Assert.That(window0.Window, Is.EqualTo((512, 256, 0, 0)))
         Assert.That(window0.Cursor, Is.EqualTo((4, 3)))
-        Assert.That(window0.CharacterSize, Is.EqualTo((0, 0)))
-        Assert.That(window0.Ink, Is.EqualTo(None))
+        Assert.That(window0.CharacterSize, Is.EqualTo((1, 1)))
+        Assert.That(window0.Ink, Is.EqualTo(Some [ 7 ]))
         Assert.That(window1.Window, Is.EqualTo((448, 40, 32, 216)))
         Assert.That(window1.Cursor, Is.EqualTo((10, 20)))
         Assert.That(window1.CharacterSize, Is.EqualTo((2, 1)))
         Assert.That(window1.Ink, Is.EqualTo(Some [ 7 ]))
-        Assert.That(window1.Paper, Is.EqualTo(None))
+        Assert.That(window1.Paper, Is.EqualTo(Some 0))
         Assert.That(window2.Window, Is.EqualTo((300, 120, 100, 80)))
         Assert.That(window2.CharacterSize, Is.EqualTo((4, 3)))
         Assert.That(window2.Paper, Is.EqualTo(Some 2))
@@ -356,6 +362,44 @@ let ``interpreter mode changes host screen mode`` () =
     match result with
     | Result.Ok _ ->
         Assert.That(screenState.Mode.Mode, Is.EqualTo(ExtendedMode 512))
+    | Result.Error err ->
+        Assert.Fail($"Expected interpretation to succeed, got %A{err}")
+
+[<Test>]
+let ``interpreter mode resets default screen geometry and default windows`` () =
+    let host, screenState = createScreenHost []
+    let channel1 = H.Literal(H.ConstInt 1, H.HirType.Int, pos)
+    let hir =
+        makeProgram
+            Map.empty
+            []
+            [ H.BuiltInCall(
+                  H.NamedBuiltIn "WINDOW",
+                  None,
+                  [ H.Literal(H.ConstInt 480, H.HirType.Int, pos)
+                    H.Literal(H.ConstInt 200, H.HirType.Int, pos)
+                    H.Literal(H.ConstInt 20, H.HirType.Int, pos)
+                    H.Literal(H.ConstInt 10, H.HirType.Int, pos) ],
+                  pos)
+              H.BuiltInCall(H.NamedBuiltIn "CSIZE", Some channel1, [ H.Literal(H.ConstInt 4, H.HirType.Int, pos); H.Literal(H.ConstInt 3, H.HirType.Int, pos) ], pos)
+              H.BuiltInCall(H.NamedBuiltIn "CURSOR", Some channel1, [ H.Literal(H.ConstInt 10, H.HirType.Int, pos); H.Literal(H.ConstInt 20, H.HirType.Int, pos) ], pos)
+              H.BuiltInCall(H.NamedBuiltIn "MODE", None, [ H.Literal(H.ConstInt 8, H.HirType.Int, pos) ], pos) ]
+
+    let result =
+        interpretProgramWithOptions
+            { defaultRuntimeOptions with
+                Host = host }
+            hir
+
+    match result with
+    | Result.Ok _ ->
+        Assert.That(screenState.Mode.Mode, Is.EqualTo(QlMode8))
+        Assert.That(screenState.Windows[0].Window, Is.EqualTo((256, 256, 0, 0)))
+        Assert.That(screenState.Windows[1].Window, Is.EqualTo((256, 256, 0, 0)))
+        Assert.That(screenState.Windows[1].CharacterSize, Is.EqualTo((1, 1)))
+        Assert.That(screenState.Windows[1].Cursor, Is.EqualTo((0, 0)))
+        Assert.That(screenState.Windows[1].Width, Is.EqualTo(None))
+        Assert.That(screenState.Windows[1].Pan, Is.EqualTo(0))
     | Result.Error err ->
         Assert.Fail($"Expected interpretation to succeed, got %A{err}")
 
@@ -664,5 +708,283 @@ let ``interpreter pause uses runtime sleeper`` () =
         Assert.That(pauses |> Seq.toList = [ 50; 0 ], Is.True)
     | Result.Error err ->
         Assert.Fail($"Expected interpretation to succeed, got %A{err}")
+
+[<Test>]
+let ``interpreter open_new open_in and close handle file channels`` () =
+    let tempPath = Path.Combine(Path.GetTempPath(), $"sb-runtime-{Guid.NewGuid():N}.txt")
+    let ast =
+        Program(
+            pos,
+            [ Line(pos, Some 10, [ ChannelProcedureCall(pos, "OPEN_NEW", num "9", [ str $"\"{tempPath}\"" ]) ])
+              Line(pos, Some 20, [ ChannelProcedureCall(pos, "PRINT", num "9", [ str "\"hello\"" ]) ])
+              Line(pos, Some 30, [ ChannelProcedureCall(pos, "CLOSE", num "9", []) ])
+              Line(pos, Some 40, [ ChannelProcedureCall(pos, "OPEN_IN", num "9", [ str $"\"{tempPath}\"" ]) ])
+              Line(pos, Some 50, [ ChannelProcedureCall(pos, "INPUT", num "9", [ id "text$" ]) ])
+              Line(pos, Some 60, [ ChannelProcedureCall(pos, "CLOSE", num "9", []) ])
+              Line(pos, Some 70, [ ProcedureCall(pos, "PRINT", [ id "text$" ]) ]) ])
+
+    let outputs = ResizeArray<string>()
+    let options =
+        { defaultRuntimeOptions with
+            Host =
+                DefaultHost.create {
+                    ReadLine = fun () -> None
+                    ReadKey = fun () -> None
+                    KeyAvailable = fun () -> false
+                    KeyRowState = fun _ -> 0
+                    WriteLine = fun line -> outputs.Add(line)
+                } }
+
+    try
+        let hir = lowerProgram ast
+        let result = interpretProgramWithOptions options hir
+
+        match result with
+        | Result.Ok execution ->
+            Assert.That(String.concat "|" execution.Output, Is.EqualTo("hello|hello"))
+            Assert.That(File.ReadAllText(tempPath), Does.Contain("hello"))
+        | Result.Error err ->
+            Assert.Fail($"Expected interpretation to succeed, got %A{err}")
+    finally
+        if File.Exists(tempPath) then
+            File.Delete(tempPath)
+
+[<Test>]
+let ``interpreter open_new and open_in support directory backed devices`` () =
+    let deviceRoot = Path.Combine(Environment.CurrentDirectory, "RuntimeDevices", "ram1")
+    let devicePath = Path.Combine(deviceRoot, "demo_io")
+    let ast =
+        Program(
+            pos,
+            [ Line(pos, Some 10, [ ChannelProcedureCall(pos, "OPEN_NEW", num "9", [ str "\"ram1_demo_io\"" ]) ])
+              Line(pos, Some 20, [ ChannelProcedureCall(pos, "PRINT", num "9", [ str "\"hello\"" ]) ])
+              Line(pos, Some 30, [ ChannelProcedureCall(pos, "CLOSE", num "9", []) ])
+              Line(pos, Some 40, [ ChannelProcedureCall(pos, "OPEN_IN", num "9", [ str "\"ram1_demo_io\"" ]) ])
+              Line(pos, Some 50, [ ChannelProcedureCall(pos, "INPUT", num "9", [ id "text$" ]) ])
+              Line(pos, Some 60, [ ChannelProcedureCall(pos, "CLOSE", num "9", []) ])
+              Line(pos, Some 70, [ ProcedureCall(pos, "PRINT", [ id "text$" ]) ]) ])
+
+    let outputs = ResizeArray<string>()
+    let options =
+        { defaultRuntimeOptions with
+            Host =
+                DefaultHost.create {
+                    ReadLine = fun () -> None
+                    ReadKey = fun () -> None
+                    KeyAvailable = fun () -> false
+                    KeyRowState = fun _ -> 0
+                    WriteLine = fun line -> outputs.Add(line)
+                } }
+
+    try
+        if File.Exists(devicePath) then
+            File.Delete(devicePath)
+
+        let hir = lowerProgram ast
+        let result = interpretProgramWithOptions options hir
+
+        match result with
+        | Result.Ok execution ->
+            Assert.That(execution.Output |> Seq.last, Is.EqualTo("hello"))
+            Assert.That(File.Exists(devicePath), Is.True)
+        | Result.Error err ->
+            Assert.Fail($"Expected interpretation to succeed, got %A{err}")
+    finally
+        if File.Exists(devicePath) then
+            File.Delete(devicePath)
+
+[<Test>]
+let ``interpreter open_new supports printer device`` () =
+    let ast =
+        Program(
+            pos,
+            [ Line(pos, Some 10, [ ChannelProcedureCall(pos, "OPEN_NEW", num "9", [ str "\"prt_\"" ]) ])
+              Line(pos, Some 20, [ ChannelProcedureCall(pos, "PRINT", num "9", [ str "\"printer\"" ]) ])
+              Line(pos, Some 30, [ ChannelProcedureCall(pos, "CLOSE", num "9", []) ]) ])
+
+    let outputs = ResizeArray<string>()
+    let options =
+        { defaultRuntimeOptions with
+            Host =
+                DefaultHost.create {
+                    ReadLine = fun () -> None
+                    ReadKey = fun () -> None
+                    KeyAvailable = fun () -> false
+                    KeyRowState = fun _ -> 0
+                    WriteLine = fun line -> outputs.Add(line)
+                } }
+
+    let hir = lowerProgram ast
+    let result = interpretProgramWithOptions options hir
+
+    match result with
+    | Result.Ok execution ->
+        Assert.That(String.concat "|" execution.Output, Is.EqualTo("printer"))
+    | Result.Error err ->
+        Assert.Fail($"Expected interpretation to succeed, got %A{err}")
+
+[<Test>]
+let ``interpreter eof reflects file channel read position`` () =
+    let tempPath = Path.Combine(Path.GetTempPath(), $"sb-runtime-eof-{Guid.NewGuid():N}.txt")
+    let ast =
+        Program(
+            pos,
+            [ Line(pos, Some 10, [ ChannelProcedureCall(pos, "OPEN_NEW", num "9", [ str $"\"{tempPath}\"" ]) ])
+              Line(pos, Some 20, [ ChannelProcedureCall(pos, "PRINT", num "9", [ str "\"hello\"" ]) ])
+              Line(pos, Some 30, [ ChannelProcedureCall(pos, "CLOSE", num "9", []) ])
+              Line(pos, Some 40, [ ChannelProcedureCall(pos, "OPEN_IN", num "9", [ str $"\"{tempPath}\"" ]) ])
+              Line(pos, Some 50, [ Assignment(pos, id "before", call "EOF" [ num "9" ]) ])
+              Line(pos, Some 60, [ ChannelProcedureCall(pos, "INPUT", num "9", [ id "text$" ]) ])
+              Line(pos, Some 70, [ Assignment(pos, id "after", call "EOF" [ num "9" ]) ])
+              Line(pos, Some 80, [ ChannelProcedureCall(pos, "CLOSE", num "9", []) ])
+              Line(pos, Some 90, [ ProcedureCall(pos, "PRINT", [ id "before"; id "text$"; id "after" ]) ]) ])
+
+    let outputs = ResizeArray<string>()
+    let options =
+        { defaultRuntimeOptions with
+            Host =
+                DefaultHost.create {
+                    ReadLine = fun () -> None
+                    ReadKey = fun () -> None
+                    KeyAvailable = fun () -> false
+                    KeyRowState = fun _ -> 0
+                    WriteLine = fun line -> outputs.Add(line)
+                } }
+
+    try
+        let hir = lowerProgram ast
+        let result = interpretProgramWithOptions options hir
+
+        match result with
+        | Result.Ok execution ->
+            Assert.That(execution.Output |> Seq.last, Is.EqualTo("0 hello 1"))
+        | Result.Error err ->
+            Assert.Fail($"Expected interpretation to succeed, got %A{err}")
+    finally
+        if File.Exists(tempPath) then
+            File.Delete(tempPath)
+
+[<Test>]
+let ``interpreter open and close support dynamic screen channels`` () =
+    let channel9 = H.Literal(H.ConstInt 9, H.HirType.Int, pos)
+    let hir =
+        makeProgram
+            Map.empty
+            []
+            [ H.BuiltInCall(H.NamedBuiltIn "OPEN", Some channel9, [ H.Literal(H.ConstString "scr_", H.HirType.String, pos) ], pos)
+              H.BuiltInCall(H.Print, Some channel9, [ H.Literal(H.ConstString "hello", H.HirType.String, pos) ], pos)
+              H.BuiltInCall(H.NamedBuiltIn "CLOSE", Some channel9, [], pos) ]
+
+    let outputs = ResizeArray<string>()
+    let options =
+        { defaultRuntimeOptions with
+            Host =
+                DefaultHost.create {
+                    ReadLine = fun () -> None
+                    ReadKey = fun () -> None
+                    KeyAvailable = fun () -> false
+                    KeyRowState = fun _ -> 0
+                    WriteLine = fun line -> outputs.Add(line)
+                } }
+
+    let result = interpretProgramWithOptions options hir
+
+    match result with
+    | Result.Ok execution ->
+        Assert.That(String.concat "|" execution.Output, Is.EqualTo("hello"))
+    | Result.Error err ->
+        Assert.Fail($"Expected interpretation to succeed, got %A{err}")
+
+[<Test>]
+let ``interpreter close rejects default channels`` () =
+    let channel1 = H.Literal(H.ConstInt 1, H.HirType.Int, pos)
+    let hir =
+        makeProgram
+            Map.empty
+            []
+            [ H.BuiltInCall(H.NamedBuiltIn "CLOSE", Some channel1, [], pos) ]
+
+    interpretProgramWithOptions defaultRuntimeOptions hir
+    |> assertRuntimeError UnsupportedChannelExecution
+    |> ignore
+
+[<Test>]
+let ``interpreter open supports console null and printer devices`` () =
+    let channel9 = H.Literal(H.ConstInt 9, H.HirType.Int, pos)
+    let channel10 = H.Literal(H.ConstInt 10, H.HirType.Int, pos)
+    let channel11 = H.Literal(H.ConstInt 11, H.HirType.Int, pos)
+    let hir =
+        makeProgram
+            Map.empty
+            []
+            [ H.BuiltInCall(H.NamedBuiltIn "OPEN", Some channel9, [ H.Literal(H.ConstString "con_", H.HirType.String, pos) ], pos)
+              H.BuiltInCall(H.NamedBuiltIn "OPEN", Some channel10, [ H.Literal(H.ConstString "nul_", H.HirType.String, pos) ], pos)
+              H.BuiltInCall(H.NamedBuiltIn "OPEN", Some channel11, [ H.Literal(H.ConstString "prt_", H.HirType.String, pos) ], pos)
+              H.BuiltInCall(H.Print, Some channel9, [ H.Literal(H.ConstString "console", H.HirType.String, pos) ], pos)
+              H.BuiltInCall(H.Print, Some channel10, [ H.Literal(H.ConstString "discarded", H.HirType.String, pos) ], pos)
+              H.BuiltInCall(H.Print, Some channel11, [ H.Literal(H.ConstString "printer", H.HirType.String, pos) ], pos)
+              H.BuiltInCall(H.NamedBuiltIn "CLOSE", Some channel9, [], pos)
+              H.BuiltInCall(H.NamedBuiltIn "CLOSE", Some channel10, [], pos)
+              H.BuiltInCall(H.NamedBuiltIn "CLOSE", Some channel11, [], pos) ]
+
+    let outputs = ResizeArray<string>()
+    let options =
+        { defaultRuntimeOptions with
+            Host =
+                DefaultHost.create {
+                    ReadLine = fun () -> None
+                    ReadKey = fun () -> None
+                    KeyAvailable = fun () -> false
+                    KeyRowState = fun _ -> 0
+                    WriteLine = fun line -> outputs.Add(line)
+                } }
+
+    let result = interpretProgramWithOptions options hir
+
+    match result with
+    | Result.Ok execution ->
+        Assert.That(String.concat "|" execution.Output, Is.EqualTo("console|printer"))
+    | Result.Error err ->
+        Assert.Fail($"Expected interpretation to succeed, got %A{err}")
+
+[<Test>]
+let ``interpreter open supports directory backed devices`` () =
+    let deviceRoot = Path.Combine(Environment.CurrentDirectory, "RuntimeDevices", "ram1")
+    let devicePath = Path.Combine(deviceRoot, "demo_txt")
+    let ast =
+        Program(
+            pos,
+            [ Line(pos, Some 10, [ ChannelProcedureCall(pos, "OPEN", num "9", [ str "\"ram1_demo_txt\"" ]) ])
+              Line(pos, Some 20, [ ChannelProcedureCall(pos, "PRINT", num "9", [ str "\"hello\"" ]) ])
+              Line(pos, Some 30, [ ChannelProcedureCall(pos, "CLOSE", num "9", []) ]) ])
+
+    let outputs = ResizeArray<string>()
+    let options =
+        { defaultRuntimeOptions with
+            Host =
+                DefaultHost.create {
+                    ReadLine = fun () -> None
+                    ReadKey = fun () -> None
+                    KeyAvailable = fun () -> false
+                    KeyRowState = fun _ -> 0
+                    WriteLine = fun line -> outputs.Add(line)
+                } }
+
+    try
+        if File.Exists(devicePath) then
+            File.Delete(devicePath)
+
+        let hir = lowerProgram ast
+        let result = interpretProgramWithOptions options hir
+
+        match result with
+        | Result.Ok _ ->
+            Assert.That(File.Exists(devicePath), Is.True)
+            Assert.That(File.ReadAllText(devicePath), Does.Contain("hello"))
+        | Result.Error err ->
+            Assert.Fail($"Expected interpretation to succeed, got %A{err}")
+    finally
+        if File.Exists(devicePath) then
+            File.Delete(devicePath)
 
 

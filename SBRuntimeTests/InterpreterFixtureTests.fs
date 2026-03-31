@@ -21,6 +21,7 @@ let ``q3 fixture runtime completes sort check without inversion output`` () =
                     ReadLine = fun () -> if inputs.Count > 0 then Some(inputs.Dequeue()) else None
                     ReadKey = fun () -> None
                     KeyAvailable = fun () -> false
+                    KeyRowState = fun _ -> 0
                     WriteLine = fun line -> outputs.Add(line)
                 }
             Random = Random(1234)

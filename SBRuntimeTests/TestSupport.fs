@@ -65,6 +65,7 @@ let runProgramWithInput input ast =
                     ReadLine = fun () -> if inputs.Count > 0 then Some(inputs.Dequeue()) else None
                     ReadKey = fun () -> None
                     KeyAvailable = fun () -> false
+                    KeyRowState = fun _ -> 0
                     WriteLine = fun line -> outputs.Add(line)
                 }
             Random = Random(1234)
@@ -115,6 +116,19 @@ let createScreenHost (inputs: string list) =
           { Mode = ExtendedMode 256; Width = 256; Height = 256; Colors = Some 8; Name = "Extended Mode 256"; IsQlCompatible = false }
           { Mode = ExtendedMode 512; Width = 512; Height = 256; Colors = Some 4; Name = "Extended Mode 512"; IsQlCompatible = false } ]
 
+    let applyModeToWindow (mode: ScreenModeInfo) (window: ScreenWindowState) =
+        window.Cursor <- 0, 0
+        window.Window <- mode.Width, mode.Height, 0, 0
+        window.Scroll <- 0
+        window.Width <- None
+        window.Pan <- 0
+        window.Recolor <- None
+        window.Palette <- None
+        window.CharacterSize <- 1, 1
+        window.Ink <- Some [ 7 ]
+        window.Paper <- Some 0
+        window.Border <- Some 0
+
     let makeWindowState () =
         { Cursor = 0, 0
           Window = 0, 0, 0, 0
@@ -150,6 +164,10 @@ let createScreenHost (inputs: string list) =
           PenDown = true
           Heading = 0.0 }
 
+    do
+        for window in state.Windows.Values do
+            applyModeToWindow state.Mode window
+
     let reader () =
         if state.Inputs.Count > 0 then Some(state.Inputs.Dequeue()) else None
 
@@ -164,6 +182,7 @@ let createScreenHost (inputs: string list) =
             member _.Kind = ConsoleChannel
             member _.WriteText text = writeWindow channelId text
             member _.ReadText() = reader ()
+            member _.IsEndOfFile() = false
             member _.Flush() = ()
             member _.Close() = ()
             member _.Clear() =
@@ -253,6 +272,7 @@ let createScreenHost (inputs: string list) =
             member _.Kind = ScreenChannel
             member _.WriteText text = writeWindow channelId text
             member _.ReadText() = reader ()
+            member _.IsEndOfFile() = false
             member _.Flush() = ()
             member _.Close() = ()
             member _.Clear() =
@@ -348,6 +368,7 @@ let createScreenHost (inputs: string list) =
             member _.Channels =
                 { new IChannelManager with
                     member _.Open(_name: string) = Result.Error(UnsupportedHostOperation "Open not implemented in test host.")
+                    member _.OpenAs(_channelId: ChannelId, _name: string) = Result.Error(UnsupportedHostOperation "OpenAs not implemented in test host.")
                     member _.Get(channelId: ChannelId) =
                         match Map.tryFind channelId channels with
                         | Some channel -> Result.Ok channel
@@ -447,6 +468,8 @@ let createScreenHost (inputs: string list) =
                         match supportedModes |> List.tryFind (fun candidate -> candidate.Mode = mode) with
                         | Some selected ->
                             state.Mode <- selected
+                            for window in state.Windows.Values do
+                                applyModeToWindow selected window
                             Result.Ok()
                         | None ->
                             Result.Error(UnsupportedHostOperation $"Mode '{mode}' is not supported in the test host.") }
@@ -503,15 +526,20 @@ let createScreenHost (inputs: string list) =
                 { new IInputDevice with
                     member _.ReadLine() = reader ()
                     member _.ReadKey() = None
-                    member _.KeyAvailable() = false }
+                    member _.KeyAvailable() = false
+                    member _.GetKeyRow(_row) = 0 }
             member _.Sound =
                 { new ISoundDevice with
                     member _.Beep(_pitch, _duration) = () }
             member _.Files =
                 { new IDeviceFileSystem with
                     member _.OpenFile(_path, _mode) = Result.Error(UnsupportedHostOperation "Files not implemented in test host.")
+                    member _.OpenFileAs(_channelId, _path, _mode) = Result.Error(UnsupportedHostOperation "Files not implemented in test host.")
                     member _.Exists(_path) = false
-                    member _.Delete(_path) = Result.Error(UnsupportedHostOperation "Files not implemented in test host.") } }
+                    member _.Delete(_path) = Result.Error(UnsupportedHostOperation "Files not implemented in test host.") }
+            member _.Environment =
+                { new IEnvironmentProvider with
+                    member _.GetVariable(_name) = None } }
 
     host, state
 

@@ -75,6 +75,7 @@ let defaultRuntimeOptions =
             KeyAvailable =
                 fun () ->
                     try Console.KeyAvailable with _ -> false
+            KeyRowState = fun _ -> 0
             WriteLine = Console.WriteLine
         }
       Random = Random()
@@ -295,7 +296,14 @@ let private writeOutputToChannel channelId line state pos =
         match state.Options.Host.Channels.Get resolvedChannelId with
         | Result.Ok channel ->
             channel.WriteText line
-            Result.Ok { state with Output = state.Output @ [ line ] }
+            let captureOutput =
+                match channel.Kind with
+                | NamedChannel "NUL" -> false
+                | _ -> true
+            if captureOutput then
+                Result.Ok { state with Output = state.Output @ [ line ] }
+            else
+                Result.Ok state
         | Result.Error hostError ->
             runtimeError UnsupportedChannelExecution (Some pos) (hostErrorText hostError)
 
@@ -494,12 +502,13 @@ and private evalBuiltInFunction state symbolId argExprs hirType pos =
             (hirType = HIR.HirType.Float)
             nextState.Options.Clock
             (fun () -> nextState.RandomSource)
-            (fun variable -> Environment.GetEnvironmentVariable(variable) |> Option.ofObj)
+            nextState.Options.Host.Environment.GetVariable
             nextState.Options.Host.Input.ReadKey
-            (fun _ -> 0)
+            nextState.Options.Sleeper
+            nextState.Options.Host.Input.GetKeyRow
             (fun channelNumber ->
                 match nextState.Options.Host.Channels.Get(ChannelId channelNumber) with
-                | Result.Ok _ -> false
+                | Result.Ok channel -> channel.IsEndOfFile()
                 | Result.Error _ -> true)
             allowRangePair
             (values |> List.map toRuntimeBuiltInValue)
@@ -669,6 +678,11 @@ and private executeBuiltInCall state kind channel args targets pos =
             if actual >= minimum then Result.Ok()
             else runtimeError BuiltInArityMismatch (Some pos) $"Built-in statement '{name}' expects at least {minimum} argument(s)."
 
+        let requireChannelId resolvedChannel =
+            match resolvedChannel with
+            | Some channelId -> Result.Ok channelId
+            | None -> runtimeError UnsupportedChannelExecution (Some pos) $"Built-in '{name}' requires a channel id."
+
         let executeScreenOp expectedArgCount atLeast (action: ChannelId option -> RuntimeState -> int list -> Result<RuntimeState, RuntimeError>) =
             resolveChannelId state channel
             |> Result.bind (fun (resolvedChannel, stateAfterChannel) ->
@@ -717,6 +731,61 @@ and private executeBuiltInCall state kind channel args targets pos =
                         Result.Ok(Continue, { nextState with RandomSource = Random(asInt seedValue) })
                     | _ ->
                         runtimeError BuiltInArityMismatch (Some pos) $"Built-in statement '{name}' expects zero or one argument."))
+        | "OPEN" ->
+            resolveChannelId state channel
+            |> Result.bind (fun (resolvedChannel, stateAfterChannel) ->
+                requireChannelId resolvedChannel
+                |> Result.bind (fun channelId ->
+                    evalExprList stateAfterChannel args
+                    |> Result.bind (fun (values, nextState) ->
+                        requireArity 1 values.Length
+                        |> Result.bind (fun () ->
+                            match values with
+                            | [ pathValue ] ->
+                                match nextState.Options.Host.Channels.OpenAs(channelId, asString pathValue) with
+                                | Result.Ok() -> Result.Ok(Continue, nextState)
+                                | Result.Error hostError -> runtimeError UnsupportedChannelExecution (Some pos) (hostErrorText hostError)
+                            | _ -> Result.Ok(Continue, nextState)))))
+        | "OPEN_IN" ->
+            resolveChannelId state channel
+            |> Result.bind (fun (resolvedChannel, stateAfterChannel) ->
+                requireChannelId resolvedChannel
+                |> Result.bind (fun channelId ->
+                    evalExprList stateAfterChannel args
+                    |> Result.bind (fun (values, nextState) ->
+                        requireArity 1 values.Length
+                        |> Result.bind (fun () ->
+                            match values with
+                            | [ pathValue ] ->
+                                match nextState.Options.Host.Files.OpenFileAs(channelId, asString pathValue, OpenForInput) with
+                                | Result.Ok() -> Result.Ok(Continue, nextState)
+                                | Result.Error hostError -> runtimeError UnsupportedChannelExecution (Some pos) (hostErrorText hostError)
+                            | _ -> Result.Ok(Continue, nextState)))))
+        | "OPEN_NEW" ->
+            resolveChannelId state channel
+            |> Result.bind (fun (resolvedChannel, stateAfterChannel) ->
+                requireChannelId resolvedChannel
+                |> Result.bind (fun channelId ->
+                    evalExprList stateAfterChannel args
+                    |> Result.bind (fun (values, nextState) ->
+                        requireArity 1 values.Length
+                        |> Result.bind (fun () ->
+                            match values with
+                            | [ pathValue ] ->
+                                match nextState.Options.Host.Files.OpenFileAs(channelId, asString pathValue, OpenForOutput) with
+                                | Result.Ok() -> Result.Ok(Continue, nextState)
+                                | Result.Error hostError -> runtimeError UnsupportedChannelExecution (Some pos) (hostErrorText hostError)
+                            | _ -> Result.Ok(Continue, nextState)))))
+        | "CLOSE" ->
+            resolveChannelId state channel
+            |> Result.bind (fun (resolvedChannel, stateAfterChannel) ->
+                requireChannelId resolvedChannel
+                |> Result.bind (fun channelId ->
+                    requireArity 0 args.Length
+                    |> Result.bind (fun () ->
+                        match stateAfterChannel.Options.Host.Channels.Close(channelId) with
+                        | Result.Ok() -> Result.Ok(Continue, stateAfterChannel)
+                        | Result.Error hostError -> runtimeError UnsupportedChannelExecution (Some pos) (hostErrorText hostError))))
         | "PAUSE" ->
             unsupportedChannel ()
             |> Result.bind (fun _ ->

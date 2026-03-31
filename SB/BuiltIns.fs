@@ -117,14 +117,11 @@ let private fixedArityBuiltIns =
       "CODE", 1
       "COS", 1
       "COT", 1
-      "DATE$", 1
-      "DAY$", 1
       "DEG", 1
       "EOF", 1
       "EXP", 1
       "FILL$", 2
       "GETENV$", 1
-      "INKEY", 1
       "INT", 1
       "KEYROW", 1
       "LEN", 1
@@ -143,7 +140,6 @@ let private fixedArityBuiltIns =
       "SQRT", 1
       "STR$", 1
       "TAN", 1
-      "TIME", 1
       "VAL", 1 ]
     |> List.map (fun (name, arity) -> normalizeIdentifier name, arity)
     |> Map.ofList
@@ -170,14 +166,14 @@ let private builtInSignatures =
       signature "CODE" (Some 1) (Some [ String ])
       signature "COS" (Some 1) (Some [ Numeric ])
       signature "COT" (Some 1) (Some [ Numeric ])
-      signature "DATE$" (Some 1) (Some [ Numeric ])
-      signature "DAY$" (Some 1) (Some [ Numeric ])
+      signature "DATE$" None None
+      signature "DAY$" None None
       signature "DEG" (Some 1) (Some [ Numeric ])
       signature "EOF" (Some 1) (Some [ Numeric ])
       signature "EXP" (Some 1) (Some [ Numeric ])
       signature "FILL$" (Some 2) (Some [ String; Numeric ])
       signature "GETENV$" (Some 1) (Some [ String ])
-      signature "INKEY" (Some 1) (Some [ Numeric ])
+      signature "INKEY" None None
       signature "INKEY$" None None
       signature "INPUT" None None
       signature "INT" (Some 1) (Some [ Numeric ])
@@ -198,7 +194,7 @@ let private builtInSignatures =
       signature "SQRT" (Some 1) (Some [ Numeric ])
       signature "STR$" (Some 1) (Some [ Numeric ])
       signature "TAN" (Some 1) (Some [ Numeric ])
-      signature "TIME" (Some 1) (Some [ Numeric ])
+      signature "TIME" None None
       signature "VAL" (Some 1) (Some [ String ]) ]
     |> Map.ofList
 

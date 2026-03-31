@@ -49,6 +49,7 @@ type IChannel =
     abstract Kind: ChannelKind
     abstract WriteText: string -> unit
     abstract ReadText: unit -> string option
+    abstract IsEndOfFile: unit -> bool
     abstract Flush: unit -> unit
     abstract Close: unit -> unit
 
@@ -77,6 +78,7 @@ type IScreenChannel =
 
 type IChannelManager =
     abstract Open: string -> Result<ChannelId, RuntimeHostError>
+    abstract OpenAs: ChannelId * string -> Result<unit, RuntimeHostError>
     abstract Get: ChannelId -> Result<IChannel, RuntimeHostError>
     abstract Close: ChannelId -> Result<unit, RuntimeHostError>
 
@@ -136,14 +138,19 @@ type IInputDevice =
     abstract ReadLine: unit -> string option
     abstract ReadKey: unit -> KeyInfo option
     abstract KeyAvailable: unit -> bool
+    abstract GetKeyRow: int -> int
 
 type ISoundDevice =
     abstract Beep: int * int -> unit
 
 type IDeviceFileSystem =
     abstract OpenFile: string * FileOpenMode -> Result<ChannelId, RuntimeHostError>
+    abstract OpenFileAs: ChannelId * string * FileOpenMode -> Result<unit, RuntimeHostError>
     abstract Exists: string -> bool
     abstract Delete: string -> Result<unit, RuntimeHostError>
+
+type IEnvironmentProvider =
+    abstract GetVariable: string -> string option
 
 type IRuntimeHost =
     abstract Channels: IChannelManager
@@ -152,3 +159,4 @@ type IRuntimeHost =
     abstract Input: IInputDevice
     abstract Sound: ISoundDevice
     abstract Files: IDeviceFileSystem
+    abstract Environment: IEnvironmentProvider

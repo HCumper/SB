@@ -99,6 +99,7 @@ let ``interpreter date uses runtime clock`` () =
                     ReadLine = fun () -> None
                     ReadKey = fun () -> None
                     KeyAvailable = fun () -> false
+                    KeyRowState = fun _ -> 0
                     WriteLine = fun line -> outputs.Add(line)
                 }
             Clock = fun () -> DateTime(2024, 1, 2, 3, 4, 5, DateTimeKind.Utc) }
@@ -106,7 +107,34 @@ let ``interpreter date uses runtime clock`` () =
     let hir = lowerProgram ast
     let output = runHirProgramWithOptions options hir
 
-    Assert.That(String.concat "|" output, Is.EqualTo("1704164645"))
+    Assert.That(String.concat "|" output, Is.EqualTo("1988161445"))
+
+[<Test>]
+let ``interpreter date string built ins support zero argument forms`` () =
+    let ast =
+        Program(
+            pos,
+            [ Line(pos, Some 10, [ Assignment(pos, id "d$", call "DATE$" []) ])
+              Line(pos, Some 20, [ Assignment(pos, id "e$", call "DAY$" []) ])
+              Line(pos, Some 30, [ ProcedureCall(pos, "PRINT", [ id "d$"; id "e$" ]) ]) ])
+
+    let outputs = ResizeArray<string>()
+    let options =
+        { defaultRuntimeOptions with
+            Host =
+                DefaultHost.create {
+                    ReadLine = fun () -> None
+                    ReadKey = fun () -> None
+                    KeyAvailable = fun () -> false
+                    KeyRowState = fun _ -> 0
+                    WriteLine = fun line -> outputs.Add(line)
+                }
+            Clock = fun () -> DateTime(2024, 1, 2, 3, 4, 5, DateTimeKind.Utc) }
+
+    let hir = lowerProgram ast
+    let output = runHirProgramWithOptions options hir
+
+    Assert.That(String.concat "|" output, Is.EqualTo("2024 Jan 02 03:04:05 Tuesday"))
 
 [<Test>]
 let ``interpreter rnd supports deterministic float integer and range forms`` () =
@@ -125,6 +153,7 @@ let ``interpreter rnd supports deterministic float integer and range forms`` () 
                     ReadLine = fun () -> None
                     ReadKey = fun () -> None
                     KeyAvailable = fun () -> false
+                    KeyRowState = fun _ -> 0
                     WriteLine = fun line -> outputs.Add(line)
                 }
             Random = Random(1234) }
@@ -151,6 +180,7 @@ let ``interpreter rnd range accepts mixed numeric bound types`` () =
                     ReadLine = fun () -> None
                     ReadKey = fun () -> None
                     KeyAvailable = fun () -> false
+                    KeyRowState = fun _ -> 0
                     WriteLine = fun line -> outputs.Add(line)
                 }
             Random = Random(1234) }
@@ -180,6 +210,7 @@ let ``interpreter rnd without arguments returns deterministic float`` () =
                     ReadLine = fun () -> None
                     ReadKey = fun () -> None
                     KeyAvailable = fun () -> false
+                    KeyRowState = fun _ -> 0
                     WriteLine = fun line -> outputs.Add(line)
                 }
             Random = Random(1234) }
@@ -206,7 +237,7 @@ let ``interpreter trig functions handle standard angles`` () =
 [<Test>]
 let ``runtime trig inverse and angle conversion functions return expected values`` () =
     let evaluateOne name value =
-        match BuiltInFunctions.evaluate name true (fun () -> DateTime.UnixEpoch) (fun () -> Random(1234)) (fun _ -> None) (fun () -> None) (fun _ -> 0) (fun _ -> false) false [ RuntimeValues.ofFloat value ] with
+        match BuiltInFunctions.evaluate name true (fun () -> DateTime.UnixEpoch) (fun () -> Random(1234)) (fun _ -> None) (fun () -> None) ignore (fun _ -> 0) (fun _ -> false) false [ RuntimeValues.ofFloat value ] with
         | Result.Ok(Numeric(FloatNumber number)) -> number
         | Result.Ok other -> Assert.Fail($"Expected numeric float result for {name}, got %A{other}"); 0.0
         | Result.Error err -> Assert.Fail($"Expected {name} to succeed, got %A{err}"); 0.0
@@ -243,13 +274,13 @@ let ``interpreter remaining math functions handle simple numeric cases`` () =
 [<Test>]
 let ``runtime remaining math functions return expected values`` () =
     let evaluateNoArg name =
-        match BuiltInFunctions.evaluate name true (fun () -> DateTime.UnixEpoch) (fun () -> Random(1234)) (fun _ -> None) (fun () -> None) (fun _ -> 0) (fun _ -> false) false [] with
+        match BuiltInFunctions.evaluate name true (fun () -> DateTime.UnixEpoch) (fun () -> Random(1234)) (fun _ -> None) (fun () -> None) ignore (fun _ -> 0) (fun _ -> false) false [] with
         | Result.Ok(Numeric(FloatNumber number)) -> number
         | Result.Ok other -> Assert.Fail($"Expected numeric float result for {name}, got %A{other}"); 0.0
         | Result.Error err -> Assert.Fail($"Expected {name} to succeed, got %A{err}"); 0.0
 
     let evaluateOne name value =
-        match BuiltInFunctions.evaluate name true (fun () -> DateTime.UnixEpoch) (fun () -> Random(1234)) (fun _ -> None) (fun () -> None) (fun _ -> 0) (fun _ -> false) false [ RuntimeValues.ofFloat value ] with
+        match BuiltInFunctions.evaluate name true (fun () -> DateTime.UnixEpoch) (fun () -> Random(1234)) (fun _ -> None) (fun () -> None) ignore (fun _ -> 0) (fun _ -> false) false [ RuntimeValues.ofFloat value ] with
         | Result.Ok(Numeric(FloatNumber number)) -> number
         | Result.Ok other -> Assert.Fail($"Expected numeric float result for {name}, got %A{other}"); 0.0
         | Result.Error err -> Assert.Fail($"Expected {name} to succeed, got %A{err}"); 0.0
@@ -283,8 +314,8 @@ let ``interpreter date string family and character functions work`` () =
               Line(pos, Some 20, [ Assignment(pos, id "b$", call "CHR$" [ num "65" ]) ])
               Line(pos, Some 30, [ Assignment(pos, id "c", call "ASC" [ str "\"AZ\"" ]) ])
               Line(pos, Some 40, [ Assignment(pos, id "d", call "CODE" [ str "\"BC\"" ]) ])
-              Line(pos, Some 50, [ Assignment(pos, id "e$", call "DATE$" [ num "1704164645" ]) ])
-              Line(pos, Some 60, [ Assignment(pos, id "f$", call "DAY$" [ num "1704164645" ]) ])
+              Line(pos, Some 50, [ Assignment(pos, id "e$", call "DATE$" [ num "1988161445" ]) ])
+              Line(pos, Some 60, [ Assignment(pos, id "f$", call "DAY$" [ num "1988161445" ]) ])
               Line(pos, Some 70, [ Assignment(pos, id "g", call "EOF" [ num "1" ]) ])
               Line(pos, Some 80, [ ProcedureCall(pos, "PRINT", [ id "a"; id "b$"; id "c"; id "d"; id "e$"; id "f$"; id "g" ]) ]) ])
 
@@ -296,6 +327,7 @@ let ``interpreter date string family and character functions work`` () =
                     ReadLine = fun () -> None
                     ReadKey = fun () -> None
                     KeyAvailable = fun () -> false
+                    KeyRowState = fun _ -> 0
                     WriteLine = fun line -> outputs.Add(line)
                 }
             Clock = fun () -> DateTime(2024, 1, 2, 3, 4, 5, DateTimeKind.Utc) }
@@ -303,14 +335,14 @@ let ``interpreter date string family and character functions work`` () =
     let hir = lowerProgram ast
     let output = runHirProgramWithOptions options hir
 
-    Assert.That(String.concat "|" output, Is.EqualTo("1704164655 A 65 66 2024 Jan 02 03:04:05 Tuesday 0"))
+    Assert.That(String.concat "|" output, Is.EqualTo("1988161455 A 65 66 2024 Jan 02 03:04:05 Tuesday 0"))
 
 [<Test>]
 let ``runtime date and eof built ins return expected values`` () =
     let clock () = DateTime(2024, 1, 2, 3, 4, 5, DateTimeKind.Utc)
 
     let evaluate name args eof =
-        BuiltInFunctions.evaluate name true clock (fun () -> Random(1234)) (fun _ -> None) (fun () -> None) (fun _ -> 0) eof false args
+        BuiltInFunctions.evaluate name true clock (fun () -> Random(1234)) (fun _ -> None) (fun () -> None) ignore (fun _ -> 0) eof false args
 
     let expectInt name args eof (expected: int) =
         match evaluate name args eof with
@@ -325,12 +357,12 @@ let ``runtime date and eof built ins return expected values`` () =
         | Result.Ok other -> Assert.Fail($"Expected text result for {name}, got %A{other}")
         | Result.Error err -> Assert.Fail($"Expected {name} to succeed, got %A{err}")
 
-    expectInt "ADATE" [ RuntimeValues.ofInt 10 ] (fun _ -> false) 1704164655
+    expectInt "ADATE" [ RuntimeValues.ofInt 10 ] (fun _ -> false) 1988161455
     expectInt "ASC" [ RuntimeValues.ofString "AZ" ] (fun _ -> false) 65
     expectInt "CODE" [ RuntimeValues.ofString "BC" ] (fun _ -> false) 66
     expectText "CHR$" [ RuntimeValues.ofInt 65 ] (fun _ -> false) "A"
-    expectText "DATE$" [ RuntimeValues.ofInt 1704164645 ] (fun _ -> false) "2024 Jan 02 03:04:05"
-    expectText "DAY$" [ RuntimeValues.ofInt 1704164645 ] (fun _ -> false) "Tuesday"
+    expectText "DATE$" [ RuntimeValues.ofInt 1988161445 ] (fun _ -> false) "2024 Jan 02 03:04:05"
+    expectText "DAY$" [ RuntimeValues.ofInt 1988161445 ] (fun _ -> false) "Tuesday"
     expectInt "EOF" [ RuntimeValues.ofInt 5 ] (fun channel -> channel = 5) 1
     expectInt "EOF" [ RuntimeValues.ofInt 6 ] (fun channel -> channel = 5) 0
 
@@ -362,15 +394,53 @@ let ``interpreter getenv len inkey and keyrow functions work`` () =
                         ReadLine = fun () -> None
                         ReadKey = fun () -> if keyQueue.Count > 0 then Some(keyQueue.Dequeue()) else None
                         KeyAvailable = fun () -> keyQueue.Count > 0
+                        KeyRowState = fun row -> row * 10
                         WriteLine = fun line -> outputs.Add(line)
                     } }
 
         let hir = lowerProgram ast
         let output = runHirProgramWithOptions options hir
 
-        Assert.That(String.concat "|" output, Is.EqualTo("hello 4 65 0"))
+        Assert.That(String.concat "|" output, Is.EqualTo("hello 4 65 30"))
     finally
         Environment.SetEnvironmentVariable("SB_TEST_ENV", previous)
+
+[<Test>]
+let ``interpreter getenv maps ql environment aliases to host values`` () =
+    let ast =
+        Program(
+            pos,
+            [ Line(pos, Some 10, [ Assignment(pos, id "a$", call "GETENV$" [ str "\"HOME\"" ]) ])
+              Line(pos, Some 20, [ Assignment(pos, id "b$", call "GETENV$" [ str "\"TMPDIR\"" ]) ])
+              Line(pos, Some 30, [ Assignment(pos, id "c$", call "GETENV$" [ str "\"PROG_USE\"" ]) ])
+              Line(pos, Some 40, [ ProcedureCall(pos, "PRINT", [ id "a$"; id "b$"; id "c$" ]) ]) ])
+
+    let outputs = ResizeArray<string>()
+    let previousUserProfile = Environment.GetEnvironmentVariable("USERPROFILE")
+    let previousTemp = Environment.GetEnvironmentVariable("TEMP")
+
+    try
+        Environment.SetEnvironmentVariable("USERPROFILE", @"C:\MappedHome")
+        Environment.SetEnvironmentVariable("TEMP", @"C:\MappedTemp")
+
+        let options =
+            { defaultRuntimeOptions with
+                Host =
+                    DefaultHost.create {
+                        ReadLine = fun () -> None
+                        ReadKey = fun () -> None
+                        KeyAvailable = fun () -> false
+                        KeyRowState = fun _ -> 0
+                        WriteLine = fun line -> outputs.Add(line)
+                    } }
+
+        let hir = lowerProgram ast
+        let output = runHirProgramWithOptions options hir
+
+        Assert.That(String.concat "|" output, Is.EqualTo($@"C:\MappedHome C:\MappedTemp {Environment.CurrentDirectory}"))
+    finally
+        Environment.SetEnvironmentVariable("USERPROFILE", previousUserProfile)
+        Environment.SetEnvironmentVariable("TEMP", previousTemp)
 
 [<Test>]
 let ``runtime getenv len inkey and keyrow built ins return expected values`` () =
@@ -382,6 +452,7 @@ let ``runtime getenv len inkey and keyrow built ins return expected values`` () 
             (fun () -> Random(1234))
             (fun variable -> if variable = "SB_TEST_ENV" then Some "hello" else None)
             (fun () -> Some { KeyCode = 65; Character = Some 'A'; Shift = false; Control = false })
+            ignore
             (fun row -> row * 10)
             (fun _ -> false)
             false
@@ -404,15 +475,40 @@ let ``runtime getenv len inkey and keyrow built ins return expected values`` () 
     | other -> Assert.Fail($"Expected KEYROW to return int, got %A{other}")
 
 [<Test>]
+let ``runtime inkey family returns zero and null character when no key is available`` () =
+    let evaluate name args =
+        BuiltInFunctions.evaluate
+            name
+            true
+            (fun () -> DateTime.UnixEpoch)
+            (fun () -> Random(1234))
+            (fun _ -> None)
+            (fun () -> None)
+            ignore
+            (fun _ -> 0)
+            (fun _ -> false)
+            false
+            args
+
+    match evaluate "INKEY" [] with
+    | Result.Ok(Numeric(IntNumber number)) -> Assert.That(number, Is.EqualTo(0))
+    | other -> Assert.Fail($"Expected INKEY to return int, got %A{other}")
+
+    match evaluate "INKEY$" [] with
+    | Result.Ok(Text text) -> Assert.That(text, Is.EqualTo(string (char 0)))
+    | other -> Assert.Fail($"Expected INKEY$ to return text, got %A{other}")
+
+[<Test>]
 let ``interpreter time and string helper functions work`` () =
     let ast =
         Program(
             pos,
-            [ Line(pos, Some 10, [ Assignment(pos, id "a", call "TIME" [ num "0" ]) ])
-              Line(pos, Some 20, [ Assignment(pos, id "b$", call "FILL$" [ str "\"*\""; num "4" ]) ])
-              Line(pos, Some 30, [ Assignment(pos, id "c$", call "MID$" [ str "\"abcdef\""; num "2"; num "3" ]) ])
-              Line(pos, Some 40, [ Assignment(pos, id "d$", call "REPL$" [ str "\"abcdef\""; str "\"ZZ\""; num "3"; num "2" ]) ])
-              Line(pos, Some 50, [ ProcedureCall(pos, "PRINT", [ id "a"; id "b$"; id "c$"; id "d$" ]) ]) ])
+            [ Line(pos, Some 10, [ Assignment(pos, id "a", call "TIME" []) ])
+              Line(pos, Some 20, [ Assignment(pos, id "b", call "TIME" [ num "-11046" ]) ])
+              Line(pos, Some 30, [ Assignment(pos, id "c$", call "FILL$" [ str "\"*\""; num "4" ]) ])
+              Line(pos, Some 40, [ Assignment(pos, id "d$", call "MID$" [ str "\"abcdef\""; num "2"; num "3" ]) ])
+              Line(pos, Some 50, [ Assignment(pos, id "e$", call "REPL$" [ str "\"abcdef\""; str "\"ZZ\""; num "3"; num "2" ]) ])
+              Line(pos, Some 60, [ ProcedureCall(pos, "PRINT", [ id "a"; id "b"; id "c$"; id "d$"; id "e$" ]) ]) ])
 
     let outputs = ResizeArray<string>()
     let options =
@@ -422,6 +518,7 @@ let ``interpreter time and string helper functions work`` () =
                     ReadLine = fun () -> None
                     ReadKey = fun () -> None
                     KeyAvailable = fun () -> false
+                    KeyRowState = fun _ -> 0
                     WriteLine = fun line -> outputs.Add(line)
                 }
             Clock = fun () -> DateTime(2024, 1, 2, 3, 4, 5, DateTimeKind.Utc) }
@@ -429,7 +526,7 @@ let ``interpreter time and string helper functions work`` () =
     let hir = lowerProgram ast
     let output = runHirProgramWithOptions options hir
 
-    Assert.That(String.concat "|" output, Is.EqualTo("11045 **** bcd abZZef"))
+    Assert.That(String.concat "|" output, Is.EqualTo("11045 86399 **** bcd abZZef"))
 
 [<Test>]
 let ``runtime time and string helper built ins return expected values`` () =
@@ -441,14 +538,19 @@ let ``runtime time and string helper built ins return expected values`` () =
             (fun () -> Random(1234))
             (fun _ -> None)
             (fun () -> None)
+            ignore
             (fun _ -> 0)
             (fun _ -> false)
             false
             args
 
-    match evaluate "TIME" [ RuntimeValues.ofInt 0 ] with
-    | Result.Ok(Numeric(FloatNumber number)) -> Assert.That(number, Is.EqualTo(11045.0).Within(1e-12))
-    | other -> Assert.Fail($"Expected TIME to return float, got %A{other}")
+    match evaluate "TIME" [] with
+        | Result.Ok(Numeric(FloatNumber number)) -> Assert.That(number, Is.EqualTo(11045.0).Within(1e-12))
+        | other -> Assert.Fail($"Expected TIME to return float, got %A{other}")
+
+    match evaluate "TIME" [ RuntimeValues.ofInt -11046 ] with
+    | Result.Ok(Numeric(FloatNumber number)) -> Assert.That(number, Is.EqualTo(86399.0).Within(1e-12))
+    | other -> Assert.Fail($"Expected TIME to return wrapped float, got %A{other}")
 
     match evaluate "FILL$" [ RuntimeValues.ofString "*"; RuntimeValues.ofInt 4 ] with
     | Result.Ok(Text text) -> Assert.That(text, Is.EqualTo("****"))
@@ -504,7 +606,7 @@ let ``interpreter rnd unsupported arguments reports coded runtime error`` () =
     |> ignore
 
 [<Test>]
-let ``interpreter inkey$ returns queued key and then empty string`` () =
+let ``interpreter inkey$ returns queued key and then null character`` () =
     let inkeyId = H.SymbolId 0
     let aId = H.SymbolId 1
     let bId = H.SymbolId 2
@@ -521,6 +623,7 @@ let ``interpreter inkey$ returns queued key and then empty string`` () =
                     ReadLine = fun () -> None
                     ReadKey = fun () -> if keys.Count > 0 then Some(keys.Dequeue()) else None
                     KeyAvailable = fun () -> keys.Count > 0
+                    KeyRowState = fun _ -> 0
                     WriteLine = fun line -> outputs.Add(line)
                 } }
     let hir =
@@ -534,7 +637,7 @@ let ``interpreter inkey$ returns queued key and then empty string`` () =
 
     let output = runHirProgramWithOptions options hir
 
-    Assert.That(String.concat "|" output, Is.EqualTo("A|"))
+    Assert.That(String.concat "|" output, Is.EqualTo($"A|{string (char 0)}"))
 
 [<Test>]
 let ``interpreter inkey$ accepts timeout and channel arguments`` () =
@@ -555,6 +658,7 @@ let ``interpreter inkey$ accepts timeout and channel arguments`` () =
                     ReadLine = fun () -> None
                     ReadKey = fun () -> if keys.Count > 0 then Some(keys.Dequeue()) else None
                     KeyAvailable = fun () -> keys.Count > 0
+                    KeyRowState = fun _ -> 0
                     WriteLine = fun line -> outputs.Add(line)
                 } }
     let hir =

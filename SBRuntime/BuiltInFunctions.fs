@@ -11,11 +11,13 @@ type BuiltInFunctionError =
     | NotImplemented of string
 
 module BuiltInFunctions =
-    let private secondsSinceUnixEpoch (clock: unit -> DateTime) =
-        int64 (clock().Subtract(DateTime.UnixEpoch).TotalSeconds)
+    let private qlEpoch = DateTime(1961, 1, 1, 0, 0, 0, DateTimeKind.Utc)
 
-    let private fromUnixSeconds (seconds: int64) =
-        DateTime.UnixEpoch.AddSeconds(float seconds)
+    let private secondsSinceQlEpoch (clock: unit -> DateTime) =
+        int64 (clock().ToUniversalTime().Subtract(qlEpoch).TotalSeconds)
+
+    let private fromQlSeconds (seconds: int64) =
+        qlEpoch.AddSeconds(float seconds)
 
     let evaluate
         (name: string)
@@ -24,6 +26,7 @@ module BuiltInFunctions =
         (random: unit -> Random)
         (getEnvironmentVariable: string -> string option)
         (readKey: unit -> KeyInfo option)
+        (sleepMilliseconds: int -> unit)
         (keyRowState: int -> int)
         (isEndOfFile: int -> bool)
         (allowRangePair: bool)
@@ -40,6 +43,40 @@ module BuiltInFunctions =
             | _ -> Result.Error(ArityMismatch $"Built-in function '{name}' expects two arguments.")
         let clampStartIndex start length =
             max 0 (min length (start - 1))
+        let nullCharacterString = string (char 0)
+        let readKeyWithTimeout timeoutFrames =
+            let tryRead () = readKey ()
+
+            let rec waitIndefinitely () =
+                match tryRead() with
+                | Some key -> Some key
+                | None ->
+                    sleepMilliseconds 20
+                    waitIndefinitely ()
+
+            let rec waitUntil deadline =
+                match tryRead() with
+                | Some key -> Some key
+                | None ->
+                    if clock().ToUniversalTime() >= deadline then
+                        None
+                    else
+                        sleepMilliseconds 20
+                        waitUntil deadline
+
+            match timeoutFrames with
+            | None -> tryRead ()
+            | Some frames when frames < 0 -> waitIndefinitely ()
+            | Some 0 -> tryRead ()
+            | Some frames ->
+                let deadline = clock().ToUniversalTime().AddMilliseconds(float frames * 20.0)
+                waitUntil deadline
+        let parseKeyboardArgs () =
+            match args with
+            | [] -> Result.Ok None
+            | [ timeout ] -> Result.Ok(Some(RuntimeValues.toInt timeout))
+            | [ _channel; timeout ] -> Result.Ok(Some(RuntimeValues.toInt timeout))
+            | _ -> Result.Error(ArityMismatch $"Built-in function '{name}' expects zero, one, or two arguments.")
 
         match normalized with
         | "ABS" -> oneArg (fun value -> RuntimeValues.makeNumeric isFloat (abs (RuntimeValues.normalizeNumber value)))
@@ -53,7 +90,7 @@ module BuiltInFunctions =
                 RuntimeValues.makeNumeric isFloat angle)
         | "ADATE" ->
             oneArg (fun value ->
-                let currentSeconds = secondsSinceUnixEpoch clock
+                let currentSeconds = secondsSinceQlEpoch clock
                 let adjustedSeconds = currentSeconds + int64 (RuntimeValues.toInt value)
                 RuntimeValues.makeNumeric isFloat (float adjustedSeconds))
         | "ASC"
@@ -76,22 +113,23 @@ module BuiltInFunctions =
         | "DATE$" ->
             match args with
             | [] ->
-                let text = clock().ToString("yyyy MMM dd HH:mm:ss", CultureInfo.InvariantCulture)
+                let text =
+                    clock().ToUniversalTime().ToString("yyyy MMM dd HH:mm:ss", CultureInfo.InvariantCulture)
                 Result.Ok(Text text)
             | [ value ] ->
                 let text =
-                    (fromUnixSeconds (int64 (RuntimeValues.toInt value)))
+                    (fromQlSeconds (int64 (RuntimeValues.toInt value)))
                         .ToString("yyyy MMM dd HH:mm:ss", CultureInfo.InvariantCulture)
                 Result.Ok(Text text)
             | _ -> Result.Error(ArityMismatch $"Built-in function '{name}' expects zero or one argument.")
         | "DAY$" ->
             match args with
             | [] ->
-                let text = clock().ToString("dddd", CultureInfo.InvariantCulture)
+                let text = clock().ToUniversalTime().ToString("dddd", CultureInfo.InvariantCulture)
                 Result.Ok(Text text)
             | [ value ] ->
                 let text =
-                    (fromUnixSeconds (int64 (RuntimeValues.toInt value)))
+                    (fromQlSeconds (int64 (RuntimeValues.toInt value)))
                         .ToString("dddd", CultureInfo.InvariantCulture)
                 Result.Ok(Text text)
             | _ -> Result.Error(ArityMismatch $"Built-in function '{name}' expects zero or one argument.")
@@ -111,9 +149,10 @@ module BuiltInFunctions =
                 let name = RuntimeValues.toText value
                 Text(getEnvironmentVariable name |> Option.defaultValue String.Empty))
         | "INKEY" ->
-            oneArg (fun _ ->
+            parseKeyboardArgs ()
+            |> Result.map (fun timeoutFrames ->
                 let value =
-                    match readKey() with
+                    match readKeyWithTimeout timeoutFrames with
                     | Some { KeyCode = keyCode } -> keyCode
                     | None -> 0
                 RuntimeValues.ofInt value)
@@ -121,7 +160,8 @@ module BuiltInFunctions =
         | "KEYROW" ->
             oneArg (fun value ->
                 let row = RuntimeValues.toInt value
-                RuntimeValues.ofInt (keyRowState row))
+                if row < 0 || row > 7 then RuntimeValues.ofInt 0
+                else RuntimeValues.ofInt (keyRowState row))
         | "LEN" ->
             oneArg (fun value ->
                 RuntimeValues.ofInt (RuntimeValues.toText value).Length)
@@ -178,22 +218,19 @@ module BuiltInFunctions =
         | "DATE" ->
             match args with
             | [] ->
-                let seconds = int (secondsSinceUnixEpoch clock)
+                let seconds = int (secondsSinceQlEpoch clock)
                 Result.Ok(RuntimeValues.ofInt seconds)
             | _ -> Result.Error(ArityMismatch $"Built-in function '{name}' expects no arguments.")
         | "INKEY$" ->
-            match args with
-            | []
-            | [ _ ]
-            | [ _; _ ] ->
+            parseKeyboardArgs ()
+            |> Result.map (fun timeoutFrames ->
                 let text =
-                    match readKey() with
+                    match readKeyWithTimeout timeoutFrames with
                     | Some { Character = Some ch } -> string ch
                     | Some { Character = None; KeyCode = keyCode } when keyCode >= 0 && keyCode <= 255 -> string (char keyCode)
-                    | Some _ -> ""
-                    | None -> ""
-                Result.Ok(Text text)
-            | _ -> Result.Error(ArityMismatch $"Built-in function '{name}' expects zero, one, or two arguments.")
+                    | Some _ -> nullCharacterString
+                    | None -> nullCharacterString
+                Text text)
         | "RND" ->
             match args with
             | [] -> Result.Ok(RuntimeValues.ofFloat (random().NextDouble()))
@@ -227,7 +264,14 @@ module BuiltInFunctions =
                 Result.Ok(Text(prefix + repl + suffix))
             | _ -> Result.Error(ArityMismatch $"Built-in function '{name}' expects three or four arguments.")
         | "TIME" ->
-            oneArg (fun value ->
-                let current = clock().TimeOfDay.TotalSeconds
-                RuntimeValues.makeNumeric isFloat (current + float (RuntimeValues.toInt value)))
+            match args with
+            | [] ->
+                let current = int (clock().ToUniversalTime().TimeOfDay.TotalSeconds)
+                Result.Ok(RuntimeValues.makeNumeric isFloat (float current))
+            | [ value ] ->
+                let current = int (clock().ToUniversalTime().TimeOfDay.TotalSeconds)
+                let adjusted = (current + RuntimeValues.toInt value) % 86400
+                let wrapped = if adjusted < 0 then adjusted + 86400 else adjusted
+                Result.Ok(RuntimeValues.makeNumeric isFloat (float wrapped))
+            | _ -> Result.Error(ArityMismatch $"Built-in function '{name}' expects zero or one argument.")
         | _ -> Result.Error(NotImplemented $"Built-in function '{name}' is not implemented.")
