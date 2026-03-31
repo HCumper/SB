@@ -328,16 +328,16 @@ let ``interpreter screen text writes and cls update backing text buffer`` () =
 [<Test>]
 let ``interpreter display controls update per-window state`` () =
     let host, screenState = createScreenHost []
-    let channel1 = H.Literal(H.ConstInt 1, H.HirType.Int, pos)
+    let channel2 = H.Literal(H.ConstInt 2, H.HirType.Int, pos)
     let hir =
         makeProgram
             Map.empty
             []
-            [ H.BuiltInCall(H.NamedBuiltIn "SCROLL", Some channel1, [ H.Literal(H.ConstInt 12, H.HirType.Int, pos) ], pos)
-              H.BuiltInCall(H.NamedBuiltIn "WIDTH", Some channel1, [ H.Literal(H.ConstInt 80, H.HirType.Int, pos) ], pos)
-              H.BuiltInCall(H.NamedBuiltIn "PAN", Some channel1, [ H.Literal(H.ConstInt -150, H.HirType.Int, pos) ], pos)
-              H.BuiltInCall(H.NamedBuiltIn "RECOL", Some channel1, [ H.Literal(H.ConstInt 5, H.HirType.Int, pos) ], pos)
-              H.BuiltInCall(H.NamedBuiltIn "PALETTE", Some channel1, [ H.Literal(H.ConstInt 1, H.HirType.Int, pos); H.Literal(H.ConstInt 3, H.HirType.Int, pos); H.Literal(H.ConstInt 5, H.HirType.Int, pos) ], pos)
+            [ H.BuiltInCall(H.NamedBuiltIn "SCROLL", Some channel2, [ H.Literal(H.ConstInt 12, H.HirType.Int, pos) ], pos)
+              H.BuiltInCall(H.NamedBuiltIn "WIDTH", Some channel2, [ H.Literal(H.ConstInt 80, H.HirType.Int, pos) ], pos)
+              H.BuiltInCall(H.NamedBuiltIn "PAN", Some channel2, [ H.Literal(H.ConstInt -150, H.HirType.Int, pos) ], pos)
+              H.BuiltInCall(H.NamedBuiltIn "RECOL", Some channel2, [ H.Literal(H.ConstInt 5, H.HirType.Int, pos) ], pos)
+              H.BuiltInCall(H.NamedBuiltIn "PALETTE", Some channel2, [ H.Literal(H.ConstInt 1, H.HirType.Int, pos); H.Literal(H.ConstInt 3, H.HirType.Int, pos); H.Literal(H.ConstInt 5, H.HirType.Int, pos) ], pos)
               H.BuiltInCall(H.NamedBuiltIn "SCROLL", None, [ H.Literal(H.ConstInt -7, H.HirType.Int, pos) ], pos)
               H.BuiltInCall(H.NamedBuiltIn "WIDTH", None, [ H.Literal(H.ConstInt 64, H.HirType.Int, pos) ], pos)
               H.BuiltInCall(H.NamedBuiltIn "PAN", None, [ H.Literal(H.ConstInt 150, H.HirType.Int, pos) ], pos)
@@ -352,18 +352,24 @@ let ``interpreter display controls update per-window state`` () =
 
     match result with
     | Result.Ok _ ->
-        let window0 = screenState.Windows[0]
+        let window2 = screenState.Windows[2]
         let window1 = screenState.Windows[1]
-        Assert.That(window1.Scroll, Is.EqualTo(12))
-        Assert.That(window1.Width, Is.EqualTo(Some 80))
-        Assert.That(window1.Pan, Is.EqualTo(-150))
-        Assert.That(window1.Recolor, Is.EqualTo(Some 5))
-        Assert.That(window1.Palette, Is.EqualTo(Some [ 1; 3; 5 ]))
-        Assert.That(window0.Scroll, Is.EqualTo(-7))
-        Assert.That(window0.Width, Is.EqualTo(Some 64))
-        Assert.That(window0.Pan, Is.EqualTo(150))
-        Assert.That(window0.Recolor, Is.EqualTo(Some 2))
-        Assert.That(window0.Palette, Is.EqualTo(Some [ 8; 6 ]))
+        let window0 = screenState.Windows[0]
+        Assert.That(window2.Scroll, Is.EqualTo(12))
+        Assert.That(window2.Width, Is.EqualTo(Some 80))
+        Assert.That(window2.Pan, Is.EqualTo(-150))
+        Assert.That(window2.Recolor, Is.EqualTo(Some 5))
+        Assert.That(window2.Palette, Is.EqualTo(Some [ 1; 3; 5 ]))
+        Assert.That(window1.Scroll, Is.EqualTo(-7))
+        Assert.That(window1.Width, Is.EqualTo(Some 64))
+        Assert.That(window1.Pan, Is.EqualTo(150))
+        Assert.That(window1.Recolor, Is.EqualTo(Some 2))
+        Assert.That(window1.Palette, Is.EqualTo(Some [ 8; 6 ]))
+        Assert.That(window0.Scroll, Is.EqualTo(0))
+        Assert.That(window0.Width, Is.EqualTo(None))
+        Assert.That(window0.Pan, Is.EqualTo(0))
+        Assert.That(window0.Recolor, Is.EqualTo(None))
+        Assert.That(window0.Palette, Is.EqualTo(None))
     | Result.Error err ->
         Assert.Fail($"Expected interpretation to succeed, got %A{err}")
 
@@ -418,7 +424,6 @@ let ``interpreter mode resets default screen geometry and default windows`` () =
     match result with
     | Result.Ok _ ->
         Assert.That(screenState.Mode.Mode, Is.EqualTo(QlMode8))
-        Assert.That(screenState.Windows[0].Window, Is.EqualTo((256, 256, 0, 0)))
         Assert.That(screenState.Windows[1].Window, Is.EqualTo((256, 256, 0, 0)))
         Assert.That(screenState.Windows[1].CharacterSize, Is.EqualTo((1, 1)))
         Assert.That(screenState.Windows[1].Cursor, Is.EqualTo((0, 0)))
@@ -451,7 +456,7 @@ let ``interpreter window updates default screen geometry`` () =
 
     match result with
     | Result.Ok _ ->
-        Assert.That(screenState.Windows[0].Window, Is.EqualTo((480, 255, 20, 0)))
+        Assert.That(screenState.Windows[1].Window, Is.EqualTo((480, 255, 20, 0)))
     | Result.Error err ->
         Assert.Fail($"Expected interpretation to succeed, got %A{err}")
 
@@ -654,9 +659,9 @@ let ``interpreter minimum arity graphics and display primitives dispatch correct
         Assert.That(screenState.Windows[1].Palette, Is.EqualTo(Some [ 9 ]))
         let expectedOps =
             [ "INK 7"
-              "LINE 0,1 TO 2,3"
+              "LINE 10,1 TO 12,3"
               "LINE_R 4,5"
-              "DLINE 6,7,8,9" ]
+              "DLINE 16,7,18,9" ]
         Assert.That(screenState.GraphicsOps |> Seq.toList = expectedOps, Is.True)
     | Result.Error err ->
         Assert.Fail($"Expected interpretation to succeed, got %A{err}")
@@ -1239,9 +1244,11 @@ let ``default host exposes ql style default screen panes`` () =
     Assert.That(panes.ContainsKey 0, Is.True)
     Assert.That(panes.ContainsKey 1, Is.True)
     Assert.That(panes.ContainsKey 2, Is.True)
-    Assert.That(panes[0].Window, Is.EqualTo((512, 42, 0, 214)))
-    Assert.That(panes[1].Window, Is.EqualTo((512, 214, 0, 0)))
-    Assert.That(panes[2].Window, Is.EqualTo((512, 214, 0, 0)))
+    Assert.That(panes[0].Window, Is.EqualTo((448, 40, 32, 216)))
+    Assert.That(panes[1].Window, Is.EqualTo((448, 216, 32, 0)))
+    Assert.That(panes[2].Window, Is.EqualTo((448, 216, 32, 0)))
+    Assert.That(panes[1].Text[0, 0].Paper, Is.EqualTo(2))
+    Assert.That(panes[0].Text[0, 0].Paper, Is.EqualTo(0))
 
 [<Test>]
 let ``default host pane snapshots stay independent per channel`` () =
@@ -1277,5 +1284,29 @@ let ``default host pane snapshots stay independent per channel`` () =
     Assert.That(paneText pane1, Does.Not.Contain("TWO"))
     Assert.That(paneText pane2, Does.Contain("TWO"))
     Assert.That(paneText pane2, Does.Not.Contain("ONE"))
+
+[<Test>]
+let ``default host maps unchanneled print to output window and input prompt to console window`` () =
+    let host, screenState = createScreenHost [ "42" ]
+    let options = { defaultRuntimeOptions with Host = host }
+
+    let xId = H.SymbolId 0
+    let xStorage = makeStorage xId 0 "X" H.HirType.Int H.GlobalStorage
+    let hir =
+        makeProgram
+            (Map.ofList [ xId, "X" ])
+            [ xStorage ]
+            [ H.BuiltInCall(H.Print, None, [ H.Literal(H.ConstString "HELLO", H.HirType.String, pos) ], pos)
+              H.HirStmt.Input(None, [ H.Literal(H.ConstString "Enter", H.HirType.String, pos) ], [ H.WriteVar(xId, H.HirType.Int, pos) ], pos) ]
+
+    let result = interpretProgramWithOptions options hir
+
+    match result with
+    | Result.Ok _ ->
+        Assert.That(screenState.Windows[1].Writes |> Seq.toList |> String.concat "|", Is.EqualTo("HELLO"))
+        Assert.That(screenState.Windows[0].Writes |> Seq.toList |> String.concat "|", Is.EqualTo("Enter"))
+        Assert.That(screenState.Windows[2].Writes |> Seq.toList |> String.concat "|", Is.EqualTo(""))
+    | Result.Error err ->
+        Assert.Fail($"Expected interpretation to succeed, got %A{err}")
 
 

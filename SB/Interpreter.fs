@@ -331,7 +331,15 @@ let private advanceScreenLine channelId state pos =
 
 let private readInputFromChannel channelId state pos =
     match channelId with
-    | None -> Result.Ok(state.Options.Host.Input.ReadLine())
+    | None ->
+        let rec waitForLine () =
+            match state.Options.Host.Input.ReadLine() with
+            | Some line -> Some line
+            | None ->
+                state.Options.Sleeper 50
+                waitForLine ()
+
+        Result.Ok(waitForLine ())
     | Some resolvedChannelId ->
         match state.Options.Host.Channels.Get resolvedChannelId with
         | Result.Ok channel -> Result.Ok(channel.ReadText())
@@ -700,6 +708,11 @@ and private executeBuiltInCall state kind channel args targets pos =
     | BuiltInKind.Input ->
         resolveChannelId state channel
         |> Result.bind (fun (resolvedChannel, stateAfterChannel) ->
+            let promptChannel =
+                match resolvedChannel with
+                | Some _ -> resolvedChannel
+                | None -> Some(ChannelId 0)
+
             let promptStateResult =
                 if List.isEmpty args then
                     Result.Ok stateAfterChannel
@@ -711,7 +724,7 @@ and private executeBuiltInCall state kind channel args targets pos =
                             | Result.Ok(value, _) -> formatOutputValue value
                             | Result.Error _ -> "")
                         |> String.concat " "
-                    writeOutputToChannel resolvedChannel promptText stateAfterChannel pos
+                    writeOutputToChannel promptChannel promptText stateAfterChannel pos
 
             promptStateResult
             |> Result.bind (fun promptState ->

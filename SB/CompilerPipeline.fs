@@ -72,14 +72,19 @@ type RuntimeSettings = {
     OutputFileName: string
     Verbose: bool
     Backend: string
+    RuntimeHost: string
     SyntaxChecking: SyntaxCheckingMode
     AppName: string
     Logger: Core.Logger
 }
 
 let private buildConfig () =
+    let basePath =
+        let appBase = AppContext.BaseDirectory
+        if Directory.Exists(appBase) then appBase else Directory.GetCurrentDirectory()
+
     ConfigurationBuilder()
-        .SetBasePath(Directory.GetCurrentDirectory())
+        .SetBasePath(basePath)
         .AddJsonFile("appsettings.json", optional = false, reloadOnChange = true)
         .Build()
 
@@ -102,16 +107,29 @@ let getSettings argv : RuntimeSettings =
     let outputFileName = configSettings.GetValue<string>("AppSettings:OutputFile")
     let verbosityLevel = configSettings.GetValue<bool>("AppSettings:Verbose")
     let backend = configSettings.GetValue<string>("AppSettings:Backend")
+    let runtimeHost = configSettings.GetValue<string>("AppSettings:RuntimeHost")
     let syntaxChecking = parseSyntaxCheckingMode (configSettings.GetValue<string>("AppSettings:SyntaxChecking"))
     let logger = configureLogger configSettings
     let defaultBackend = if String.IsNullOrWhiteSpace backend then "interpret" else backend
 
+    let defaultRuntimeHost = if String.IsNullOrWhiteSpace runtimeHost then "console" else runtimeHost
+
     match argv with
+    | [| input; output; verbose; backendName; runtimeHostName |] ->
+        { InputFileName = input
+          OutputFileName = output
+          Verbose = Boolean.Parse(verbose)
+          Backend = backendName
+          RuntimeHost = runtimeHostName
+          SyntaxChecking = syntaxChecking
+          AppName = appName
+          Logger = logger }
     | [| input; output; verbose; backendName |] ->
         { InputFileName = input
           OutputFileName = output
           Verbose = Boolean.Parse(verbose)
           Backend = backendName
+          RuntimeHost = defaultRuntimeHost
           SyntaxChecking = syntaxChecking
           AppName = appName
           Logger = logger }
@@ -120,6 +138,16 @@ let getSettings argv : RuntimeSettings =
           OutputFileName = output
           Verbose = Boolean.Parse(verbose)
           Backend = defaultBackend
+          RuntimeHost = defaultRuntimeHost
+          SyntaxChecking = syntaxChecking
+          AppName = appName
+          Logger = logger }
+    | [| input |] ->
+        { InputFileName = input
+          OutputFileName = outputFileName
+          Verbose = verbosityLevel
+          Backend = defaultBackend
+          RuntimeHost = defaultRuntimeHost
           SyntaxChecking = syntaxChecking
           AppName = appName
           Logger = logger }
@@ -128,6 +156,7 @@ let getSettings argv : RuntimeSettings =
           OutputFileName = outputFileName
           Verbose = verbosityLevel
           Backend = defaultBackend
+          RuntimeHost = defaultRuntimeHost
           SyntaxChecking = syntaxChecking
           AppName = appName
           Logger = logger }

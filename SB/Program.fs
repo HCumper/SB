@@ -8,6 +8,7 @@ open HIRPrettyPrinter
 open Interpreter
 open SymbolTableManager
 open SemanticAnalysisFacts
+open SBAvaloniaHost
 
 // Program is the thin CLI shell over the compiler pipeline.
 //
@@ -47,6 +48,46 @@ let private normalizeBackendName (backend: string) =
     else
         backend.Trim().ToLowerInvariant()
 
+let private normalizeRuntimeHostName (runtimeHost: string) =
+    if String.IsNullOrWhiteSpace runtimeHost then
+        "console"
+    else
+        runtimeHost.Trim().ToLowerInvariant()
+
+let private waitForAvaloniaContinue (handle: AvaloniaHostHandle) =
+    match handle.Host.Channels.Get(SBRuntime.ChannelId 0) with
+    | Result.Ok channel ->
+        channel.WriteText("Press Enter to continue")
+        match channel with
+        | :? SBRuntime.IScreenChannel as screenChannel -> screenChannel.NewLine()
+        | _ -> ()
+    | Result.Error _ -> ()
+
+    let rec waitLoop () =
+        match handle.Host.Input.ReadLine() with
+        | Some _ -> ()
+        | None ->
+            System.Threading.Thread.Sleep(50)
+            waitLoop ()
+
+    waitLoop ()
+
+let rec private blockContainsInput (block: HIR.HirBlock) =
+    block
+    |> List.exists (fun (stmt: HIR.HirStmt) ->
+        match stmt with
+        | HIR.HirStmt.Input(_, _, _, _) -> true
+        | HIR.HirStmt.If(_, thenBlock, elseBlock, _) ->
+            blockContainsInput thenBlock
+            || (elseBlock |> Option.exists blockContainsInput)
+        | HIR.HirStmt.For(_, _, _, _, _, body, _) -> blockContainsInput body
+        | HIR.HirStmt.Repeat(_, _, body, _) -> blockContainsInput body
+        | _ -> false)
+
+let private programContainsInput (program: HIR.HirProgram) =
+    blockContainsInput program.Main
+    || (program.Routines |> List.exists (fun routine -> blockContainsInput routine.Body))
+
 [<EntryPoint>]
 let main argv =
     // The CLI currently stops after semantic analysis failure and only emits
@@ -82,12 +123,35 @@ let main argv =
                     Console.WriteLine($"HIR lowering succeeded. Globals={hirProgram.Globals.Length}, Routines={hirProgram.Routines.Length}, DataEntries={hirProgram.DataEntries.Length}, MainStatements={hirProgram.Main.Length}")
                 match normalizeBackendName settings.Backend with
                 | "interpret" ->
-                    match interpretProgram hirProgram with
-                    | Ok _ -> 0
-                    | Error runtimeError ->
-                        Console.Error.WriteLine("Runtime failed:")
-                        Console.Error.WriteLine(formatRuntimeError runtimeError)
-                        1
+                    let hostHandle =
+                        match normalizeRuntimeHostName settings.RuntimeHost with
+                        | "avalonia"
+                        | "gui" -> Some(AvaloniaHostService().Start())
+                        | _ -> None
+
+                    let exitCode =
+                        let options =
+                            match hostHandle with
+                            | Some handle ->
+                                { defaultRuntimeOptions with
+                                    Host = handle.Host
+                                    Sleeper = fun milliseconds -> System.Threading.Thread.Sleep(milliseconds) }
+                            | None ->
+                                defaultRuntimeOptions
+
+                        match interpretProgramWithOptions options hirProgram with
+                        | Ok _ -> 0
+                        | Error runtimeError ->
+                            Console.Error.WriteLine("Runtime failed:")
+                            Console.Error.WriteLine(formatRuntimeError runtimeError)
+                            1
+
+                    hostHandle
+                    |> Option.iter (fun handle ->
+                        if not (programContainsInput hirProgram) then
+                            waitForAvaloniaContinue handle
+                        (handle :> IDisposable).Dispose())
+                    exitCode
                 | "csharp" ->
                     let generated = generateCSharpFromLoweredHir settings.AppName hirProgram
                     File.WriteAllText(settings.OutputFileName, generated)

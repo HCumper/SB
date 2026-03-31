@@ -15,17 +15,28 @@ type DefaultHostOptions = {
 }
 
 module private ScreenDefaults =
-    let private defaultBottomHeight (mode: ScreenModeInfo) =
-        max 32 (min 48 (mode.Height / 6))
+    let defaultPaperForChannel channelNumber =
+        match channelNumber with
+        | 1 -> 2
+        | _ -> 0
 
     let defaultWindowForChannel (mode: ScreenModeInfo) channelNumber =
-        let bottomHeight = defaultBottomHeight mode
+        let safeWidth =
+            if mode.Width >= 512 then 448 else mode.Width
+
+        let safeX =
+            if mode.Width >= 512 then (mode.Width - safeWidth) / 2 else 0
+
+        let bottomHeight =
+            if mode.Height >= 256 then 40
+            else max 24 (mode.Height / 6)
+
         let topHeight = max 1 (mode.Height - bottomHeight)
 
         match channelNumber with
-        | 0 -> mode.Width, bottomHeight, 0, mode.Height - bottomHeight
+        | 0 -> safeWidth, bottomHeight, safeX, mode.Height - bottomHeight
         | 1
-        | 2 -> mode.Width, topHeight, 0, 0
+        | 2 -> safeWidth, topHeight, safeX, 0
         | _ -> mode.Width, mode.Height, 0, 0
 
     let defaultWindowForMode (mode: ScreenModeInfo) =
@@ -262,7 +273,7 @@ type private DefaultScreenChannel(id: ChannelId, kind: ChannelKind, reader: unit
         cursor <- 0, 0
         characterSize <- ScreenDefaults.defaultCharacterSizeForMode selectedMode
         ink <- [ 7 ]
-        paper <- 0
+        paper <- ScreenDefaults.defaultPaperForChannel channelNumber
         border <- 0
         match config with
         | Some channelConfig ->
@@ -275,6 +286,7 @@ type private DefaultScreenChannel(id: ChannelId, kind: ChannelKind, reader: unit
         | None -> ()
         let width, height, _, _ = window
         paneBuffer <- ScreenBuffer(ScreenDefaults.paneMode selectedMode width height)
+        paneBuffer.ClearWindow(width, height, 0, 0, paper)
 
     do
         resetForMode initialMode
@@ -859,28 +871,28 @@ type private DefaultRuntimeHost(options: DefaultHostOptions) =
         member _.Channels = channelManager :> IChannelManager
         member _.Screen =
             { new IScreenDevice with
-                member _.Clear() = (channel0 :> IScreenChannel).Clear()
-                member _.NewLine() = (channel0 :> IScreenChannel).NewLine()
-                member _.SetWindow(width, height, x, y) = (channel0 :> IScreenChannel).SetWindow(width, height, x, y)
-                member _.GetWindow() = (channel0 :> IScreenChannel).GetWindow()
-                member _.SetScroll(value) = (channel0 :> IScreenChannel).SetScroll(value)
-                member _.GetScroll() = (channel0 :> IScreenChannel).GetScroll()
-                member _.SetWidth(value) = (channel0 :> IScreenChannel).SetWidth(value)
-                member _.GetWidth() = (channel0 :> IScreenChannel).GetWidth()
-                member _.SetPan(value) = (channel0 :> IScreenChannel).SetPan(value)
-                member _.GetPan() = (channel0 :> IScreenChannel).GetPan()
-                member _.SetRecolor(value) = (channel0 :> IScreenChannel).SetRecolor(value)
-                member _.GetRecolor() = (channel0 :> IScreenChannel).GetRecolor()
-                member _.SetPalette(values) = (channel0 :> IScreenChannel).SetPalette(values)
-                member _.GetPalette() = (channel0 :> IScreenChannel).GetPalette()
-                member _.SetCursor(x, y) = (channel0 :> IScreenChannel).SetCursor(x, y)
-                member _.GetCursor() = (channel0 :> IScreenChannel).GetCursor()
-                member _.SetCharacterSize(width, height) = (channel0 :> IScreenChannel).SetCharacterSize(width, height)
-                member _.GetCharacterSize() = (channel0 :> IScreenChannel).GetCharacterSize()
-                member _.WriteText(text) = (channel0 :> IScreenChannel).WriteText(text)
-                member _.SetInk(values) = (channel0 :> IScreenChannel).SetInk(values)
-                member _.SetPaper(value) = (channel0 :> IScreenChannel).SetPaper(value)
-                member _.SetBorder(value) = (channel0 :> IScreenChannel).SetBorder(value)
+                member _.Clear() = (channel1 :> IScreenChannel).Clear()
+                member _.NewLine() = (channel1 :> IScreenChannel).NewLine()
+                member _.SetWindow(width, height, x, y) = (channel1 :> IScreenChannel).SetWindow(width, height, x, y)
+                member _.GetWindow() = (channel1 :> IScreenChannel).GetWindow()
+                member _.SetScroll(value) = (channel1 :> IScreenChannel).SetScroll(value)
+                member _.GetScroll() = (channel1 :> IScreenChannel).GetScroll()
+                member _.SetWidth(value) = (channel1 :> IScreenChannel).SetWidth(value)
+                member _.GetWidth() = (channel1 :> IScreenChannel).GetWidth()
+                member _.SetPan(value) = (channel1 :> IScreenChannel).SetPan(value)
+                member _.GetPan() = (channel1 :> IScreenChannel).GetPan()
+                member _.SetRecolor(value) = (channel1 :> IScreenChannel).SetRecolor(value)
+                member _.GetRecolor() = (channel1 :> IScreenChannel).GetRecolor()
+                member _.SetPalette(values) = (channel1 :> IScreenChannel).SetPalette(values)
+                member _.GetPalette() = (channel1 :> IScreenChannel).GetPalette()
+                member _.SetCursor(x, y) = (channel1 :> IScreenChannel).SetCursor(x, y)
+                member _.GetCursor() = (channel1 :> IScreenChannel).GetCursor()
+                member _.SetCharacterSize(width, height) = (channel1 :> IScreenChannel).SetCharacterSize(width, height)
+                member _.GetCharacterSize() = (channel1 :> IScreenChannel).GetCharacterSize()
+                member _.WriteText(text) = (channel1 :> IScreenChannel).WriteText(text)
+                member _.SetInk(values) = (channel1 :> IScreenChannel).SetInk(values)
+                member _.SetPaper(value) = (channel1 :> IScreenChannel).SetPaper(value)
+                member _.SetBorder(value) = (channel1 :> IScreenChannel).SetBorder(value)
                 member _.GetSupportedModes() = ScreenDefaults.supportedModes
                 member _.GetMode() = currentMode
                 member _.SetMode(requestedMode) =

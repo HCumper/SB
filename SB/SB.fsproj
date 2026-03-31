@@ -65,12 +65,13 @@
       <PackageReference Include="Serilog.Sinks.Console" Version="6.0.1-dev-00953" />
       <PackageReference Include="Serilog.Sinks.File" Version="6.0.0" />
       <PackageReference Include="StringTemplate4" Version="4.0.9-rc1" />
-      <PackageReference Update="FSharp.Core" Version="9.0.202" />
+      <PackageReference Update="FSharp.Core" Version="10.1.201" />
     </ItemGroup>
 
     <ItemGroup>
       <ProjectReference Include="..\SBLib\SBLib.csproj" />
       <ProjectReference Include="..\SBRuntime\SBRuntime.fsproj" />
+      <ProjectReference Include="..\SB.AvaloniaHost\SB.AvaloniaHost.fsproj" />
     </ItemGroup>
 
 </Project>

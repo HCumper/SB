@@ -70,6 +70,7 @@ let private testSettings inputFile =
       OutputFileName = Path.GetTempFileName()
       Verbose = false
       Backend = "interpret"
+      RuntimeHost = "console"
       SyntaxChecking = Relaxed
       AppName = "Test"
       Logger = LoggerConfiguration().CreateLogger() }

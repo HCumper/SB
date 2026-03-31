@@ -506,91 +506,91 @@ let createScreenHost (inputs: string list) =
             member _.Screen =
                 { new IScreenDevice with
                     member _.Clear() =
-                        match Map.tryFind 0 state.Windows with
+                        match Map.tryFind 1 state.Windows with
                         | Some window ->
                             window.ClearCount <- window.ClearCount + 1
                             let width, height, x, y = window.Window
                             clearWindow width height x y
                             window.Cursor <- 0, 0
                         | None -> ()
-                    member _.NewLine() = newLineWindow 0
+                    member _.NewLine() = newLineWindow 1
                     member _.SetWindow(width, height, x, y) =
-                        match Map.tryFind 0 state.Windows with
+                        match Map.tryFind 1 state.Windows with
                         | Some window ->
                             window.Window <- width, height, x, y
                             window.Cursor <- 0, 0
                         | None -> ()
                     member _.GetWindow() =
-                        match Map.tryFind 0 state.Windows with
+                        match Map.tryFind 1 state.Windows with
                         | Some window -> window.Window
                         | None -> 0, 0, 0, 0
                     member _.SetScroll(value) =
-                        match Map.tryFind 0 state.Windows with
+                        match Map.tryFind 1 state.Windows with
                         | Some window -> window.Scroll <- value
                         | None -> ()
                     member _.GetScroll() =
-                        match Map.tryFind 0 state.Windows with
+                        match Map.tryFind 1 state.Windows with
                         | Some window -> window.Scroll
                         | None -> 0
                     member _.SetWidth(value) =
-                        match Map.tryFind 0 state.Windows with
+                        match Map.tryFind 1 state.Windows with
                         | Some window -> window.Width <- Some value
                         | None -> ()
                     member _.GetWidth() =
-                        match Map.tryFind 0 state.Windows with
+                        match Map.tryFind 1 state.Windows with
                         | Some window -> window.Width
                         | None -> None
                     member _.SetPan(value) =
-                        match Map.tryFind 0 state.Windows with
+                        match Map.tryFind 1 state.Windows with
                         | Some window -> window.Pan <- value
                         | None -> ()
                     member _.GetPan() =
-                        match Map.tryFind 0 state.Windows with
+                        match Map.tryFind 1 state.Windows with
                         | Some window -> window.Pan
                         | None -> 0
                     member _.SetRecolor(value) =
-                        match Map.tryFind 0 state.Windows with
+                        match Map.tryFind 1 state.Windows with
                         | Some window -> window.Recolor <- Some value
                         | None -> ()
                     member _.GetRecolor() =
-                        match Map.tryFind 0 state.Windows with
+                        match Map.tryFind 1 state.Windows with
                         | Some window -> window.Recolor
                         | None -> None
                     member _.SetPalette(values) =
-                        match Map.tryFind 0 state.Windows with
+                        match Map.tryFind 1 state.Windows with
                         | Some window -> window.Palette <- Some values
                         | None -> ()
                     member _.GetPalette() =
-                        match Map.tryFind 0 state.Windows with
+                        match Map.tryFind 1 state.Windows with
                         | Some window -> window.Palette
                         | None -> None
                     member _.SetCursor(x, y) =
-                        match Map.tryFind 0 state.Windows with
+                        match Map.tryFind 1 state.Windows with
                         | Some window -> window.Cursor <- x, y
                         | None -> ()
                     member _.GetCursor() =
-                        match Map.tryFind 0 state.Windows with
+                        match Map.tryFind 1 state.Windows with
                         | Some window -> window.Cursor
                         | None -> 0, 0
                     member _.SetCharacterSize(width, height) =
-                        match Map.tryFind 0 state.Windows with
+                        match Map.tryFind 1 state.Windows with
                         | Some window -> window.CharacterSize <- width, height
                         | None -> ()
                     member _.GetCharacterSize() =
-                        match Map.tryFind 0 state.Windows with
+                        match Map.tryFind 1 state.Windows with
                         | Some window -> window.CharacterSize
                         | None -> 0, 0
-                    member _.WriteText text = writeWindow 0 text
+                    member _.WriteText text = writeWindow 1 text
                     member _.SetInk(values: int list) =
-                        match Map.tryFind 0 state.Windows with
+                        match Map.tryFind 1 state.Windows with
                         | Some window -> window.Ink <- Some values
                         | None -> ()
                     member _.SetPaper(value: int) =
-                        match Map.tryFind 0 state.Windows with
+                        match Map.tryFind 1 state.Windows with
                         | Some window -> window.Paper <- Some value
                         | None -> ()
                     member _.SetBorder(value: int) =
-                        match Map.tryFind 0 state.Windows with
+                        match Map.tryFind 1 state.Windows with
                         | Some window -> window.Border <- Some value
                         | None -> ()
                     member _.GetSupportedModes() = supportedModes

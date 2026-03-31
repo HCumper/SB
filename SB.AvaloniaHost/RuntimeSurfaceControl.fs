@@ -9,6 +9,10 @@ open SBRuntime
 type RuntimeSurfaceControl() =
     inherit Control()
 
+    static let textCellPixelWidth = 8
+    static let textCellPixelHeight = 10
+    static let consoleTypeface = Typeface(FontFamily("Consolas, Courier New, Monospace"))
+
     static let palette =
         [| Color.Parse("#000000")
            Color.Parse("#F5F0E6")
@@ -46,14 +50,21 @@ type RuntimeSurfaceControl() =
         | Some surface ->
             let snapshot = surface.GetSnapshot()
             let margin = 24.0
-            let headerHeight = 22.0
             let drawArea = bounds.Deflate(margin)
             let modeWidth = max 1 snapshot.Mode.Width
             let modeHeight = max 1 snapshot.Mode.Height
             let scaleX = drawArea.Width / float modeWidth
             let scaleY = drawArea.Height / float modeHeight
+            let paneZOrder pane =
+                match pane.ChannelId with
+                | Some 2 -> 0
+                | Some 1 -> 1
+                | Some 0 -> 1000
+                | Some id -> 100 + id
+                | None -> 500
 
             snapshot.Panes
+            |> List.sortBy paneZOrder
             |> List.iteri (fun index pane ->
                 let width, height, x, y = pane.Window
                 let paneRect =
@@ -63,45 +74,53 @@ type RuntimeSurfaceControl() =
                         max 24.0 (float width * scaleX),
                         max 24.0 (float height * scaleY))
                 let innerRect = paneRect.Deflate(10.0)
-                let viewportRect = Rect(innerRect.X, innerRect.Y + headerHeight, innerRect.Width, innerRect.Height - headerHeight)
+                let viewportRect = innerRect
                 let paneBackground =
                     let alpha = if index = 0 then 255uy else 205uy
                     SolidColorBrush(Color.FromArgb(alpha, 22uy, 32uy, 40uy))
-                let titleText =
-                    new FormattedText(
-                        pane.Title,
-                        CultureInfo.InvariantCulture,
-                        FlowDirection.LeftToRight,
-                        Typeface.Default,
-                        14.0,
-                        SolidColorBrush(Color.Parse("#F9E4B7")))
 
                 context.FillRectangle(paneBackground, paneRect)
                 context.DrawRectangle(paneFrame, paneRect)
-                context.DrawText(titleText, Point(innerRect.X + 4.0, innerRect.Y))
 
                 let paneTextHeight = Array2D.length1 pane.Text
                 let paneTextWidth = Array2D.length2 pane.Text
+                let textRows = max 1 (height / textCellPixelHeight)
+                let textCols = max 1 (width / textCellPixelWidth)
 
                 if paneTextHeight > 0 && paneTextWidth > 0 then
-                    let cellWidth = max 1.0 (viewportRect.Width / float paneTextWidth)
-                    let cellHeight = max 1.0 (viewportRect.Height / float paneTextHeight)
-                    let fontSize = max 10.0 (min 18.0 (cellHeight * 0.85))
+                    let cellWidth = max 1.0 (viewportRect.Width / float textCols)
+                    let cellHeight = max 1.0 (viewportRect.Height / float textRows)
+                    let defaultPaper = pane.Text[0, 0].Paper
+                    let fontSize = max 12.0 (min (cellHeight * 0.78) (cellWidth * 1.4))
+                    let _, cursorY = pane.Cursor
+                    let rowOffset =
+                        let lastVisibleRow = max 0 cursorY
+                        max 0 (min (paneTextHeight - textRows) (lastVisibleRow - textRows + 1))
 
-                    for textRow = 0 to paneTextHeight - 1 do
-                        for textCol = 0 to paneTextWidth - 1 do
-                            let cell = pane.Text[textRow, textCol]
+                    context.FillRectangle(SolidColorBrush(colorFor defaultPaper), viewportRect)
+
+                    for textRow = 0 to min (textRows - 1) (paneTextHeight - 1) do
+                        for textCol = 0 to min (textCols - 1) (paneTextWidth - 1) do
+                            let cell = pane.Text[rowOffset + textRow, textCol]
+                            let cellRect =
+                                Rect(
+                                    viewportRect.X + (float textCol * cellWidth),
+                                    viewportRect.Y + (float textRow * cellHeight),
+                                    cellWidth,
+                                    cellHeight)
+                            context.FillRectangle(SolidColorBrush(colorFor cell.Paper), cellRect)
+
                             if cell.Character <> ' ' then
-                                let location =
-                                    Point(
-                                        viewportRect.X + (float textCol * cellWidth),
-                                        viewportRect.Y + (float textRow * cellHeight))
                                 let text =
                                     new FormattedText(
                                         string cell.Character,
                                         CultureInfo.InvariantCulture,
                                         FlowDirection.LeftToRight,
-                                        Typeface.Default,
+                                        consoleTypeface,
                                         fontSize,
                                         SolidColorBrush(colorFor cell.Ink))
-                                context.DrawText(text, location))
+                                let textLocation =
+                                    Point(
+                                        cellRect.X + max 0.0 ((cellRect.Width - text.Width) / 2.0),
+                                        cellRect.Y + max 0.0 ((cellRect.Height - text.Height) / 2.0))
+                                context.DrawText(text, textLocation))
