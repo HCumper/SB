@@ -19,6 +19,7 @@ let private storage symbol name hirType storageClass =
       Slot = StorageSlotId 0
       Name = name
       Type = hirType
+      Dimensions = None
       Class = storageClass
       Position = pos }
 

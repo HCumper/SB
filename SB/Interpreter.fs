@@ -12,7 +12,7 @@ type RuntimeValue =
     | IntValue of int
     | FloatValue of double
     | StringValue of string
-    | ArrayValue of HirType * Dictionary<string, Cell>
+    | ArrayValue of HirType * int list * Dictionary<string, Cell>
 
 and Cell = { mutable Value: RuntimeValue }
 
@@ -93,6 +93,8 @@ type private RuntimeState = {
     Frames: Frame list
     DataPointer: int
     Output: string list
+    DefaultGraphicsScale: double * double * double
+    ChannelGraphicsScales: Map<ChannelId, double * double * double>
     RandomSource: Random
     Options: RuntimeOptions
 }
@@ -142,13 +144,13 @@ let private runtimeError code position detail =
 
     Result.Error { Code = code; Message = message; Position = position }
 
-let private defaultValue hirType =
+let private defaultValue hirType dimensions =
     match hirType with
     | HIR.HirType.Int -> IntValue 0
     | HIR.HirType.Float -> FloatValue 0.0
     | HIR.HirType.String -> StringValue ""
     | HIR.HirType.Void -> IntValue 0
-    | HIR.HirType.Array inner -> ArrayValue(inner, Dictionary<string, Cell>())
+    | HIR.HirType.Array inner -> ArrayValue(inner, dimensions |> Option.defaultValue [], Dictionary<string, Cell>())
 
 let private normalizeNumber value =
     match value with
@@ -251,25 +253,30 @@ let private arrayKey indexes =
 
 let private tryGetArrayEntries (value: RuntimeValue) =
     match value with
-    | ArrayValue(_, cells) -> Result.Ok cells
+    | ArrayValue(_, _, cells) -> Result.Ok cells
     | _ -> runtimeError InvalidArrayTarget None "Target is not an array."
 
 let private getArrayElementType (value: RuntimeValue) =
     match value with
-    | ArrayValue(innerType, _) -> innerType
+    | ArrayValue(innerType, _, _) -> innerType
     | _ -> HIR.HirType.Int
+
+let private getArrayDimensions (value: RuntimeValue) =
+    match value with
+    | ArrayValue(_, dimensions, _) -> dimensions
+    | _ -> []
 
 let private getOrCreateArrayEntry (entries: Dictionary<string, Cell>) innerType key =
     match entries.TryGetValue key with
     | true, existing -> existing
     | _ ->
-        let created = { Value = defaultValue innerType }
+        let created = { Value = defaultValue innerType None }
         entries[key] <- created
         created
 
 let private allocateCells (storages: HirStorage list) =
     storages
-    |> List.map (fun storage -> storage.Symbol, { Value = defaultValue storage.Type })
+    |> List.map (fun storage -> storage.Symbol, { Value = defaultValue storage.Type storage.Dimensions })
     |> Map.ofList
 
 let private updateOutput line state =
@@ -304,6 +311,21 @@ let private writeOutputToChannel channelId line state pos =
                 Result.Ok { state with Output = state.Output @ [ line ] }
             else
                 Result.Ok state
+        | Result.Error hostError ->
+            runtimeError UnsupportedChannelExecution (Some pos) (hostErrorText hostError)
+
+let private advanceScreenLine channelId state pos =
+    match channelId with
+    | None ->
+        state.Options.Host.Screen.NewLine()
+        Result.Ok state
+    | Some resolvedChannelId ->
+        match state.Options.Host.Channels.Get resolvedChannelId with
+        | Result.Ok (:? IScreenChannel as screenChannel) ->
+            screenChannel.NewLine()
+            Result.Ok state
+        | Result.Ok _ ->
+            Result.Ok state
         | Result.Error hostError ->
             runtimeError UnsupportedChannelExecution (Some pos) (hostErrorText hostError)
 
@@ -348,10 +370,35 @@ let private executeChannelScreenOp channelId state pos (channelAction: IScreenCh
         | Result.Error hostError ->
             runtimeError UnsupportedChannelExecution (Some pos) (hostErrorText hostError)
 
+let private currentGraphicsScale channelId state =
+    match channelId with
+    | Some resolvedChannelId ->
+        state.ChannelGraphicsScales
+        |> Map.tryFind resolvedChannelId
+        |> Option.defaultValue state.DefaultGraphicsScale
+    | None -> state.DefaultGraphicsScale
+
+let private currentDrawingWindow channelId state pos =
+    match channelId with
+    | None -> Result.Ok(state.Options.Host.Screen.GetWindow(), state.Options.Host.Screen.GetPan())
+    | Some resolvedChannelId ->
+        match state.Options.Host.Channels.Get resolvedChannelId with
+        | Result.Ok (:? IScreenChannel as screenChannel) ->
+            Result.Ok(screenChannel.GetWindow(), screenChannel.GetPan())
+        | Result.Ok _ ->
+            let (ChannelId id) = resolvedChannelId
+            runtimeError UnsupportedChannelExecution (Some pos) $"Channel #{id} is not a screen channel."
+        | Result.Error hostError ->
+            runtimeError UnsupportedChannelExecution (Some pos) (hostErrorText hostError)
+
 let private executeGraphicsOp channelId state pos (action: IGraphicsDevice -> unit) =
     let run nextState =
-        action nextState.Options.Host.Graphics
-        Result.Ok nextState
+        currentDrawingWindow channelId nextState pos
+        |> Result.bind (fun (window, pan) ->
+            let scale = currentGraphicsScale channelId nextState
+            nextState.Options.Host.Graphics.SetDrawingContext(window, pan, scale)
+            action nextState.Options.Host.Graphics
+            Result.Ok nextState)
 
     match channelId with
     | None -> run state
@@ -459,7 +506,8 @@ let rec private evalExpr state expr =
                         | _, StringValue _ -> compareStrings (>=)
                         | _ -> compareNumbers (>=)
                     | SliceRange -> rightValue
-                    | Instr
+                    | Instr ->
+                        IntValue((asString rightValue).IndexOf(asString leftValue, StringComparison.Ordinal) + 1)
                     | BinaryUnknown _ -> IntValue 0
                 result, rightState))
     | CallFunc(symbolId, args, hirType, pos) ->
@@ -485,8 +533,9 @@ and private evalLineNumber state expr pos =
 
 and private evalBuiltInFunction state symbolId argExprs hirType pos =
     let name = symbolName state symbolId
+    let normalizedName = normalizeIdentifier name
     let allowRangePair =
-        match normalizeIdentifier name, argExprs with
+        match normalizedName, argExprs with
         | "RND", [ Binary(SliceRange, _, _, _, _) ] -> true
         | _ -> false
     let runtimeArgs =
@@ -497,26 +546,47 @@ and private evalBuiltInFunction state symbolId argExprs hirType pos =
 
     evalExprList state runtimeArgs
     |> Result.bind (fun (values, nextState) ->
-        BuiltInFunctions.evaluate
-            name
-            (hirType = HIR.HirType.Float)
-            nextState.Options.Clock
-            (fun () -> nextState.RandomSource)
-            nextState.Options.Host.Environment.GetVariable
-            nextState.Options.Host.Input.ReadKey
-            nextState.Options.Sleeper
-            nextState.Options.Host.Input.GetKeyRow
-            (fun channelNumber ->
-                match nextState.Options.Host.Channels.Get(ChannelId channelNumber) with
-                | Result.Ok channel -> channel.IsEndOfFile()
-                | Result.Error _ -> true)
-            allowRangePair
-            (values |> List.map toRuntimeBuiltInValue)
-        |> function
-            | Result.Ok value -> Result.Ok(fromRuntimeBuiltInValue value, nextState)
-            | Result.Error(ArityMismatch message) -> runtimeError BuiltInArityMismatch (Some pos) message
-            | Result.Error(UnsupportedArguments message) -> runtimeError BuiltInUnsupportedArguments (Some pos) message
-            | Result.Error(NotImplemented message) -> runtimeError BuiltInFunctionNotImplemented (Some pos) message)
+        match normalizedName, values with
+        | "BEEPING", [] ->
+            Result.Ok(IntValue(if nextState.Options.Host.Sound.IsBeeping() then 1 else 0), nextState)
+        | "BEEPING", _ ->
+            runtimeError BuiltInArityMismatch (Some pos) $"Built-in function '{name}' expects zero arguments."
+        | "DIMN", [ arrayValue; dimensionValue ] ->
+            match arrayValue with
+            | ArrayValue _ ->
+                let requestedDimension = asInt dimensionValue
+                let dimensions = getArrayDimensions arrayValue
+                let value =
+                    if requestedDimension >= 1 && requestedDimension <= dimensions.Length then
+                        dimensions[requestedDimension - 1]
+                    else
+                        0
+                Result.Ok(IntValue value, nextState)
+            | _ ->
+                runtimeError BuiltInUnsupportedArguments (Some pos) $"Built-in function '{name}' requires an array as its first argument."
+        | "DIMN", _ ->
+            runtimeError BuiltInArityMismatch (Some pos) $"Built-in function '{name}' expects two arguments."
+        | _ ->
+            BuiltInFunctions.evaluate
+                name
+                (hirType = HIR.HirType.Float)
+                nextState.Options.Clock
+                (fun () -> nextState.RandomSource)
+                nextState.Options.Host.Environment.GetVariable
+                nextState.Options.Host.Input.ReadKey
+                nextState.Options.Sleeper
+                nextState.Options.Host.Input.GetKeyRow
+                (fun channelNumber ->
+                    match nextState.Options.Host.Channels.Get(ChannelId channelNumber) with
+                    | Result.Ok channel -> channel.IsEndOfFile()
+                    | Result.Error _ -> true)
+                allowRangePair
+                (values |> List.map toRuntimeBuiltInValue)
+            |> function
+                | Result.Ok value -> Result.Ok(fromRuntimeBuiltInValue value, nextState)
+                | Result.Error(ArityMismatch message) -> runtimeError BuiltInArityMismatch (Some pos) message
+                | Result.Error(UnsupportedArguments message) -> runtimeError BuiltInUnsupportedArguments (Some pos) message
+                | Result.Error(NotImplemented message) -> runtimeError BuiltInFunctionNotImplemented (Some pos) message)
 
 and private resolveChannelId state channelExpr =
     match channelExpr with
@@ -625,6 +695,7 @@ and private executeBuiltInCall state kind channel args targets pos =
                     |> List.map toRuntimeBuiltInValue
                     |> BuiltInStatements.formatPrintLine
                 writeOutputToChannel resolvedChannel line nextState pos
+                |> Result.bind (fun finalState -> advanceScreenLine resolvedChannel finalState pos)
                 |> Result.map (fun finalState -> Continue, finalState)))
     | BuiltInKind.Input ->
         resolveChannelId state channel
@@ -776,6 +847,21 @@ and private executeBuiltInCall state kind channel args targets pos =
                                 | Result.Ok() -> Result.Ok(Continue, nextState)
                                 | Result.Error hostError -> runtimeError UnsupportedChannelExecution (Some pos) (hostErrorText hostError)
                             | _ -> Result.Ok(Continue, nextState)))))
+        | "APPEND" ->
+            resolveChannelId state channel
+            |> Result.bind (fun (resolvedChannel, stateAfterChannel) ->
+                requireChannelId resolvedChannel
+                |> Result.bind (fun channelId ->
+                    evalExprList stateAfterChannel args
+                    |> Result.bind (fun (values, nextState) ->
+                        requireArity 1 values.Length
+                        |> Result.bind (fun () ->
+                            match values with
+                            | [ pathValue ] ->
+                                match nextState.Options.Host.Files.OpenFileAs(channelId, asString pathValue, OpenForAppend) with
+                                | Result.Ok() -> Result.Ok(Continue, nextState)
+                                | Result.Error hostError -> runtimeError UnsupportedChannelExecution (Some pos) (hostErrorText hostError)
+                            | _ -> Result.Ok(Continue, nextState)))))
         | "CLOSE" ->
             resolveChannelId state channel
             |> Result.bind (fun (resolvedChannel, stateAfterChannel) ->
@@ -800,6 +886,18 @@ and private executeBuiltInCall state kind channel args targets pos =
                             |> max 0
                         nextState.Options.Sleeper duration
                         Continue, nextState)))
+        | "BEEP" ->
+            unsupportedChannel ()
+            |> Result.bind (fun _ ->
+                evalExprList state args
+                |> Result.bind (fun (values, nextState) ->
+                    requireArity 2 values.Length
+                    |> Result.map (fun () ->
+                        match values with
+                        | [ pitch; duration ] ->
+                            nextState.Options.Host.Sound.Beep(asInt pitch, asInt duration)
+                            Continue, nextState
+                        | _ -> Continue, nextState)))
         | "CLS" ->
             executeScreenOp 0 false (fun resolvedChannel nextState _ ->
                 executeChannelScreenOp resolvedChannel nextState pos (fun screenChannel -> screenChannel.Clear()) (fun screen -> screen.Clear()))
@@ -1123,7 +1221,15 @@ and private executeBuiltInCall state kind channel args targets pos =
                             match values with
                             | [ x; y; z ] ->
                                 executeGraphicsOp resolvedChannel nextState pos (fun graphics -> graphics.SetScale(normalizeNumber x, normalizeNumber y, normalizeNumber z))
-                                |> Result.map (fun finalState -> Continue, finalState)
+                                |> Result.map (fun finalState ->
+                                    let scale = normalizeNumber x, normalizeNumber y, normalizeNumber z
+                                    let updatedState =
+                                        match resolvedChannel with
+                                        | Some channelId ->
+                                            { finalState with ChannelGraphicsScales = Map.add channelId scale finalState.ChannelGraphicsScales }
+                                        | None ->
+                                            { finalState with DefaultGraphicsScale = scale }
+                                    Continue, updatedState)
                             | _ -> Result.Ok(Continue, nextState)))))
         | "OVER" ->
             resolveChannelId state channel
@@ -1418,6 +1524,8 @@ let interpretProgramWithOptions options (program: HirProgram) =
           Frames = []
           DataPointer = 0
           Output = []
+          DefaultGraphicsScale = (100.0, 0.0, 0.0)
+          ChannelGraphicsScales = Map.empty
           RandomSource = options.Random
           Options = options }
 

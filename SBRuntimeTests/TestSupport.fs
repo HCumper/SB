@@ -98,7 +98,10 @@ type ScreenState = {
     mutable Mode: ScreenModeInfo
     Inputs: Collections.Generic.Queue<string>
     Windows: Map<int, ScreenWindowState>
+    mutable TextBuffer: char[,]
+    mutable PixelBuffer: int[,]
     GraphicsOps: ResizeArray<string>
+    Beeps: ResizeArray<int * int>
     mutable GraphicsInk: int list
     mutable FillMode: int
     mutable Scale: double * double * double
@@ -107,6 +110,10 @@ type ScreenState = {
     mutable FlashMode: int
     mutable PenDown: bool
     mutable Heading: double
+    mutable Beeping: bool
+    mutable DrawingWindow: int * int * int * int
+    mutable DrawingPan: int
+    mutable DrawingScale: double * double * double
 }
 
 let createScreenHost (inputs: string list) =
@@ -116,7 +123,7 @@ let createScreenHost (inputs: string list) =
           { Mode = ExtendedMode 256; Width = 256; Height = 256; Colors = Some 8; Name = "Extended Mode 256"; IsQlCompatible = false }
           { Mode = ExtendedMode 512; Width = 512; Height = 256; Colors = Some 4; Name = "Extended Mode 512"; IsQlCompatible = false } ]
 
-    let applyModeToWindow (mode: ScreenModeInfo) (window: ScreenWindowState) =
+    let applyModeToWindow (_channelId: int) (mode: ScreenModeInfo) (window: ScreenWindowState) =
         window.Cursor <- 0, 0
         window.Window <- mode.Width, mode.Height, 0, 0
         window.Scroll <- 0
@@ -154,7 +161,10 @@ let createScreenHost (inputs: string list) =
         { Mode = supportedModes[0]
           Inputs = Collections.Generic.Queue<string>(inputs)
           Windows = windows
+          TextBuffer = Array2D.create supportedModes[0].Height supportedModes[0].Width ' '
+          PixelBuffer = Array2D.create supportedModes[0].Height supportedModes[0].Width 0
           GraphicsOps = ResizeArray<string>()
+          Beeps = ResizeArray<int * int>()
           GraphicsInk = []
           FillMode = 0
           Scale = 0.0, 0.0, 0.0
@@ -162,19 +172,119 @@ let createScreenHost (inputs: string list) =
           UnderMode = 0
           FlashMode = 0
           PenDown = true
-          Heading = 0.0 }
+          Heading = 0.0
+          Beeping = false
+          DrawingWindow = supportedModes[0].Width, supportedModes[0].Height, 0, 0
+          DrawingPan = 0
+          DrawingScale = (100.0, 0.0, 0.0) }
 
     do
-        for window in state.Windows.Values do
-            applyModeToWindow state.Mode window
+        for KeyValue(channelId, window) in state.Windows do
+            applyModeToWindow channelId state.Mode window
+
+    let resizeBuffers mode =
+        state.TextBuffer <- Array2D.create mode.Height mode.Width ' '
+        state.PixelBuffer <- Array2D.create mode.Height mode.Width 0
 
     let reader () =
         if state.Inputs.Count > 0 then Some(state.Inputs.Dequeue()) else None
 
     let writeWindow channelId line =
         match Map.tryFind channelId state.Windows with
-        | Some window -> window.Writes.Add(line)
+        | Some window ->
+            window.Writes.Add(line)
+            let width, _, x, y = window.Window
+            let cursorX, cursorY = window.Cursor
+            let row = y + cursorY
+            if row >= 0 && row < Array2D.length1 state.TextBuffer then
+                for index = 0 to line.Length - 1 do
+                    let col = x + cursorX + index
+                    if col >= x && col < min (Array2D.length2 state.TextBuffer) (x + width) then
+                        state.TextBuffer[row, col] <- line[index]
+            let nextCursorX = min (max 0 (width - 1)) (cursorX + line.Length)
+            window.Cursor <- nextCursorX, cursorY
         | None -> ()
+
+    let scaleFactors () =
+        let sx, sy, _ = state.DrawingScale
+        let factorX = if sx = 0.0 then 1.0 else sx / 100.0
+        let factorY = if sy = 0.0 then factorX else sy / 100.0
+        factorX, factorY
+
+    let clampToWindow x y =
+        let width, height, originX, originY = state.DrawingWindow
+        let maxX = originX + max 0 (width - 1)
+        let maxY = originY + max 0 (height - 1)
+        let clampedX = min (float maxX) (max (float originX) x)
+        let clampedY = min (float maxY) (max (float originY) y)
+        clampedX, clampedY
+
+    let setPixel x y color =
+        if y >= 0 && y < Array2D.length1 state.PixelBuffer && x >= 0 && x < Array2D.length2 state.PixelBuffer then
+            state.PixelBuffer[y, x] <- color
+
+    let drawLine x1 y1 x2 y2 color =
+        let dx = abs (x2 - x1)
+        let sx = if x1 < x2 then 1 else -1
+        let dy = -abs (y2 - y1)
+        let sy = if y1 < y2 then 1 else -1
+        let rec loop x y err =
+            setPixel x y color
+            if x <> x2 || y <> y2 then
+                let e2 = 2 * err
+                let nextX, nextErr =
+                    if e2 >= dy then x + sx, err + dy else x, err
+                let nextY, finalErr =
+                    if e2 <= dx then y + sy, nextErr + dx else y, nextErr
+                loop nextX nextY finalErr
+        loop x1 y1 (dx + dy)
+
+    let clearWindow width height x y =
+        let maxX = min (Array2D.length2 state.TextBuffer) (x + max 0 width)
+        let maxY = min (Array2D.length1 state.TextBuffer) (y + max 0 height)
+        for row in max 0 y .. max 0 (maxY - 1) do
+            for col in max 0 x .. max 0 (maxX - 1) do
+                state.TextBuffer[row, col] <- ' '
+                state.PixelBuffer[row, col] <- 0
+
+    let scrollWindow width height x y =
+        let maxX = min (Array2D.length2 state.TextBuffer) (x + max 0 width)
+        let maxY = min (Array2D.length1 state.TextBuffer) (y + max 0 height)
+        let startX = max 0 x
+        let startY = max 0 y
+
+        if maxX > startX && maxY > startY then
+            for row in startY .. maxY - 2 do
+                for col in startX .. maxX - 1 do
+                    state.TextBuffer[row, col] <- state.TextBuffer[row + 1, col]
+                    state.PixelBuffer[row, col] <- state.PixelBuffer[row + 1, col]
+
+            for col in startX .. maxX - 1 do
+                state.TextBuffer[maxY - 1, col] <- ' '
+                state.PixelBuffer[maxY - 1, col] <- 0
+
+    let newLineWindow channelId =
+        match Map.tryFind channelId state.Windows with
+        | Some window ->
+            let width, height, x, y = window.Window
+            let _, cursorY = window.Cursor
+            if cursorY + 1 >= max 1 height then
+                scrollWindow width height x y
+                window.Cursor <- 0, max 0 (height - 1)
+            else
+                window.Cursor <- 0, cursorY + 1
+        | None -> ()
+
+    let transformAbsolute x y =
+        let factorX, factorY = scaleFactors ()
+        let _, _, originX, originY = state.DrawingWindow
+        let transformedX = float originX + float state.DrawingPan + (x * factorX)
+        let transformedY = float originY + (y * factorY)
+        clampToWindow transformedX transformedY
+
+    let transformDelta dx dy =
+        let factorX, factorY = scaleFactors ()
+        dx * factorX, dy * factorY
 
     let makeConsoleChannel channelId =
         { new IScreenChannel with
@@ -187,11 +297,18 @@ let createScreenHost (inputs: string list) =
             member _.Close() = ()
             member _.Clear() =
                 match Map.tryFind channelId state.Windows with
-                | Some window -> window.ClearCount <- window.ClearCount + 1
+                | Some window ->
+                    window.ClearCount <- window.ClearCount + 1
+                    let width, height, x, y = window.Window
+                    clearWindow width height x y
+                    window.Cursor <- 0, 0
                 | None -> ()
+            member _.NewLine() = newLineWindow channelId
             member _.SetWindow(width, height, x, y) =
                 match Map.tryFind channelId state.Windows with
-                | Some window -> window.Window <- width, height, x, y
+                | Some window ->
+                    window.Window <- width, height, x, y
+                    window.Cursor <- 0, 0
                 | None -> ()
             member _.GetWindow() =
                 match Map.tryFind channelId state.Windows with
@@ -277,11 +394,18 @@ let createScreenHost (inputs: string list) =
             member _.Close() = ()
             member _.Clear() =
                 match Map.tryFind channelId state.Windows with
-                | Some window -> window.ClearCount <- window.ClearCount + 1
+                | Some window ->
+                    window.ClearCount <- window.ClearCount + 1
+                    let width, height, x, y = window.Window
+                    clearWindow width height x y
+                    window.Cursor <- 0, 0
                 | None -> ()
+            member _.NewLine() = newLineWindow channelId
             member _.SetWindow(width, height, x, y) =
                 match Map.tryFind channelId state.Windows with
-                | Some window -> window.Window <- width, height, x, y
+                | Some window ->
+                    window.Window <- width, height, x, y
+                    window.Cursor <- 0, 0
                 | None -> ()
             member _.GetWindow() =
                 match Map.tryFind channelId state.Windows with
@@ -383,11 +507,18 @@ let createScreenHost (inputs: string list) =
                 { new IScreenDevice with
                     member _.Clear() =
                         match Map.tryFind 0 state.Windows with
-                        | Some window -> window.ClearCount <- window.ClearCount + 1
+                        | Some window ->
+                            window.ClearCount <- window.ClearCount + 1
+                            let width, height, x, y = window.Window
+                            clearWindow width height x y
+                            window.Cursor <- 0, 0
                         | None -> ()
+                    member _.NewLine() = newLineWindow 0
                     member _.SetWindow(width, height, x, y) =
                         match Map.tryFind 0 state.Windows with
-                        | Some window -> window.Window <- width, height, x, y
+                        | Some window ->
+                            window.Window <- width, height, x, y
+                            window.Cursor <- 0, 0
                         | None -> ()
                     member _.GetWindow() =
                         match Map.tryFind 0 state.Windows with
@@ -468,31 +599,88 @@ let createScreenHost (inputs: string list) =
                         match supportedModes |> List.tryFind (fun candidate -> candidate.Mode = mode) with
                         | Some selected ->
                             state.Mode <- selected
-                            for window in state.Windows.Values do
-                                applyModeToWindow selected window
+                            resizeBuffers selected
+                            for KeyValue(channelId, window) in state.Windows do
+                                applyModeToWindow channelId selected window
                             Result.Ok()
                         | None ->
                             Result.Error(UnsupportedHostOperation $"Mode '{mode}' is not supported in the test host.") }
             member _.Graphics =
                 { new IGraphicsDevice with
-                    member _.Plot(x, y) = state.GraphicsOps.Add($"PLOT {x:G17},{y:G17}")
-                    member _.Point(x, y) = state.GraphicsOps.Add($"POINT {x:G17},{y:G17}")
-                    member _.PointRelative(dx, dy) = state.GraphicsOps.Add($"POINT_R {dx:G17},{dy:G17}")
-                    member _.Draw(x, y) = state.GraphicsOps.Add($"DRAW {x:G17},{y:G17}")
+                    member _.SetDrawingContext(window, pan, scale) =
+                        state.DrawingWindow <- window
+                        state.DrawingPan <- pan
+                        state.DrawingScale <- scale
+                    member _.Plot(x, y) =
+                        let tx, ty = transformAbsolute x y
+                        state.GraphicsOps.Add($"PLOT {tx:G17},{ty:G17}")
+                        setPixel (int (Math.Round tx)) (int (Math.Round ty)) (state.GraphicsInk |> List.tryHead |> Option.defaultValue 7)
+                    member _.Point(x, y) =
+                        let tx, ty = transformAbsolute x y
+                        state.GraphicsOps.Add($"POINT {tx:G17},{ty:G17}")
+                        setPixel (int (Math.Round tx)) (int (Math.Round ty)) (state.GraphicsInk |> List.tryHead |> Option.defaultValue 7)
+                    member _.PointRelative(dx, dy) =
+                        let tx, ty = transformDelta dx dy
+                        state.GraphicsOps.Add($"POINT_R {tx:G17},{ty:G17}")
+                        setPixel (int (Math.Round tx)) (int (Math.Round ty)) (state.GraphicsInk |> List.tryHead |> Option.defaultValue 7)
+                    member _.Draw(x, y) =
+                        let tx, ty = transformAbsolute x y
+                        state.GraphicsOps.Add($"DRAW {tx:G17},{ty:G17}")
+                        drawLine 0 0 (int (Math.Round tx)) (int (Math.Round ty)) (state.GraphicsInk |> List.tryHead |> Option.defaultValue 7)
                     member _.LineRelative(values) =
-                        let valueText = values |> List.map (fun value -> value.ToString("G17")) |> String.concat ","
+                        let transformed =
+                            values
+                            |> List.chunkBySize 2
+                            |> List.collect (function
+                                | [ dx; dy ] ->
+                                    let tx, ty = transformDelta dx dy
+                                    [ tx; ty ]
+                                | leftovers -> leftovers)
+                        let valueText = transformed |> List.map (fun value -> value.ToString("G17")) |> String.concat ","
                         state.GraphicsOps.Add($"LINE_R {valueText}")
                     member _.DLine(values) =
-                        let valueText = values |> List.map (fun value -> value.ToString("G17")) |> String.concat ","
+                        let transformed =
+                            values
+                            |> List.chunkBySize 2
+                            |> List.collect (function
+                                | [ x; y ] ->
+                                    let tx, ty = transformAbsolute x y
+                                    [ tx; ty ]
+                                | leftovers -> leftovers)
+                        let valueText = transformed |> List.map (fun value -> value.ToString("G17")) |> String.concat ","
                         state.GraphicsOps.Add($"DLINE {valueText}")
-                    member _.Line(x1, y1, x2, y2) = state.GraphicsOps.Add($"LINE {x1:G17},{y1:G17} TO {x2:G17},{y2:G17}")
-                    member _.Circle(x, y, radius) = state.GraphicsOps.Add($"CIRCLE {x:G17},{y:G17},{radius:G17}")
-                    member _.CircleRelative(dx, dy, radius) = state.GraphicsOps.Add($"CIRCLE_R {dx:G17},{dy:G17},{radius:G17}")
-                    member _.Ellipse(x, y, radius, ratio, angle) = state.GraphicsOps.Add($"ELLIPSE {x:G17},{y:G17},{radius:G17},{ratio:G17},{angle:G17}")
-                    member _.EllipseRelative(dx, dy, radius, ratio, angle) = state.GraphicsOps.Add($"ELLIPSE_R {dx:G17},{dy:G17},{radius:G17},{ratio:G17},{angle:G17}")
-                    member _.Arc(x, y, radius, startAngle, endAngle) = state.GraphicsOps.Add($"ARC {x:G17},{y:G17},{radius:G17},{startAngle:G17},{endAngle:G17}")
-                    member _.ArcRelative(dx, dy, radius, startAngle, endAngle) = state.GraphicsOps.Add($"ARC_R {dx:G17},{dy:G17},{radius:G17},{startAngle:G17},{endAngle:G17}")
-                    member _.Block(width, height, x, y, color) = state.GraphicsOps.Add($"BLOCK {width:G17},{height:G17},{x:G17},{y:G17},{color}")
+                    member _.Line(x1, y1, x2, y2) =
+                        let tx1, ty1 = transformAbsolute x1 y1
+                        let tx2, ty2 = transformAbsolute x2 y2
+                        state.GraphicsOps.Add($"LINE {tx1:G17},{ty1:G17} TO {tx2:G17},{ty2:G17}")
+                        drawLine (int (Math.Round tx1)) (int (Math.Round ty1)) (int (Math.Round tx2)) (int (Math.Round ty2)) (state.GraphicsInk |> List.tryHead |> Option.defaultValue 7)
+                    member _.Circle(x, y, radius) =
+                        let tx, ty = transformAbsolute x y
+                        state.GraphicsOps.Add($"CIRCLE {tx:G17},{ty:G17},{radius:G17}")
+                        setPixel (int (Math.Round tx)) (int (Math.Round ty)) (state.GraphicsInk |> List.tryHead |> Option.defaultValue 7)
+                    member _.CircleRelative(dx, dy, radius) =
+                        let tx, ty = transformDelta dx dy
+                        state.GraphicsOps.Add($"CIRCLE_R {tx:G17},{ty:G17},{radius:G17}")
+                    member _.Ellipse(x, y, radius, ratio, angle) =
+                        let tx, ty = transformAbsolute x y
+                        state.GraphicsOps.Add($"ELLIPSE {tx:G17},{ty:G17},{radius:G17},{ratio:G17},{angle:G17}")
+                        setPixel (int (Math.Round tx)) (int (Math.Round ty)) (state.GraphicsInk |> List.tryHead |> Option.defaultValue 7)
+                    member _.EllipseRelative(dx, dy, radius, ratio, angle) =
+                        let tx, ty = transformDelta dx dy
+                        state.GraphicsOps.Add($"ELLIPSE_R {tx:G17},{ty:G17},{radius:G17},{ratio:G17},{angle:G17}")
+                    member _.Arc(x, y, radius, startAngle, endAngle) =
+                        let tx, ty = transformAbsolute x y
+                        state.GraphicsOps.Add($"ARC {tx:G17},{ty:G17},{radius:G17},{startAngle:G17},{endAngle:G17}")
+                        setPixel (int (Math.Round tx)) (int (Math.Round ty)) (state.GraphicsInk |> List.tryHead |> Option.defaultValue 7)
+                    member _.ArcRelative(dx, dy, radius, startAngle, endAngle) =
+                        let tx, ty = transformDelta dx dy
+                        state.GraphicsOps.Add($"ARC_R {tx:G17},{ty:G17},{radius:G17},{startAngle:G17},{endAngle:G17}")
+                    member _.Block(width, height, x, y, color) =
+                        let tx, ty = transformAbsolute x y
+                        state.GraphicsOps.Add($"BLOCK {width:G17},{height:G17},{tx:G17},{ty:G17},{color}")
+                        for row = int (Math.Round ty) to int (Math.Round ty) + max 0 (int (Math.Round height)) - 1 do
+                            for col = int (Math.Round tx) to int (Math.Round tx) + max 0 (int (Math.Round width)) - 1 do
+                                setPixel col row color
                     member _.SetInk(values: int list) =
                         let valueText = values |> List.map string |> String.concat ","
                         state.GraphicsInk <- values
@@ -521,7 +709,10 @@ let createScreenHost (inputs: string list) =
                     member _.TurnTo(angle) =
                         state.Heading <- angle
                         state.GraphicsOps.Add($"TURNTO {angle:G17}")
-                    member _.Clear() = state.GraphicsOps.Add("CLEAR") }
+                    member _.Clear() =
+                        state.GraphicsOps.Add("CLEAR")
+                        let width, height, x, y = state.DrawingWindow
+                        clearWindow width height x y }
             member _.Input =
                 { new IInputDevice with
                     member _.ReadLine() = reader ()
@@ -530,7 +721,10 @@ let createScreenHost (inputs: string list) =
                     member _.GetKeyRow(_row) = 0 }
             member _.Sound =
                 { new ISoundDevice with
-                    member _.Beep(_pitch, _duration) = () }
+                    member _.Beep(pitch, duration) =
+                        state.Beeps.Add(pitch, duration)
+                        state.Beeping <- duration > 0
+                    member _.IsBeeping() = state.Beeping }
             member _.Files =
                 { new IDeviceFileSystem with
                     member _.OpenFile(_path, _mode) = Result.Error(UnsupportedHostOperation "Files not implemented in test host.")
@@ -548,6 +742,7 @@ let makeStorage symbolId slotId name hirType storageClass : H.HirStorage =
       Slot = H.StorageSlotId slotId
       Name = name
       Type = hirType
+      Dimensions = None
       Class = storageClass
       Position = pos }
 

@@ -82,6 +82,7 @@ type HirStorage = {
     Slot: StorageSlotId
     Name: string
     Type: HirType
+    Dimensions: int list option
     Class: StorageClass
     Position: SourcePosition
 }

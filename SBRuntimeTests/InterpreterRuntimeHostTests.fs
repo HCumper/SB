@@ -185,7 +185,7 @@ let ``default host exposes ql and extended screen modes`` () =
     Assert.That(modes |> List.exists (fun mode -> mode.Mode = ExtendedMode 512), Is.True)
 
 [<Test>]
-let ``interpreter print to default channels uses host channel manager`` () =
+let ``interpreter print to screen channels does not mirror into console output`` () =
     let outputs = ResizeArray<string>()
     let hir =
         makeProgram
@@ -208,7 +208,9 @@ let ``interpreter print to default channels uses host channel manager`` () =
             hir
 
     match result with
-    | Result.Ok execution -> Assert.That(String.concat "|" execution.Output, Is.EqualTo("hello|world"))
+    | Result.Ok execution ->
+        Assert.That(String.concat "|" execution.Output, Is.EqualTo("hello|world"))
+        Assert.That(String.concat "|" outputs, Is.EqualTo(""))
     | Result.Error err -> Assert.Fail($"Expected interpretation to succeed, got %A{err}")
 
 [<Test>]
@@ -298,6 +300,28 @@ let ``interpreter screen channel operations keep default window state independen
         Assert.That(window2.Writes |> Seq.toList |> String.concat "|", Is.EqualTo("Enter"))
         Assert.That(window0.Writes |> Seq.toList |> String.concat "|", Is.EqualTo(""))
         Assert.That(window1.Writes |> Seq.toList |> String.concat "|", Is.EqualTo(""))
+    | Result.Error err ->
+        Assert.Fail($"Expected interpretation to succeed, got %A{err}")
+
+[<Test>]
+let ``interpreter screen text writes and cls update backing text buffer`` () =
+    let host, screenState = createScreenHost []
+    let channel1 = H.Literal(H.ConstInt 1, H.HirType.Int, pos)
+    let hir =
+        makeProgram
+            Map.empty
+            []
+            [ H.BuiltInCall(H.NamedBuiltIn "WINDOW", Some channel1, [ H.Literal(H.ConstInt 20, H.HirType.Int, pos); H.Literal(H.ConstInt 5, H.HirType.Int, pos); H.Literal(H.ConstInt 10, H.HirType.Int, pos); H.Literal(H.ConstInt 3, H.HirType.Int, pos) ], pos)
+              H.BuiltInCall(H.NamedBuiltIn "AT", Some channel1, [ H.Literal(H.ConstInt 1, H.HirType.Int, pos); H.Literal(H.ConstInt 2, H.HirType.Int, pos) ], pos)
+              H.BuiltInCall(H.Print, Some channel1, [ H.Literal(H.ConstString "HELLO", H.HirType.String, pos) ], pos)
+              H.BuiltInCall(H.NamedBuiltIn "CLS", Some channel1, [], pos) ]
+
+    let result = interpretProgramWithOptions { defaultRuntimeOptions with Host = host } hir
+
+    match result with
+    | Result.Ok _ ->
+        Assert.That(screenState.TextBuffer[4, 12] = ' ', Is.True)
+        Assert.That(screenState.Windows[1].ClearCount, Is.EqualTo(1))
     | Result.Error err ->
         Assert.Fail($"Expected interpretation to succeed, got %A{err}")
 
@@ -750,6 +774,53 @@ let ``interpreter open_new open_in and close handle file channels`` () =
             File.Delete(tempPath)
 
 [<Test>]
+let ``interpreter append adds to existing file channels`` () =
+    let tempPath = Path.Combine(Path.GetTempPath(), $"sb-runtime-append-{Guid.NewGuid():N}.txt")
+    let ast =
+        Program(
+            pos,
+            [ Line(pos, Some 10, [ ChannelProcedureCall(pos, "OPEN_NEW", num "9", [ str $"\"{tempPath}\"" ]) ])
+              Line(pos, Some 20, [ ChannelProcedureCall(pos, "PRINT", num "9", [ str "\"hello\"" ]) ])
+              Line(pos, Some 30, [ ChannelProcedureCall(pos, "CLOSE", num "9", []) ])
+              Line(pos, Some 40, [ ChannelProcedureCall(pos, "APPEND", num "9", [ str $"\"{tempPath}\"" ]) ])
+              Line(pos, Some 50, [ ChannelProcedureCall(pos, "PRINT", num "9", [ str "\"again\"" ]) ])
+              Line(pos, Some 60, [ ChannelProcedureCall(pos, "CLOSE", num "9", []) ])
+              Line(pos, Some 70, [ ChannelProcedureCall(pos, "OPEN_IN", num "9", [ str $"\"{tempPath}\"" ]) ])
+              Line(pos, Some 80, [ ChannelProcedureCall(pos, "INPUT", num "9", [ id "first$" ]) ])
+              Line(pos, Some 90, [ ChannelProcedureCall(pos, "INPUT", num "9", [ id "second$" ]) ])
+              Line(pos, Some 100, [ ChannelProcedureCall(pos, "CLOSE", num "9", []) ])
+              Line(pos, Some 110, [ ProcedureCall(pos, "PRINT", [ id "first$"; id "second$" ]) ]) ])
+
+    let outputs = ResizeArray<string>()
+    let options =
+        { defaultRuntimeOptions with
+            Host =
+                DefaultHost.create {
+                    ReadLine = fun () -> None
+                    ReadKey = fun () -> None
+                    KeyAvailable = fun () -> false
+                    KeyRowState = fun _ -> 0
+                    WriteLine = fun line -> outputs.Add(line)
+                } }
+
+    try
+        let hir = lowerProgram ast
+        let result = interpretProgramWithOptions options hir
+
+        match result with
+        | Result.Ok execution ->
+            Assert.That(execution.Output |> Seq.last, Is.EqualTo("hello again"))
+            let lines = File.ReadAllLines(tempPath)
+            Assert.That(lines.Length, Is.EqualTo(2))
+            Assert.That(lines[0], Is.EqualTo("hello"))
+            Assert.That(lines[1], Is.EqualTo("again"))
+        | Result.Error err ->
+            Assert.Fail($"Expected interpretation to succeed, got %A{err}")
+    finally
+        if File.Exists(tempPath) then
+            File.Delete(tempPath)
+
+[<Test>]
 let ``interpreter open_new and open_in support directory backed devices`` () =
     let deviceRoot = Path.Combine(Environment.CurrentDirectory, "RuntimeDevices", "ram1")
     let devicePath = Path.Combine(deviceRoot, "demo_io")
@@ -787,6 +858,57 @@ let ``interpreter open_new and open_in support directory backed devices`` () =
         | Result.Ok execution ->
             Assert.That(execution.Output |> Seq.last, Is.EqualTo("hello"))
             Assert.That(File.Exists(devicePath), Is.True)
+        | Result.Error err ->
+            Assert.Fail($"Expected interpretation to succeed, got %A{err}")
+    finally
+        if File.Exists(devicePath) then
+            File.Delete(devicePath)
+
+[<Test>]
+let ``interpreter append supports directory backed devices`` () =
+    let deviceRoot = Path.Combine(Environment.CurrentDirectory, "RuntimeDevices", "ram1")
+    let devicePath = Path.Combine(deviceRoot, "demo_append")
+    let ast =
+        Program(
+            pos,
+            [ Line(pos, Some 10, [ ChannelProcedureCall(pos, "OPEN_NEW", num "9", [ str "\"ram1_demo_append\"" ]) ])
+              Line(pos, Some 20, [ ChannelProcedureCall(pos, "PRINT", num "9", [ str "\"hello\"" ]) ])
+              Line(pos, Some 30, [ ChannelProcedureCall(pos, "CLOSE", num "9", []) ])
+              Line(pos, Some 40, [ ChannelProcedureCall(pos, "APPEND", num "9", [ str "\"ram1_demo_append\"" ]) ])
+              Line(pos, Some 50, [ ChannelProcedureCall(pos, "PRINT", num "9", [ str "\"again\"" ]) ])
+              Line(pos, Some 60, [ ChannelProcedureCall(pos, "CLOSE", num "9", []) ])
+              Line(pos, Some 70, [ ChannelProcedureCall(pos, "OPEN_IN", num "9", [ str "\"ram1_demo_append\"" ]) ])
+              Line(pos, Some 80, [ ChannelProcedureCall(pos, "INPUT", num "9", [ id "first$" ]) ])
+              Line(pos, Some 90, [ ChannelProcedureCall(pos, "INPUT", num "9", [ id "second$" ]) ])
+              Line(pos, Some 100, [ ChannelProcedureCall(pos, "CLOSE", num "9", []) ])
+              Line(pos, Some 110, [ ProcedureCall(pos, "PRINT", [ id "first$"; id "second$" ]) ]) ])
+
+    let outputs = ResizeArray<string>()
+    let options =
+        { defaultRuntimeOptions with
+            Host =
+                DefaultHost.create {
+                    ReadLine = fun () -> None
+                    ReadKey = fun () -> None
+                    KeyAvailable = fun () -> false
+                    KeyRowState = fun _ -> 0
+                    WriteLine = fun line -> outputs.Add(line)
+                } }
+
+    try
+        if File.Exists(devicePath) then
+            File.Delete(devicePath)
+
+        let hir = lowerProgram ast
+        let result = interpretProgramWithOptions options hir
+
+        match result with
+        | Result.Ok execution ->
+            Assert.That(execution.Output |> Seq.last, Is.EqualTo("hello again"))
+            let lines = File.ReadAllLines(devicePath)
+            Assert.That(lines.Length, Is.EqualTo(2))
+            Assert.That(lines[0], Is.EqualTo("hello"))
+            Assert.That(lines[1], Is.EqualTo("again"))
         | Result.Error err ->
             Assert.Fail($"Expected interpretation to succeed, got %A{err}")
     finally
@@ -896,6 +1018,116 @@ let ``interpreter open and close support dynamic screen channels`` () =
         Assert.Fail($"Expected interpretation to succeed, got %A{err}")
 
 [<Test>]
+let ``interpreter open parses screen device geometry strings`` () =
+    let channel9 = H.Literal(H.ConstInt 9, H.HirType.Int, pos)
+    let hir =
+        makeProgram
+            Map.empty
+            []
+            [ H.BuiltInCall(H.NamedBuiltIn "OPEN", Some channel9, [ H.Literal(H.ConstString "scr_448x40a32x216", H.HirType.String, pos) ], pos) ]
+
+    let host =
+        DefaultHost.create {
+            ReadLine = fun () -> None
+            ReadKey = fun () -> None
+            KeyAvailable = fun () -> false
+            KeyRowState = fun _ -> 0
+            WriteLine = ignore
+        }
+
+    let result = interpretProgramWithOptions { defaultRuntimeOptions with Host = host } hir
+
+    match result with
+    | Result.Ok _ ->
+        match host.Channels.Get(ChannelId 9) with
+        | Result.Ok (:? IScreenChannel as screenChannel) ->
+            Assert.That(screenChannel.Kind, Is.EqualTo(ChannelKind.ScreenChannel))
+            Assert.That(screenChannel.GetWindow(), Is.EqualTo((448, 40, 32, 216)))
+        | Result.Ok _ -> Assert.Fail("Expected channel #9 to be a screen channel.")
+        | Result.Error err -> Assert.Fail($"Expected channel #9 to exist, got %A{err}")
+    | Result.Error err ->
+        Assert.Fail($"Expected interpretation to succeed, got %A{err}")
+
+[<Test>]
+let ``interpreter open parses console device strings and preserves configured window across mode changes`` () =
+    let channel9 = H.Literal(H.ConstInt 9, H.HirType.Int, pos)
+    let hir =
+        makeProgram
+            Map.empty
+            []
+            [ H.BuiltInCall(H.NamedBuiltIn "OPEN", Some channel9, [ H.Literal(H.ConstString "con_300x160a75x10_32", H.HirType.String, pos) ], pos)
+              H.BuiltInCall(H.NamedBuiltIn "MODE", None, [ H.Literal(H.ConstInt 8, H.HirType.Int, pos) ], pos) ]
+
+    let host =
+        DefaultHost.create {
+            ReadLine = fun () -> None
+            ReadKey = fun () -> None
+            KeyAvailable = fun () -> false
+            KeyRowState = fun _ -> 0
+            WriteLine = ignore
+        }
+
+    let result = interpretProgramWithOptions { defaultRuntimeOptions with Host = host } hir
+
+    match result with
+    | Result.Ok _ ->
+        match host.Channels.Get(ChannelId 9) with
+        | Result.Ok (:? IScreenChannel as screenChannel) ->
+            Assert.That(screenChannel.Kind, Is.EqualTo(ChannelKind.ConsoleChannel))
+            Assert.That(screenChannel.GetWindow(), Is.EqualTo((300, 160, 75, 10)))
+        | Result.Ok _ -> Assert.Fail("Expected channel #9 to be a console screen channel.")
+        | Result.Error err -> Assert.Fail($"Expected channel #9 to exist, got %A{err}")
+    | Result.Error err ->
+        Assert.Fail($"Expected interpretation to succeed, got %A{err}")
+
+[<Test>]
+let ``interpreter graphics operations respect window pan scale and clipping`` () =
+    let host, screenState = createScreenHost []
+    let channel1 = H.Literal(H.ConstInt 1, H.HirType.Int, pos)
+    let hir =
+        makeProgram
+            Map.empty
+            []
+            [ H.BuiltInCall(H.NamedBuiltIn "WINDOW", Some channel1, [ H.Literal(H.ConstInt 100, H.HirType.Int, pos); H.Literal(H.ConstInt 50, H.HirType.Int, pos); H.Literal(H.ConstInt 10, H.HirType.Int, pos); H.Literal(H.ConstInt 20, H.HirType.Int, pos) ], pos)
+              H.BuiltInCall(H.NamedBuiltIn "PAN", Some channel1, [ H.Literal(H.ConstInt 5, H.HirType.Int, pos) ], pos)
+              H.BuiltInCall(H.NamedBuiltIn "SCALE", Some channel1, [ H.Literal(H.ConstInt 200, H.HirType.Int, pos); H.Literal(H.ConstInt 100, H.HirType.Int, pos); H.Literal(H.ConstInt 0, H.HirType.Int, pos) ], pos)
+              H.BuiltInCall(H.NamedBuiltIn "PLOT", Some channel1, [ H.Literal(H.ConstInt 30, H.HirType.Int, pos); H.Literal(H.ConstInt 40, H.HirType.Int, pos) ], pos)
+              H.BuiltInCall(H.NamedBuiltIn "LINE", Some channel1, [ H.Literal(H.ConstInt 0, H.HirType.Int, pos); H.Literal(H.ConstInt 0, H.HirType.Int, pos); H.Literal(H.ConstInt 60, H.HirType.Int, pos); H.Literal(H.ConstInt 60, H.HirType.Int, pos) ], pos) ]
+
+    let result = interpretProgramWithOptions { defaultRuntimeOptions with Host = host } hir
+
+    match result with
+    | Result.Ok _ ->
+        let expectedOps =
+            [ "SCALE 200,100,0"
+              "PLOT 75,60"
+              "LINE 15,20 TO 109,69" ]
+        Assert.That(screenState.GraphicsOps |> Seq.toList = expectedOps, Is.True)
+    | Result.Error err ->
+        Assert.Fail($"Expected interpretation to succeed, got %A{err}")
+
+[<Test>]
+let ``interpreter graphics operations update backing pixel buffer`` () =
+    let host, screenState = createScreenHost []
+    let hir =
+        makeProgram
+            Map.empty
+            []
+            [ H.BuiltInCall(H.NamedBuiltIn "PLOT", None, [ H.Literal(H.ConstInt 4, H.HirType.Int, pos); H.Literal(H.ConstInt 5, H.HirType.Int, pos) ], pos)
+              H.BuiltInCall(H.NamedBuiltIn "LINE", None, [ H.Literal(H.ConstInt 0, H.HirType.Int, pos); H.Literal(H.ConstInt 0, H.HirType.Int, pos); H.Literal(H.ConstInt 2, H.HirType.Int, pos); H.Literal(H.ConstInt 0, H.HirType.Int, pos) ], pos) ]
+
+    let result = interpretProgramWithOptions { defaultRuntimeOptions with Host = host } hir
+
+    match result with
+    | Result.Ok _ ->
+        Assert.That(screenState.PixelBuffer[5, 4], Is.EqualTo(7))
+        Assert.That(screenState.PixelBuffer[0, 0], Is.EqualTo(7))
+        Assert.That(screenState.PixelBuffer[0, 1], Is.EqualTo(7))
+        Assert.That(screenState.PixelBuffer[0, 2], Is.EqualTo(7))
+    | Result.Error err ->
+        Assert.Fail($"Expected interpretation to succeed, got %A{err}")
+
+[<Test>]
 let ``interpreter close rejects default channels`` () =
     let channel1 = H.Literal(H.ConstInt 1, H.HirType.Int, pos)
     let hir =
@@ -986,5 +1218,64 @@ let ``interpreter open supports directory backed devices`` () =
     finally
         if File.Exists(devicePath) then
             File.Delete(devicePath)
+
+[<Test>]
+let ``default host exposes ql style default screen panes`` () =
+    let _, display =
+        DefaultHost.createWithDisplay {
+            ReadLine = fun () -> None
+            ReadKey = fun () -> None
+            KeyAvailable = fun () -> false
+            KeyRowState = fun _ -> 0
+            WriteLine = ignore
+        }
+
+    let snapshot = display.GetSnapshot()
+    let panes =
+        snapshot.Panes
+        |> List.choose (fun pane -> pane.ChannelId |> Option.map (fun channelId -> channelId, pane))
+        |> Map.ofList
+
+    Assert.That(panes.ContainsKey 0, Is.True)
+    Assert.That(panes.ContainsKey 1, Is.True)
+    Assert.That(panes.ContainsKey 2, Is.True)
+    Assert.That(panes[0].Window, Is.EqualTo((512, 42, 0, 214)))
+    Assert.That(panes[1].Window, Is.EqualTo((512, 214, 0, 0)))
+    Assert.That(panes[2].Window, Is.EqualTo((512, 214, 0, 0)))
+
+[<Test>]
+let ``default host pane snapshots stay independent per channel`` () =
+    let host, display =
+        DefaultHost.createWithDisplay {
+            ReadLine = fun () -> None
+            ReadKey = fun () -> None
+            KeyAvailable = fun () -> false
+            KeyRowState = fun _ -> 0
+            WriteLine = ignore
+        }
+
+    match host.Channels.Get(ChannelId 1), host.Channels.Get(ChannelId 2) with
+    | Result.Ok channel1, Result.Ok channel2 ->
+        channel1.WriteText("ONE")
+        channel2.WriteText("TWO")
+    | _ ->
+        Assert.Fail("Expected default channels #1 and #2 to exist.")
+
+    let snapshot = display.GetSnapshot()
+    let pane1 = snapshot.Panes |> List.find (fun pane -> pane.ChannelId = Some 1)
+    let pane2 = snapshot.Panes |> List.find (fun pane -> pane.ChannelId = Some 2)
+
+    let paneText (pane: ScreenPaneSnapshot) =
+        [ for row in 0 .. Array2D.length1 pane.Text - 1 do
+              for col in 0 .. Array2D.length2 pane.Text - 1 do
+                  let ch = pane.Text[row, col].Character
+                  if ch <> ' ' then yield ch ]
+        |> Array.ofList
+        |> System.String
+
+    Assert.That(paneText pane1, Does.Contain("ONE"))
+    Assert.That(paneText pane1, Does.Not.Contain("TWO"))
+    Assert.That(paneText pane2, Does.Contain("TWO"))
+    Assert.That(paneText pane2, Does.Not.Contain("ONE"))
 
 

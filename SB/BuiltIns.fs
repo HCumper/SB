@@ -118,10 +118,12 @@ let private fixedArityBuiltIns =
       "COS", 1
       "COT", 1
       "DEG", 1
+      "DIMN", 2
       "EOF", 1
       "EXP", 1
       "FILL$", 2
       "GETENV$", 1
+      "BEEPING", 0
       "INT", 1
       "KEYROW", 1
       "LEN", 1
@@ -169,10 +171,12 @@ let private builtInSignatures =
       signature "DATE$" None None
       signature "DAY$" None None
       signature "DEG" (Some 1) (Some [ Numeric ])
+      signature "DIMN" (Some 2) None
       signature "EOF" (Some 1) (Some [ Numeric ])
       signature "EXP" (Some 1) (Some [ Numeric ])
       signature "FILL$" (Some 2) (Some [ String; Numeric ])
       signature "GETENV$" (Some 1) (Some [ String ])
+      signature "BEEPING" (Some 0) (Some [])
       signature "INKEY" None None
       signature "INKEY$" None None
       signature "INPUT" None None

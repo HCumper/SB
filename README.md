@@ -40,6 +40,62 @@ The active path is:
 
 The CLI can also emit C#, plain C, or a published `.NET` executable from HIR instead of interpreting.
 
+Interpreter phases:
+
+```text
+Source (.sb / .ssb)
+        |
+        v
+1. Load Source
+   - read text
+   - classify numbered vs structured
+        |
+        v
+2. Preprocess (.ssb only)
+   - structured source -> numbered SuperBASIC
+        |
+        v
+3. Parse (ANTLR)
+   - tokens + parse tree
+        |
+        v
+4. Build AST
+   - normalize syntax
+   - attach source positions
+        |
+        v
+5. Semantic Analysis
+   - resolve symbols
+   - apply typing/coercions
+   - constant folding
+   - diagnostics
+        |
+        v
+6. Lower To HIR
+   - explicit routines
+   - control flow
+   - data/restore tables
+   - built-in calls
+        |
+        v
+7. Interpret HIR
+   - initialize runtime state
+     - globals
+     - frames
+     - data pointer
+     - host/runtime options
+   - evaluate expressions
+   - execute statements
+   - call built-ins/runtime host
+   - manage GOTO/GOSUB/RETURN/STOP
+        |
+        v
+8. Execution Result
+   - output
+   - mutated runtime state
+   - or runtime error
+```
+
 Important files in `SB/`:
 
 - `CompilerPipeline.fs` - pipeline orchestration

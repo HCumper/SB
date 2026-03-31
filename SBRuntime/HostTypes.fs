@@ -15,6 +15,7 @@ type ChannelKind =
 type FileOpenMode =
     | OpenForInput
     | OpenForOutput
+    | OpenForAppend
     | OpenForUpdate
 
 type ScreenMode =
@@ -56,6 +57,7 @@ type IChannel =
 type IScreenChannel =
     inherit IChannel
     abstract Clear: unit -> unit
+    abstract NewLine: unit -> unit
     abstract SetWindow: int * int * int * int -> unit
     abstract GetWindow: unit -> int * int * int * int
     abstract SetScroll: int -> unit
@@ -84,6 +86,7 @@ type IChannelManager =
 
 type IScreenDevice =
     abstract Clear: unit -> unit
+    abstract NewLine: unit -> unit
     abstract SetWindow: int * int * int * int -> unit
     abstract GetWindow: unit -> int * int * int * int
     abstract SetScroll: int -> unit
@@ -109,6 +112,7 @@ type IScreenDevice =
     abstract SetMode: ScreenMode -> Result<unit, RuntimeHostError>
 
 type IGraphicsDevice =
+    abstract SetDrawingContext: (int * int * int * int) * int * (double * double * double) -> unit
     abstract Plot: double * double -> unit
     abstract Point: double * double -> unit
     abstract PointRelative: double * double -> unit
@@ -142,6 +146,7 @@ type IInputDevice =
 
 type ISoundDevice =
     abstract Beep: int * int -> unit
+    abstract IsBeeping: unit -> bool
 
 type IDeviceFileSystem =
     abstract OpenFile: string * FileOpenMode -> Result<ChannelId, RuntimeHostError>
@@ -151,6 +156,30 @@ type IDeviceFileSystem =
 
 type IEnvironmentProvider =
     abstract GetVariable: string -> string option
+
+type ScreenTextCell = {
+    Character: char
+    Ink: int
+    Paper: int
+}
+
+type ScreenPaneSnapshot = {
+    ChannelId: int option
+    Title: string
+    Kind: ChannelKind
+    Window: int * int * int * int
+    Cursor: int * int
+    Text: ScreenTextCell[,]
+    Pixels: int[,]
+}
+
+type ScreenDisplaySnapshot = {
+    Mode: ScreenModeInfo
+    Panes: ScreenPaneSnapshot list
+}
+
+type IDisplaySurface =
+    abstract GetSnapshot: unit -> ScreenDisplaySnapshot
 
 type IRuntimeHost =
     abstract Channels: IChannelManager

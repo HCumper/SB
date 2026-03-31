@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="RuntimeSurfaceControl.fs" />
+    <Compile Include="AvaloniaRuntimeHost.fs" />
+    <Compile Include="MainWindow.fs" />
+    <Compile Include="App.fs" />
+    <Compile Include="Program.fs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="11.3.12" />
+    <PackageReference Include="Avalonia.Desktop" Version="11.3.12" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.12" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SBRuntime\SBRuntime.fsproj" />
+    <ProjectReference Include="..\SB\SB.fsproj" />
+  </ItemGroup>
+
+</Project>

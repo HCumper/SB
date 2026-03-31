@@ -71,6 +71,19 @@ let ``interpreter val parses numeric text and returns zero for non numeric text`
     Assert.That(String.concat "|" output, Is.EqualTo("12.5 0"))
 
 [<Test>]
+let ``interpreter instr returns one based position and zero when not found`` () =
+    let ast =
+        Program(
+            pos,
+            [ Line(pos, Some 10, [ Assignment(pos, id "a", binary "INSTR" (str "\"na\"") (str "\"banana\"")) ])
+              Line(pos, Some 20, [ Assignment(pos, id "b", binary "INSTR" (str "\"zz\"") (str "\"banana\"")) ])
+              Line(pos, Some 30, [ ProcedureCall(pos, "PRINT", [ id "a"; id "b" ]) ]) ])
+
+    let output = runProgram ast
+
+    Assert.That(String.concat "|" output, Is.EqualTo("3 0"))
+
+[<Test>]
 let ``interpreter left and right clamp lengths to string bounds`` () =
     let ast =
         Program(
@@ -581,6 +594,68 @@ let ``interpreter built in function arity mismatch reports coded runtime error``
     interpretProgramWithOptions defaultRuntimeOptions hir
     |> assertRuntimeError BuiltInArityMismatch
     |> ignore
+
+[<Test>]
+let ``interpreter dimn returns declared array dimensions`` () =
+    let dimnId = H.SymbolId 0
+    let arrayId = H.SymbolId 1
+    let firstId = H.SymbolId 2
+    let secondId = H.SymbolId 3
+    let arrayStorage =
+        { makeStorage arrayId 0 "A" (H.HirType.Array H.HirType.Int) H.GlobalStorage with
+            Dimensions = Some [ 10; 17 ] }
+    let firstStorage = makeStorage firstId 1 "FIRST" H.HirType.Int H.GlobalStorage
+    let secondStorage = makeStorage secondId 2 "SECOND" H.HirType.Int H.GlobalStorage
+    let hir =
+        makeProgram
+            (Map.ofList [ dimnId, "DIMN"; arrayId, "A"; firstId, "FIRST"; secondId, "SECOND" ])
+            [ arrayStorage; firstStorage; secondStorage ]
+            [ H.Assign(
+                H.WriteVar(firstId, H.HirType.Int, pos),
+                H.CallFunc(
+                    dimnId,
+                    [ H.ValueArg(H.ReadVar(arrayId, H.HirType.Array H.HirType.Int, pos))
+                      H.ValueArg(H.Literal(H.ConstInt 1, H.HirType.Int, pos)) ],
+                    H.HirType.Int,
+                    pos),
+                pos)
+              H.Assign(
+                H.WriteVar(secondId, H.HirType.Int, pos),
+                H.CallFunc(
+                    dimnId,
+                    [ H.ValueArg(H.ReadVar(arrayId, H.HirType.Array H.HirType.Int, pos))
+                      H.ValueArg(H.Literal(H.ConstInt 2, H.HirType.Int, pos)) ],
+                    H.HirType.Int,
+                    pos),
+                pos)
+              H.BuiltInCall(H.Print, None, [ H.ReadVar(firstId, H.HirType.Int, pos); H.ReadVar(secondId, H.HirType.Int, pos) ], pos) ]
+
+    let output = runHirProgramWithOptions defaultRuntimeOptions hir
+
+    Assert.That(String.concat "|" output, Is.EqualTo("10 17"))
+
+[<Test>]
+let ``interpreter beep and beeping use host sound state`` () =
+    let beepingId = H.SymbolId 0
+    let beforeId = H.SymbolId 1
+    let afterId = H.SymbolId 2
+    let beforeStorage = makeStorage beforeId 0 "BEFORE" H.HirType.Int H.GlobalStorage
+    let afterStorage = makeStorage afterId 1 "AFTER" H.HirType.Int H.GlobalStorage
+    let host, screenState = createScreenHost []
+    let hir =
+        makeProgram
+            (Map.ofList [ beepingId, "BEEPING"; beforeId, "BEFORE"; afterId, "AFTER" ])
+            [ beforeStorage; afterStorage ]
+            [ H.Assign(H.WriteVar(beforeId, H.HirType.Int, pos), H.CallFunc(beepingId, [], H.HirType.Int, pos), pos)
+              H.BuiltInCall(H.NamedBuiltIn "BEEP", None, [ H.Literal(H.ConstInt 1000, H.HirType.Int, pos); H.Literal(H.ConstInt 10, H.HirType.Int, pos) ], pos)
+              H.Assign(H.WriteVar(afterId, H.HirType.Int, pos), H.CallFunc(beepingId, [], H.HirType.Int, pos), pos)
+              H.BuiltInCall(H.Print, None, [ H.ReadVar(beforeId, H.HirType.Int, pos); H.ReadVar(afterId, H.HirType.Int, pos) ], pos) ]
+
+    let output = runHirProgramWithOptions { defaultRuntimeOptions with Host = host } hir
+
+    Assert.That(String.concat "|" output, Is.EqualTo("0 1"))
+    Assert.That(screenState.Beeps.Count, Is.EqualTo(1))
+    Assert.That(screenState.Beeps[0], Is.EqualTo((1000, 10)))
 
 [<Test>]
 let ``interpreter rnd unsupported arguments reports coded runtime error`` () =

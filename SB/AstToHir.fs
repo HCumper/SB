@@ -261,6 +261,10 @@ let private lowerStorageSlotMap (symTab: SymbolTable) (symbolIds: Map<string * s
           Slot = StorageSlotId index
           Name = symbolName
           Type = lowerStorageType symbol
+          Dimensions =
+              match symbol with
+              | ArraySym arr -> Some arr.Dimensions
+              | _ -> None
           Class = lowerStorageClass scopeName symbol
           Position = Symbol.position symbol })
     |> Map.ofList
