@@ -47,7 +47,8 @@ and Stmt =
     | OnGosubStmt of SourcePosition * Expr * Expr list
     | ProcedureCall of SourcePosition * string * Expr list
     | ChannelProcedureCall of SourcePosition * string * Expr * Expr list
-    | ForStmt of SourcePosition * string * Expr * Expr * Expr option * Block * string option
+    | ImplicitChannelProcedureCall of SourcePosition * string * Expr * Expr list
+    | ForStmt of SourcePosition * string * Expr list * Expr * Expr * Expr list * Expr option * Block * string option
     | RepeatStmt of SourcePosition * string * Block * string option
     | IfStmt of SourcePosition * Expr * Block * Block option
     | SelectStmt of SourcePosition * Expr * SelectClause list

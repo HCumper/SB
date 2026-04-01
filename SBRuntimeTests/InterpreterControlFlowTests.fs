@@ -18,8 +18,10 @@ let ``interpreter executes for loops`` () =
                 [ ForStmt(
                     pos,
                     "i",
+                    [],
                     num "1",
                     num "3",
+                    [],
                     None,
                     StatementBlock [ Assignment(pos, id "sum", binary "+" (id "sum") (id "i")) ],
                     None) ])
@@ -28,6 +30,29 @@ let ``interpreter executes for loops`` () =
     let output = runProgram ast
 
     Assert.That(String.concat "|" output, Is.EqualTo("6"))
+
+[<Test>]
+let ``interpreter executes for sequence loops`` () =
+    let ast =
+        Program(
+            pos,
+            [ Line(
+                pos,
+                Some 10,
+                [ ForStmt(
+                    pos,
+                    "x",
+                    [ num "1"; num "2" ],
+                    num "5",
+                    num "7",
+                    [ num "9" ],
+                    None,
+                    StatementBlock [ ProcedureCall(pos, "PRINT", [ id "x" ]) ],
+                    None) ]) ])
+
+    let output = runProgram ast
+
+    Assert.That(String.concat "|" output, Is.EqualTo("1|2|5|6|7|9"))
 
 [<Test>]
 let ``interpreter goto jumps to numbered line target`` () =
@@ -214,8 +239,10 @@ let ``interpreter goto can jump out of for body`` () =
                 [ ForStmt(
                     pos,
                     "i",
+                    [],
                     num "1",
                     num "3",
+                    [],
                     None,
                     LineBlock
                         [ Line(pos, Some 30, [ Assignment(pos, id "count", binary "+" (id "count") (num "1")) ])
@@ -241,8 +268,10 @@ let ``interpreter goto can jump into for body line block`` () =
                 [ ForStmt(
                     pos,
                     "i",
+                    [],
                     num "1",
                     num "1",
+                    [],
                     None,
                     LineBlock
                         [ Line(pos, Some 30, [ Assignment(pos, id "count", binary "+" (id "count") (num "1")) ])
@@ -266,8 +295,10 @@ let ``interpreter gosub from for body returns and loop continues`` () =
                 [ ForStmt(
                     pos,
                     "i",
+                    [],
                     num "1",
                     num "2",
+                    [],
                     None,
                     LineBlock
                         [ Line(pos, Some 30, [ GosubStmt(pos, num "100") ])

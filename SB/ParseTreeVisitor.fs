@@ -84,6 +84,11 @@ let private emptySeq<'T> : seq<'T> = Seq.empty
 type ASTBuildingVisitor() =
     inherit SBBaseVisitor<VisitedNode list>()
 
+    let mutable selectSelectorStack: Expr list = []
+
+    let openBuiltInNames =
+        set [ "OPEN"; "OPEN_IN"; "OPEN_NEW"; "APPEND" ]
+
     member private _.WithBasicLineNo (basicLineNo: int option) (action: unit -> 'T) =
         // BASIC line numbers are carried ambiently because many nested parser
         // contexts do not repeat the numbered-line information directly, but AST
@@ -104,6 +109,29 @@ type ASTBuildingVisitor() =
     member private this.SafeChildren<'T when 'T : null>(nodes: seq<'T>) =
         if isNull (box nodes) then emptySeq else nodes
 
+    member private this.BuildSelectClauses (pos: SourcePosition) (selectorExpr: Expr) (rangeExprs: Expr list) (body: Block option) =
+        rangeExprs
+        |> List.map (fun rangeAst -> ClauseNode(SelectClause(pos, selectorExpr, rangeAst, body)))
+
+    member private _.LooksLikeDeviceLiteral (name: string) =
+        let lowered = normalizeIdentifier name
+
+        let knownPrefixes =
+            [ "con_"; "scr_"; "nul_"; "prt_"; "ram"; "flp"; "win"; "mdv" ]
+            |> List.map normalizeIdentifier
+
+        knownPrefixes |> List.exists lowered.StartsWith
+
+    member private this.NormalizeOpenArgs (name: string) (args: Expr list) =
+        if not (openBuiltInNames.Contains(normalizeIdentifier name)) then
+            args
+        else
+            args
+            |> List.map (function
+                | Identifier(_, pos, value) when this.LooksLikeDeviceLiteral value ->
+                    mkStringLiteral pos ("\"" + value + "\"")
+                | other -> other)
+
     // Collection helpers collapse parser-specific child lists into the exact AST
     // collections expected by later stages, so the individual Visit* overrides can
     // stay focused on shape conversion instead of list plumbing.
@@ -111,10 +139,22 @@ type ASTBuildingVisitor() =
         this.SafeChildren(lines) |> Seq.map (fun l -> singleLine l (l.Accept(this))) |> Seq.toList
 
     member private this.CollectStmtList(ctx: SBParser.StmtlistContext) =
-        this.SafeChildren(ctx.stmt()) |> Seq.map (fun s -> singleStmt s (s.Accept(this))) |> Seq.toList
+        this.SafeChildren(ctx.stmt())
+        |> Seq.collect (fun s ->
+            s.Accept(this)
+            |> Seq.choose (function
+                | StmtNode stmt -> Some stmt
+                | _ -> None))
+        |> Seq.toList
 
     member private this.CollectPlainStmtList(ctx: SBParser.PlainStmtlistContext) =
-        this.SafeChildren(ctx.stmt()) |> Seq.map (fun s -> singleStmt s (s.Accept(this))) |> Seq.toList
+        this.SafeChildren(ctx.stmt())
+        |> Seq.collect (fun s ->
+            s.Accept(this)
+            |> Seq.choose (function
+                | StmtNode stmt -> Some stmt
+                | _ -> None))
+        |> Seq.toList
 
     member private this.CollectExprList(ctx: SBParser.ExprListContext) =
         this.SafeChildren(ctx.expr()) |> Seq.map (fun e -> this.SafeAcceptExpr(e)) |> Seq.toList
@@ -130,6 +170,71 @@ type ASTBuildingVisitor() =
         |> Seq.collect (fun segment -> segment.Accept(this))
         |> Seq.map (fun node -> singleExpr ctx [ node ])
         |> Seq.toList
+
+    member private this.NormalizeImplicitChannelExpr(expr: Expr) =
+        match expr with
+        | Identifier(_, pos, value) -> mkStringLiteral pos ("\"" + value + "\"")
+        | other -> other
+
+    member private this.TryCollectImplicitChannelCall(tail: SBParser.StmtTailContext) =
+        let segments = tail.stmtSegment() |> Seq.toList
+        match segments with
+        | first :: rest ->
+            let isImplicitChannel =
+                match first.separator(), first.stmtArg() with
+                | separator, arg when not (isNull separator) && not (isNull arg) -> separator.GetText() = "\\"
+                | _ -> false
+
+            if not isImplicitChannel then
+                None
+            else
+                let channelExpr =
+                    first.stmtArg()
+                    |> fun arg -> singleExpr arg (arg.Accept(this))
+                    |> this.NormalizeImplicitChannelExpr
+
+                let remainingArgs =
+                    rest
+                    |> List.collect (fun segment -> segment.Accept(this))
+                    |> List.map (fun node -> singleExpr tail [ node ])
+
+                Some(channelExpr, remainingArgs)
+        | [] -> None
+
+    member private this.CollectPrintCallsFromStmtTail(pos: SourcePosition, name: string, mkStmt: Expr list -> Stmt, tail: SBParser.StmtTailContext) =
+        let mutable groups : Expr list list = []
+        let mutable currentGroup : Expr list = []
+        let mutable endedWithExplicitBreak = false
+
+        for segment in tail.stmtSegment() do
+            let separatorText =
+                match segment.separator() with
+                | null -> None
+                | separator -> Some(separator.GetText())
+
+            let argOpt =
+                match segment.stmtArg() with
+                | null -> None
+                | arg -> Some(singleExpr arg (arg.Accept(this)))
+
+            match separatorText with
+            | Some "\\" ->
+                groups <- groups @ [ currentGroup ]
+                currentGroup <- []
+                endedWithExplicitBreak <- true
+            | _ -> ()
+
+            match argOpt with
+            | Some arg ->
+                currentGroup <- currentGroup @ [ arg ]
+                endedWithExplicitBreak <- false
+            | None -> ()
+
+        if (not endedWithExplicitBreak) || not (List.isEmpty currentGroup) then
+            groups <- groups @ [ currentGroup ]
+
+        groups
+        |> List.map (fun args -> StmtNode(mkStmt args))
 
     member private this.PostfixArgItemToExpr(ctx: SBParser.PostfixArgItemContext) =
         let p = posOfTree ctx
@@ -457,20 +562,37 @@ type ASTBuildingVisitor() =
         let p = posOfTree ctx
         let name = ctx.ID().GetText()
         let channel = singleExpr (ctx.chanArg()) (ctx.chanArg().Accept(this))
-        let args =
-            match ctx.stmtTail() with
-            | null -> []
-            | tail -> this.CollectStmtArgs(tail)
-        single (StmtNode(ChannelProcedureCall(p, name, channel, args)))
+        match ctx.stmtTail() with
+        | null -> single (StmtNode(ChannelProcedureCall(p, name, channel, [])))
+        | tail when String.Equals(name, "PRINT", StringComparison.OrdinalIgnoreCase) ->
+            this.CollectPrintCallsFromStmtTail(p, name, (fun args -> ChannelProcedureCall(p, name, channel, args)), tail)
+        | tail ->
+            let args = this.CollectStmtArgs(tail) |> this.NormalizeOpenArgs name
+            single (StmtNode(ChannelProcedureCall(p, name, channel, args)))
 
     override this.VisitProcedureCallStmt(ctx: SBParser.ProcedureCallStmtContext) =
         let p = posOfTree ctx
         let name = ctx.ID().GetText()
-        let args =
-            match ctx.stmtArglist() with
-            | null -> []
-            | sa -> sa.Accept(this) |> List.map (fun node -> singleExpr sa [ node ])
-        single (StmtNode(ProcedureCall(p, name, args)))
+        match ctx.stmtArglist() with
+        | null -> single (StmtNode(ProcedureCall(p, name, [])))
+        | sa when not (isNull (sa.stmtTail())) ->
+            match this.TryCollectImplicitChannelCall(sa.stmtTail()) with
+            | Some(channelExpr, args) ->
+                single (StmtNode(ImplicitChannelProcedureCall(p, name, channelExpr, this.NormalizeOpenArgs name args)))
+            | None when String.Equals(name, "PRINT", StringComparison.OrdinalIgnoreCase) ->
+                this.CollectPrintCallsFromStmtTail(p, name, (fun args -> ProcedureCall(p, name, args)), sa.stmtTail())
+            | None ->
+                let args =
+                    sa.Accept(this)
+                    |> List.map (fun node -> singleExpr sa [ node ])
+                    |> this.NormalizeOpenArgs name
+                single (StmtNode(ProcedureCall(p, name, args)))
+        | sa ->
+            let args =
+                sa.Accept(this)
+                |> List.map (fun node -> singleExpr sa [ node ])
+                |> this.NormalizeOpenArgs name
+            single (StmtNode(ProcedureCall(p, name, args)))
 
     override this.VisitLvalue(ctx: SBParser.LvalueContext) =
         ctx.postfixName().Accept(this)
@@ -555,19 +677,38 @@ type ASTBuildingVisitor() =
             | null -> ""
             | id -> id.GetText()
 
-        let exprs = ctx.expr() |> Seq.toList
+        let prefixExprs =
+            ctx.forPrefixItem()
+            |> Seq.map (fun prefixItem ->
+                let exprCtx = prefixItem.expr()
+                singleExpr exprCtx (exprCtx.Accept(this)))
+            |> Seq.toList
+
+        let suffixExprs =
+            ctx.forSuffixItem()
+            |> Seq.map (fun suffixItem ->
+                let exprCtx = suffixItem.expr()
+                singleExpr exprCtx (exprCtx.Accept(this)))
+            |> Seq.toList
+
         let startExpr =
-            match exprs with
-            | first :: _ -> singleExpr first (first.Accept(this))
-            | [] -> mkIdentifier p ""
+            match ctx.forStartExpr() with
+            | null -> mkIdentifier p ""
+            | exprCtx ->
+                let inner = exprCtx.expr()
+                singleExpr inner (inner.Accept(this))
         let endExpr =
-            match exprs with
-            | _ :: second :: _ -> singleExpr second (second.Accept(this))
-            | _ -> mkIdentifier p ""
+            match ctx.forEndExpr() with
+            | null -> mkIdentifier p ""
+            | exprCtx ->
+                let inner = exprCtx.expr()
+                singleExpr inner (inner.Accept(this))
         let stepExpr =
-            match exprs with
-            | _ :: _ :: third :: _ -> Some (singleExpr third (third.Accept(this)))
-            | _ -> None
+            match ctx.forStepExpr() with
+            | null -> None
+            | exprCtx ->
+                let inner = exprCtx.expr()
+                Some (singleExpr inner (inner.Accept(this)))
 
         let loopStmt, trailingNodes =
             match ctx.forBody() with
@@ -581,7 +722,7 @@ type ASTBuildingVisitor() =
                     match body with
                     | _ -> None
 
-                StmtNode(ForStmt(p, name, startExpr, endExpr, stepExpr, body, closingName)), []
+                StmtNode(ForStmt(p, name, prefixExprs, startExpr, endExpr, suffixExprs, stepExpr, body, closingName)), []
             | bodyCtx ->
                 let leadingLines =
                     bodyCtx.forBodyLine()
@@ -609,7 +750,7 @@ type ASTBuildingVisitor() =
                     | null -> None
                     | id -> Some(id.GetText())
 
-                StmtNode(ForStmt(p, name, startExpr, endExpr, stepExpr, LineBlock(leadingLines @ closingLine), closingName)), trailingNodes
+                StmtNode(ForStmt(p, name, prefixExprs, startExpr, endExpr, suffixExprs, stepExpr, LineBlock(leadingLines @ closingLine), closingName)), trailingNodes
 
         loopStmt :: trailingNodes
 
@@ -698,28 +839,73 @@ type ASTBuildingVisitor() =
     override this.VisitSelectStmt(ctx: SBParser.SelectStmtContext) =
         let p = posOfTree ctx
         let selector = this.SafeAcceptExpr(ctx.expr())
-        let clauses =
-            this.SafeChildren(ctx.selectBodyItem())
-            |> Seq.map (fun si -> singleClause si (si.Accept(this)))
-            |> Seq.toList
-        single (StmtNode(SelectStmt(p, selector, clauses)))
+        selectSelectorStack <- selector :: selectSelectorStack
+
+        try
+            let clauses =
+                this.SafeChildren(ctx.selectBodyItem())
+                |> Seq.collect (fun si ->
+                    si.Accept(this)
+                    |> Seq.choose (function
+                        | ClauseNode clause -> Some clause
+                        | _ -> None))
+                |> Seq.toList
+            single (StmtNode(SelectStmt(p, selector, clauses)))
+        finally
+            match selectSelectorStack with
+            | _ :: tail -> selectSelectorStack <- tail
+            | [] -> ()
 
     override this.VisitSelectBodyItem(ctx: SBParser.SelectBodyItemContext) =
         ctx.selectItem().Accept(this)
 
     override this.VisitSelectItem(ctx: SBParser.SelectItemContext) =
         if not (isNull (ctx.onClause())) then ctx.onClause().Accept(this)
+        elif not (isNull (ctx.compactOnClause())) then ctx.compactOnClause().Accept(this)
         else []
 
     override this.VisitOnClause(ctx: SBParser.OnClauseContext) =
         let p = posOfTree ctx
         let selectorExpr = this.SafeAcceptExpr(ctx.expr())
-        let rangeAst = this.SafeAcceptExpr(ctx.rangeexpr())
+        let rangeAsts =
+            this.SafeChildren(ctx.selectRangeList().rangeexpr())
+            |> Seq.map this.SafeAcceptExpr
+            |> Seq.toList
         let body =
             match ctx.stmtlist() with
             | null -> None
             | s -> Some (StatementBlock(this.CollectStmtList(s)))
-        single (ClauseNode(SelectClause(p, selectorExpr, rangeAst, body)))
+        this.BuildSelectClauses p selectorExpr rangeAsts body
+
+    override this.VisitCompactOnClause(ctx: SBParser.CompactOnClauseContext) =
+        let p = posOfTree ctx
+        let selectorExpr =
+            match selectSelectorStack with
+            | head :: _ -> head
+            | [] -> failwith "Compact SELect clause encountered outside of SELect ON context."
+
+        let rangeAsts =
+            this.SafeChildren(ctx.selectRangeList().rangeexpr())
+            |> Seq.map this.SafeAcceptExpr
+            |> Seq.toList
+
+        let bodyLines =
+            ctx.compactClauseBodyLine()
+            |> Seq.choose (fun bodyLine ->
+                match bodyLine.line() with
+                | null -> None
+                | line -> Some (singleLine line (line.Accept(this))))
+            |> Seq.toList
+
+        let body =
+            match ctx.stmtlist(), bodyLines with
+            | stmtList, [] when not (isNull stmtList) -> Some (StatementBlock(this.CollectStmtList(stmtList)))
+            | null, [] -> None
+            | stmtList, lines when not (isNull stmtList) ->
+                Some (LineBlock([ Line(p, p.BasicLineNo, this.CollectStmtList(stmtList)) ] @ lines))
+            | null, lines -> Some (LineBlock lines)
+
+        this.BuildSelectClauses p selectorExpr rangeAsts body
 
     override this.VisitWhenErrorStmt(ctx: SBParser.WhenErrorStmtContext) =
         let body =

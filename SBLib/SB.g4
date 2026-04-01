@@ -22,6 +22,9 @@ options {
 
     private bool IsEndSelectLineAhead() =>
         TokenStream.LA(1) == End || (TokenStream.LA(1) == Integer && TokenStream.LA(2) == End);
+
+    private bool IsSelectClauseHeaderAhead() =>
+        TokenStream.LA(1) == Equal || (TokenStream.LA(1) == Integer && TokenStream.LA(2) == Equal);
 }
 
 // ============================================================
@@ -237,12 +240,32 @@ endWhen
 // ============================================================
 
 forStmt
-    : For ID Equal expr To expr (Step expr)?
+    : For ID Equal forPrefixItem* forStartExpr To forEndExpr forSuffixItem* (Step forStepExpr)?
       (
           Colon Comment Newline forBody                            // long form + trailing remark
         | Colon stmtlist                                            // short form
         | Newline forBody                                          // long form
       )
+    ;
+
+forPrefixItem
+    : expr Comma
+    ;
+
+forStartExpr
+    : expr
+    ;
+
+forEndExpr
+    : expr
+    ;
+
+forSuffixItem
+    : Comma expr
+    ;
+
+forStepExpr
+    : expr
     ;
 
 forBody
@@ -282,7 +305,7 @@ ifStmt
       (
           Then Newline ifBlock elseBlock? lineNumber? endIf         // long form
         | Newline ifBlock elseBlock? lineNumber? endIf              // long form
-        | (Then | Colon) stmtlist (Colon Else Colon stmtlist)?      // short form
+        | (Then | Colon) stmtlist (Colon Else (Colon? stmtlist)?)?  // short form
       )
     ;
 
@@ -318,11 +341,25 @@ selectBodyItem
 
 selectItem
     : onClause
+    | compactOnClause
     | line
     ;
 
 onClause
-    : lineNumber? On expr Equal rangeexpr (Colon stmtlist)? Newline
+    : lineNumber? On expr Equal selectRangeList (Colon stmtlist)? Newline
+    ;
+
+compactOnClause
+    : lineNumber? Equal selectRangeList (Colon stmtlist)? Newline
+      compactClauseBodyLine*
+    ;
+
+selectRangeList
+    : rangeexpr (Comma rangeexpr)*
+    ;
+
+compactClauseBodyLine
+    : {!IsSelectClauseHeaderAhead() && !IsEndSelectLineAhead()}? line
     ;
 
 dimList

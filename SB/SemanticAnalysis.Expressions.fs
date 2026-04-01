@@ -404,6 +404,19 @@ let validateScalarVsArrayUsage name position requiresIndexedAccess symbol (state
         appendDiagnostic SemanticDiagnosticCode.InvalidIndexing (Some name) (Some position) $"Scalar '{name}' cannot be indexed at {position.EditorLineNo}:{position.Column}" state
     | _ -> state
 
+let private isStringIndexedAccess symbol (args: Expr list) =
+    match symbol with
+    | VariableSym _
+    | ConstantSym _
+    | ParameterSym _ -> Symbol.typ symbol = SBType.String && args.Length = 1
+    | _ -> false
+
+let validateIndexedUsage name position args symbol (state: ProcessingState) =
+    if isStringIndexedAccess symbol args then
+        state
+    else
+        validateScalarVsArrayUsage name position true symbol state
+
 let private appendNonWritableTargetError name position symbol (state: ProcessingState) =
     let detail =
         match symbol with
@@ -432,6 +445,15 @@ let validateWritableTarget name position requiresIndexedAccess symbol (state: Pr
         | FunctionSym _
         | ProcedureSym _ -> appendNonWritableTargetError name position symbol shapeValidatedState
         | _ -> shapeValidatedState
+
+let validateWritableIndexedTarget name position args symbol (state: ProcessingState) =
+    if isStringIndexedAccess symbol args then
+        match symbol with
+        | VariableSym _
+        | ParameterSym _ -> state
+        | _ -> appendNonWritableTargetError name position symbol state
+    else
+        validateWritableTarget name position true symbol state
 
 let validateCallArity name position argumentCount resolvedSymbol (state: ProcessingState) =
     let appendExpected expected =
@@ -593,7 +615,7 @@ let rec inferExprType (state: ProcessingState) expr =
                 | ArraySym _
                 | VariableSym _
                 | ConstantSym _
-                | ParameterSym _ -> validateScalarVsArrayUsage name pos true symbol stateAfterArgs
+                | ParameterSym _ -> validateIndexedUsage name pos (args |> Option.defaultValue []) symbol stateAfterArgs
                 | _ -> stateAfterArgs
             let arityCheckedState =
                 match symbol with
@@ -608,6 +630,9 @@ let rec inferExprType (state: ProcessingState) expr =
             let contextValidatedState, inferred =
                 match symbol with
                 | ArraySym symbol -> signatureCheckedState, symbol.ElementType
+                | VariableSym _
+                | ConstantSym _
+                | ParameterSym _ when isStringIndexedAccess symbol (args |> Option.defaultValue []) -> signatureCheckedState, SBType.String
                 | FunctionSym symbol ->
                     let inferred =
                         match symbol.ReturnType with
@@ -706,9 +731,11 @@ let inferWritableTargetType (state: ProcessingState) expr =
     | PostfixName(_, _, name, args) ->
         match tryResolveSymbol state.CurrentScope name state.SymTab with
         | Some(_, symbol) ->
-            if isWritableResolvedTarget args.IsSome symbol then
+            if isWritableResolvedTarget args.IsSome symbol || isStringIndexedAccess symbol (args |> Option.defaultValue []) then
                 match symbol with
                 | ArraySym symbol -> symbol.ElementType
+                | VariableSym _
+                | ParameterSym _ -> SBType.String
                 | _ -> Symbol.typ symbol
             else
                 SBType.Unknown
@@ -746,7 +773,7 @@ let resolveWritableTarget expr (state: ProcessingState) =
         let nextState = referenceSymbol None name pos state
         let validatedState =
             match tryResolveSymbol nextState.CurrentScope name nextState.SymTab with
-            | Some(_, symbol) -> validateWritableTarget name pos true symbol nextState
+            | Some(_, symbol) -> validateWritableIndexedTarget name pos args symbol nextState
             | None -> nextState
         validatedState, args
     | _ -> state, []

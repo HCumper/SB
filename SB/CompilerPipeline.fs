@@ -246,7 +246,7 @@ let private validateLineSequence ast =
             | ProcedureDef(_, name, _, body, _, _)
             | FunctionDef(_, name, _, body, _, _) ->
                 collectLines $"routine '{name}'" body
-            | ForStmt(_, name, _, _, _, body, _) ->
+            | ForStmt(_, name, _, _, _, _, _, body, _) ->
                 collectBlock $"FOR loop '{name}'" body
             | RepeatStmt(_, name, body, _) ->
                 collectBlock $"REPEAT loop '{name}'" body
@@ -259,10 +259,9 @@ let private validateLineSequence ast =
                 thenEntries @ elseEntries
             | SelectStmt(_, _, clauses) ->
                 clauses
-                |> List.collect (fun (SelectClause(_, _, _, block)) ->
-                    match block with
-                    | Some clauseBlock -> collectBlock $"{contextName} SELECT clause" clauseBlock
-                    | None -> [])
+                |> List.choose (fun (SelectClause(_, _, _, block)) -> block)
+                |> List.distinct
+                |> List.collect (fun clauseBlock -> collectBlock $"{contextName} SELECT clause" clauseBlock)
             | WhenStmt(_, _, body) ->
                 collectLines $"{contextName} WHEN body" body
             | _ -> [])
@@ -496,6 +495,9 @@ let loadAstFromInput settings =
                 for warning in parseWarnings do
                     settings.Logger.Warning("Parser recovery warning: {Warning}", warning)
             if settings.Verbose then
+                if preparedSource.Kind = Ssb.SourceKind.Ssb then
+                    Console.WriteLine("Preprocessed SuperBASIC:")
+                    Console.WriteLine(preparedSource.EffectiveText)
                 printfn $"Parsing succeeded. Source kind: %A{preparedSource.Kind}"
             let ast = processToAST (parseTree, inputStream) settings.Verbose
             match validateLineSequence ast with

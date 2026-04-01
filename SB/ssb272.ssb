@@ -83,9 +83,9 @@ IF t_in$ <> "" THEN d_in$ = t_in$
 t_out$ = GETENV$("SSBOUTPUT")
 IF t_out$ <> "" THEN d_out$ = t_out$
 t_start$ = GETENV$("SSBSTART")
-IF t_start$ <> "" THEN d_start = t_start$
+IF t_start$ <> "" THEN d_start = VAL(t_start$)
 t_delta$ = GETENV$("SSBINC")
-IF t_delta$ <> "" THEN d_delta = t_delta$
+IF t_delta$ <> "" THEN d_delta = VAL(t_delta$)
 t_working$ = GETENV$("SSBWORK")
 IF t_working$ <> "" THEN d_working$ = t_working$
 t_work2$ = GETENV$("SSBWORK2")
@@ -229,7 +229,7 @@ IF command$ = "" THEN
   REPEAT start_loop
     ## IF start has been set by ENV VAR don't get input
     IF t_start$ <> "" THEN
-       line_num_d = t_start$
+       line_num_d = VAL(t_start$)
        EXIT start_loop
     END IF
     ## Enter Starting Line Number: (Default
@@ -245,7 +245,7 @@ IF command$ = "" THEN
     ELSE
       ## Check to make sure a number is entered.
       IF isnum(line_num$) THEN
-        line_num_d = line_num$
+        line_num_d = VAL(line_num$)
         EXIT start_loop
       END IF
       BEEP 1000,10
@@ -258,7 +258,7 @@ IF command$ = "" THEN
   REPEAT delta_loop
     ## If delta has been set by ENV VAR then don't get input
     IF t_delta$ <> "" THEN
-       line_delta = t_delta$
+       line_delta = VAL(t_delta$)
        EXIT delta_loop
     END IF
     ## Enter Increment for Line Numbers: (Default
@@ -276,7 +276,7 @@ IF command$ = "" THEN
     ELSE
       ## Check to make sure a number is entered.
       IF isnum(line_delta$) THEN
-        line_delta = line_delta$
+        line_delta = VAL(line_delta$)
         EXIT delta_loop
       END IF
       BEEP 1000,10
@@ -331,7 +331,7 @@ ELSE
       PRINT #3,"      ";lngarray$(13)
       abort_out
     END IF
-    d_start = command$
+    d_start = VAL(command$)
   ELSE
     argfile$ = command$
   END IF
@@ -500,4 +500,3 @@ END IF
     STOP
 
 END DEFine abort_out
-

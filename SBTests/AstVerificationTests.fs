@@ -38,4 +38,65 @@ let ``if statements preserve then and else branches separately`` () =
         Assert.Pass()
     | other -> Assert.Fail($"Unexpected AST: %A{other}")
 
+[<Test>]
+let ``compact if accepts else without colon after else and empty print statements`` () =
+    let testTree = parseProgram "10 IF w1<13:sysmess (7):PRINT:ELSE sysmess (8):PRINT\n"
+
+    let ast = convertTreeToAst testTree
+    Assert.That(ast, Has.Length.EqualTo(1))
+
+    match ast[0] with
+    | Program(
+        _,
+        [ Line(
+            _,
+            Some 10,
+            [ IfStmt(
+                _,
+                BinaryExpr(_, _, "<", Identifier(_, _, "w1"), NumberLiteral(_, _, "13")),
+                StatementBlock
+                    [ ProcedureCall(_, "sysmess", [ NumberLiteral(_, _, "7") ])
+                      ProcedureCall(_, "PRINT", []) ],
+                Some(
+                    StatementBlock
+                        [ ProcedureCall(_, "sysmess", [ NumberLiteral(_, _, "8") ])
+                          ProcedureCall(_, "PRINT", []) ])) ]) ]) -> Assert.Pass()
+    | other -> Assert.Fail($"Unexpected compact IF/ELSE AST: %A{other}")
+
+[<Test>]
+let ``compact select on clause accepts same line statement body`` () =
+    let testTree =
+        parseProgram
+            "24020 SELect ON dummy\n24031 =1:obw=11\n24032 =2:obw=12\n24470 END SELect\n"
+
+    let ast = convertTreeToAst testTree
+    Assert.That(ast, Has.Length.EqualTo(1))
+
+    match ast[0] with
+    | Program(
+        _,
+        [ Line(
+            _,
+            Some 24020,
+            [ SelectStmt(
+                _,
+                Identifier(_, _, "dummy"),
+                [ SelectClause(_, Identifier(_, _, "dummy"), NumberLiteral(_, _, "1"), Some(StatementBlock [ Assignment(_, Identifier(_, _, "obw"), NumberLiteral(_, _, "11")) ]))
+                  SelectClause(_, Identifier(_, _, "dummy"), NumberLiteral(_, _, "2"), Some(StatementBlock [ Assignment(_, Identifier(_, _, "obw"), NumberLiteral(_, _, "12")) ])) ]) ]) ]) -> Assert.Pass()
+    | other -> Assert.Fail($"Unexpected compact SELECT inline-body AST: %A{other}")
+
+[<Test>]
+let ``implicit channel syntax is preserved distinctly from ordinary arguments`` () =
+    let testTree = parseProgram "10 DIR \\files\n20 DIR files\n"
+
+    let ast = convertTreeToAst testTree
+    Assert.That(ast, Has.Length.EqualTo(1))
+
+    match ast[0] with
+    | Program(
+        _,
+        [ Line(_, Some 10, [ ImplicitChannelProcedureCall(_, "DIR", StringLiteral(_, _, "\"files\""), []) ])
+          Line(_, Some 20, [ ProcedureCall(_, "DIR", [ Identifier(_, _, "files") ]) ]) ]) -> Assert.Pass()
+    | other -> Assert.Fail($"Unexpected implicit channel AST: %A{other}")
+
 

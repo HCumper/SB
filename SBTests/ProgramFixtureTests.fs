@@ -223,7 +223,7 @@ let ``golfer fixture preserves selected AST subtrees`` () =
     match tryFindProcedure "pow" ast with
     | Some(_, body) ->
         match tryFindLine 860 body with
-        | Some [ ForStmt(_, "p", NumberLiteral(_, _, "0"), NumberLiteral(_, _, "200"), None, LineBlock _, _) ] -> ()
+        | Some [ ForStmt(_, "p", [], NumberLiteral(_, _, "0"), NumberLiteral(_, _, "200"), [], None, LineBlock _, _) ] -> ()
         | other -> Assert.Fail($"Unexpected pow line 860: %A{other}")
     | None -> Assert.Fail("Expected top-level procedure 'pow'")
 

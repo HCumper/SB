@@ -99,6 +99,8 @@ type RuntimeSurfaceControl() =
 
                     context.FillRectangle(SolidColorBrush(colorFor defaultPaper), viewportRect)
 
+                    use _clip = context.PushClip(viewportRect)
+
                     for textRow = 0 to min (textRows - 1) (paneTextHeight - 1) do
                         for textCol = 0 to min (textCols - 1) (paneTextWidth - 1) do
                             let cell = pane.Text[rowOffset + textRow, textCol]

@@ -86,6 +86,90 @@ let ``lowerToHir preserves empty when condition and empty select clause body`` (
     | other -> Assert.Fail($"Unexpected main HIR: %A{other}")
 
 [<Test>]
+let ``parse and lower compact select on clauses with multiline bodies`` () =
+    let ast =
+        parseProgram
+            "10 SELect ON 9\n20 =0\n30 GO TO 100\n40 =9\n50 GO TO 200\n60 END SELect\n"
+
+    match ast with
+    | Program(
+        _,
+        [ Line(
+            _,
+            Some 10,
+            [ SelectStmt(
+                _,
+                NumberLiteral(_, _, "9"),
+                [ SelectClause(_, NumberLiteral(_, _, "9"), NumberLiteral(_, _, "0"), Some(LineBlock [ Line(_, Some 30, [ GotoStmt(_, NumberLiteral(_, _, "100")) ]) ]))
+                  SelectClause(_, NumberLiteral(_, _, "9"), NumberLiteral(_, _, "9"), Some(LineBlock [ Line(_, Some 50, [ GotoStmt(_, NumberLiteral(_, _, "200")) ]) ])) ]) ]) ]) ->
+        let hir = lowerProgram ast
+
+        match hir.Main with
+        | [ LineNumber(10, _)
+            If(_, [ LineNumber(30, _); Goto(Literal(ConstInt 100, Int, _), _) ], Some [ If(_, [ LineNumber(50, _); Goto(Literal(ConstInt 200, Int, _), _) ], None, _) ], _) ] -> ()
+        | other -> Assert.Fail($"Unexpected compact SELECT HIR: %A{other}")
+    | other -> Assert.Fail($"Unexpected compact SELECT AST: %A{other}")
+
+[<Test>]
+let ``parse and lower compact select on clauses with comma separated matches`` () =
+    let ast =
+        parseProgram
+            "10 e=1\n20 SELect ON e\n30 =1,5\n40 GO TO 100\n50 =2\n60 GO TO 200\n70 END SELect\n"
+
+    match ast with
+    | Program(
+        _,
+        [ Line(_, Some 10, [ Assignment(_, Identifier(_, _, "e"), NumberLiteral(_, _, "1")) ])
+          Line(
+            _,
+            Some 20,
+            [ SelectStmt(
+                _,
+                Identifier(_, _, "e"),
+                [ SelectClause(_, Identifier(_, _, "e"), NumberLiteral(_, _, "1"), Some(LineBlock [ Line(_, Some 40, [ GotoStmt(_, NumberLiteral(_, _, "100")) ]) ]))
+                  SelectClause(_, Identifier(_, _, "e"), NumberLiteral(_, _, "5"), Some(LineBlock [ Line(_, Some 40, [ GotoStmt(_, NumberLiteral(_, _, "100")) ]) ]))
+                  SelectClause(_, Identifier(_, _, "e"), NumberLiteral(_, _, "2"), Some(LineBlock [ Line(_, Some 60, [ GotoStmt(_, NumberLiteral(_, _, "200")) ]) ])) ]) ]) ]) ->
+        let hir = lowerProgram ast
+
+        match hir.Main with
+        | [ LineNumber(10, _)
+            Assign(WriteVar(_, _, _), Literal(ConstInt 1, Int, _), _)
+            LineNumber(20, _)
+            If(_, [ LineNumber(40, _); Goto(Literal(ConstInt 100, Int, _), _) ], Some [ If(_, [ LineNumber(40, _); Goto(Literal(ConstInt 100, Int, _), _) ], Some [ If(_, [ LineNumber(60, _); Goto(Literal(ConstInt 200, Int, _), _) ], None, _) ], _) ], _) ] -> ()
+        | other -> Assert.Fail($"Unexpected comma-separated compact SELECT HIR: %A{other}")
+    | other -> Assert.Fail($"Unexpected comma-separated compact SELECT AST: %A{other}")
+
+[<Test>]
+let ``parse and lower for sequence with discrete prefix range and suffix`` () =
+    let ast =
+        parseProgram
+            "10 FOR x = 1,2,5 TO 7,9\n20 PRINT x\n30 END FOR\n"
+
+    match ast with
+    | Program(
+        _,
+        [ Line(
+            _,
+            Some 10,
+            [ ForStmt(
+                _,
+                "x",
+                [ NumberLiteral(_, _, "1"); NumberLiteral(_, _, "2") ],
+                NumberLiteral(_, _, "5"),
+                NumberLiteral(_, _, "7"),
+                [ NumberLiteral(_, _, "9") ],
+                None,
+                LineBlock [ Line(_, Some 20, [ ProcedureCall(_, "PRINT", [ Identifier(_, _, "x") ]) ]) ],
+                None) ]) ]) ->
+        let hir = lowerProgram ast
+
+        match hir.Main with
+        | [ LineNumber(10, _)
+            ForSequence(_, _, [ Literal(ConstInt 1, Int, _); Literal(ConstInt 2, Int, _) ], Literal(ConstInt 5, Int, _), Literal(ConstInt 7, Int, _), [ Literal(ConstInt 9, Int, _) ], Literal(ConstInt 1, Int, _), [ LineNumber(20, _); BuiltInCall(Print, None, [ ReadVar(_, _, _) ], _) ], _) ] -> ()
+        | other -> Assert.Fail($"Unexpected FOR sequence HIR: %A{other}")
+    | other -> Assert.Fail($"Unexpected FOR sequence AST: %A{other}")
+
+[<Test>]
 let ``lowerToHir builds explicit storage and data layout`` () =
     let ast =
         Program(
@@ -123,8 +207,10 @@ let ``lowerToHir collects nested data entries and restore points inside structur
                 [ ForStmt(
                     pos,
                     "f",
+                    [],
                     num "1",
                     num "1",
+                    [],
                     None,
                     LineBlock
                         [ Line(pos, Some 20, [ DataStmt(pos, [ num "2"; num "3" ]) ])
@@ -175,8 +261,22 @@ let ``lowerToHir supports channel input prompts`` () =
 
     match hir.Main with
     | [ LineNumber(10, _)
-        Input(Some(Literal(ConstInt 1, Int, _)), [ Literal(ConstString "Name", String, _) ], [ WriteVar(_, _, _) ], _) ] -> ()
+        Input(Some(ExplicitChannel(Literal(ConstInt 1, Int, _))), [ Literal(ConstString "Name", String, _) ], [ WriteVar(_, _, _) ], _) ] -> ()
     | other -> Assert.Fail($"Unexpected channel INPUT HIR: %A{other}")
+
+[<Test>]
+let ``lowerToHir lowers single string index access as char read`` () =
+    let hir =
+        parseProgram
+            "10 text$ = \"abc\"\n20 PRINT text$(LEN(text$))\n"
+        |> lowerProgram
+
+    match hir.Main with
+    | [ LineNumber(10, _)
+        Assign(WriteVar(_, _, _), Literal(ConstString "abc", String, _), _)
+        LineNumber(20, _)
+        BuiltInCall(Print, None, [ ReadStringChar(_, CallFunc(_, [ ValueArg(ReadVar(_, String, _)) ], Int, _), String, _) ], _) ] -> ()
+    | other -> Assert.Fail($"Unexpected string index HIR: %A{other}")
 
 [<Test>]
 let ``lowerToHir preserves parameter binding metadata from reference statements`` () =
@@ -461,5 +561,18 @@ let ``lowerToHir preserves spaced rnd range call syntax`` () =
             CallFunc(_, [ ValueArg(Binary(SliceRange, Literal(ConstInt 0, HirType.Int, _), ReadVar(_, HirType.Int, _), _, _)) ], _, _),
             _) ] -> ()
     | other -> Assert.Fail($"Unexpected lowered spaced RND HIR: %A{other}")
+
+[<Test>]
+let ``lowerToHir expands print backslash separators and unquotes single quoted strings`` () =
+    let ast =
+        parseProgram "10 PRINT 'alpha'\\'beta'\n"
+
+    let hir = lowerProgram ast
+
+    match hir.Main with
+    | [ LineNumber(10, _)
+        BuiltInCall(Print, None, [ Literal(ConstString "alpha", HirType.String, _) ], _)
+        BuiltInCall(Print, None, [ Literal(ConstString "beta", HirType.String, _) ], _) ] -> ()
+    | other -> Assert.Fail($"Unexpected lowered PRINT separator HIR: %A{other}")
 
 

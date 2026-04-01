@@ -102,6 +102,12 @@ let private inferArgumentTypes args state =
 let private inferExprList exprs state =
     inferArgumentTypes exprs state |> snd
 
+let private validateImplicitChannelExpr pos exprType (state: ProcessingState) =
+    if exprType = SBType.String || exprType = SBType.Unknown then
+        state
+    else
+        appendDiagnostic SemanticDiagnosticCode.InvalidChannel None (Some pos) $"Implicit channel expression must be string-compatible at {pos.EditorLineNo}:{pos.Column}" state
+
 let private isSizedStringDeclaration name (dims: Expr list) =
     suffixDeclaredType name = SBType.String && dims.Length = 1
 
@@ -118,7 +124,7 @@ let rec private collectReferenceParameterNamesFromStmt stmt =
     | IfStmt(_, _, thenBlock, elseBlock) ->
         collectReferenceParameterNamesFromBlock thenBlock
         @ (elseBlock |> Option.map collectReferenceParameterNamesFromBlock |> Option.defaultValue [])
-    | ForStmt(_, _, _, _, _, body, _)
+    | ForStmt(_, _, _, _, _, _, _, body, _)
     | RepeatStmt(_, _, body, _) ->
         collectReferenceParameterNamesFromBlock body
     | SelectStmt(_, _, clauses) ->
@@ -296,11 +302,12 @@ and collectDeclarations (mode: SymbolAddMode) (node: Stmt) : State<ProcessingSta
         | OnGosubStmt _ -> ()
 
         | ProcedureCall(_, name, args)
-        | ChannelProcedureCall(_, name, _, args) ->
+        | ChannelProcedureCall(_, name, _, args)
+        | ImplicitChannelProcedureCall(_, name, _, args) ->
             if isInputStatement name then
                 do! collectDeclarationWritableList mode args
 
-        | ForStmt(pos, name, _, _, _, body, _) ->
+        | ForStmt(pos, name, _, _, _, _, _, body, _) ->
             let nextState = ensureVariableDeclaredInScope mode currentState.CurrentScope name pos currentState
             do! putState nextState
             do! collectDeclarationBlock mode body
@@ -386,7 +393,7 @@ and private resolveExpr mode expr : State<ProcessingState, unit> =
                     | ArraySym _
                     | VariableSym _
                     | ConstantSym _
-                    | ParameterSym _ -> validateScalarVsArrayUsage name pos true symbol nextState
+                    | ParameterSym _ -> validateIndexedUsage name pos args symbol nextState
                     | _ -> nextState
                 | None -> nextState
             let recordedState =
@@ -632,32 +639,73 @@ and private resolveStmt (mode: SymbolAddMode) (node: Stmt) : State<ProcessingSta
                 | _ -> inferExprList args stateAfterArgs
             do! putState stateAfterBuiltInValidation
 
-        | ForStmt(pos, name, startExpr, endExpr, stepExpr, body, closingName) ->
+        | ImplicitChannelProcedureCall(pos, name, channel, args) ->
+            let stateAfterCall = recordCall name pos currentState
+            let stateAfterArity =
+                match tryResolveSymbol stateAfterCall.CurrentScope name stateAfterCall.SymTab with
+                | Some(_, symbol) -> validateCallArity name pos args.Length symbol stateAfterCall
+                | None -> stateAfterCall
+            do! putState (validateStatementCallShape name pos stateAfterArity)
+            do! resolveExpr mode channel
+            let! stateAfterChannel = getState
+            let channelType, stateAfterChannelType = inferExprType stateAfterChannel channel
+            let typedChannelState = recordExprType stateAfterChannel.CurrentScope channel channelType stateAfterChannelType
+            let stateAfterValidatedChannel = validateImplicitChannelExpr pos channelType typedChannelState
+            do! putState stateAfterValidatedChannel
+            if isInputStatement name then
+                let resolveInputArg expr =
+                    match expr with
+                    | Identifier _
+                    | PostfixName _ -> resolveWritableExpr mode expr
+                    | _ -> resolveExpr mode expr
+                do! stateIter resolveInputArg args
+            else
+                do! resolveExprList mode args
+            let! stateAfterArgs = getState
+            let stateAfterBuiltInValidation =
+                match tryResolveSymbol stateAfterArgs.CurrentScope name stateAfterArgs.SymTab with
+                | Some(_, BuiltInSym _) ->
+                    let argTypes, typedState = inferArgumentTypes args stateAfterArgs
+                    validateBuiltInArguments name pos (List.zip args argTypes) typedState
+                | _ -> inferExprList args stateAfterArgs
+            do! putState stateAfterBuiltInValidation
+
+        | ForStmt(pos, name, prefixExprs, startExpr, endExpr, suffixExprs, stepExpr, body, closingName) ->
             do! putState (validateClosingName "FOR loop" name closingName pos currentState)
             let! currentState = getState
             do! putState (referenceSymbol None name pos currentState)
+            do! resolveExprList mode prefixExprs
             do! resolveExpr mode startExpr
             do! resolveExpr mode endExpr
+            do! resolveExprList mode suffixExprs
             match stepExpr with
             | Some expr -> do! resolveExpr mode expr
             | None -> ()
             let! stateAfterBounds = getState
-            let startType, afterStart = inferExprType stateAfterBounds startExpr
+            let prefixTypes, afterPrefix = inferArgumentTypes prefixExprs stateAfterBounds
+            let startType, afterStart = inferExprType afterPrefix startExpr
             let endType, afterEnd = inferExprType afterStart endExpr
+            let suffixTypes, afterSuffix = inferArgumentTypes suffixExprs afterEnd
             let afterStep, stepType =
                 match stepExpr with
                 | Some expr ->
-                    let inferred, updatedState = inferExprType afterEnd expr
+                    let inferred, updatedState = inferExprType afterSuffix expr
                     recordExprType stateAfterBounds.CurrentScope expr inferred updatedState, inferred
-                | None -> afterEnd, SBType.Integer
+                | None -> afterSuffix, SBType.Integer
             let typedBoundsState =
-                afterStep
+                ((afterStep, List.zip prefixExprs prefixTypes)
+                 ||> List.fold (fun acc (expr, inferredType) -> recordExprType stateAfterBounds.CurrentScope expr inferredType acc))
                 |> recordExprType stateAfterBounds.CurrentScope startExpr startType
                 |> recordExprType stateAfterBounds.CurrentScope endExpr endType
+                |> fun state -> (state, List.zip suffixExprs suffixTypes)
+                                ||> List.fold (fun acc (expr, inferredType) -> recordExprType stateAfterBounds.CurrentScope expr inferredType acc)
             let counterExpr = mkIdentifier pos name
-            let stateAfterCounter = updateWritableTargetType counterExpr (classifyNumericResultType startType endType) None typedBoundsState
+            let counterType =
+                classifyNumericResultType startType endType
+
+            let stateAfterCounter = updateWritableTargetType counterExpr counterType None typedBoundsState
             let finalState =
-                if [ startType; endType; stepType ] |> List.exists (fun t -> t = SBType.String) then
+                if (prefixTypes @ [ startType; endType ] @ suffixTypes @ [ stepType ]) |> List.exists (fun t -> t = SBType.String) then
                     appendDiagnostic SemanticDiagnosticCode.InvalidForBounds None (Some pos) $"FOR bounds and step must be numeric at {pos.EditorLineNo}:{pos.Column}" (recordTargetType stateAfterBounds.CurrentScope counterExpr (classifyNumericResultType startType endType) stateAfterCounter)
                 else
                     recordTargetType stateAfterBounds.CurrentScope counterExpr (classifyNumericResultType startType endType) stateAfterCounter

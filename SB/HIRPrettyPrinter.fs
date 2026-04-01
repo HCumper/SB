@@ -119,7 +119,8 @@ and private formatCallArg = function
     | RefArg target -> $"ref {formatTarget target}"
 
 let private formatChannel = function
-    | Some channel -> $" channel={formatExpr channel}"
+    | Some(ExplicitChannel(channel: HirExpr)) -> $" channel=#{formatExpr channel}"
+    | Some(ImplicitChannel(channel: HirExpr)) -> $" channel=\\{formatExpr channel}"
     | None -> ""
 
 let private formatPromptList prompts =
@@ -161,6 +162,9 @@ and private appendStmt (builder: StringBuilder) level stmt =
         | None -> ()
     | For(loopId, symbolId, startExpr, endExpr, stepExpr, body, pos) ->
         appendLine builder level $"For {formatLoopId loopId} counter={formatSymbolId symbolId} start={formatExpr startExpr} end={formatExpr endExpr} step={formatExpr stepExpr} @{formatPosition pos}"
+        appendBlock builder (level + 1) body
+    | ForSequence(loopId, symbolId, prefixExprs, startExpr, endExpr, suffixExprs, stepExpr, body, pos) ->
+        appendLine builder level $"ForSequence {formatLoopId loopId} counter={formatSymbolId symbolId} prefix=[{formatExprList prefixExprs}] start={formatExpr startExpr} end={formatExpr endExpr} suffix=[{formatExprList suffixExprs}] step={formatExpr stepExpr} @{formatPosition pos}"
         appendBlock builder (level + 1) body
     | Repeat(loopId, loopName, body, pos) ->
         appendLine builder level $"Repeat {formatLoopId loopId} name={formatLoopName loopName} @{formatPosition pos}"

@@ -74,6 +74,8 @@ type IScreenChannel =
     abstract GetCursor: unit -> int * int
     abstract SetCharacterSize: int * int -> unit
     abstract GetCharacterSize: unit -> int * int
+    abstract SetCharacterFonts: int * int -> unit
+    abstract GetCharacterFonts: unit -> int * int
     abstract SetInk: int list -> unit
     abstract SetPaper: int -> unit
     abstract SetBorder: int -> unit
@@ -103,6 +105,8 @@ type IScreenDevice =
     abstract GetCursor: unit -> int * int
     abstract SetCharacterSize: int * int -> unit
     abstract GetCharacterSize: unit -> int * int
+    abstract SetCharacterFonts: int * int -> unit
+    abstract GetCharacterFonts: unit -> int * int
     abstract WriteText: string -> unit
     abstract SetInk: int list -> unit
     abstract SetPaper: int -> unit

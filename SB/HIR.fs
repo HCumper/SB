@@ -105,17 +105,25 @@ type HirExpr =
     | Literal of HirConst * HirType * SourcePosition
     | ReadVar of SymbolId * HirType * SourcePosition
     | ReadArrayElem of SymbolId * HirExpr list * HirType * SourcePosition
+    | ReadStringChar of SymbolId * HirExpr * HirType * SourcePosition
     | DynamicReadVar of string * HirType * SourcePosition
     | DynamicReadArrayElem of string * HirExpr list * HirType * SourcePosition
+    | DynamicReadStringChar of string * HirExpr * HirType * SourcePosition
     | Unary of HirUnaryOp * HirExpr * HirType * SourcePosition
     | Binary of HirBinaryOp * HirExpr * HirExpr * HirType * SourcePosition
     | CallFunc of SymbolId * HirCallArg list * HirType * SourcePosition
 
+and HirChannel =
+    | ExplicitChannel of HirExpr
+    | ImplicitChannel of HirExpr
+
 and HirTarget =
     | WriteVar of SymbolId * HirType * SourcePosition
     | WriteArrayElem of SymbolId * HirExpr list * HirType * SourcePosition
+    | WriteStringChar of SymbolId * HirExpr * HirType * SourcePosition
     | DynamicWriteVar of string * HirType * SourcePosition
     | DynamicWriteArrayElem of string * HirExpr list * HirType * SourcePosition
+    | DynamicWriteStringChar of string * HirExpr * HirType * SourcePosition
 
 and HirCallArg =
     | ValueArg of HirExpr
@@ -139,11 +147,12 @@ and HirSelectClause = {
 
 and HirStmt =
     | Assign of HirTarget * HirExpr * SourcePosition
-    | ProcCall of SymbolId * HirExpr option * HirCallArg list * SourcePosition
-    | BuiltInCall of BuiltInKind * HirExpr option * HirExpr list * SourcePosition
-    | Input of HirExpr option * HirExpr list * HirTarget list * SourcePosition
+    | ProcCall of SymbolId * HirChannel option * HirCallArg list * SourcePosition
+    | BuiltInCall of BuiltInKind * HirChannel option * HirExpr list * SourcePosition
+    | Input of HirChannel option * HirExpr list * HirTarget list * SourcePosition
     | If of HirExpr * HirBlock * HirBlock option * SourcePosition
     | For of LoopId * SymbolId * HirExpr * HirExpr * HirExpr * HirBlock * SourcePosition
+    | ForSequence of LoopId * SymbolId * HirExpr list * HirExpr * HirExpr * HirExpr list * HirExpr * HirBlock * SourcePosition
     | Repeat of LoopId * LoopName * HirBlock * SourcePosition
     | Exit of LoopId * SourcePosition
     | Next of LoopId * SourcePosition

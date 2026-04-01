@@ -152,12 +152,19 @@ and private prettyStmt level stmt =
             [ $"{pad}ChannelProcedureCall {name} @{formatPosition pos}\n"
               prettyExpr (level + 2) channel
               args |> List.map (prettyExpr (level + 2)) |> String.concat "" ]
-    | ForStmt(pos, name, startExpr, endExpr, stepExpr, body, closingName) ->
+    | ImplicitChannelProcedureCall(pos, name, channel, args) ->
+        String.concat ""
+            [ $"{pad}ImplicitChannelProcedureCall {name} @{formatPosition pos}\n"
+              prettyExpr (level + 2) channel
+              args |> List.map (prettyExpr (level + 2)) |> String.concat "" ]
+    | ForStmt(pos, name, prefixExprs, startExpr, endExpr, suffixExprs, stepExpr, body, closingName) ->
         let closingText = closingName |> Option.map (fun value -> $" end={value}") |> Option.defaultValue ""
         String.concat ""
             [ $"{pad}ForStmt {name}{closingText} @{formatPosition pos}\n"
+              prefixExprs |> List.map (prettyExpr (level + 2)) |> String.concat ""
               prettyExpr (level + 2) startExpr
               prettyExpr (level + 2) endExpr
+              suffixExprs |> List.map (prettyExpr (level + 2)) |> String.concat ""
               stepExpr |> Option.map (prettyExpr (level + 2)) |> Option.defaultValue ""
               prettyBlock (level + 2) body ]
     | RepeatStmt(pos, name, body, closingName) ->
@@ -457,7 +464,18 @@ and private writeStmt (writer: Utf8JsonWriter) stmt =
         writer.WriteStartArray()
         args |> List.iter (writeExpr writer)
         writer.WriteEndArray()
-    | ForStmt(pos, name, startExpr, endExpr, stepExpr, body, closingName) ->
+    | ImplicitChannelProcedureCall(pos, name, channel, args) ->
+        writer.WriteString("kind", "ImplicitChannelProcedureCall")
+        writer.WriteString("name", name)
+        writer.WritePropertyName("position")
+        writePosition writer pos
+        writer.WritePropertyName("channel")
+        writeExpr writer channel
+        writer.WritePropertyName("arguments")
+        writer.WriteStartArray()
+        args |> List.iter (writeExpr writer)
+        writer.WriteEndArray()
+    | ForStmt(pos, name, prefixExprs, startExpr, endExpr, suffixExprs, stepExpr, body, closingName) ->
         writer.WriteString("kind", "ForStmt")
         writer.WriteString("name", name)
         match closingName with
@@ -465,10 +483,18 @@ and private writeStmt (writer: Utf8JsonWriter) stmt =
         | None -> ()
         writer.WritePropertyName("position")
         writePosition writer pos
+        writer.WritePropertyName("prefix")
+        writer.WriteStartArray()
+        prefixExprs |> List.iter (writeExpr writer)
+        writer.WriteEndArray()
         writer.WritePropertyName("start")
         writeExpr writer startExpr
         writer.WritePropertyName("finish")
         writeExpr writer endExpr
+        writer.WritePropertyName("suffix")
+        writer.WriteStartArray()
+        suffixExprs |> List.iter (writeExpr writer)
+        writer.WriteEndArray()
         writer.WritePropertyName("step")
         match stepExpr with
         | Some expr -> writeExpr writer expr

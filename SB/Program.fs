@@ -81,12 +81,27 @@ let rec private blockContainsInput (block: HIR.HirBlock) =
             blockContainsInput thenBlock
             || (elseBlock |> Option.exists blockContainsInput)
         | HIR.HirStmt.For(_, _, _, _, _, body, _) -> blockContainsInput body
+        | HIR.HirStmt.ForSequence(_, _, _, _, _, _, _, body, _) -> blockContainsInput body
         | HIR.HirStmt.Repeat(_, _, body, _) -> blockContainsInput body
         | _ -> false)
 
 let private programContainsInput (program: HIR.HirProgram) =
     blockContainsInput program.Main
     || (program.Routines |> List.exists (fun routine -> blockContainsInput routine.Body))
+
+let private watchAvaloniaHostExit (handle: AvaloniaHostHandle) =
+    let shuttingDown = ref false
+
+    let watcher =
+        System.Threading.Thread(System.Threading.ThreadStart(fun () ->
+            handle.WaitForExit()
+            if not !shuttingDown then
+                Environment.Exit(0)))
+
+    watcher.IsBackground <- true
+    watcher.Start()
+
+    fun () -> shuttingDown := true
 
 [<EntryPoint>]
 let main argv =
@@ -129,6 +144,10 @@ let main argv =
                         | "gui" -> Some(AvaloniaHostService().Start())
                         | _ -> None
 
+                    let markHostShutdown =
+                        hostHandle
+                        |> Option.map watchAvaloniaHostExit
+
                     let exitCode =
                         let options =
                             match hostHandle with
@@ -150,6 +169,7 @@ let main argv =
                     |> Option.iter (fun handle ->
                         if not (programContainsInput hirProgram) then
                             waitForAvaloniaContinue handle
+                        markHostShutdown |> Option.iter (fun mark -> mark ())
                         (handle :> IDisposable).Dispose())
                     exitCode
                 | "csharp" ->

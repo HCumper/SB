@@ -536,6 +536,14 @@ let ``scalar indexed use is rejected`` () =
     Assert.That(analyzed.Errors, Has.Some.Contains("Scalar 'score' cannot be indexed"))
 
 [<Test>]
+let ``string indexed use is accepted as single char access`` () =
+    let analyzed =
+        analyzeProgram "10 text$ = \"abc\"\n20 PRINT text$(LEN(text$))\n"
+
+    Assert.That(analyzed.Errors, Is.Empty)
+    Assert.That(analyzed.Diagnostics |> List.exists (fun d -> d.Code = SemanticDiagnosticCode.InvalidIndexing), Is.False)
+
+[<Test>]
 let ``array scalar use is rejected`` () =
     let analyzed =
         analyzeProgram "10 DIM score(10)\n20 PRINT score\n"

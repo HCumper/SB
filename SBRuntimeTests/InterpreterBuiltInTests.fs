@@ -1,14 +1,27 @@
 module SBRuntimeTests.InterpreterBuiltInTests
 
 open System
+open Antlr4.Runtime
 open NUnit.Framework
 
 open SyntaxAst
+open CompilerPipeline
 open Interpreter
+open ParseTreeVisitor
 open SBRuntime
 open SBRuntimeTests.TestSupport
 
 module H = HIR
+
+let private parseProgram (source: string) =
+    let inputStream = AntlrInputStream(source)
+    let lexer = CompilerPipeline.createLexer inputStream
+    let tokenStream = CommonTokenStream(lexer)
+    let parser = SBParser(tokenStream)
+
+    parser.program()
+    |> convertTreeToAst
+    |> List.head
 
 [<Test>]
 let ``interpreter evaluates arithmetic and print`` () =
@@ -21,6 +34,15 @@ let ``interpreter evaluates arithmetic and print`` () =
     let output = runProgram ast
 
     Assert.That(String.concat "|" output, Is.EqualTo("3"))
+
+[<Test>]
+let ``interpreter print backslash separator starts a new line and single quoted strings are not printed with quotes`` () =
+    let ast =
+        parseProgram "10 PRINT 'The object'\\'continues'\n"
+
+    let output = runProgram ast
+
+    Assert.That(String.concat "|" output, Is.EqualTo("The object|continues"))
 
 [<Test>]
 let ``interpreter calls user functions`` () =

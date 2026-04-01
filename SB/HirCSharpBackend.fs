@@ -277,7 +277,8 @@ and private emitStmt ctx builder level stmt =
     | BuiltInCall(kind, channel, args, _) ->
         let channelText =
             match channel with
-            | Some expr -> emitExpr ctx expr
+            | Some(ExplicitChannel(expr: HirExpr))
+            | Some(ImplicitChannel(expr: HirExpr)) -> emitExpr ctx expr
             | None -> "null"
         let argsText = args |> List.map (emitExpr ctx)
         let kindName =
@@ -295,7 +296,8 @@ and private emitStmt ctx builder level stmt =
     | Input(channel, prompts, targets, _) ->
         let channelText =
             match channel with
-            | Some expr -> emitExpr ctx expr
+            | Some(ExplicitChannel(expr: HirExpr))
+            | Some(ImplicitChannel(expr: HirExpr)) -> emitExpr ctx expr
             | None -> "null"
         let promptText = prompts |> List.map (emitExpr ctx) |> String.concat ", "
         appendLine builder level $"ExecuteInput({channelText}, new object?[] {{ {promptText} }});"
@@ -308,6 +310,8 @@ and private emitStmt ctx builder level stmt =
         emitIf ctx builder level condition thenBlock elseBlock
     | For(loopId, symbolId, startExpr, endExpr, stepExpr, body, _) ->
         emitFor ctx builder level loopId symbolId startExpr endExpr stepExpr body
+    | ForSequence(_, _, _, _, _, _, _, _, _) ->
+        appendLine builder level "throw new NotSupportedException(\"Sequence FOR loops are not supported by the generated backend yet.\");"
     | Repeat(loopId, _, body, _) ->
         emitRepeat ctx builder level loopId body
     | Exit(loopId, _) ->

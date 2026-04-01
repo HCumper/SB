@@ -87,6 +87,7 @@ type ScreenWindowState = {
     mutable Palette: int list option
     mutable Cursor: int * int
     mutable CharacterSize: int * int
+    mutable CharacterFonts: int * int
     mutable ClearCount: int
     mutable Ink: int list option
     mutable Paper: int option
@@ -132,6 +133,7 @@ let createScreenHost (inputs: string list) =
         window.Recolor <- None
         window.Palette <- None
         window.CharacterSize <- 1, 1
+        window.CharacterFonts <- 0, 0
         window.Ink <- Some [ 7 ]
         window.Paper <- Some 0
         window.Border <- Some 0
@@ -145,6 +147,7 @@ let createScreenHost (inputs: string list) =
           Recolor = None
           Palette = None
           CharacterSize = 0, 0
+          CharacterFonts = 0, 0
           ClearCount = 0
           Ink = None
           Paper = None
@@ -370,6 +373,16 @@ let createScreenHost (inputs: string list) =
                 match Map.tryFind channelId state.Windows with
                 | Some window -> window.CharacterSize
                 | None -> 0, 0
+            member _.SetCharacterFonts(font1, font2) =
+                match Map.tryFind channelId state.Windows with
+                | Some window ->
+                    let currentFont1, currentFont2 = window.CharacterFonts
+                    window.CharacterFonts <- (if font1 = -1 then currentFont1 else font1), (if font2 = -1 then currentFont2 else font2)
+                | None -> ()
+            member _.GetCharacterFonts() =
+                match Map.tryFind channelId state.Windows with
+                | Some window -> window.CharacterFonts
+                | None -> 0, 0
             member _.SetInk(values: int list) =
                 match Map.tryFind channelId state.Windows with
                 | Some window -> window.Ink <- Some values
@@ -466,6 +479,16 @@ let createScreenHost (inputs: string list) =
             member _.GetCharacterSize() =
                 match Map.tryFind channelId state.Windows with
                 | Some window -> window.CharacterSize
+                | None -> 0, 0
+            member _.SetCharacterFonts(font1, font2) =
+                match Map.tryFind channelId state.Windows with
+                | Some window ->
+                    let currentFont1, currentFont2 = window.CharacterFonts
+                    window.CharacterFonts <- (if font1 = -1 then currentFont1 else font1), (if font2 = -1 then currentFont2 else font2)
+                | None -> ()
+            member _.GetCharacterFonts() =
+                match Map.tryFind channelId state.Windows with
+                | Some window -> window.CharacterFonts
                 | None -> 0, 0
             member _.SetInk(values: int list) =
                 match Map.tryFind channelId state.Windows with
@@ -579,6 +602,16 @@ let createScreenHost (inputs: string list) =
                     member _.GetCharacterSize() =
                         match Map.tryFind 1 state.Windows with
                         | Some window -> window.CharacterSize
+                        | None -> 0, 0
+                    member _.SetCharacterFonts(font1, font2) =
+                        match Map.tryFind 1 state.Windows with
+                        | Some window ->
+                            let currentFont1, currentFont2 = window.CharacterFonts
+                            window.CharacterFonts <- (if font1 = -1 then currentFont1 else font1), (if font2 = -1 then currentFont2 else font2)
+                        | None -> ()
+                    member _.GetCharacterFonts() =
+                        match Map.tryFind 1 state.Windows with
+                        | Some window -> window.CharacterFonts
                         | None -> 0, 0
                     member _.WriteText text = writeWindow 1 text
                     member _.SetInk(values: int list) =

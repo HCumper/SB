@@ -292,13 +292,15 @@ let private tryParseDouble (value: string) =
 let private unquoteString (value: string) =
     if value.Length >= 2 && value.StartsWith("\"") && value.EndsWith("\"") then
         value.Substring(1, value.Length - 2).Replace("\"\"", "\"")
+    elif value.Length >= 2 && value.StartsWith("'") && value.EndsWith("'") then
+        value.Substring(1, value.Length - 2).Replace("''", "'")
     else
         value
 
 let private lowerLiteral (pos: SourcePosition) (value: string) =
     match System.Int32.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture) with
     | true, n -> Literal(HirConst.ConstInt n, HirType.Int, pos)
-    | _ when value.StartsWith("\"") && value.EndsWith("\"") ->
+    | _ when (value.StartsWith("\"") && value.EndsWith("\"")) || (value.StartsWith("'") && value.EndsWith("'")) ->
         Literal(HirConst.ConstString (unquoteString value), HirType.String, pos)
     | _ ->
         match tryParseDouble value with
@@ -307,6 +309,23 @@ let private lowerLiteral (pos: SourcePosition) (value: string) =
 
 let private unsupported ctx pos construct =
     fail ctx.CurrentScope (Some pos) $"HIR lowering does not support {construct} yet."
+
+let private tryLookupResolvedSymbol ctx expr =
+    match getRecordedResolvedSymbol ctx expr with
+    | Some resolved ->
+        Map.tryFind resolved.Scope ctx.State.SymTab
+        |> Option.bind (fun scope -> Map.tryFind resolved.Name scope.Symbols)
+    | None -> None
+
+let private isSingleStringIndexAccess ctx expr (args: Expr list) =
+    args.Length = 1
+    &&
+    match tryLookupResolvedSymbol ctx expr with
+    | Some(VariableSym _ | ConstantSym _ | ParameterSym _) ->
+        match getRecordedExprType ctx expr with
+        | Result.Ok HirType.String -> true
+        | _ -> false
+    | _ -> false
 
 let rec private lowerExpr ctx expr =
     match expr with
@@ -355,8 +374,16 @@ let rec private lowerExpr ctx expr =
     | PostfixName(_, pos, name, Some args) ->
         match getRecordedResolvedSymbol ctx expr with
         | _ when shouldLowerDynamicStorage ctx expr name ->
-            zip (getRecordedExprType ctx expr) (args |> List.map (lowerExpr ctx) |> collectResults)
-            |> map (fun (hirType, loweredIndexes) -> DynamicReadArrayElem(normalizeIdentifier name, loweredIndexes, hirType, pos))
+            if args.Length = 1 then
+                zip (getRecordedExprType ctx expr) (lowerExpr ctx args.Head)
+                |> map (fun (hirType, loweredIndex) ->
+                    if hirType = HirType.String then
+                        DynamicReadStringChar(normalizeIdentifier name, loweredIndex, hirType, pos)
+                    else
+                        DynamicReadArrayElem(normalizeIdentifier name, [ loweredIndex ], hirType, pos))
+            else
+                zip (getRecordedExprType ctx expr) (args |> List.map (lowerExpr ctx) |> collectResults)
+                |> map (fun (hirType, loweredIndexes) -> DynamicReadArrayElem(normalizeIdentifier name, loweredIndexes, hirType, pos))
         | _ ->
             zip (getRecordedExprType ctx expr) (zip (requireSymbolIdForExpr ctx expr name pos) (args |> List.map (fun arg -> lowerExpr ctx arg |> map ValueArg) |> collectResults))
             |> map (fun (hirType, (symbolId, loweredArgs)) ->
@@ -371,6 +398,14 @@ let rec private lowerExpr ctx expr =
                                 loweredArgs
                                 |> List.choose (function | ValueArg arg -> Some arg | RefArg _ -> None)
                             ReadArrayElem(symbolId, loweredIndexes, hirType, pos)
+                        | Some(VariableSym _)
+                        | Some(ConstantSym _)
+                        | Some(ParameterSym _) when isSingleStringIndexAccess ctx expr args ->
+                            let loweredIndex =
+                                loweredArgs
+                                |> List.choose (function | ValueArg arg -> Some arg | RefArg _ -> None)
+                                |> List.head
+                            ReadStringChar(symbolId, loweredIndex, hirType, pos)
                         | Some(FunctionSym _)
                         | Some(BuiltInSym _) -> CallFunc(symbolId, loweredArgs, hirType, pos)
                         | _ ->
@@ -411,11 +446,23 @@ let private lowerTarget ctx expr =
     | PostfixName(_, pos, name, Some args) ->
         match getRecordedResolvedSymbol ctx expr with
         | _ when shouldLowerDynamicStorage ctx expr name ->
-            zip (getRecordedTargetType ctx expr) (args |> List.map (lowerExpr ctx) |> collectResults)
-            |> map (fun (hirType, loweredArgs) -> DynamicWriteArrayElem(normalizeIdentifier name, loweredArgs, hirType, pos))
+            if args.Length = 1 then
+                zip (getRecordedTargetType ctx expr) (lowerExpr ctx args.Head)
+                |> map (fun (hirType, loweredIndex) ->
+                    if hirType = HirType.String then
+                        DynamicWriteStringChar(normalizeIdentifier name, loweredIndex, hirType, pos)
+                    else
+                        DynamicWriteArrayElem(normalizeIdentifier name, [ loweredIndex ], hirType, pos))
+            else
+                zip (getRecordedTargetType ctx expr) (args |> List.map (lowerExpr ctx) |> collectResults)
+                |> map (fun (hirType, loweredArgs) -> DynamicWriteArrayElem(normalizeIdentifier name, loweredArgs, hirType, pos))
         | _ ->
-            zip (getRecordedTargetType ctx expr) (zip (requireSymbolIdForExpr ctx expr name pos) (args |> List.map (lowerExpr ctx) |> collectResults))
-            |> map (fun (hirType, (symbolId, loweredArgs)) -> WriteArrayElem(symbolId, loweredArgs, hirType, pos))
+            if isSingleStringIndexAccess ctx expr args then
+                zip (getRecordedTargetType ctx expr) (zip (requireSymbolIdForExpr ctx expr name pos) (lowerExpr ctx args.Head))
+                |> map (fun (hirType, (symbolId, loweredIndex)) -> WriteStringChar(symbolId, loweredIndex, hirType, pos))
+            else
+                zip (getRecordedTargetType ctx expr) (zip (requireSymbolIdForExpr ctx expr name pos) (args |> List.map (lowerExpr ctx) |> collectResults))
+                |> map (fun (hirType, (symbolId, loweredArgs)) -> WriteArrayElem(symbolId, loweredArgs, hirType, pos))
     | _ ->
         fail ctx.CurrentScope (Some(exprPosition expr)) "Expression is not a writable target."
 
@@ -428,18 +475,14 @@ let private lowerTargetList ctx exprs =
 let private canLowerAsTarget ctx expr =
     Map.containsKey (nodeIdOfExpr expr) ctx.State.TargetTypes
 
-let private tryLookupResolvedSymbol ctx expr =
-    match getRecordedResolvedSymbol ctx expr with
-    | Some resolved ->
-        Map.tryFind resolved.Scope ctx.State.SymTab
-        |> Option.bind (fun scope -> Map.tryFind resolved.Name scope.Symbols)
-    | None -> None
-
 let private lowerCallArg ctx expr =
     match expr, tryLookupResolvedSymbol ctx expr with
     | (Identifier(_, pos, name) | PostfixName(_, pos, name, None)), Some(VariableSym _ | ParameterSym _) ->
         zip (getRecordedExprType ctx expr) (requireSymbolIdForExpr ctx expr name pos)
         |> map (fun (hirType, symbolId) -> RefArg(WriteVar(symbolId, hirType, pos)))
+    | PostfixName(_, pos, name, Some args), Some(VariableSym _ | ParameterSym _) when isSingleStringIndexAccess ctx expr args ->
+        zip (getRecordedExprType ctx expr) (zip (requireSymbolIdForExpr ctx expr name pos) (lowerExpr ctx args.Head))
+        |> map (fun (hirType, (symbolId, loweredIndex)) -> RefArg(WriteStringChar(symbolId, loweredIndex, hirType, pos)))
     | PostfixName(_, pos, name, Some args), Some(ArraySym _) ->
         zip (getRecordedExprType ctx expr) (zip (requireSymbolIdForExpr ctx expr name pos) (args |> List.map (lowerExpr ctx) |> collectResults))
         |> map (fun (hirType, (symbolId, loweredArgs)) -> RefArg(WriteArrayElem(symbolId, loweredArgs, hirType, pos)))
@@ -507,16 +550,30 @@ let rec private lowerStmt ctx stmt =
         |> bind (fun loweredChannel ->
             if normalizeIdentifier name = "INPUT" then
                 lowerInputArgs ctx pos args
-                |> map (fun (prompts, loweredTargets) -> [ Input(Some loweredChannel, prompts, loweredTargets, pos) ])
+                |> map (fun (prompts, loweredTargets) -> [ Input(Some(ExplicitChannel loweredChannel), prompts, loweredTargets, pos) ])
             elif isCallableBuiltIn name then
                 lowerExprList ctx (normalizeBuiltInArgs name args)
-                |> map (fun loweredArgs -> [ BuiltInCall(lowerBuiltInKind name, Some loweredChannel, loweredArgs, pos) ])
+                |> map (fun loweredArgs -> [ BuiltInCall(lowerBuiltInKind name, Some(ExplicitChannel loweredChannel), loweredArgs, pos) ])
             else
                 lowerCallArgList ctx args
                 |> bind (fun loweredArgs ->
                     requireSymbolIdForName ctx ctx.CurrentScope name pos
-                    |> map (fun symbolId -> [ ProcCall(symbolId, Some loweredChannel, loweredArgs, pos) ])))
-    | ForStmt(pos, name, startExpr, endExpr, stepExpr, body, _) ->
+                    |> map (fun symbolId -> [ ProcCall(symbolId, Some(ExplicitChannel loweredChannel), loweredArgs, pos) ])))
+    | ImplicitChannelProcedureCall(pos, name, channel, args) ->
+        lowerExpr ctx channel
+        |> bind (fun loweredChannel ->
+            if normalizeIdentifier name = "INPUT" then
+                lowerInputArgs ctx pos args
+                |> map (fun (prompts, loweredTargets) -> [ Input(Some(ImplicitChannel loweredChannel), prompts, loweredTargets, pos) ])
+            elif isCallableBuiltIn name then
+                lowerExprList ctx (normalizeBuiltInArgs name args)
+                |> map (fun loweredArgs -> [ BuiltInCall(lowerBuiltInKind name, Some(ImplicitChannel loweredChannel), loweredArgs, pos) ])
+            else
+                lowerCallArgList ctx args
+                |> bind (fun loweredArgs ->
+                    requireSymbolIdForName ctx ctx.CurrentScope name pos
+                    |> map (fun symbolId -> [ ProcCall(symbolId, Some(ImplicitChannel loweredChannel), loweredArgs, pos) ])))
+    | ForStmt(pos, name, prefixExprs, startExpr, endExpr, suffixExprs, stepExpr, body, _) ->
         let loopId = nextLoopId ctx
         let loopCtx = withLoop ctx (NamedLoop name) loopId
         let loweredStep =
@@ -524,12 +581,16 @@ let rec private lowerStmt ctx stmt =
             | Some expr -> lowerExpr ctx expr
             | None -> ok (Literal(HirConst.ConstInt 1, HirType.Int, pos))
 
-        zip (zip (lowerExpr ctx startExpr) (lowerExpr ctx endExpr)) loweredStep
-        |> bind (fun ((loweredStart, loweredEnd), loweredStepExpr) ->
+        zip (zip (zip (lowerExprList ctx prefixExprs) (lowerExpr ctx startExpr)) (zip (lowerExpr ctx endExpr) (lowerExprList ctx suffixExprs))) loweredStep
+        |> bind (fun ((((loweredPrefix, loweredStart), (loweredEnd, loweredSuffix))), loweredStepExpr) ->
             lowerBlock loopCtx body
             |> bind (fun loweredBody ->
                 requireSymbolIdForName ctx ctx.CurrentScope name pos
-                    |> map (fun symbolId -> [ For(loopId, symbolId, loweredStart, loweredEnd, loweredStepExpr, loweredBody, pos) ])))
+                    |> map (fun symbolId ->
+                        if List.isEmpty loweredPrefix && List.isEmpty loweredSuffix then
+                            [ For(loopId, symbolId, loweredStart, loweredEnd, loweredStepExpr, loweredBody, pos) ]
+                        else
+                            [ ForSequence(loopId, symbolId, loweredPrefix, loweredStart, loweredEnd, loweredSuffix, loweredStepExpr, loweredBody, pos) ])))
     | RepeatStmt(pos, label, body, _) ->
         let loopName = lowerLoopName label
         let loopId = nextLoopId ctx
@@ -739,7 +800,7 @@ let private collectDataItems ctx lines =
         | ProcedureDef(_, _, _, body, _, _)
         | FunctionDef(_, _, _, body, _, _) ->
             collectLines (slotIndex, entries, restorePoints) body
-        | ForStmt(_, _, _, _, _, body, _)
+        | ForStmt(_, _, _, _, _, _, _, body, _)
         | RepeatStmt(_, _, body, _) ->
             collectBlock (slotIndex, entries, restorePoints) body
         | IfStmt(_, _, thenBlock, elseBlock) ->

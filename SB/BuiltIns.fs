@@ -46,7 +46,7 @@ let private normalizeNames names =
 let coreSuperBasicKeywords =
     [ "ABS"; "ACOS"; "ACOT"; "ADATE"; "ARC"; "ARC_R"; "ASIN"; "AT"; "ATAN"; "AUTO"
       "BAUD"; "BEEP"; "BEEPING"; "BLOCK"; "BORDER"
-      "CALL"; "CHR$"; "CIRCLE"; "CIRCLE_R"; "CLEAR"; "CLOSE"; "CLS"; "CODE"; "CONTINUE"; "COPY"; "COPY_N"; "COS"; "COT"; "CSIZE"; "CURSOR"
+      "CALL"; "CHAR_USE"; "CHR$"; "CIRCLE"; "CIRCLE_R"; "CLEAR"; "CLOSE"; "CLS"; "CODE"; "CONTINUE"; "COPY"; "COPY_N"; "COS"; "COT"; "CSIZE"; "CURSOR"
       "DATA"; "DATE"; "DATE$"; "DAY$"; "DEFine FuNction"; "DEFine PROCedure"; "DEG"; "DELETE"; "DIM"; "DIMN"; "DIR"; "DIV"; "DLINE"
       "EDIT"; "ELLIPSE"; "ELLIPSE_R"; "ELSE"; "END DEFine"; "END FOR"; "END IF"; "END REPeat"; "END SELect"; "EOF"; "EXEC"; "EXEC_W"; "EXIT"; "EXP"
       "FILL"; "FILL$"; "FLASH"; "FOR"; "FORMAT"
@@ -70,7 +70,7 @@ let coreSuperBasicKeywords =
 let private coreCallableBuiltInNames =
     [ "ABS"; "ACOS"; "ACOT"; "ADATE"; "ARC"; "ARC_R"; "ASIN"; "AT"; "ATAN"
       "AUTO"; "BAUD"; "BEEP"; "BEEPING"; "BLOCK"; "BORDER"
-      "CALL"; "CHR$"; "CIRCLE"; "CIRCLE_R"; "CLEAR"; "CLOSE"; "CLS"; "CODE"; "CONTINUE"; "COPY"; "COPY_N"; "COS"; "COT"; "CSIZE"; "CURSOR"
+      "CALL"; "CHAR_USE"; "CHR$"; "CIRCLE"; "CIRCLE_R"; "CLEAR"; "CLOSE"; "CLS"; "CODE"; "CONTINUE"; "COPY"; "COPY_N"; "COS"; "COT"; "CSIZE"; "CURSOR"
       "DATE"; "DATE$"; "DAY$"; "DEG"; "DELETE"; "DIMN"; "DIR"; "DLINE"
       "ELLIPSE"; "ELLIPSE_R"; "EOF"; "EXEC"; "EXEC_W"; "EXP"; "FILL"; "FILL$"; "FLASH"; "FORMAT"
       "INK"; "INKEY$"; "INPUT"; "INSTR"; "INT"
@@ -85,7 +85,7 @@ let private coreCallableBuiltInNames =
 
 // Toolkit / environment / project-specific names that are intentionally treated as built-ins.
 let private extensionBuiltInNames =
-    [ "ALLOCATE"; "APPEND"; "ASC"; "BACKUP"; "DEALLOCATE"; "DRAW"; "GETENV$"; "INKEY"; "LEFT$"; "LOADMEM"; "LOG"; "LPRINT"; "MID$"; "MODE"; "PALETTE"; "RAD"; "REPL$"; "RIGHT$"; "ROUND"; "SAVEMEM"; "SGN"; "SHELL"; "STR$"; "SYSVAR"; "TIME"; "TRON"; "TROFF"; "VAL"; "WAIT"
+    [ "ALLOCATE"; "APPEND"; "ASC"; "BACKUP"; "DEALLOCATE"; "DRAW"; "GETENV$"; "INKEY"; "LEFT$"; "LOADMEM"; "LOG"; "LPRINT"; "MID$"; "MODE"; "PALETTE"; "RAD"; "REPL$"; "RIGHT$"; "ROUND"; "S_FONT"; "SAVEMEM"; "SGN"; "SHELL"; "STR$"; "SYSVAR"; "TIME"; "TRON"; "TROFF"; "VAL"; "WAIT"
       "TURBO_BUFFERSZ"; "TURBO_DIAGS"; "TURBO_LOCSTR"; "TURBO_OBJDAT"; "TURBO_OBJFIL"; "TURBO_OPTIM"; "TURBO_REPFIL"; "TURBO_STRUCT"; "TURBO_TASKN"; "TURBO_WINDO" ]
 
 let callableBuiltInNames =
@@ -165,6 +165,7 @@ let private builtInSignatures =
       signature "ASIN" (Some 1) (Some [ Numeric ])
       signature "ATAN" (Some 1) (Some [ Numeric ])
       signature "CHR$" (Some 1) (Some [ Numeric ])
+      signature "CHAR_USE" (Some 2) (Some [ Numeric; Numeric ])
       signature "CODE" (Some 1) (Some [ String ])
       signature "COS" (Some 1) (Some [ Numeric ])
       signature "COT" (Some 1) (Some [ Numeric ])
@@ -193,6 +194,7 @@ let private builtInSignatures =
       signature "RND" (Some 1) (Some [ Numeric ])
       signature "RIGHT$" (Some 2) (Some [ String; Numeric ])
       signature "ROUND" (Some 1) (Some [ Numeric ])
+      signature "S_FONT" (Some 2) (Some [ Numeric; Numeric ])
       signature "SGN" (Some 1) (Some [ Numeric ])
       signature "SIN" (Some 1) (Some [ Numeric ])
       signature "SQRT" (Some 1) (Some [ Numeric ])

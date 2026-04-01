@@ -12,6 +12,8 @@ open SBRuntimeTests.TestSupport
 
 module H = HIR
 
+let private explicitChannel expr = Some(H.ExplicitChannel expr)
+
 [<Test>]
 let ``interpreter restore missing target reports runtime error code`` () =
     let ast =
@@ -191,8 +193,8 @@ let ``interpreter print to screen channels does not mirror into console output``
         makeProgram
             Map.empty
             []
-            [ H.BuiltInCall(H.Print, Some(H.Literal(H.ConstInt 1, H.HirType.Int, pos)), [ H.Literal(H.ConstString "hello", H.HirType.String, pos) ], pos)
-              H.BuiltInCall(H.Print, Some(H.Literal(H.ConstInt 2, H.HirType.Int, pos)), [ H.Literal(H.ConstString "world", H.HirType.String, pos) ], pos) ]
+            [ H.BuiltInCall(H.Print, explicitChannel(H.Literal(H.ConstInt 1, H.HirType.Int, pos)), [ H.Literal(H.ConstString "hello", H.HirType.String, pos) ], pos)
+              H.BuiltInCall(H.Print, explicitChannel(H.Literal(H.ConstInt 2, H.HirType.Int, pos)), [ H.Literal(H.ConstString "world", H.HirType.String, pos) ], pos) ]
 
     let result =
         interpretProgramWithOptions
@@ -226,7 +228,7 @@ let ``interpreter input from default channel uses host channel manager`` () =
         makeProgram
             (Map.ofList [ xId, "X" ])
             [ xStorage ]
-            [ H.HirStmt.Input(Some(channelExpr), [ promptExpr ], [ target ], pos)
+            [ H.HirStmt.Input(explicitChannel channelExpr, [ promptExpr ], [ target ], pos)
               H.BuiltInCall(H.Print, None, [ H.ReadVar(xId, H.HirType.Int, pos) ], pos) ]
 
     let result =
@@ -258,18 +260,18 @@ let ``interpreter screen channel operations keep default window state independen
         makeProgram
             (Map.ofList [ xId, "X" ])
             [ xStorage ]
-            [ H.BuiltInCall(H.NamedBuiltIn "CLS", Some channel0, [], pos)
-              H.BuiltInCall(H.NamedBuiltIn "WINDOW", Some channel0, [ H.Literal(H.ConstInt 512, H.HirType.Int, pos); H.Literal(H.ConstInt 256, H.HirType.Int, pos); H.Literal(H.ConstInt 0, H.HirType.Int, pos); H.Literal(H.ConstInt 0, H.HirType.Int, pos) ], pos)
-              H.BuiltInCall(H.NamedBuiltIn "AT", Some channel0, [ H.Literal(H.ConstInt 3, H.HirType.Int, pos); H.Literal(H.ConstInt 4, H.HirType.Int, pos) ], pos)
-              H.BuiltInCall(H.NamedBuiltIn "WINDOW", Some channel1, [ H.Literal(H.ConstInt 448, H.HirType.Int, pos); H.Literal(H.ConstInt 40, H.HirType.Int, pos); H.Literal(H.ConstInt 32, H.HirType.Int, pos); H.Literal(H.ConstInt 216, H.HirType.Int, pos) ], pos)
-              H.BuiltInCall(H.NamedBuiltIn "CURSOR", Some channel1, [ H.Literal(H.ConstInt 10, H.HirType.Int, pos); H.Literal(H.ConstInt 20, H.HirType.Int, pos) ], pos)
-              H.BuiltInCall(H.NamedBuiltIn "CSIZE", Some channel1, [ H.Literal(H.ConstInt 2, H.HirType.Int, pos); H.Literal(H.ConstInt 1, H.HirType.Int, pos) ], pos)
-              H.BuiltInCall(H.NamedBuiltIn "INK", Some channel1, [ H.Literal(H.ConstInt 7, H.HirType.Int, pos) ], pos)
-              H.BuiltInCall(H.NamedBuiltIn "WINDOW", Some channel2, [ H.Literal(H.ConstInt 300, H.HirType.Int, pos); H.Literal(H.ConstInt 120, H.HirType.Int, pos); H.Literal(H.ConstInt 100, H.HirType.Int, pos); H.Literal(H.ConstInt 80, H.HirType.Int, pos) ], pos)
-              H.BuiltInCall(H.NamedBuiltIn "CSIZE", Some channel2, [ H.Literal(H.ConstInt 4, H.HirType.Int, pos); H.Literal(H.ConstInt 3, H.HirType.Int, pos) ], pos)
-              H.BuiltInCall(H.NamedBuiltIn "PAPER", Some channel2, [ H.Literal(H.ConstInt 2, H.HirType.Int, pos) ], pos)
-              H.BuiltInCall(H.NamedBuiltIn "BORDER", Some channel2, [ H.Literal(H.ConstInt 1, H.HirType.Int, pos); H.Literal(H.ConstInt 4, H.HirType.Int, pos) ], pos)
-              H.HirStmt.Input(Some channel2, [ H.Literal(H.ConstString "Enter", H.HirType.String, pos) ], [ H.WriteVar(xId, H.HirType.Int, pos) ], pos) ]
+            [ H.BuiltInCall(H.NamedBuiltIn "CLS", explicitChannel channel0, [], pos)
+              H.BuiltInCall(H.NamedBuiltIn "WINDOW", explicitChannel channel0, [ H.Literal(H.ConstInt 512, H.HirType.Int, pos); H.Literal(H.ConstInt 256, H.HirType.Int, pos); H.Literal(H.ConstInt 0, H.HirType.Int, pos); H.Literal(H.ConstInt 0, H.HirType.Int, pos) ], pos)
+              H.BuiltInCall(H.NamedBuiltIn "AT", explicitChannel channel0, [ H.Literal(H.ConstInt 3, H.HirType.Int, pos); H.Literal(H.ConstInt 4, H.HirType.Int, pos) ], pos)
+              H.BuiltInCall(H.NamedBuiltIn "WINDOW", explicitChannel channel1, [ H.Literal(H.ConstInt 448, H.HirType.Int, pos); H.Literal(H.ConstInt 40, H.HirType.Int, pos); H.Literal(H.ConstInt 32, H.HirType.Int, pos); H.Literal(H.ConstInt 216, H.HirType.Int, pos) ], pos)
+              H.BuiltInCall(H.NamedBuiltIn "CURSOR", explicitChannel channel1, [ H.Literal(H.ConstInt 10, H.HirType.Int, pos); H.Literal(H.ConstInt 20, H.HirType.Int, pos) ], pos)
+              H.BuiltInCall(H.NamedBuiltIn "CSIZE", explicitChannel channel1, [ H.Literal(H.ConstInt 2, H.HirType.Int, pos); H.Literal(H.ConstInt 1, H.HirType.Int, pos) ], pos)
+              H.BuiltInCall(H.NamedBuiltIn "INK", explicitChannel channel1, [ H.Literal(H.ConstInt 7, H.HirType.Int, pos) ], pos)
+              H.BuiltInCall(H.NamedBuiltIn "WINDOW", explicitChannel channel2, [ H.Literal(H.ConstInt 300, H.HirType.Int, pos); H.Literal(H.ConstInt 120, H.HirType.Int, pos); H.Literal(H.ConstInt 100, H.HirType.Int, pos); H.Literal(H.ConstInt 80, H.HirType.Int, pos) ], pos)
+              H.BuiltInCall(H.NamedBuiltIn "CSIZE", explicitChannel channel2, [ H.Literal(H.ConstInt 4, H.HirType.Int, pos); H.Literal(H.ConstInt 3, H.HirType.Int, pos) ], pos)
+              H.BuiltInCall(H.NamedBuiltIn "PAPER", explicitChannel channel2, [ H.Literal(H.ConstInt 2, H.HirType.Int, pos) ], pos)
+              H.BuiltInCall(H.NamedBuiltIn "BORDER", explicitChannel channel2, [ H.Literal(H.ConstInt 1, H.HirType.Int, pos); H.Literal(H.ConstInt 4, H.HirType.Int, pos) ], pos)
+              H.HirStmt.Input(explicitChannel channel2, [ H.Literal(H.ConstString "Enter", H.HirType.String, pos) ], [ H.WriteVar(xId, H.HirType.Int, pos) ], pos) ]
 
     let result =
         interpretProgramWithOptions
@@ -311,10 +313,10 @@ let ``interpreter screen text writes and cls update backing text buffer`` () =
         makeProgram
             Map.empty
             []
-            [ H.BuiltInCall(H.NamedBuiltIn "WINDOW", Some channel1, [ H.Literal(H.ConstInt 20, H.HirType.Int, pos); H.Literal(H.ConstInt 5, H.HirType.Int, pos); H.Literal(H.ConstInt 10, H.HirType.Int, pos); H.Literal(H.ConstInt 3, H.HirType.Int, pos) ], pos)
-              H.BuiltInCall(H.NamedBuiltIn "AT", Some channel1, [ H.Literal(H.ConstInt 1, H.HirType.Int, pos); H.Literal(H.ConstInt 2, H.HirType.Int, pos) ], pos)
-              H.BuiltInCall(H.Print, Some channel1, [ H.Literal(H.ConstString "HELLO", H.HirType.String, pos) ], pos)
-              H.BuiltInCall(H.NamedBuiltIn "CLS", Some channel1, [], pos) ]
+            [ H.BuiltInCall(H.NamedBuiltIn "WINDOW", explicitChannel channel1, [ H.Literal(H.ConstInt 20, H.HirType.Int, pos); H.Literal(H.ConstInt 5, H.HirType.Int, pos); H.Literal(H.ConstInt 10, H.HirType.Int, pos); H.Literal(H.ConstInt 3, H.HirType.Int, pos) ], pos)
+              H.BuiltInCall(H.NamedBuiltIn "AT", explicitChannel channel1, [ H.Literal(H.ConstInt 1, H.HirType.Int, pos); H.Literal(H.ConstInt 2, H.HirType.Int, pos) ], pos)
+              H.BuiltInCall(H.Print, explicitChannel channel1, [ H.Literal(H.ConstString "HELLO", H.HirType.String, pos) ], pos)
+              H.BuiltInCall(H.NamedBuiltIn "CLS", explicitChannel channel1, [], pos) ]
 
     let result = interpretProgramWithOptions { defaultRuntimeOptions with Host = host } hir
 
@@ -333,11 +335,11 @@ let ``interpreter display controls update per-window state`` () =
         makeProgram
             Map.empty
             []
-            [ H.BuiltInCall(H.NamedBuiltIn "SCROLL", Some channel2, [ H.Literal(H.ConstInt 12, H.HirType.Int, pos) ], pos)
-              H.BuiltInCall(H.NamedBuiltIn "WIDTH", Some channel2, [ H.Literal(H.ConstInt 80, H.HirType.Int, pos) ], pos)
-              H.BuiltInCall(H.NamedBuiltIn "PAN", Some channel2, [ H.Literal(H.ConstInt -150, H.HirType.Int, pos) ], pos)
-              H.BuiltInCall(H.NamedBuiltIn "RECOL", Some channel2, [ H.Literal(H.ConstInt 5, H.HirType.Int, pos) ], pos)
-              H.BuiltInCall(H.NamedBuiltIn "PALETTE", Some channel2, [ H.Literal(H.ConstInt 1, H.HirType.Int, pos); H.Literal(H.ConstInt 3, H.HirType.Int, pos); H.Literal(H.ConstInt 5, H.HirType.Int, pos) ], pos)
+            [ H.BuiltInCall(H.NamedBuiltIn "SCROLL", explicitChannel channel2, [ H.Literal(H.ConstInt 12, H.HirType.Int, pos) ], pos)
+              H.BuiltInCall(H.NamedBuiltIn "WIDTH", explicitChannel channel2, [ H.Literal(H.ConstInt 80, H.HirType.Int, pos) ], pos)
+              H.BuiltInCall(H.NamedBuiltIn "PAN", explicitChannel channel2, [ H.Literal(H.ConstInt -150, H.HirType.Int, pos) ], pos)
+              H.BuiltInCall(H.NamedBuiltIn "RECOL", explicitChannel channel2, [ H.Literal(H.ConstInt 5, H.HirType.Int, pos) ], pos)
+              H.BuiltInCall(H.NamedBuiltIn "PALETTE", explicitChannel channel2, [ H.Literal(H.ConstInt 1, H.HirType.Int, pos); H.Literal(H.ConstInt 3, H.HirType.Int, pos); H.Literal(H.ConstInt 5, H.HirType.Int, pos) ], pos)
               H.BuiltInCall(H.NamedBuiltIn "SCROLL", None, [ H.Literal(H.ConstInt -7, H.HirType.Int, pos) ], pos)
               H.BuiltInCall(H.NamedBuiltIn "WIDTH", None, [ H.Literal(H.ConstInt 64, H.HirType.Int, pos) ], pos)
               H.BuiltInCall(H.NamedBuiltIn "PAN", None, [ H.Literal(H.ConstInt 150, H.HirType.Int, pos) ], pos)
@@ -370,6 +372,32 @@ let ``interpreter display controls update per-window state`` () =
         Assert.That(window0.Pan, Is.EqualTo(0))
         Assert.That(window0.Recolor, Is.EqualTo(None))
         Assert.That(window0.Palette, Is.EqualTo(None))
+    | Result.Error err ->
+        Assert.Fail($"Expected interpretation to succeed, got %A{err}")
+
+[<Test>]
+let ``interpreter char use updates per-channel and default screen fonts`` () =
+    let host, screenState = createScreenHost []
+    let channel2 = H.Literal(H.ConstInt 2, H.HirType.Int, pos)
+    let hir =
+        makeProgram
+            Map.empty
+            []
+            [ H.BuiltInCall(H.NamedBuiltIn "CHAR_USE", explicitChannel channel2, [ H.Literal(H.ConstInt 1234, H.HirType.Int, pos); H.Literal(H.ConstInt 0, H.HirType.Int, pos) ], pos)
+              H.BuiltInCall(H.NamedBuiltIn "CHAR_USE", explicitChannel channel2, [ H.Literal(H.ConstInt -1, H.HirType.Int, pos); H.Literal(H.ConstInt 5678, H.HirType.Int, pos) ], pos)
+              H.BuiltInCall(H.NamedBuiltIn "S_FONT", None, [ H.Literal(H.ConstInt 111, H.HirType.Int, pos); H.Literal(H.ConstInt 222, H.HirType.Int, pos) ], pos) ]
+
+    let result =
+        interpretProgramWithOptions
+            { defaultRuntimeOptions with
+                Host = host }
+            hir
+
+    match result with
+    | Result.Ok _ ->
+        Assert.That(screenState.Windows[2].CharacterFonts, Is.EqualTo((1234, 5678)))
+        Assert.That(screenState.Windows[1].CharacterFonts, Is.EqualTo((111, 222)))
+        Assert.That(screenState.Windows[0].CharacterFonts, Is.EqualTo((0, 0)))
     | Result.Error err ->
         Assert.Fail($"Expected interpretation to succeed, got %A{err}")
 
@@ -411,8 +439,8 @@ let ``interpreter mode resets default screen geometry and default windows`` () =
                     H.Literal(H.ConstInt 20, H.HirType.Int, pos)
                     H.Literal(H.ConstInt 10, H.HirType.Int, pos) ],
                   pos)
-              H.BuiltInCall(H.NamedBuiltIn "CSIZE", Some channel1, [ H.Literal(H.ConstInt 4, H.HirType.Int, pos); H.Literal(H.ConstInt 3, H.HirType.Int, pos) ], pos)
-              H.BuiltInCall(H.NamedBuiltIn "CURSOR", Some channel1, [ H.Literal(H.ConstInt 10, H.HirType.Int, pos); H.Literal(H.ConstInt 20, H.HirType.Int, pos) ], pos)
+              H.BuiltInCall(H.NamedBuiltIn "CSIZE", explicitChannel channel1, [ H.Literal(H.ConstInt 4, H.HirType.Int, pos); H.Literal(H.ConstInt 3, H.HirType.Int, pos) ], pos)
+              H.BuiltInCall(H.NamedBuiltIn "CURSOR", explicitChannel channel1, [ H.Literal(H.ConstInt 10, H.HirType.Int, pos); H.Literal(H.ConstInt 20, H.HirType.Int, pos) ], pos)
               H.BuiltInCall(H.NamedBuiltIn "MODE", None, [ H.Literal(H.ConstInt 8, H.HirType.Int, pos) ], pos) ]
 
     let result =
@@ -473,10 +501,10 @@ let ``interpreter graphics primitives dispatch to host graphics device`` () =
             [ H.BuiltInCall(H.NamedBuiltIn "INK", None, [ H.Literal(H.ConstInt 6, H.HirType.Int, pos); H.Literal(H.ConstInt 4, H.HirType.Int, pos); H.Literal(H.ConstInt 3, H.HirType.Int, pos) ], pos)
               H.BuiltInCall(H.NamedBuiltIn "SCALE", None, [ H.Literal(H.ConstInt 100, H.HirType.Int, pos); H.Literal(H.ConstInt 0, H.HirType.Int, pos); H.Literal(H.ConstInt 0, H.HirType.Int, pos) ], pos)
               H.BuiltInCall(H.NamedBuiltIn "PLOT", None, [ H.Literal(H.ConstFloat 1.5, H.HirType.Float, pos); H.Literal(H.ConstInt 2, H.HirType.Int, pos) ], pos)
-              H.BuiltInCall(H.NamedBuiltIn "DRAW", Some channel1, [ H.Literal(H.ConstInt 3, H.HirType.Int, pos); H.Literal(H.ConstFloat 4.5, H.HirType.Float, pos) ], pos)
+              H.BuiltInCall(H.NamedBuiltIn "DRAW", explicitChannel channel1, [ H.Literal(H.ConstInt 3, H.HirType.Int, pos); H.Literal(H.ConstFloat 4.5, H.HirType.Float, pos) ], pos)
               H.BuiltInCall(
                   H.NamedBuiltIn "LINE",
-                  Some channel2,
+                  explicitChannel channel2,
                   [ H.Literal(H.ConstInt 0, H.HirType.Int, pos)
                     H.Literal(H.ConstInt 0, H.HirType.Int, pos)
                     H.Literal(H.ConstInt 10, H.HirType.Int, pos)
@@ -485,8 +513,8 @@ let ``interpreter graphics primitives dispatch to host graphics device`` () =
                     H.Literal(H.ConstInt 5, H.HirType.Int, pos) ],
                   pos)
               H.BuiltInCall(H.NamedBuiltIn "CIRCLE", None, [ H.Literal(H.ConstInt 8, H.HirType.Int, pos); H.Literal(H.ConstInt 9, H.HirType.Int, pos); H.Literal(H.ConstFloat 2.5, H.HirType.Float, pos) ], pos)
-              H.BuiltInCall(H.NamedBuiltIn "ELLIPSE", Some channel2, [ H.Literal(H.ConstInt 11, H.HirType.Int, pos); H.Literal(H.ConstInt 12, H.HirType.Int, pos); H.Literal(H.ConstInt 13, H.HirType.Int, pos); H.Literal(H.ConstFloat 0.7, H.HirType.Float, pos); H.Literal(H.ConstInt 6, H.HirType.Int, pos) ], pos)
-              H.BuiltInCall(H.NamedBuiltIn "FILL", Some channel0, [ H.Literal(H.ConstInt 1, H.HirType.Int, pos) ], pos) ]
+              H.BuiltInCall(H.NamedBuiltIn "ELLIPSE", explicitChannel channel2, [ H.Literal(H.ConstInt 11, H.HirType.Int, pos); H.Literal(H.ConstInt 12, H.HirType.Int, pos); H.Literal(H.ConstInt 13, H.HirType.Int, pos); H.Literal(H.ConstFloat 0.7, H.HirType.Float, pos); H.Literal(H.ConstInt 6, H.HirType.Int, pos) ], pos)
+              H.BuiltInCall(H.NamedBuiltIn "FILL", explicitChannel channel0, [ H.Literal(H.ConstInt 1, H.HirType.Int, pos) ], pos) ]
 
     let result =
         interpretProgramWithOptions
@@ -521,7 +549,7 @@ let ``interpreter channeled ink preserves all supplied values`` () =
         makeProgram
             Map.empty
             []
-            [ H.BuiltInCall(H.NamedBuiltIn "INK", Some channel1, [ H.Literal(H.ConstInt 6, H.HirType.Int, pos); H.Literal(H.ConstInt 4, H.HirType.Int, pos); H.Literal(H.ConstInt 3, H.HirType.Int, pos) ], pos) ]
+            [ H.BuiltInCall(H.NamedBuiltIn "INK", explicitChannel channel1, [ H.Literal(H.ConstInt 6, H.HirType.Int, pos); H.Literal(H.ConstInt 4, H.HirType.Int, pos); H.Literal(H.ConstInt 3, H.HirType.Int, pos) ], pos) ]
 
     let result =
         interpretProgramWithOptions
@@ -545,11 +573,11 @@ let ``interpreter drawing mode controls update graphics state`` () =
         makeProgram
             Map.empty
             []
-            [ H.BuiltInCall(H.NamedBuiltIn "OVER", Some channel0, [ H.Literal(H.ConstInt -1, H.HirType.Int, pos) ], pos)
+            [ H.BuiltInCall(H.NamedBuiltIn "OVER", explicitChannel channel0, [ H.Literal(H.ConstInt -1, H.HirType.Int, pos) ], pos)
               H.BuiltInCall(H.NamedBuiltIn "UNDER", None, [ H.Literal(H.ConstInt 1, H.HirType.Int, pos) ], pos)
-              H.BuiltInCall(H.NamedBuiltIn "FLASH", Some channel1, [ H.Literal(H.ConstInt 3, H.HirType.Int, pos) ], pos)
+              H.BuiltInCall(H.NamedBuiltIn "FLASH", explicitChannel channel1, [ H.Literal(H.ConstInt 3, H.HirType.Int, pos) ], pos)
               H.BuiltInCall(H.NamedBuiltIn "PENUP", None, [], pos)
-              H.BuiltInCall(H.NamedBuiltIn "PENDOWN", Some channel1, [], pos) ]
+              H.BuiltInCall(H.NamedBuiltIn "PENDOWN", explicitChannel channel1, [], pos) ]
 
     let result =
         interpretProgramWithOptions
@@ -583,16 +611,16 @@ let ``interpreter remaining graphics primitives dispatch to host graphics device
             []
             [ H.BuiltInCall(H.NamedBuiltIn "CLEAR", None, [], pos)
               H.BuiltInCall(H.NamedBuiltIn "POINT", None, [ H.Literal(H.ConstInt 4, H.HirType.Int, pos); H.Literal(H.ConstInt 5, H.HirType.Int, pos) ], pos)
-              H.BuiltInCall(H.NamedBuiltIn "POINT_R", Some channel1, [ H.Literal(H.ConstInt 1, H.HirType.Int, pos); H.Literal(H.ConstInt -2, H.HirType.Int, pos) ], pos)
+              H.BuiltInCall(H.NamedBuiltIn "POINT_R", explicitChannel channel1, [ H.Literal(H.ConstInt 1, H.HirType.Int, pos); H.Literal(H.ConstInt -2, H.HirType.Int, pos) ], pos)
               H.BuiltInCall(H.NamedBuiltIn "DLINE", None, [ H.Literal(H.ConstInt 0, H.HirType.Int, pos); H.Literal(H.ConstInt 0, H.HirType.Int, pos); H.Literal(H.ConstInt 5, H.HirType.Int, pos); H.Literal(H.ConstInt 5, H.HirType.Int, pos) ], pos)
-              H.BuiltInCall(H.NamedBuiltIn "LINE_R", Some channel1, [ H.Literal(H.ConstInt 2, H.HirType.Int, pos); H.Literal(H.ConstInt 3, H.HirType.Int, pos); H.Literal(H.ConstInt 4, H.HirType.Int, pos); H.Literal(H.ConstInt 6, H.HirType.Int, pos) ], pos)
+              H.BuiltInCall(H.NamedBuiltIn "LINE_R", explicitChannel channel1, [ H.Literal(H.ConstInt 2, H.HirType.Int, pos); H.Literal(H.ConstInt 3, H.HirType.Int, pos); H.Literal(H.ConstInt 4, H.HirType.Int, pos); H.Literal(H.ConstInt 6, H.HirType.Int, pos) ], pos)
               H.BuiltInCall(H.NamedBuiltIn "CIRCLE_R", None, [ H.Literal(H.ConstInt 7, H.HirType.Int, pos); H.Literal(H.ConstInt 8, H.HirType.Int, pos); H.Literal(H.ConstInt 9, H.HirType.Int, pos) ], pos)
-              H.BuiltInCall(H.NamedBuiltIn "ELLIPSE_R", Some channel1, [ H.Literal(H.ConstInt 10, H.HirType.Int, pos); H.Literal(H.ConstInt 11, H.HirType.Int, pos); H.Literal(H.ConstInt 12, H.HirType.Int, pos); H.Literal(H.ConstFloat 0.5, H.HirType.Float, pos); H.Literal(H.ConstInt 13, H.HirType.Int, pos) ], pos)
+              H.BuiltInCall(H.NamedBuiltIn "ELLIPSE_R", explicitChannel channel1, [ H.Literal(H.ConstInt 10, H.HirType.Int, pos); H.Literal(H.ConstInt 11, H.HirType.Int, pos); H.Literal(H.ConstInt 12, H.HirType.Int, pos); H.Literal(H.ConstFloat 0.5, H.HirType.Float, pos); H.Literal(H.ConstInt 13, H.HirType.Int, pos) ], pos)
               H.BuiltInCall(H.NamedBuiltIn "ARC", None, [ H.Literal(H.ConstInt 14, H.HirType.Int, pos); H.Literal(H.ConstInt 15, H.HirType.Int, pos); H.Literal(H.ConstInt 16, H.HirType.Int, pos); H.Literal(H.ConstInt 17, H.HirType.Int, pos); H.Literal(H.ConstInt 18, H.HirType.Int, pos) ], pos)
-              H.BuiltInCall(H.NamedBuiltIn "ARC_R", Some channel1, [ H.Literal(H.ConstInt 19, H.HirType.Int, pos); H.Literal(H.ConstInt 20, H.HirType.Int, pos); H.Literal(H.ConstInt 21, H.HirType.Int, pos); H.Literal(H.ConstInt 22, H.HirType.Int, pos); H.Literal(H.ConstInt 23, H.HirType.Int, pos) ], pos)
+              H.BuiltInCall(H.NamedBuiltIn "ARC_R", explicitChannel channel1, [ H.Literal(H.ConstInt 19, H.HirType.Int, pos); H.Literal(H.ConstInt 20, H.HirType.Int, pos); H.Literal(H.ConstInt 21, H.HirType.Int, pos); H.Literal(H.ConstInt 22, H.HirType.Int, pos); H.Literal(H.ConstInt 23, H.HirType.Int, pos) ], pos)
               H.BuiltInCall(H.NamedBuiltIn "BLOCK", None, [ H.Literal(H.ConstInt 24, H.HirType.Int, pos); H.Literal(H.ConstInt 25, H.HirType.Int, pos); H.Literal(H.ConstInt 26, H.HirType.Int, pos); H.Literal(H.ConstInt 27, H.HirType.Int, pos); H.Literal(H.ConstInt 3, H.HirType.Int, pos) ], pos)
               H.BuiltInCall(H.NamedBuiltIn "TURN", None, [ H.Literal(H.ConstInt 30, H.HirType.Int, pos) ], pos)
-              H.BuiltInCall(H.NamedBuiltIn "TURNTO", Some channel1, [ H.Literal(H.ConstInt 45, H.HirType.Int, pos) ], pos) ]
+              H.BuiltInCall(H.NamedBuiltIn "TURNTO", explicitChannel channel1, [ H.Literal(H.ConstInt 45, H.HirType.Int, pos) ], pos) ]
 
     let result =
         interpretProgramWithOptions
@@ -629,14 +657,14 @@ let ``interpreter minimum arity graphics and display primitives dispatch correct
         makeProgram
             Map.empty
             []
-            [ H.BuiltInCall(H.NamedBuiltIn "INK", Some channel0, [ H.Literal(H.ConstInt 7, H.HirType.Int, pos) ], pos)
-              H.BuiltInCall(H.NamedBuiltIn "PAPER", Some channel0, [ H.Literal(H.ConstInt 2, H.HirType.Int, pos) ], pos)
-              H.BuiltInCall(H.NamedBuiltIn "BORDER", Some channel0, [ H.Literal(H.ConstInt 1, H.HirType.Int, pos) ], pos)
-              H.BuiltInCall(H.NamedBuiltIn "SCROLL", Some channel1, [ H.Literal(H.ConstInt 3, H.HirType.Int, pos) ], pos)
-              H.BuiltInCall(H.NamedBuiltIn "WIDTH", Some channel1, [ H.Literal(H.ConstInt 40, H.HirType.Int, pos) ], pos)
-              H.BuiltInCall(H.NamedBuiltIn "PAN", Some channel1, [ H.Literal(H.ConstInt 10, H.HirType.Int, pos) ], pos)
-              H.BuiltInCall(H.NamedBuiltIn "RECOL", Some channel1, [ H.Literal(H.ConstInt 4, H.HirType.Int, pos) ], pos)
-              H.BuiltInCall(H.NamedBuiltIn "PALETTE", Some channel1, [ H.Literal(H.ConstInt 9, H.HirType.Int, pos) ], pos)
+            [ H.BuiltInCall(H.NamedBuiltIn "INK", explicitChannel channel0, [ H.Literal(H.ConstInt 7, H.HirType.Int, pos) ], pos)
+              H.BuiltInCall(H.NamedBuiltIn "PAPER", explicitChannel channel0, [ H.Literal(H.ConstInt 2, H.HirType.Int, pos) ], pos)
+              H.BuiltInCall(H.NamedBuiltIn "BORDER", explicitChannel channel0, [ H.Literal(H.ConstInt 1, H.HirType.Int, pos) ], pos)
+              H.BuiltInCall(H.NamedBuiltIn "SCROLL", explicitChannel channel1, [ H.Literal(H.ConstInt 3, H.HirType.Int, pos) ], pos)
+              H.BuiltInCall(H.NamedBuiltIn "WIDTH", explicitChannel channel1, [ H.Literal(H.ConstInt 40, H.HirType.Int, pos) ], pos)
+              H.BuiltInCall(H.NamedBuiltIn "PAN", explicitChannel channel1, [ H.Literal(H.ConstInt 10, H.HirType.Int, pos) ], pos)
+              H.BuiltInCall(H.NamedBuiltIn "RECOL", explicitChannel channel1, [ H.Literal(H.ConstInt 4, H.HirType.Int, pos) ], pos)
+              H.BuiltInCall(H.NamedBuiltIn "PALETTE", explicitChannel channel1, [ H.Literal(H.ConstInt 9, H.HirType.Int, pos) ], pos)
               H.BuiltInCall(H.NamedBuiltIn "LINE", None, [ H.Literal(H.ConstInt 0, H.HirType.Int, pos); H.Literal(H.ConstInt 1, H.HirType.Int, pos); H.Literal(H.ConstInt 2, H.HirType.Int, pos); H.Literal(H.ConstInt 3, H.HirType.Int, pos) ], pos)
               H.BuiltInCall(H.NamedBuiltIn "LINE_R", None, [ H.Literal(H.ConstInt 4, H.HirType.Int, pos); H.Literal(H.ConstInt 5, H.HirType.Int, pos) ], pos)
               H.BuiltInCall(H.NamedBuiltIn "DLINE", None, [ H.Literal(H.ConstInt 6, H.HirType.Int, pos); H.Literal(H.ConstInt 7, H.HirType.Int, pos); H.Literal(H.ConstInt 8, H.HirType.Int, pos); H.Literal(H.ConstInt 9, H.HirType.Int, pos) ], pos) ]
@@ -675,8 +703,8 @@ let ``interpreter extended arity graphics and display primitives dispatch correc
         makeProgram
             Map.empty
             []
-            [ H.BuiltInCall(H.NamedBuiltIn "BORDER", Some channel0, [ H.Literal(H.ConstInt 5, H.HirType.Int, pos); H.Literal(H.ConstInt 8, H.HirType.Int, pos) ], pos)
-              H.BuiltInCall(H.NamedBuiltIn "PALETTE", Some channel1, [ H.Literal(H.ConstInt 1, H.HirType.Int, pos); H.Literal(H.ConstInt 2, H.HirType.Int, pos); H.Literal(H.ConstInt 3, H.HirType.Int, pos) ], pos)
+            [ H.BuiltInCall(H.NamedBuiltIn "BORDER", explicitChannel channel0, [ H.Literal(H.ConstInt 5, H.HirType.Int, pos); H.Literal(H.ConstInt 8, H.HirType.Int, pos) ], pos)
+              H.BuiltInCall(H.NamedBuiltIn "PALETTE", explicitChannel channel1, [ H.Literal(H.ConstInt 1, H.HirType.Int, pos); H.Literal(H.ConstInt 2, H.HirType.Int, pos); H.Literal(H.ConstInt 3, H.HirType.Int, pos) ], pos)
               H.BuiltInCall(H.NamedBuiltIn "LINE", None, [ H.Literal(H.ConstInt 0, H.HirType.Int, pos); H.Literal(H.ConstInt 0, H.HirType.Int, pos); H.Literal(H.ConstInt 10, H.HirType.Int, pos); H.Literal(H.ConstInt 10, H.HirType.Int, pos); H.Literal(H.ConstInt 20, H.HirType.Int, pos); H.Literal(H.ConstInt 5, H.HirType.Int, pos) ], pos)
               H.BuiltInCall(H.NamedBuiltIn "LINE_R", None, [ H.Literal(H.ConstInt 2, H.HirType.Int, pos); H.Literal(H.ConstInt 3, H.HirType.Int, pos); H.Literal(H.ConstInt 4, H.HirType.Int, pos); H.Literal(H.ConstInt 6, H.HirType.Int, pos) ], pos)
               H.BuiltInCall(H.NamedBuiltIn "DLINE", None, [ H.Literal(H.ConstInt 0, H.HirType.Int, pos); H.Literal(H.ConstInt 0, H.HirType.Int, pos); H.Literal(H.ConstInt 5, H.HirType.Int, pos); H.Literal(H.ConstInt 5, H.HirType.Int, pos); H.Literal(H.ConstInt 9, H.HirType.Int, pos); H.Literal(H.ConstInt 1, H.HirType.Int, pos) ], pos) ]
@@ -771,6 +799,39 @@ let ``interpreter open_new open_in and close handle file channels`` () =
         match result with
         | Result.Ok execution ->
             Assert.That(String.concat "|" execution.Output, Is.EqualTo("hello|hello"))
+            Assert.That(File.ReadAllText(tempPath), Does.Contain("hello"))
+        | Result.Error err ->
+            Assert.Fail($"Expected interpretation to succeed, got %A{err}")
+    finally
+        if File.Exists(tempPath) then
+            File.Delete(tempPath)
+
+[<Test>]
+let ``interpreter print supports implicit channel to file`` () =
+    let tempPath = Path.Combine(Path.GetTempPath(), $"sb-runtime-implicit-{Guid.NewGuid():N}.txt")
+    let ast =
+        Program(
+            pos,
+            [ Line(pos, Some 10, [ ImplicitChannelProcedureCall(pos, "PRINT", str $"\"{tempPath}\"", [ str "\"hello\"" ]) ]) ])
+
+    let options =
+        { defaultRuntimeOptions with
+            Host =
+                DefaultHost.create {
+                    ReadLine = fun () -> None
+                    ReadKey = fun () -> None
+                    KeyAvailable = fun () -> false
+                    KeyRowState = fun _ -> 0
+                    WriteLine = ignore
+                } }
+
+    try
+        let hir = lowerProgram ast
+        let result = interpretProgramWithOptions options hir
+
+        match result with
+        | Result.Ok _ ->
+            Assert.That(File.Exists(tempPath), Is.True)
             Assert.That(File.ReadAllText(tempPath), Does.Contain("hello"))
         | Result.Error err ->
             Assert.Fail($"Expected interpretation to succeed, got %A{err}")
@@ -998,9 +1059,9 @@ let ``interpreter open and close support dynamic screen channels`` () =
         makeProgram
             Map.empty
             []
-            [ H.BuiltInCall(H.NamedBuiltIn "OPEN", Some channel9, [ H.Literal(H.ConstString "scr_", H.HirType.String, pos) ], pos)
-              H.BuiltInCall(H.Print, Some channel9, [ H.Literal(H.ConstString "hello", H.HirType.String, pos) ], pos)
-              H.BuiltInCall(H.NamedBuiltIn "CLOSE", Some channel9, [], pos) ]
+            [ H.BuiltInCall(H.NamedBuiltIn "OPEN", explicitChannel channel9, [ H.Literal(H.ConstString "scr_", H.HirType.String, pos) ], pos)
+              H.BuiltInCall(H.Print, explicitChannel channel9, [ H.Literal(H.ConstString "hello", H.HirType.String, pos) ], pos)
+              H.BuiltInCall(H.NamedBuiltIn "CLOSE", explicitChannel channel9, [], pos) ]
 
     let outputs = ResizeArray<string>()
     let options =
@@ -1029,7 +1090,7 @@ let ``interpreter open parses screen device geometry strings`` () =
         makeProgram
             Map.empty
             []
-            [ H.BuiltInCall(H.NamedBuiltIn "OPEN", Some channel9, [ H.Literal(H.ConstString "scr_448x40a32x216", H.HirType.String, pos) ], pos) ]
+            [ H.BuiltInCall(H.NamedBuiltIn "OPEN", explicitChannel channel9, [ H.Literal(H.ConstString "scr_448x40a32x216", H.HirType.String, pos) ], pos) ]
 
     let host =
         DefaultHost.create {
@@ -1060,7 +1121,7 @@ let ``interpreter open parses console device strings and preserves configured wi
         makeProgram
             Map.empty
             []
-            [ H.BuiltInCall(H.NamedBuiltIn "OPEN", Some channel9, [ H.Literal(H.ConstString "con_300x160a75x10_32", H.HirType.String, pos) ], pos)
+            [ H.BuiltInCall(H.NamedBuiltIn "OPEN", explicitChannel channel9, [ H.Literal(H.ConstString "con_300x160a75x10_32", H.HirType.String, pos) ], pos)
               H.BuiltInCall(H.NamedBuiltIn "MODE", None, [ H.Literal(H.ConstInt 8, H.HirType.Int, pos) ], pos) ]
 
     let host =
@@ -1093,11 +1154,11 @@ let ``interpreter graphics operations respect window pan scale and clipping`` ()
         makeProgram
             Map.empty
             []
-            [ H.BuiltInCall(H.NamedBuiltIn "WINDOW", Some channel1, [ H.Literal(H.ConstInt 100, H.HirType.Int, pos); H.Literal(H.ConstInt 50, H.HirType.Int, pos); H.Literal(H.ConstInt 10, H.HirType.Int, pos); H.Literal(H.ConstInt 20, H.HirType.Int, pos) ], pos)
-              H.BuiltInCall(H.NamedBuiltIn "PAN", Some channel1, [ H.Literal(H.ConstInt 5, H.HirType.Int, pos) ], pos)
-              H.BuiltInCall(H.NamedBuiltIn "SCALE", Some channel1, [ H.Literal(H.ConstInt 200, H.HirType.Int, pos); H.Literal(H.ConstInt 100, H.HirType.Int, pos); H.Literal(H.ConstInt 0, H.HirType.Int, pos) ], pos)
-              H.BuiltInCall(H.NamedBuiltIn "PLOT", Some channel1, [ H.Literal(H.ConstInt 30, H.HirType.Int, pos); H.Literal(H.ConstInt 40, H.HirType.Int, pos) ], pos)
-              H.BuiltInCall(H.NamedBuiltIn "LINE", Some channel1, [ H.Literal(H.ConstInt 0, H.HirType.Int, pos); H.Literal(H.ConstInt 0, H.HirType.Int, pos); H.Literal(H.ConstInt 60, H.HirType.Int, pos); H.Literal(H.ConstInt 60, H.HirType.Int, pos) ], pos) ]
+            [ H.BuiltInCall(H.NamedBuiltIn "WINDOW", explicitChannel channel1, [ H.Literal(H.ConstInt 100, H.HirType.Int, pos); H.Literal(H.ConstInt 50, H.HirType.Int, pos); H.Literal(H.ConstInt 10, H.HirType.Int, pos); H.Literal(H.ConstInt 20, H.HirType.Int, pos) ], pos)
+              H.BuiltInCall(H.NamedBuiltIn "PAN", explicitChannel channel1, [ H.Literal(H.ConstInt 5, H.HirType.Int, pos) ], pos)
+              H.BuiltInCall(H.NamedBuiltIn "SCALE", explicitChannel channel1, [ H.Literal(H.ConstInt 200, H.HirType.Int, pos); H.Literal(H.ConstInt 100, H.HirType.Int, pos); H.Literal(H.ConstInt 0, H.HirType.Int, pos) ], pos)
+              H.BuiltInCall(H.NamedBuiltIn "PLOT", explicitChannel channel1, [ H.Literal(H.ConstInt 30, H.HirType.Int, pos); H.Literal(H.ConstInt 40, H.HirType.Int, pos) ], pos)
+              H.BuiltInCall(H.NamedBuiltIn "LINE", explicitChannel channel1, [ H.Literal(H.ConstInt 0, H.HirType.Int, pos); H.Literal(H.ConstInt 0, H.HirType.Int, pos); H.Literal(H.ConstInt 60, H.HirType.Int, pos); H.Literal(H.ConstInt 60, H.HirType.Int, pos) ], pos) ]
 
     let result = interpretProgramWithOptions { defaultRuntimeOptions with Host = host } hir
 
@@ -1139,7 +1200,7 @@ let ``interpreter close rejects default channels`` () =
         makeProgram
             Map.empty
             []
-            [ H.BuiltInCall(H.NamedBuiltIn "CLOSE", Some channel1, [], pos) ]
+            [ H.BuiltInCall(H.NamedBuiltIn "CLOSE", explicitChannel channel1, [], pos) ]
 
     interpretProgramWithOptions defaultRuntimeOptions hir
     |> assertRuntimeError UnsupportedChannelExecution
@@ -1154,15 +1215,15 @@ let ``interpreter open supports console null and printer devices`` () =
         makeProgram
             Map.empty
             []
-            [ H.BuiltInCall(H.NamedBuiltIn "OPEN", Some channel9, [ H.Literal(H.ConstString "con_", H.HirType.String, pos) ], pos)
-              H.BuiltInCall(H.NamedBuiltIn "OPEN", Some channel10, [ H.Literal(H.ConstString "nul_", H.HirType.String, pos) ], pos)
-              H.BuiltInCall(H.NamedBuiltIn "OPEN", Some channel11, [ H.Literal(H.ConstString "prt_", H.HirType.String, pos) ], pos)
-              H.BuiltInCall(H.Print, Some channel9, [ H.Literal(H.ConstString "console", H.HirType.String, pos) ], pos)
-              H.BuiltInCall(H.Print, Some channel10, [ H.Literal(H.ConstString "discarded", H.HirType.String, pos) ], pos)
-              H.BuiltInCall(H.Print, Some channel11, [ H.Literal(H.ConstString "printer", H.HirType.String, pos) ], pos)
-              H.BuiltInCall(H.NamedBuiltIn "CLOSE", Some channel9, [], pos)
-              H.BuiltInCall(H.NamedBuiltIn "CLOSE", Some channel10, [], pos)
-              H.BuiltInCall(H.NamedBuiltIn "CLOSE", Some channel11, [], pos) ]
+            [ H.BuiltInCall(H.NamedBuiltIn "OPEN", explicitChannel channel9, [ H.Literal(H.ConstString "con_", H.HirType.String, pos) ], pos)
+              H.BuiltInCall(H.NamedBuiltIn "OPEN", explicitChannel channel10, [ H.Literal(H.ConstString "nul_", H.HirType.String, pos) ], pos)
+              H.BuiltInCall(H.NamedBuiltIn "OPEN", explicitChannel channel11, [ H.Literal(H.ConstString "prt_", H.HirType.String, pos) ], pos)
+              H.BuiltInCall(H.Print, explicitChannel channel9, [ H.Literal(H.ConstString "console", H.HirType.String, pos) ], pos)
+              H.BuiltInCall(H.Print, explicitChannel channel10, [ H.Literal(H.ConstString "discarded", H.HirType.String, pos) ], pos)
+              H.BuiltInCall(H.Print, explicitChannel channel11, [ H.Literal(H.ConstString "printer", H.HirType.String, pos) ], pos)
+              H.BuiltInCall(H.NamedBuiltIn "CLOSE", explicitChannel channel9, [], pos)
+              H.BuiltInCall(H.NamedBuiltIn "CLOSE", explicitChannel channel10, [], pos)
+              H.BuiltInCall(H.NamedBuiltIn "CLOSE", explicitChannel channel11, [], pos) ]
 
     let outputs = ResizeArray<string>()
     let options =
@@ -1245,8 +1306,8 @@ let ``default host exposes ql style default screen panes`` () =
     Assert.That(panes.ContainsKey 1, Is.True)
     Assert.That(panes.ContainsKey 2, Is.True)
     Assert.That(panes[0].Window, Is.EqualTo((448, 40, 32, 216)))
-    Assert.That(panes[1].Window, Is.EqualTo((448, 216, 32, 0)))
-    Assert.That(panes[2].Window, Is.EqualTo((448, 216, 32, 0)))
+    Assert.That(panes[1].Window, Is.EqualTo((448, 206, 32, 0)))
+    Assert.That(panes[2].Window, Is.EqualTo((448, 206, 32, 0)))
     Assert.That(panes[1].Text[0, 0].Paper, Is.EqualTo(2))
     Assert.That(panes[0].Text[0, 0].Paper, Is.EqualTo(0))
 
@@ -1308,5 +1369,6 @@ let ``default host maps unchanneled print to output window and input prompt to c
         Assert.That(screenState.Windows[2].Writes |> Seq.toList |> String.concat "|", Is.EqualTo(""))
     | Result.Error err ->
         Assert.Fail($"Expected interpretation to succeed, got %A{err}")
+
 
 

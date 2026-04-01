@@ -72,6 +72,7 @@ let rec private collectReferencedLineNumbers (block: HirBlock) =
                 |> Option.defaultValue Set.empty
             Set.union (collectReferencedLineNumbers thenBlock) elseLines
         | For(_, _, _, _, _, body, _)
+        | ForSequence(_, _, _, _, _, _, _, body, _)
         | Repeat(_, _, body, _) ->
             collectReferencedLineNumbers body
         | Goto(target, _) ->
@@ -295,13 +296,15 @@ and private emitStmt ctx builder level stmt =
             | NamedBuiltIn name -> name
         let channelExpr =
             match channel with
-            | Some expr -> emitExpr ctx expr
+            | Some(ExplicitChannel(expr: HirExpr))
+            | Some(ImplicitChannel(expr: HirExpr)) -> emitExpr ctx expr
             | None -> "make_null()"
         appendLine builder level (emitCall "execute_builtin_statement" ([ $"\"{escapeCString kindName}\""; channelExpr; string args.Length ] @ (args |> List.map (emitExpr ctx))) + ";")
     | Input(channel, prompts, targets, _) ->
         let channelExpr =
             match channel with
-            | Some expr -> emitExpr ctx expr
+            | Some(ExplicitChannel(expr: HirExpr))
+            | Some(ImplicitChannel(expr: HirExpr)) -> emitExpr ctx expr
             | None -> "make_null()"
         appendLine builder level (emitCall "execute_input" ([ channelExpr; string prompts.Length ] @ (prompts |> List.map (emitExpr ctx))) + ";")
         targets
@@ -317,6 +320,8 @@ and private emitStmt ctx builder level stmt =
         emitIf ctx builder level condition thenBlock elseBlock
     | For(loopId, symbolId, startExpr, endExpr, stepExpr, body, _) ->
         emitFor ctx builder level loopId symbolId startExpr endExpr stepExpr body
+    | ForSequence(_, _, _, _, _, _, _, _, _) ->
+        appendLine builder level "runtime_not_supported(\"Sequence FOR loops are not supported by the generated C backend yet.\");"
     | Repeat(loopId, _, body, _) ->
         emitRepeat ctx builder level loopId body
     | Exit(loopId, _) ->

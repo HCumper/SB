@@ -599,9 +599,29 @@ and private evalBuiltInFunction state symbolId argExprs hirType pos =
 and private resolveChannelId state channelExpr =
     match channelExpr with
     | None -> Result.Ok(None, state)
-    | Some expr ->
+    | Some(ExplicitChannel(expr: HirExpr)) ->
         evalExpr state expr
         |> Result.map (fun (value, nextState) -> Some(ChannelId(asInt value)), nextState)
+    | Some(ImplicitChannel _) ->
+        runtimeError UnsupportedChannelExecution None "Implicit channels are only supported for selected built-ins."
+
+and private withResolvedChannel state channelExpr pos action =
+    match channelExpr with
+    | None -> action None state
+    | Some(ExplicitChannel(expr: HirExpr)) ->
+        evalExpr state expr
+        |> Result.bind (fun (value, nextState) -> action (Some(ChannelId(asInt value))) nextState)
+    | Some(ImplicitChannel(expr: HirExpr)) ->
+        evalExpr state expr
+        |> Result.bind (fun (value, nextState) ->
+            match nextState.Options.Host.Channels.Open(asString value) with
+            | Result.Ok channelId ->
+                action (Some channelId) nextState
+                |> Result.bind (fun (flow, finalState) ->
+                    match finalState.Options.Host.Channels.Close(channelId) with
+                    | Result.Ok() -> Result.Ok(flow, finalState)
+                    | Result.Error hostError -> runtimeError UnsupportedChannelExecution (Some pos) (hostErrorText hostError))
+            | Result.Error hostError -> runtimeError UnsupportedChannelExecution (Some pos) (hostErrorText hostError))
 
 and private resolveTargetCell state target =
     match target with
@@ -694,8 +714,7 @@ and private callRoutine state (routine: HirRoutine) args pos =
 and private executeBuiltInCall state kind channel args targets pos =
     match kind with
     | Print ->
-        resolveChannelId state channel
-        |> Result.bind (fun (resolvedChannel, stateAfterChannel) ->
+        withResolvedChannel state channel pos (fun resolvedChannel stateAfterChannel ->
             evalExprList stateAfterChannel args
             |> Result.bind (fun (values, nextState) ->
                 let line =
@@ -706,8 +725,7 @@ and private executeBuiltInCall state kind channel args targets pos =
                 |> Result.bind (fun finalState -> advanceScreenLine resolvedChannel finalState pos)
                 |> Result.map (fun finalState -> Continue, finalState)))
     | BuiltInKind.Input ->
-        resolveChannelId state channel
-        |> Result.bind (fun (resolvedChannel, stateAfterChannel) ->
+        withResolvedChannel state channel pos (fun resolvedChannel stateAfterChannel ->
             let promptChannel =
                 match resolvedChannel with
                 | Some _ -> resolvedChannel
@@ -937,6 +955,13 @@ and private executeBuiltInCall state kind channel args targets pos =
                 match numericArgs with
                 | [ width; height ] ->
                     executeChannelScreenOp resolvedChannel nextState pos (fun screenChannel -> screenChannel.SetCharacterSize(width, height)) (fun screen -> screen.SetCharacterSize(width, height))
+                | _ -> Result.Ok nextState)
+        | "CHAR_USE"
+        | "S_FONT" ->
+            executeScreenOp 2 false (fun resolvedChannel nextState numericArgs ->
+                match numericArgs with
+                | [ font1; font2 ] ->
+                    executeChannelScreenOp resolvedChannel nextState pos (fun screenChannel -> screenChannel.SetCharacterFonts(font1, font2)) (fun screen -> screen.SetCharacterFonts(font1, font2))
                 | _ -> Result.Ok nextState)
         | "INK" ->
             executeScreenOp 1 true (fun resolvedChannel nextState numericArgs ->
@@ -1392,6 +1417,68 @@ and private executeStmt resolveLine gosubStack state stmt =
                                 | _ -> Result.Ok(flow, bodyState))
                     iterate nextState (asInt startValue))
             | _ -> runtimeError InvalidForBounds (Some pos) "FOR requires start, end, and step values.")
+    | ForSequence(loopId, symbolId, prefixExprs, startExpr, endExpr, suffixExprs, stepExpr, body, pos) ->
+        let allExprs = prefixExprs @ [ startExpr; endExpr ] @ suffixExprs @ [ stepExpr ]
+        evalExprList state allExprs
+        |> Result.bind (fun (values, nextState) ->
+            let prefixCount = prefixExprs.Length
+            let suffixCount = suffixExprs.Length
+            let expectedCount = prefixCount + suffixCount + 3
+
+            if values.Length <> expectedCount then
+                runtimeError InvalidForBounds (Some pos) "FOR sequence requires discrete values, range bounds, and step values."
+            else
+                let prefixValues = values |> List.take prefixCount
+                let startValue = values |> List.item prefixCount
+                let endValue = values |> List.item (prefixCount + 1)
+                let suffixValues = values |> List.skip (prefixCount + 2) |> List.take suffixCount
+                let stepValue = values |> List.last
+
+                requireCell nextState symbolId pos
+                |> Result.bind (fun cell ->
+                    let executeCurrent currentState currentValue =
+                        cell.Value <- IntValue currentValue
+                        executeBlock resolveLine currentState body 0 gosubStack (fun state _ -> Result.Ok(Continue, state))
+
+                    let rec iterateDiscrete remaining currentState =
+                        match remaining with
+                        | [] -> Result.Ok(Continue, currentState)
+                        | value :: tail ->
+                            executeCurrent currentState (asInt value)
+                            |> Result.bind (fun (flow, bodyState) ->
+                                match flow with
+                                | Continue -> iterateDiscrete tail bodyState
+                                | NextLoop flowId when flowId = loopId -> iterateDiscrete tail bodyState
+                                | ExitLoop flowId when flowId = loopId -> Result.Ok(Continue, bodyState)
+                                | _ -> Result.Ok(flow, bodyState))
+
+                    let rec iterateRange currentState currentValue =
+                        let step = asInt stepValue
+                        let shouldContinue =
+                            if step >= 0 then currentValue <= asInt endValue
+                            else currentValue >= asInt endValue
+
+                        if not shouldContinue then
+                            Result.Ok(Continue, currentState)
+                        else
+                            executeCurrent currentState currentValue
+                            |> Result.bind (fun (flow, bodyState) ->
+                                match flow with
+                                | Continue -> iterateRange bodyState (currentValue + step)
+                                | NextLoop flowId when flowId = loopId -> iterateRange bodyState (currentValue + step)
+                                | ExitLoop flowId when flowId = loopId -> Result.Ok(Continue, bodyState)
+                                | _ -> Result.Ok(flow, bodyState))
+
+                    iterateDiscrete prefixValues nextState
+                    |> Result.bind (fun (flowAfterPrefix, prefixState) ->
+                        match flowAfterPrefix with
+                        | Continue ->
+                            iterateRange prefixState (asInt startValue)
+                            |> Result.bind (fun (flowAfterRange, rangeState) ->
+                                match flowAfterRange with
+                                | Continue -> iterateDiscrete suffixValues rangeState
+                                | _ -> Result.Ok(flowAfterRange, rangeState))
+                        | _ -> Result.Ok(flowAfterPrefix, prefixState))))
     | Repeat(loopId, _, body, _) ->
         let rec iterate currentState =
             executeBlock resolveLine currentState body 0 gosubStack (fun state _ -> Result.Ok(Continue, state))
@@ -1516,6 +1603,7 @@ and private buildLineTargets rootBlock =
 
                     build thenBlock continueAfter @ elseTargets
                 | For(_, _, _, _, _, body, _)
+                | ForSequence(_, _, _, _, _, _, _, body, _)
                 | Repeat(_, _, body, _) -> build body continueAfter
                 | _ -> []
 

@@ -15,6 +15,9 @@ type DefaultHostOptions = {
 }
 
 module private ScreenDefaults =
+    let defaultPaneGap =
+        10
+
     let defaultPaperForChannel channelNumber =
         match channelNumber with
         | 1 -> 2
@@ -31,10 +34,14 @@ module private ScreenDefaults =
             if mode.Height >= 256 then 40
             else max 24 (mode.Height / 6)
 
-        let topHeight = max 1 (mode.Height - bottomHeight)
+        let paneGap =
+            min defaultPaneGap (max 1 (mode.Height / 16))
+
+        let topHeight = max 1 (mode.Height - bottomHeight - paneGap)
+        let bottomY = min (mode.Height - bottomHeight) (topHeight + paneGap)
 
         match channelNumber with
-        | 0 -> safeWidth, bottomHeight, safeX, mode.Height - bottomHeight
+        | 0 -> safeWidth, bottomHeight, safeX, bottomY
         | 1
         | 2 -> safeWidth, topHeight, safeX, 0
         | _ -> mode.Width, mode.Height, 0, 0
@@ -256,6 +263,7 @@ type private DefaultScreenChannel(id: ChannelId, kind: ChannelKind, reader: unit
     let mutable palette = None
     let mutable cursor = 0, 0
     let mutable characterSize = 0, 0
+    let mutable characterFonts = 0, 0
     let mutable ink = [ 7 ]
     let mutable paper = 0
     let mutable border = 0
@@ -272,6 +280,7 @@ type private DefaultScreenChannel(id: ChannelId, kind: ChannelKind, reader: unit
         palette <- None
         cursor <- 0, 0
         characterSize <- ScreenDefaults.defaultCharacterSizeForMode selectedMode
+        characterFonts <- 0, 0
         ink <- [ 7 ]
         paper <- ScreenDefaults.defaultPaperForChannel channelNumber
         border <- 0
@@ -341,6 +350,12 @@ type private DefaultScreenChannel(id: ChannelId, kind: ChannelKind, reader: unit
         member _.GetCursor() = cursor
         member _.SetCharacterSize(width, height) = characterSize <- width, height
         member _.GetCharacterSize() = characterSize
+        member _.SetCharacterFonts(font1, font2) =
+            let currentFont1, currentFont2 = characterFonts
+            characterFonts <-
+                (if font1 = -1 then currentFont1 else font1),
+                (if font2 = -1 then currentFont2 else font2)
+        member _.GetCharacterFonts() = characterFonts
         member _.SetInk(values: int list) = ink <- values
         member _.SetPaper(value: int) = paper <- value
         member _.SetBorder(value: int) = border <- value
@@ -439,7 +454,8 @@ type private DefaultChannelManager(defaultChannels: IChannel list, reader: unit 
             Path.Combine(root, leafName))
 
     let createNamedChannel (requestedId: ChannelId) (name: string) (fileModeOverride: FileOpenMode option) =
-        let normalized = name.Trim().ToUpperInvariant()
+        let trimmed = name.Trim()
+        let normalized = trimmed.ToUpperInvariant()
 
         if normalized.StartsWith("CON") then
             match ScreenDeviceStrings.tryParseScreenChannelConfig normalized with
@@ -459,6 +475,13 @@ type private DefaultChannelManager(defaultChannels: IChannel list, reader: unit 
             Result.Ok(NullChannel(requestedId) :> IChannel)
         elif normalized.StartsWith("PRT") then
             Result.Ok(DefaultPrinterChannel(requestedId, writer) :> IChannel)
+        elif Path.IsPathRooted(trimmed) then
+            try
+                let mode = fileModeOverride |> Option.defaultValue OpenForUpdate
+                let channel = DefaultFileChannel(requestedId, trimmed, mode) :> IChannel
+                Result.Ok channel
+            with
+            | ex -> Result.Error(DeviceOpenFailed ex.Message)
         else
             match tryResolveDirectoryBackedPath normalized with
             | Some fullPath ->
@@ -502,8 +525,13 @@ type private DefaultChannelManager(defaultChannels: IChannel list, reader: unit 
             |> Result.map (fun channel -> channels[requestedId] <- channel)
 
     interface IChannelManager with
-        member _.Open(_name: string) =
-            Result.Error(UnsupportedHostOperation "Dynamic channel opening is not implemented in DefaultHost.")
+        member _.Open(name: string) =
+            let mutable candidate = 3
+            while channels.ContainsKey(ChannelId candidate) do
+                candidate <- candidate + 1
+            let channelId = ChannelId candidate
+            this.OpenResolved(channelId, name, None)
+            |> Result.map (fun () -> channelId)
 
         member _.OpenAs(requestedId: ChannelId, name: string) =
             this.OpenResolved(requestedId, name, None)
@@ -534,6 +562,7 @@ type private DefaultScreenDevice(writer: string -> unit, buffer: ScreenBuffer) =
     let mutable palette = None
     let mutable cursor = 0, 0
     let mutable characterSize = 0, 0
+    let mutable characterFonts = 0, 0
     let mutable ink = [ 7 ]
     let mutable paper = 0
     let mutable mode = ScreenDefaults.supportedModes[0]
@@ -548,6 +577,7 @@ type private DefaultScreenDevice(writer: string -> unit, buffer: ScreenBuffer) =
         palette <- None
         cursor <- 0, 0
         characterSize <- ScreenDefaults.defaultCharacterSizeForMode selectedMode
+        characterFonts <- 0, 0
         ink <- [ 7 ]
         paper <- 0
         let width, height, _, _ = window
@@ -590,6 +620,12 @@ type private DefaultScreenDevice(writer: string -> unit, buffer: ScreenBuffer) =
         member _.GetCursor() = cursor
         member _.SetCharacterSize(width, height) = characterSize <- width, height
         member _.GetCharacterSize() = characterSize
+        member _.SetCharacterFonts(font1, font2) =
+            let currentFont1, currentFont2 = characterFonts
+            characterFonts <-
+                (if font1 = -1 then currentFont1 else font1),
+                (if font2 = -1 then currentFont2 else font2)
+        member _.GetCharacterFonts() = characterFonts
         member _.WriteText text =
             let width, height, x, y = window
             let cursorX, cursorY = cursor
@@ -889,6 +925,8 @@ type private DefaultRuntimeHost(options: DefaultHostOptions) =
                 member _.GetCursor() = (channel1 :> IScreenChannel).GetCursor()
                 member _.SetCharacterSize(width, height) = (channel1 :> IScreenChannel).SetCharacterSize(width, height)
                 member _.GetCharacterSize() = (channel1 :> IScreenChannel).GetCharacterSize()
+                member _.SetCharacterFonts(font1, font2) = (channel1 :> IScreenChannel).SetCharacterFonts(font1, font2)
+                member _.GetCharacterFonts() = (channel1 :> IScreenChannel).GetCharacterFonts()
                 member _.WriteText(text) = (channel1 :> IScreenChannel).WriteText(text)
                 member _.SetInk(values) = (channel1 :> IScreenChannel).SetInk(values)
                 member _.SetPaper(value) = (channel1 :> IScreenChannel).SetPaper(value)

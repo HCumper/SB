@@ -73,6 +73,27 @@ let ``loadAstFromInput preprocesses ssb source before parsing`` () =
     )
 
 [<Test>]
+let ``loadAstFromInput verbose ssb prints preprocessed superbasic`` () =
+    withTempSource "PRINT 1\n" (fun path ->
+        let originalOut = Console.Out
+        let writer = new StringWriter()
+        Console.SetOut(writer)
+        try
+            let settings =
+                { testSettings path with
+                    Verbose = true }
+
+            match loadAstFromInput settings with
+            | Error err -> Assert.Fail($"Expected transformed SSB input to parse successfully, got %A{err}")
+            | Ok _ ->
+                let output = writer.ToString()
+                Assert.That(output, Does.Contain("Preprocessed SuperBASIC:"))
+                Assert.That(output, Does.Contain("1000 PRINT 1"))
+        finally
+            Console.SetOut(originalOut)
+    )
+
+[<Test>]
 let ``loadAstFromInput keeps numbered superbasic source unchanged`` () =
     withTempSource "10 PRINT 1\n" (fun path ->
         match loadAstFromInput (testSettings path) with
@@ -189,4 +210,23 @@ let ``loadAstFromInput relaxed syntax checking rejects out of sequence routine b
         | Error(ParseError message) -> Assert.That(message, Does.Contain("Out-of-sequence line number 20 after 30 in routine 'demo'"))
         | Error(FileNotFound fileName) -> Assert.Fail($"Expected line sequence error, got missing file %s{fileName}")
         | Ok _ -> Assert.Fail("Expected relaxed mode to reject out-of-sequence routine line numbers.")
+    )
+
+[<Test>]
+let ``loadAstFromInput relaxed syntax checking accepts compact select clauses with comma separated matches`` () =
+    withTempSource "10 REPeat keyLoop\n20 SELect ON keyCode\n30 =32,200\n40 PRINT keyCode\n50 =192\n60 PRINT 0\n70 END SELect\n80 END REPeat keyLoop\n" (fun path ->
+        match loadAstFromInput (testSettingsWithSyntaxChecking Relaxed path) with
+        | Error(ParseError message) -> Assert.Fail($"Expected compact SELECT comma clauses to preserve line ordering, got %s{message}")
+        | Error(FileNotFound fileName) -> Assert.Fail($"Expected parsed source, got missing file %s{fileName}")
+        | Ok(_, _, Program(_, lines)) -> Assert.That(lines, Is.Not.Empty)
+    )
+
+[<Test>]
+let ``loadAstFromInput treats open device names as string literals`` () =
+    withTempSource "10 OPEN #10,con__1\n20 OPEN #5,scr_\n" (fun path ->
+        match loadAstFromInput (testSettingsWithSyntaxChecking Relaxed path) with
+        | Error err -> Assert.Fail($"Expected OPEN device literals to parse, got %A{err}")
+        | Ok(_, _, Program(_, [ Line(_, Some 10, [ ChannelProcedureCall(_, "OPEN", NumberLiteral(_, _, "10"), [ StringLiteral(_, _, "\"con__1\"") ]) ])
+                               ; Line(_, Some 20, [ ChannelProcedureCall(_, "OPEN", NumberLiteral(_, _, "5"), [ StringLiteral(_, _, "\"scr_\"") ]) ]) ])) -> ()
+        | Ok(_, _, ast) -> Assert.Fail($"Unexpected AST for OPEN device literals: %A{ast}")
     )
