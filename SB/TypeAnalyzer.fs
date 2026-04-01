@@ -16,11 +16,13 @@ open ProcessingTypes
 /// and implicit typing rules.
 let updateSymbolTypeAndName
     (implicitInts: Set<string>)
+    (implicitReals: Set<string>)
     (implicitStrings: Set<string>)
     (sym: Symbol)
     : Symbol =
 
     let implicitInts = implicitInts |> Set.map normalizeIdentifier
+    let implicitReals = implicitReals |> Set.map normalizeIdentifier
     let implicitStrings = implicitStrings |> Set.map normalizeIdentifier
 
     let updateCommon (commonSym: CommonSymbol) =
@@ -34,6 +36,7 @@ let updateSymbolTypeAndName
 
         let finalType =
             if implicitInts.Contains normalizedName then SBType.Integer
+            elif implicitReals.Contains normalizedName then SBType.Real
             elif implicitStrings.Contains normalizedName then SBType.String
             else baseType
 
@@ -79,6 +82,7 @@ let updateSymbolTypeAndName
 /// Traverse the symbol table and update each symbol's evaluated type and name.
 let fillImplicitTypesAndModifyNames
     (implicitInts: Set<string>)
+    (implicitReals: Set<string>)
     (implicitStrings: Set<string>)
     (symTab: SymbolTable)
     : SymbolTable =
@@ -91,7 +95,7 @@ let fillImplicitTypesAndModifyNames
             scope.Symbols
             |> Map.toList
             |> List.map (fun (_, sym) ->
-                let updated = updateSymbolTypeAndName implicitInts implicitStrings sym
+                let updated = updateSymbolTypeAndName implicitInts implicitReals implicitStrings sym
                 Symbol.normalizedName updated, updated)
             |> Map.ofList
 
@@ -116,5 +120,12 @@ let fillImplicitTypesAndModifyNamesInState (state: ProcessingState) : Processing
         |> Seq.map normalizeIdentifier
         |> Set.ofSeq
 
-    let newSymTab = fillImplicitTypesAndModifyNames implicitInts implicitStrings state.SymTab
+    let implicitReals =
+        state.ImplicitTyping
+        |> Map.values
+        |> Seq.collect (fun rule -> rule.Reals)
+        |> Seq.map normalizeIdentifier
+        |> Set.ofSeq
+
+    let newSymTab = fillImplicitTypesAndModifyNames implicitInts implicitReals implicitStrings state.SymTab
     { state with SymTab = newSymTab }

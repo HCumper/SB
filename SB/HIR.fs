@@ -150,6 +150,7 @@ and HirStmt =
     | ProcCall of SymbolId * HirChannel option * HirCallArg list * SourcePosition
     | BuiltInCall of BuiltInKind * HirChannel option * HirExpr list * SourcePosition
     | Input of HirChannel option * HirExpr list * HirTarget list * SourcePosition
+    | WhenError of HirBlock * SourcePosition
     | If of HirExpr * HirBlock * HirBlock option * SourcePosition
     | For of LoopId * SymbolId * HirExpr * HirExpr * HirExpr * HirBlock * SourcePosition
     | ForSequence of LoopId * SymbolId * HirExpr list * HirExpr * HirExpr * HirExpr list * HirExpr * HirBlock * SourcePosition

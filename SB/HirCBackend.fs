@@ -316,6 +316,8 @@ and private emitStmt ctx builder level stmt =
                 | DynamicWriteVar(_, typ, _)
                 | DynamicWriteArrayElem(_, _, typ, _) -> $"read_input_value({index}, {typeTag typ})"
             appendLine builder level (emitTargetWrite ctx target valueExpr))
+    | WhenError(_, _) ->
+        appendLine builder level "runtime_not_supported(\"WHEN ERROR is only supported by the interpreter.\");"
     | If(condition, thenBlock, elseBlock, _) ->
         emitIf ctx builder level condition thenBlock elseBlock
     | For(loopId, symbolId, startExpr, endExpr, stepExpr, body, _) ->

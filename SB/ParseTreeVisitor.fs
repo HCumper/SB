@@ -122,6 +122,9 @@ type ASTBuildingVisitor() =
 
         knownPrefixes |> List.exists lowered.StartsWith
 
+    member private _.IsIgnoredDirectiveName (name: string) =
+        (normalizeIdentifier name).StartsWith("TURBO_")
+
     member private this.NormalizeOpenArgs (name: string) (args: Expr list) =
         if not (openBuiltInNames.Contains(normalizeIdentifier name)) then
             args
@@ -200,6 +203,22 @@ type ASTBuildingVisitor() =
 
                 Some(channelExpr, remainingArgs)
         | [] -> None
+
+    member private this.TryCollectToChannelCall(tail: SBParser.StmtTailContext) =
+        let segments = tail.stmtSegment() |> Seq.toList
+        match segments with
+        | first :: rest when isNull (first.separator()) && not (isNull (first.stmtArg())) ->
+            match first.stmtArg().toChanArg() with
+            | null -> None
+            | toChanArg ->
+                let channelExpr = this.SafeAcceptExpr(toChanArg.expr())
+                let remainingArgs =
+                    rest
+                    |> List.collect (fun segment -> segment.Accept(this))
+                    |> List.map (fun node -> singleExpr tail [ node ])
+
+                Some(channelExpr, remainingArgs)
+        | _ -> None
 
     member private this.CollectPrintCallsFromStmtTail(pos: SourcePosition, name: string, mkStmt: Expr list -> Stmt, tail: SBParser.StmtTailContext) =
         let mutable groups : Expr list list = []
@@ -295,6 +314,20 @@ type ASTBuildingVisitor() =
                 | stmtList -> this.CollectPlainStmtList(stmtList)
 
             Line(p, lineNo, statements))
+
+    member private this.AppendIfTerminatorLine (terminator: SBParser.IfTerminatorContext) (lines: Line list) =
+        match terminator with
+        | null -> lines
+        | _ ->
+            match terminator.plainStmtlist() with
+            | null -> lines
+            | stmtList ->
+                let lineNo =
+                    match terminator.lineNumber() with
+                    | null -> None
+                    | ln -> parseLineNumber (ln.GetText())
+
+                lines @ [ Line(posOfTree terminator, lineNo, this.CollectPlainStmtList(stmtList)) ]
 
     override this.VisitProgram(ctx: SBParser.ProgramContext) =
         let p = posOfTree ctx
@@ -434,15 +467,31 @@ type ASTBuildingVisitor() =
 
     override this.VisitImplicitDecl(ctx: SBParser.ImplicitDeclContext) =
         let p = posOfTree ctx
-        let kw = ctx.Implic().GetText()
+        let kw = ctx.GetChild(0).GetText()
         let suffix =
-            if String.IsNullOrEmpty kw then "" else string kw.[kw.Length - 1]
+            if String.IsNullOrEmpty kw then ""
+            elif kw.EndsWith("%") || kw.EndsWith("$") then string kw.[kw.Length - 1]
+            else string (Char.ToUpperInvariant kw.[kw.Length - 1])
         let names =
             ctx.unparenthesizedlist().expr()
             |> Seq.map (fun e -> singleExpr e (e.Accept(this)))
             |> Seq.choose (function Identifier(_, _, name) -> Some name | _ -> None)
             |> Seq.toList
         single (StmtNode(ImplicitStmt(p, suffix, names)))
+
+    override this.VisitManifestDecl(ctx: SBParser.ManifestDeclContext) =
+        ctx.manifestStmt().Accept(this)
+
+    override this.VisitManifestStmt(ctx: SBParser.ManifestStmtContext) =
+        let p = posOfTree ctx
+        let items =
+            ctx.manifestItem()
+            |> Seq.map (fun item ->
+                let name = item.ID().GetText()
+                let value = this.SafeAcceptExpr(item.expr())
+                name, value)
+            |> Seq.toList
+        single (StmtNode(ManifestStmt(p, items)))
 
     override this.VisitReferenceDecl(ctx: SBParser.ReferenceDeclContext) =
         let p = posOfTree ctx
@@ -561,38 +610,48 @@ type ASTBuildingVisitor() =
     override this.VisitChannelProcCallStmt(ctx: SBParser.ChannelProcCallStmtContext) =
         let p = posOfTree ctx
         let name = ctx.ID().GetText()
-        let channel = singleExpr (ctx.chanArg()) (ctx.chanArg().Accept(this))
-        match ctx.stmtTail() with
-        | null -> single (StmtNode(ChannelProcedureCall(p, name, channel, [])))
-        | tail when String.Equals(name, "PRINT", StringComparison.OrdinalIgnoreCase) ->
-            this.CollectPrintCallsFromStmtTail(p, name, (fun args -> ChannelProcedureCall(p, name, channel, args)), tail)
-        | tail ->
-            let args = this.CollectStmtArgs(tail) |> this.NormalizeOpenArgs name
-            single (StmtNode(ChannelProcedureCall(p, name, channel, args)))
+        if this.IsIgnoredDirectiveName name then
+            single (StmtNode(Remark(p, ctx.GetText())))
+        else
+            let channel = singleExpr (ctx.chanArg()) (ctx.chanArg().Accept(this))
+            match ctx.stmtTail() with
+            | null -> single (StmtNode(ChannelProcedureCall(p, name, channel, [])))
+            | tail when String.Equals(name, "PRINT", StringComparison.OrdinalIgnoreCase) ->
+                this.CollectPrintCallsFromStmtTail(p, name, (fun args -> ChannelProcedureCall(p, name, channel, args)), tail)
+            | tail ->
+                let args = this.CollectStmtArgs(tail) |> this.NormalizeOpenArgs name
+                single (StmtNode(ChannelProcedureCall(p, name, channel, args)))
 
     override this.VisitProcedureCallStmt(ctx: SBParser.ProcedureCallStmtContext) =
         let p = posOfTree ctx
         let name = ctx.ID().GetText()
-        match ctx.stmtArglist() with
-        | null -> single (StmtNode(ProcedureCall(p, name, [])))
-        | sa when not (isNull (sa.stmtTail())) ->
-            match this.TryCollectImplicitChannelCall(sa.stmtTail()) with
-            | Some(channelExpr, args) ->
-                single (StmtNode(ImplicitChannelProcedureCall(p, name, channelExpr, this.NormalizeOpenArgs name args)))
-            | None when String.Equals(name, "PRINT", StringComparison.OrdinalIgnoreCase) ->
-                this.CollectPrintCallsFromStmtTail(p, name, (fun args -> ProcedureCall(p, name, args)), sa.stmtTail())
-            | None ->
+        if this.IsIgnoredDirectiveName name then
+            single (StmtNode(Remark(p, ctx.GetText())))
+        else
+            match ctx.stmtArglist() with
+            | null -> single (StmtNode(ProcedureCall(p, name, [])))
+            | sa when not (isNull (sa.stmtTail())) ->
+                match this.TryCollectImplicitChannelCall(sa.stmtTail()) with
+                | Some(channelExpr, args) ->
+                    single (StmtNode(ImplicitChannelProcedureCall(p, name, channelExpr, this.NormalizeOpenArgs name args)))
+                | None ->
+                    match this.TryCollectToChannelCall(sa.stmtTail()) with
+                    | Some(channelExpr, args) ->
+                        single (StmtNode(ChannelProcedureCall(p, name, channelExpr, this.NormalizeOpenArgs name args)))
+                    | None when String.Equals(name, "PRINT", StringComparison.OrdinalIgnoreCase) ->
+                        this.CollectPrintCallsFromStmtTail(p, name, (fun args -> ProcedureCall(p, name, args)), sa.stmtTail())
+                    | None ->
+                        let args =
+                            sa.Accept(this)
+                            |> List.map (fun node -> singleExpr sa [ node ])
+                            |> this.NormalizeOpenArgs name
+                        single (StmtNode(ProcedureCall(p, name, args)))
+            | sa ->
                 let args =
                     sa.Accept(this)
                     |> List.map (fun node -> singleExpr sa [ node ])
                     |> this.NormalizeOpenArgs name
                 single (StmtNode(ProcedureCall(p, name, args)))
-        | sa ->
-            let args =
-                sa.Accept(this)
-                |> List.map (fun node -> singleExpr sa [ node ])
-                |> this.NormalizeOpenArgs name
-            single (StmtNode(ProcedureCall(p, name, args)))
 
     override this.VisitLvalue(ctx: SBParser.LvalueContext) =
         ctx.postfixName().Accept(this)
@@ -616,7 +675,11 @@ type ASTBuildingVisitor() =
 
     override this.VisitStmtArg(ctx: SBParser.StmtArgContext) =
         if not (isNull (ctx.chanArg())) then ctx.chanArg().Accept(this)
+        elif not (isNull (ctx.toChanArg())) then ctx.toChanArg().Accept(this)
         else ctx.rangedExpr().Accept(this)
+
+    override this.VisitToChanArg(ctx: SBParser.ToChanArgContext) =
+        ctx.expr().Accept(this)
 
     override this.VisitRangedExpr(ctx: SBParser.RangedExprContext) =
         let p = posOfTree ctx
@@ -792,31 +855,31 @@ type ASTBuildingVisitor() =
                     else None
                 t, e
             else
-                let t =
+                let terminator = ctx.ifTerminator()
+                let thenLines =
                     match ctx.ifBlock() with
-                    | null -> LineBlock([])
+                    | null -> []
                     | ib ->
-                        let lines =
-                            ib.ifBodyLine()
-                            |> Seq.choose (fun bodyLine ->
-                                match bodyLine.line() with
-                                | null -> None
-                                | line -> Some (singleLine line (line.Accept(this))))
-                            |> Seq.toList
-                        LineBlock(lines)
-                let e =
-                    match ctx.elseBlock() with
-                    | null -> None
-                    | eb ->
-                        let lines =
-                            eb.elseBodyLine()
-                            |> Seq.choose (fun bodyLine ->
-                                match bodyLine.line() with
-                                | null -> None
-                                | line -> Some (singleLine line (line.Accept(this))))
-                            |> Seq.toList
-                        Some (LineBlock(lines))
-                t, e
+                        ib.ifBodyLine()
+                        |> Seq.choose (fun bodyLine ->
+                            match bodyLine.line() with
+                            | null -> None
+                            | line -> Some (singleLine line (line.Accept(this))))
+                        |> Seq.toList
+
+                match ctx.elseBlock() with
+                | null ->
+                    LineBlock(this.AppendIfTerminatorLine terminator thenLines), None
+                | eb ->
+                    let elseLines =
+                        eb.elseBodyLine()
+                        |> Seq.choose (fun bodyLine ->
+                            match bodyLine.line() with
+                            | null -> None
+                            | line -> Some (singleLine line (line.Accept(this))))
+                        |> Seq.toList
+
+                    LineBlock(thenLines), Some (LineBlock(this.AppendIfTerminatorLine terminator elseLines))
 
         single (StmtNode(IfStmt(p, cond, thenPart, elsePart)))
 
@@ -936,7 +999,9 @@ type ASTBuildingVisitor() =
         let p = posOfTree ctx
         let terms =
             this.SafeChildren(ctx.andExpr()) |> Seq.map (fun x -> this.SafeAcceptExpr(x)) |> Seq.toList
-        let ops = this.OperatorTexts(ctx, set [ "OR"; "XOR" ])
+        let ops =
+            this.OperatorTexts(ctx, set [ "OR"; "||"; "XOR"; "^^" ])
+            |> List.map (function | "^^" -> "XOR" | "||" -> "OR" | other -> other)
         match terms with
         | [] -> []
         | first :: rest -> single (ExprNode(this.FoldLeft(p, first, ops, rest)))
@@ -1028,6 +1093,8 @@ type ASTBuildingVisitor() =
         let p = posOfTree ctx
         if not (isNull (ctx.Integer())) then
             single (ExprNode(mkNumberLiteral p (ctx.Integer().GetText())))
+        elif not (isNull (ctx.HexInteger())) then
+            single (ExprNode(mkNumberLiteral p (ctx.HexInteger().GetText())))
         elif not (isNull (ctx.Real())) then
             single (ExprNode(mkNumberLiteral p (ctx.Real().GetText())))
         elif not (isNull (ctx.String())) then
@@ -1067,6 +1134,7 @@ type ASTBuildingVisitor() =
         let p = posOfToken sym
         match SBLexer.DefaultVocabulary.GetSymbolicName(sym.Type) with
         | "INTEGER" -> single (ExprNode(mkNumberLiteral p sym.Text))
+        | "HEXINTEGER" -> single (ExprNode(mkNumberLiteral p sym.Text))
         | "REAL" -> single (ExprNode(mkNumberLiteral p sym.Text))
         | "STRING" -> single (ExprNode(mkStringLiteral p sym.Text))
         | _ -> []

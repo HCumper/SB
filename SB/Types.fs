@@ -140,6 +140,7 @@ type SymbolTable = Map<string, Scope>
 
 type ImplicitTypingRule = {
     Integers: Set<string>
+    Reals: Set<string>
     Strings: Set<string>
 }
 

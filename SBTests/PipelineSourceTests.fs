@@ -230,3 +230,21 @@ let ``loadAstFromInput treats open device names as string literals`` () =
                                ; Line(_, Some 20, [ ChannelProcedureCall(_, "OPEN", NumberLiteral(_, _, "5"), [ StringLiteral(_, _, "\"scr_\"") ]) ]) ])) -> ()
         | Ok(_, _, ast) -> Assert.Fail($"Unexpected AST for OPEN device literals: %A{ast}")
     )
+
+[<Test>]
+let ``loadAstFromInput expands chained end if closers on one numbered line`` () =
+    withTempSource
+        "12510 REPeat lp\n12514 IF Invalid_Address(link_ptr)\n12518 para_base = ALLOCATION(comms_area_sz,0,0)\n12546 EXIT lp : END IF\n12550 work_ptr = PEEK_L(4+link_ptr)\n12554 IF NOT Invalid_Address(work_ptr)\n12558 IF PEEK$(work_ptr+2,20) = watermark$\n12566 IF work_ptr > 0\n12570 IF PEEK_W(work_ptr) = 999\n12578 POKE_L work_ptr, 0\n12582 END IF : END IF\n12586 para_base = link_ptr : EXIT lp\n12590 END IF : END IF\n12594 prior_link = link_ptr\n12598 link_ptr = PEEK_L(link_ptr)\n12602 END REPeat lp\n"
+        (fun path ->
+            match loadAstFromInput (testSettingsWithSyntaxChecking Relaxed path) with
+            | Error err -> Assert.Fail($"Expected chained END IF source to parse, got %A{err}")
+            | Ok(_, _, Program(_, lines)) -> Assert.That(lines, Is.Not.Empty))
+
+[<Test>]
+let ``loadAstFromInput expands numbered else lines with inline body and chained end if closers`` () =
+    withTempSource
+        "12718 IF OPTION_CMD$<>\"*\"\n12702 prog$ = OPTION_CMD$\n12706 IF LEN(prog$)>31:prog$=prog$(1 TO 31)\n12710 ELSE : restart_flag = 1 : END IF : END IF\n12714 i=buffer_size%\n"
+        (fun path ->
+            match loadAstFromInput (testSettingsWithSyntaxChecking Relaxed path) with
+            | Error err -> Assert.Fail($"Expected numbered ELSE inline-body source to parse, got %A{err}")
+            | Ok(_, _, Program(_, lines)) -> Assert.That(lines, Is.Not.Empty))

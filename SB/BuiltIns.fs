@@ -49,6 +49,7 @@ let coreSuperBasicKeywords =
       "CALL"; "CHAR_USE"; "CHR$"; "CIRCLE"; "CIRCLE_R"; "CLEAR"; "CLOSE"; "CLS"; "CODE"; "CONTINUE"; "COPY"; "COPY_N"; "COS"; "COT"; "CSIZE"; "CURSOR"
       "DATA"; "DATE"; "DATE$"; "DAY$"; "DEFine FuNction"; "DEFine PROCedure"; "DEG"; "DELETE"; "DIM"; "DIMN"; "DIR"; "DIV"; "DLINE"
       "EDIT"; "ELLIPSE"; "ELLIPSE_R"; "ELSE"; "END DEFine"; "END FOR"; "END IF"; "END REPeat"; "END SELect"; "EOF"; "EXEC"; "EXEC_W"; "EXIT"; "EXP"
+      "ERLIN"; "ERNUM"; "ERR_NC"; "ERR_NJ"; "ERR_OM"; "ERR_OR"; "ERR_BO"; "ERR_NO"; "ERR_NF"; "ERR_EX"; "ERR_IU"; "ERR_EF"; "ERR_DF"; "ERR_BN"; "ERR_TE"; "ERR_FF"; "ERR_BP"; "ERR_FE"; "ERR_XP"; "ERR_OV"; "ERR_NI"; "ERR_RO"; "ERR_BL"
       "FILL"; "FILL$"; "FLASH"; "FOR"; "FORMAT"
       "GOSUB"; "GOTO"
       "IF"; "INK"; "INKEY$"; "INPUT"; "INSTR"; "INT"
@@ -73,6 +74,7 @@ let private coreCallableBuiltInNames =
       "CALL"; "CHAR_USE"; "CHR$"; "CIRCLE"; "CIRCLE_R"; "CLEAR"; "CLOSE"; "CLS"; "CODE"; "CONTINUE"; "COPY"; "COPY_N"; "COS"; "COT"; "CSIZE"; "CURSOR"
       "DATE"; "DATE$"; "DAY$"; "DEG"; "DELETE"; "DIMN"; "DIR"; "DLINE"
       "ELLIPSE"; "ELLIPSE_R"; "EOF"; "EXEC"; "EXEC_W"; "EXP"; "FILL"; "FILL$"; "FLASH"; "FORMAT"
+      "ERLIN"; "ERNUM"; "ERR_NC"; "ERR_NJ"; "ERR_OM"; "ERR_OR"; "ERR_BO"; "ERR_NO"; "ERR_NF"; "ERR_EX"; "ERR_IU"; "ERR_EF"; "ERR_DF"; "ERR_BN"; "ERR_TE"; "ERR_FF"; "ERR_BP"; "ERR_FE"; "ERR_XP"; "ERR_OV"; "ERR_NI"; "ERR_RO"; "ERR_BL"; "REPORT"
       "INK"; "INKEY$"; "INPUT"; "INSTR"; "INT"
       "KEYROW"; "LBYTES"; "LEN"; "LINE"; "LINE_R"; "LIST"; "LN"; "LOAD"; "LOG10"; "LRUN"
       "MERGE"; "MOVE"; "MRUN"; "NEW"
@@ -120,6 +122,29 @@ let private fixedArityBuiltIns =
       "DEG", 1
       "DIMN", 2
       "EOF", 1
+      "ERLIN", 0
+      "ERNUM", 0
+      "ERR_NC", 0
+      "ERR_NJ", 0
+      "ERR_OM", 0
+      "ERR_OR", 0
+      "ERR_BO", 0
+      "ERR_NO", 0
+      "ERR_NF", 0
+      "ERR_EX", 0
+      "ERR_IU", 0
+      "ERR_EF", 0
+      "ERR_DF", 0
+      "ERR_BN", 0
+      "ERR_TE", 0
+      "ERR_FF", 0
+      "ERR_BP", 0
+      "ERR_FE", 0
+      "ERR_XP", 0
+      "ERR_OV", 0
+      "ERR_NI", 0
+      "ERR_RO", 0
+      "ERR_BL", 0
       "EXP", 1
       "FILL$", 2
       "GETENV$", 1
@@ -174,6 +199,29 @@ let private builtInSignatures =
       signature "DEG" (Some 1) (Some [ Numeric ])
       signature "DIMN" (Some 2) None
       signature "EOF" (Some 1) (Some [ Numeric ])
+      signature "ERLIN" (Some 0) (Some [])
+      signature "ERNUM" (Some 0) (Some [])
+      signature "ERR_NC" (Some 0) (Some [])
+      signature "ERR_NJ" (Some 0) (Some [])
+      signature "ERR_OM" (Some 0) (Some [])
+      signature "ERR_OR" (Some 0) (Some [])
+      signature "ERR_BO" (Some 0) (Some [])
+      signature "ERR_NO" (Some 0) (Some [])
+      signature "ERR_NF" (Some 0) (Some [])
+      signature "ERR_EX" (Some 0) (Some [])
+      signature "ERR_IU" (Some 0) (Some [])
+      signature "ERR_EF" (Some 0) (Some [])
+      signature "ERR_DF" (Some 0) (Some [])
+      signature "ERR_BN" (Some 0) (Some [])
+      signature "ERR_TE" (Some 0) (Some [])
+      signature "ERR_FF" (Some 0) (Some [])
+      signature "ERR_BP" (Some 0) (Some [])
+      signature "ERR_FE" (Some 0) (Some [])
+      signature "ERR_XP" (Some 0) (Some [])
+      signature "ERR_OV" (Some 0) (Some [])
+      signature "ERR_NI" (Some 0) (Some [])
+      signature "ERR_RO" (Some 0) (Some [])
+      signature "ERR_BL" (Some 0) (Some [])
       signature "EXP" (Some 1) (Some [ Numeric ])
       signature "FILL$" (Some 2) (Some [ String; Numeric ])
       signature "GETENV$" (Some 1) (Some [ String ])

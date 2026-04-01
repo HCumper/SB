@@ -81,6 +81,188 @@ let ``interpreter runtime errors prefer BASIC line numbers in messages`` () =
     Assert.That(err.Message, Does.Contain("at BASIC line 120"))
 
 [<Test>]
+let ``interpreter when error exposes ernum and erlin and can continue`` () =
+    let handlerBody =
+        [ Line(pos, Some 11, [ ProcedureCall(pos, "PRINT", [ id "ERNUM"; id "ERLIN" ]) ])
+          Line(pos, Some 12, [ ProcedureCall(pos, "CONTINUE", [ num "40" ]) ]) ]
+    let ast =
+        Program(
+            pos,
+            [ Line(pos, Some 10, [ WhenStmt(pos, None, handlerBody) ])
+              Line(pos, Some 20, [ ChannelProcedureCall(pos, "CLOSE", num "1", []) ])
+              Line(pos, Some 40, [ ProcedureCall(pos, "PRINT", [ str "\"ok\"" ]) ]) ])
+
+    let outputs = runProgram ast
+    Assert.That(String.concat "|" outputs, Is.EqualTo("-16 20|ok"))
+
+[<Test>]
+let ``interpreter when error report writes last error to channel zero`` () =
+    let handlerBody =
+        [ Line(pos, Some 11, [ ProcedureCall(pos, "REPORT", []) ])
+          Line(pos, Some 12, [ ProcedureCall(pos, "CONTINUE", [ num "40" ]) ]) ]
+    let ast =
+        Program(
+            pos,
+            [ Line(pos, Some 10, [ WhenStmt(pos, None, handlerBody) ])
+              Line(pos, Some 20, [ ChannelProcedureCall(pos, "CLOSE", num "1", []) ])
+              Line(pos, Some 40, [ ProcedureCall(pos, "PRINT", [ str "\"done\"" ]) ]) ])
+
+    let outputs = runProgram ast
+    Assert.That(outputs[0], Does.Contain("File error (-16) at line 20"))
+    Assert.That(outputs[1], Is.EqualTo("done"))
+
+[<Test>]
+let ``interpreter report supports explicit channel and explicit error number`` () =
+    let ast =
+        Program(
+            pos,
+            [ Line(pos, Some 10, [ ChannelProcedureCall(pos, "REPORT", num "1", [ num "-16" ]) ])
+              Line(pos, Some 20, [ ProcedureCall(pos, "PRINT", [ str "\"done\"" ]) ]) ])
+
+    let outputs = runProgram ast
+    Assert.That(outputs[0], Is.EqualTo("File error (-16)"))
+    Assert.That(outputs[1], Is.EqualTo("done"))
+
+[<Test>]
+let ``interpreter bare continue resumes at next statement on same line`` () =
+    let handlerBody =
+        [ Line(pos, Some 11, [ ProcedureCall(pos, "CONTINUE", []) ]) ]
+    let ast =
+        Program(
+            pos,
+            [ Line(pos, Some 10, [ WhenStmt(pos, None, handlerBody) ])
+              Line(pos, Some 20, [ ChannelProcedureCall(pos, "CLOSE", num "1", [])
+                                   ProcedureCall(pos, "PRINT", [ str "\"same-line\"" ]) ])
+              Line(pos, Some 30, [ ProcedureCall(pos, "PRINT", [ str "\"done\"" ]) ]) ])
+
+    let outputs = runProgram ast
+    Assert.That(String.concat "|" outputs, Is.EqualTo("same-line|done"))
+
+[<Test>]
+let ``interpreter continue preserves when error for subsequent errors`` () =
+    let handlerBody =
+        [ Line(pos, Some 11, [ ProcedureCall(pos, "PRINT", [ id "ERR_FE"; id "ERNUM"; id "ERLIN" ]) ])
+          Line(pos, Some 12, [ ProcedureCall(pos, "CONTINUE", []) ]) ]
+    let ast =
+        Program(
+            pos,
+            [ Line(pos, Some 10, [ WhenStmt(pos, None, handlerBody) ])
+              Line(pos, Some 20, [ ChannelProcedureCall(pos, "CLOSE", num "1", [])
+                                   ProcedureCall(pos, "PRINT", [ str "\"after-first\"" ]) ])
+              Line(pos, Some 30, [ ChannelProcedureCall(pos, "CLOSE", num "1", [])
+                                   ProcedureCall(pos, "PRINT", [ str "\"after-second\"" ]) ]) ])
+
+    let outputs = runProgram ast
+    Assert.That(String.concat "|" outputs, Is.EqualTo("1 -16 20|after-first|1 -16 30|after-second"))
+
+[<Test>]
+let ``interpreter later when error replaces previous handler`` () =
+    let firstHandler =
+        [ Line(pos, Some 11, [ ProcedureCall(pos, "PRINT", [ str "\"first\"" ]) ])
+          Line(pos, Some 12, [ ProcedureCall(pos, "CONTINUE", [ num "60" ]) ]) ]
+    let secondHandler =
+        [ Line(pos, Some 21, [ ProcedureCall(pos, "PRINT", [ str "\"second\"" ]) ])
+          Line(pos, Some 22, [ ProcedureCall(pos, "CONTINUE", [ num "60" ]) ]) ]
+    let ast =
+        Program(
+            pos,
+            [ Line(pos, Some 10, [ WhenStmt(pos, None, firstHandler) ])
+              Line(pos, Some 20, [ WhenStmt(pos, None, secondHandler) ])
+              Line(pos, Some 30, [ ChannelProcedureCall(pos, "CLOSE", num "1", []) ])
+              Line(pos, Some 60, [ ProcedureCall(pos, "PRINT", [ str "\"after\"" ]) ]) ])
+
+    let outputs = runProgram ast
+    Assert.That(String.concat "|" outputs, Is.EqualTo("second|after"))
+
+[<Test>]
+let ``interpreter run restarts current program from specified line`` () =
+    let ast =
+        Program(
+            pos,
+            [ Line(pos, Some 10, [ ProcedureCall(pos, "PRINT", [ str "\"before\"" ]) ])
+              Line(pos, Some 20, [ ProcedureCall(pos, "RUN", [ num "40" ]) ])
+              Line(pos, Some 30, [ ProcedureCall(pos, "PRINT", [ str "\"skipped\"" ]) ])
+              Line(pos, Some 40, [ ProcedureCall(pos, "PRINT", [ str "\"after\"" ]) ]) ])
+
+    let outputs = runProgram ast
+    Assert.That(String.concat "|" outputs, Is.EqualTo("before|after"))
+
+[<Test>]
+let ``interpreter new stops execution after resetting program`` () =
+    let ast =
+        Program(
+            pos,
+            [ Line(pos, Some 10, [ ProcedureCall(pos, "PRINT", [ str "\"before\"" ]) ])
+              Line(pos, Some 20, [ ProcedureCall(pos, "NEW", []) ])
+              Line(pos, Some 30, [ ProcedureCall(pos, "PRINT", [ str "\"after\"" ]) ]) ])
+
+    let outputs = runProgram ast
+    Assert.That(String.concat "|" outputs, Is.EqualTo("before"))
+
+[<Test>]
+let ``interpreter load replaces program without running it`` () =
+    let fileId = Guid.NewGuid().ToString("N")
+    let tempPath = Path.Combine(Path.GetTempPath(), $"sb-load-{fileId}.bas")
+
+    try
+        File.WriteAllText(tempPath, "10 PRINT \"loaded\"" + Environment.NewLine)
+
+        let ast =
+            Program(
+                pos,
+                [ Line(pos, Some 10, [ ProcedureCall(pos, "PRINT", [ str "\"before\"" ]) ])
+                  Line(pos, Some 20, [ ProcedureCall(pos, "LOAD", [ str $"\"{tempPath}\"" ]) ])
+                  Line(pos, Some 30, [ ProcedureCall(pos, "PRINT", [ str "\"after\"" ]) ]) ])
+
+        let outputs = runProgram ast
+        Assert.That(String.concat "|" outputs, Is.EqualTo("before"))
+    finally
+        if File.Exists(tempPath) then
+            File.Delete(tempPath)
+
+[<Test>]
+let ``interpreter lrun loads and runs replacement program`` () =
+    let fileId = Guid.NewGuid().ToString("N")
+    let tempPath = Path.Combine(Path.GetTempPath(), $"sb-lrun-{fileId}.bas")
+
+    try
+        File.WriteAllText(tempPath, "10 PRINT \"loaded\"" + Environment.NewLine)
+
+        let ast =
+            Program(
+                pos,
+                [ Line(pos, Some 10, [ ProcedureCall(pos, "PRINT", [ str "\"before\"" ]) ])
+                  Line(pos, Some 20, [ ProcedureCall(pos, "LRUN", [ str $"\"{tempPath}\"" ]) ])
+                  Line(pos, Some 30, [ ProcedureCall(pos, "PRINT", [ str "\"after\"" ]) ]) ])
+
+        let outputs = runProgram ast
+        Assert.That(String.concat "|" outputs, Is.EqualTo("before|loaded"))
+    finally
+        if File.Exists(tempPath) then
+            File.Delete(tempPath)
+
+[<Test>]
+let ``interpreter mrun merges numbered lines and runs merged program`` () =
+    let fileId = Guid.NewGuid().ToString("N")
+    let tempPath = Path.Combine(Path.GetTempPath(), $"sb-mrun-{fileId}.bas")
+
+    try
+        File.WriteAllText(tempPath, "10 PRINT \"new10\"" + Environment.NewLine + "20 PRINT \"new20\"" + Environment.NewLine + "40 PRINT \"new40\"" + Environment.NewLine)
+
+        let ast =
+            Program(
+                pos,
+                [ Line(pos, Some 10, [ ProcedureCall(pos, "PRINT", [ str "\"old10\"" ]) ])
+                  Line(pos, Some 20, [ ProcedureCall(pos, "MRUN", [ str $"\"{tempPath}\"" ]) ])
+                  Line(pos, Some 30, [ ProcedureCall(pos, "PRINT", [ str "\"old30\"" ]) ]) ])
+
+        let outputs = runProgram ast
+        Assert.That(String.concat "|" outputs, Is.EqualTo("old10|new10|new20|old30|new40"))
+    finally
+        if File.Exists(tempPath) then
+            File.Delete(tempPath)
+
+[<Test>]
 let ``interpreter runtime errors fall back to editor line and column in messages`` () =
     let posWithoutBasicLine =
         { pos with
@@ -125,6 +307,19 @@ let ``interpreter reads data and restores by line`` () =
     let output = runProgram ast
 
     Assert.That(String.concat "|" output, Is.EqualTo("1 2 1"))
+
+[<Test>]
+let ``interpreter reads hex data literals as signed 32 bit integers`` () =
+    let ast =
+        Program(
+            pos,
+            [ Line(pos, Some 10, [ DataStmt(pos, [ num "$5387"; num "$670A"; num "$3E3C"; num "$270F"; num "$FFFFB287"; num "$6F02" ]) ])
+              Line(pos, Some 20, [ ReadStmt(pos, [ id "a"; id "b"; id "c"; id "d"; id "e"; id "f" ]) ])
+              Line(pos, Some 30, [ ProcedureCall(pos, "PRINT", [ id "a"; id "b"; id "c"; id "d"; id "e"; id "f" ]) ]) ])
+
+    let output = runProgram ast
+
+    Assert.That(String.concat "|" output, Is.EqualTo("21383 26378 15932 9999 -19833 28418"))
 
 [<Test>]
 let ``interpreter handles input prompts and targets`` () =
@@ -1113,6 +1308,31 @@ let ``interpreter open parses screen device geometry strings`` () =
         | Result.Error err -> Assert.Fail($"Expected channel #9 to exist, got %A{err}")
     | Result.Error err ->
         Assert.Fail($"Expected interpretation to succeed, got %A{err}")
+
+[<Test>]
+let ``interpreter graphics builtins support implicit channels`` () =
+    let implicitScreen = Some(H.ImplicitChannel(H.Literal(H.ConstString "scr_", H.HirType.String, pos)))
+    let hir =
+        makeProgram
+            Map.empty
+            []
+            [ H.BuiltInCall(H.NamedBuiltIn "LINE", implicitScreen, [ H.Literal(H.ConstInt 0, H.HirType.Int, pos); H.Literal(H.ConstInt 0, H.HirType.Int, pos); H.Literal(H.ConstInt 8, H.HirType.Int, pos); H.Literal(H.ConstInt 0, H.HirType.Int, pos) ], pos)
+              H.BuiltInCall(H.NamedBuiltIn "TURN", implicitScreen, [ H.Literal(H.ConstInt 30, H.HirType.Int, pos) ], pos) ]
+
+    let host, _ =
+        DefaultHost.createWithDisplay {
+            ReadLine = fun () -> None
+            ReadKey = fun () -> None
+            KeyAvailable = fun () -> false
+            KeyRowState = fun _ -> 0
+            WriteLine = ignore
+        }
+
+    let result = interpretProgramWithOptions { defaultRuntimeOptions with Host = host } hir
+
+    match result with
+    | Result.Ok _ -> Assert.Pass()
+    | Result.Error err -> Assert.Fail($"Expected implicit graphics channels to succeed, got %A{err}")
 
 [<Test>]
 let ``interpreter open parses console device strings and preserves configured window across mode changes`` () =

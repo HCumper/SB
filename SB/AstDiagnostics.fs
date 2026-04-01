@@ -118,6 +118,13 @@ and private prettyStmt level stmt =
     | ImplicitStmt(pos, suffix, names) ->
         let joinedNames = String.concat ", " names
         $"{pad}ImplicitStmt {suffix} [{joinedNames}] @{formatPosition pos}\n"
+    | ManifestStmt(pos, items) ->
+        let renderedItems =
+            items
+            |> List.map (fun (name, value) ->
+                $"{pad}  Item {name}\n{prettyExpr (level + 4) value}")
+            |> String.concat ""
+        $"{pad}ManifestStmt @{formatPosition pos}\n{renderedItems}"
     | ReferenceStmt(pos, exprs) ->
         let renderedExprs = exprs |> List.map (prettyExpr (level + 2)) |> String.concat ""
         $"{pad}ReferenceStmt @{formatPosition pos}\n{renderedExprs}"
@@ -396,6 +403,19 @@ and private writeStmt (writer: Utf8JsonWriter) stmt =
         writer.WritePropertyName("position")
         writePosition writer pos
         writeStringArray "names" writer names
+    | ManifestStmt(pos, items) ->
+        writer.WriteString("kind", "ManifestStmt")
+        writer.WritePropertyName("position")
+        writePosition writer pos
+        writer.WritePropertyName("items")
+        writer.WriteStartArray()
+        items |> List.iter (fun (name, value) ->
+            writer.WriteStartObject()
+            writer.WriteString("name", name)
+            writer.WritePropertyName("value")
+            writeExpr writer value
+            writer.WriteEndObject())
+        writer.WriteEndArray()
     | ReferenceStmt(pos, exprs) ->
         writer.WriteString("kind", "ReferenceStmt")
         writer.WritePropertyName("position")

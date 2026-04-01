@@ -63,6 +63,95 @@ module private ScreenDefaults =
             Width = max 1 width
             Height = max 1 height }
 
+module private DevicePaths =
+    let tryParseDirectoryBackedSpec (normalized: string) =
+        let knownPrefixes = [ "RAM"; "FLP"; "WIN"; "MDV" ]
+        knownPrefixes
+        |> List.tryPick (fun prefix ->
+            if normalized.StartsWith(prefix) then
+                let suffix = normalized.Substring(prefix.Length)
+                let digitCount = suffix |> Seq.takeWhile Char.IsDigit |> Seq.length
+                if digitCount > 0 && suffix.Length > digitCount && suffix[digitCount] = '_' then
+                    let device = normalized.Substring(0, prefix.Length + digitCount)
+                    let rest = normalized.Substring(prefix.Length + digitCount + 1)
+                    Some(device, if String.IsNullOrWhiteSpace rest then None else Some rest)
+                else
+                    None
+            else
+                None)
+
+    let tryResolveDirectoryBackedPath (normalized: string) =
+        tryParseDirectoryBackedSpec normalized
+        |> Option.bind (fun (device, leafNameOpt) ->
+            leafNameOpt
+            |> Option.map (fun leafName ->
+                let root = Path.Combine(Directory.GetCurrentDirectory(), "RuntimeDevices", device.ToLowerInvariant())
+                Directory.CreateDirectory(root) |> ignore
+                Path.Combine(root, leafName)))
+
+    let private listEntries (directoryPath: string) =
+        Directory.EnumerateFileSystemEntries(directoryPath)
+        |> Seq.map Path.GetFileName
+        |> Seq.sort
+        |> Seq.toList
+
+    let private listEntriesWithPrefix (directoryPath: string) (prefix: string) =
+        listEntries directoryPath
+        |> List.filter (fun name -> name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+
+    let listDirectoryEntries (pathSpec: string option) =
+        let cwd = Directory.GetCurrentDirectory()
+
+        let listCurrentDirectory prefixOpt =
+            let entries = listEntries cwd
+            match prefixOpt with
+            | Some prefix when not (String.IsNullOrWhiteSpace prefix) ->
+                entries |> List.filter (fun name -> name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            | _ -> entries
+
+        let specText =
+            pathSpec
+            |> Option.map _.Trim()
+            |> Option.filter (fun text -> not (String.IsNullOrWhiteSpace text))
+
+        match specText with
+        | None -> Result.Ok(listCurrentDirectory None)
+        | Some spec when Path.IsPathRooted(spec) ->
+            try
+                if Directory.Exists(spec) then
+                    Result.Ok(listEntries spec)
+                else
+                    let parent =
+                        match Path.GetDirectoryName(spec) with
+                        | null
+                        | "" -> cwd
+                        | value -> value
+                    if Directory.Exists(parent) then
+                        Result.Ok(listEntriesWithPrefix parent (Path.GetFileName(spec)))
+                    else
+                        Result.Error(InvalidHostArgument $"Directory '{parent}' does not exist.")
+            with
+            | ex -> Result.Error(DeviceOpenFailed ex.Message)
+        | Some spec ->
+            let normalized = spec.ToUpperInvariant()
+            match tryParseDirectoryBackedSpec normalized with
+            | Some(device, leafPrefix) ->
+                try
+                    let root = Path.Combine(cwd, "RuntimeDevices", device.ToLowerInvariant())
+                    Directory.CreateDirectory(root) |> ignore
+                    let entries =
+                        match leafPrefix with
+                        | Some prefix -> listEntriesWithPrefix root prefix
+                        | None -> listEntries root
+                    Result.Ok(entries |> List.map (fun name -> $"{device.ToLowerInvariant()}_{name}"))
+                with
+                | ex -> Result.Error(DeviceOpenFailed ex.Message)
+            | None ->
+                try
+                    Result.Ok(listCurrentDirectory (Some spec))
+                with
+                | ex -> Result.Error(DeviceOpenFailed ex.Message)
+
 type private TextCell = {
     mutable Character: char
     mutable Ink: int
@@ -430,29 +519,6 @@ type private DefaultChannelManager(defaultChannels: IChannel list, reader: unit 
             | :? DefaultScreenChannel as screenChannel -> screenChannels[channel.Id] <- screenChannel
             | _ -> ()
 
-    let tryResolveDirectoryBackedPath (normalized: string) =
-        let knownPrefixes = [ "RAM"; "FLP"; "WIN"; "MDV" ]
-        let prefixMatch =
-            knownPrefixes
-            |> List.tryPick (fun prefix ->
-                if normalized.StartsWith(prefix) then
-                    let suffix = normalized.Substring(prefix.Length)
-                    let digitCount = suffix |> Seq.takeWhile Char.IsDigit |> Seq.length
-                    if digitCount > 0 && suffix.Length > digitCount && suffix[digitCount] = '_' then
-                        let device = normalized.Substring(0, prefix.Length + digitCount)
-                        let rest = normalized.Substring(prefix.Length + digitCount + 1)
-                        if String.IsNullOrWhiteSpace rest then None else Some(device, rest)
-                    else
-                        None
-                else
-                    None)
-
-        prefixMatch
-        |> Option.map (fun (device, leafName) ->
-            let root = Path.Combine(Directory.GetCurrentDirectory(), "RuntimeDevices", device.ToLowerInvariant())
-            Directory.CreateDirectory(root) |> ignore
-            Path.Combine(root, leafName))
-
     let createNamedChannel (requestedId: ChannelId) (name: string) (fileModeOverride: FileOpenMode option) =
         let trimmed = name.Trim()
         let normalized = trimmed.ToUpperInvariant()
@@ -483,7 +549,7 @@ type private DefaultChannelManager(defaultChannels: IChannel list, reader: unit 
             with
             | ex -> Result.Error(DeviceOpenFailed ex.Message)
         else
-            match tryResolveDirectoryBackedPath normalized with
+            match DevicePaths.tryResolveDirectoryBackedPath normalized with
             | Some fullPath ->
                 try
                     let mode = fileModeOverride |> Option.defaultValue OpenForUpdate
@@ -832,6 +898,8 @@ type private NullFileSystem() =
             Result.Error(UnsupportedHostOperation "File channels are not implemented in DefaultHost.")
         member _.OpenFileAs(_channelId, _path, _mode) =
             Result.Error(UnsupportedHostOperation "File channels are not implemented in DefaultHost.")
+        member _.ListDirectory(_pathSpec) =
+            Result.Error(UnsupportedHostOperation "Directory listing is not implemented in DefaultHost.")
         member _.Exists(_path) = false
         member _.Delete(_path) =
             Result.Error(UnsupportedHostOperation "File deletion is not implemented in DefaultHost.")
@@ -871,6 +939,8 @@ type private DefaultRuntimeHost(options: DefaultHostOptions) =
                             channelManager.Register(channel)
                         with
                         | ex -> Result.Error(DeviceOpenFailed ex.Message)
+            member _.ListDirectory(pathSpec) =
+                DevicePaths.listDirectoryEntries pathSpec
             member _.Exists(path) = File.Exists(path)
             member _.Delete(path) =
                 try

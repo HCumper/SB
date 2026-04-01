@@ -4,6 +4,7 @@ open System
 open System.IO
 open Antlr4.Runtime
 open NUnit.Framework
+open Serilog
 
 open Types
 open SyntaxAst
@@ -14,6 +15,9 @@ open ParseTreeVisitor
 open SBRuntime
 
 module H = HIR
+
+let private testLogger =
+    LoggerConfiguration().MinimumLevel.Fatal().CreateLogger()
 
 let pos =
     { BasicLineNo = None
@@ -69,7 +73,16 @@ let runProgramWithInput input ast =
                     WriteLine = fun line -> outputs.Add(line)
                 }
             Random = Random(1234)
-            Clock = fun () -> DateTime(2024, 1, 2, 3, 4, 5, DateTimeKind.Utc) }
+            Clock = fun () -> DateTime(2024, 1, 2, 3, 4, 5, DateTimeKind.Utc)
+            InitialSourceProgram = Some ast
+            LoadProgram = loadRuntimeProgram Relaxed false testLogger
+            MergeProgram =
+                fun (currentAst, path) ->
+                    loadRuntimeProgram Relaxed false testLogger path
+                    |> Result.bind (fun loaded ->
+                        let mergedAst = mergeRuntimeAst currentAst loaded.Ast
+                        lowerAstForRuntime mergedAst
+                        |> Result.map (fun lowered -> { Ast = mergedAst; Hir = lowered })) }
 
     match interpretProgramWithOptions options hir with
     | Result.Ok result -> result.Output
@@ -762,6 +775,7 @@ let createScreenHost (inputs: string list) =
                 { new IDeviceFileSystem with
                     member _.OpenFile(_path, _mode) = Result.Error(UnsupportedHostOperation "Files not implemented in test host.")
                     member _.OpenFileAs(_channelId, _path, _mode) = Result.Error(UnsupportedHostOperation "Files not implemented in test host.")
+                    member _.ListDirectory(_pathSpec) = Result.Error(UnsupportedHostOperation "Directory listing not implemented in test host.")
                     member _.Exists(_path) = false
                     member _.Delete(_path) = Result.Error(UnsupportedHostOperation "Files not implemented in test host.") }
             member _.Environment =

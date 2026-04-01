@@ -42,11 +42,29 @@ type RuntimeError = {
     Position: SourcePosition option
 }
 
+type private ErrorInfo = {
+    Number: int
+    Name: string
+    Description: string
+    LineNumber: int option
+    RetryLineNumber: int option
+    ContinueLineNumber: int option
+    RuntimeError: RuntimeError
+}
+
+type RuntimeLoadedProgram = {
+    Ast: SyntaxAst.Ast
+    Hir: HirProgram
+}
+
 type RuntimeOptions = {
     Host: IRuntimeHost
     Random: Random
     Clock: unit -> DateTime
     Sleeper: int -> unit
+    InitialSourceProgram: SyntaxAst.Ast option
+    LoadProgram: string -> Result<RuntimeLoadedProgram, string>
+    MergeProgram: SyntaxAst.Ast * string -> Result<RuntimeLoadedProgram, string>
 }
 
 type ExecutionResult = {
@@ -80,7 +98,10 @@ let defaultRuntimeOptions =
         }
       Random = Random()
       Clock = fun () -> DateTime.UtcNow
-      Sleeper = fun milliseconds -> System.Threading.Thread.Sleep(milliseconds) }
+      Sleeper = fun milliseconds -> System.Threading.Thread.Sleep(milliseconds)
+      InitialSourceProgram = None
+      LoadProgram = fun path -> Result.Error $"Runtime program loading is not configured for '{path}'."
+      MergeProgram = fun (_, path) -> Result.Error $"Runtime program merge is not configured for '{path}'." }
 
 type private Frame = {
     Cells: Map<SymbolId, Cell>
@@ -89,12 +110,18 @@ type private Frame = {
 
 type private RuntimeState = {
     Program: HirProgram
+    SourceProgram: SyntaxAst.Ast option
     Globals: Map<SymbolId, Cell>
     Frames: Frame list
     DataPointer: int
     Output: string list
     DefaultGraphicsScale: double * double * double
     ChannelGraphicsScales: Map<ChannelId, double * double * double>
+    CurrentLineNumber: int option
+    NextLineNumber: int option
+    ActiveErrorHandler: HirBlock option
+    LastError: ErrorInfo option
+    InErrorHandler: bool
     RandomSource: Random
     Options: RuntimeOptions
 }
@@ -104,10 +131,14 @@ type private ControlFlow =
     | TransferredContinue
     | ReturnFromRoutine of RuntimeValue option
     | BareReturn
+    | RetryError of int option
+    | ContinueError of int option
     | ExitLoop of LoopId
     | NextLoop of LoopId
     | JumpToLine of int
     | GosubToLine of int
+    | ReplaceProgram of HirProgram * SyntaxAst.Ast option
+    | RestartProgram of HirProgram * SyntaxAst.Ast option * int option
     | StopExecution
 
 type private GosubReturn = RuntimeState -> Result<ControlFlow * RuntimeState, RuntimeError>
@@ -144,6 +175,89 @@ let private runtimeError code position detail =
 
     Result.Error { Code = code; Message = message; Position = position }
 
+let private qlErrorTable =
+    dict [
+        MissingStorageCell, (-15, "ERR_BP", "Bad parameter")
+        MissingDynamicStorageCell, (-15, "ERR_BP", "Bad parameter")
+        InvalidArrayTarget, (-15, "ERR_BP", "Bad parameter")
+        BuiltInArityMismatch, (-15, "ERR_BP", "Bad parameter")
+        BuiltInUnsupportedArguments, (-15, "ERR_BP", "Bad parameter")
+        BuiltInFunctionNotImplemented, (-19, "ERR_NI", "Not implemented")
+        InvalidReferenceActual, (-15, "ERR_BP", "Bad parameter")
+        EscapedStop, (-19, "ERR_NI", "Not implemented")
+        MissingGotoTarget, (-21, "ERR_BL", "Bad line of Basic")
+        MissingGosubTarget, (-21, "ERR_BL", "Bad line of Basic")
+        EscapedLoopControl, (-21, "ERR_BL", "Bad line of Basic")
+        UnsupportedChannelExecution, (-16, "ERR_FE", "File error")
+        BuiltInStatementNotImplemented, (-19, "ERR_NI", "Not implemented")
+        ProcedureNotImplemented, (-19, "ERR_NI", "Not implemented")
+        InvalidForBounds, (-15, "ERR_BP", "Bad parameter")
+        InvalidRestoreTarget, (-21, "ERR_BL", "Bad line of Basic")
+        ReadPastData, (-21, "ERR_BL", "Bad line of Basic")
+        EscapedReturn, (-21, "ERR_BL", "Bad line of Basic")
+    ]
+
+let private errorInfoFromRuntimeError state (error: RuntimeError) =
+    let number, name, description =
+        match qlErrorTable.TryGetValue error.Code with
+        | true, value -> value
+        | _ -> -19, "ERR_NI", "Not implemented"
+
+    { Number = number
+      Name = name
+      Description = description
+      LineNumber = state.CurrentLineNumber
+      RetryLineNumber = state.CurrentLineNumber
+      ContinueLineNumber = state.NextLineNumber
+      RuntimeError = error }
+
+let private formatReportedError (errorInfo: ErrorInfo) =
+    match errorInfo.LineNumber with
+    | Some lineNumber -> $"{errorInfo.Description} ({errorInfo.Number}) at line {lineNumber}"
+    | None -> $"{errorInfo.Description} ({errorInfo.Number})"
+
+let private resetErrorProcessing state =
+    { state with
+        ActiveErrorHandler = None
+        LastError = None
+        InErrorHandler = false }
+
+let private mergeProgramAst currentAst incomingAst =
+    let mergeLines currentLines incomingLines =
+        let incomingByLine =
+            incomingLines
+            |> List.choose (fun (SyntaxAst.Line(_, lineNumber, _) as line) -> lineNumber |> Option.map (fun value -> value, line))
+            |> Map.ofList
+
+        let mergedExisting =
+            currentLines
+            |> List.choose (fun (SyntaxAst.Line(_, lineNumber, _) as line) ->
+                match lineNumber with
+                | Some value ->
+                    match incomingByLine.TryFind value with
+                    | Some replacement -> Some replacement
+                    | None -> Some line
+                | None -> Some line)
+
+        let existingNumbered =
+            currentLines
+            |> List.choose (fun (SyntaxAst.Line(_, lineNumber, _)) -> lineNumber)
+            |> Set.ofList
+
+        let appendedIncoming =
+            incomingLines
+            |> List.choose (fun (SyntaxAst.Line(_, lineNumber, _) as line) ->
+                match lineNumber with
+                | Some value when not (existingNumbered.Contains value) -> Some(value, line)
+                | _ -> None)
+            |> List.sortBy fst
+            |> List.map snd
+
+        mergedExisting @ appendedIncoming
+
+    match currentAst, incomingAst with
+    | SyntaxAst.Program(pos, currentLines), SyntaxAst.Program(_, incomingLines) -> SyntaxAst.Program(pos, mergeLines currentLines incomingLines)
+
 let private defaultValue hirType dimensions =
     match hirType with
     | HIR.HirType.Int -> IntValue 0
@@ -152,14 +266,25 @@ let private defaultValue hirType dimensions =
     | HIR.HirType.Void -> IntValue 0
     | HIR.HirType.Array inner -> ArrayValue(inner, dimensions |> Option.defaultValue [], Dictionary<string, Cell>())
 
+let private tryParseHexInt (value: string) =
+    if value.StartsWith("$") && value.Length > 1 then
+        match UInt32.TryParse(value[1..], NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture) with
+        | true, parsed -> Some(int (int32 parsed))
+        | _ -> None
+    else
+        None
+
 let private normalizeNumber value =
     match value with
     | IntValue n -> double n
     | FloatValue f -> f
     | StringValue s ->
-        match Double.TryParse(s, NumberStyles.Float ||| NumberStyles.AllowThousands, CultureInfo.InvariantCulture) with
-        | true, n -> n
-        | _ -> 0.0
+        match tryParseHexInt s with
+        | Some n -> float n
+        | None ->
+            match Double.TryParse(s, NumberStyles.Float ||| NumberStyles.AllowThousands, CultureInfo.InvariantCulture) with
+            | true, n -> n
+            | _ -> 0.0
     | ArrayValue _ -> 0.0
 
 let private asInt value =
@@ -167,9 +292,12 @@ let private asInt value =
     | IntValue n -> n
     | FloatValue f -> int (Math.Round(f))
     | StringValue s ->
-        match Int32.TryParse(s, NumberStyles.Integer, CultureInfo.InvariantCulture) with
-        | true, n -> n
-        | _ -> 0
+        match tryParseHexInt s with
+        | Some n -> n
+        | None ->
+            match Int32.TryParse(s, NumberStyles.Integer, CultureInfo.InvariantCulture) with
+            | true, n -> n
+            | _ -> 0
     | ArrayValue _ -> 0
 
 let private asString value =
@@ -293,6 +421,17 @@ let private screenModeFromNumber = function
     | 4 -> QlMode4
     | 8 -> QlMode8
     | value -> ExtendedMode value
+
+let private reinitializeProgramState state program sourceProgram =
+    { state with
+        Program = program
+        SourceProgram = sourceProgram
+        Globals = allocateCells program.Globals
+        Frames = []
+        DataPointer = 0
+        CurrentLineNumber = None
+        NextLineNumber = None }
+    |> resetErrorProcessing
 
 let private writeOutputToChannel channelId line state pos =
     match channelId with
@@ -555,6 +694,24 @@ and private evalBuiltInFunction state symbolId argExprs hirType pos =
     evalExprList state runtimeArgs
     |> Result.bind (fun (values, nextState) ->
         match normalizedName, values with
+        | "ERLIN", [] ->
+            let value =
+                nextState.LastError
+                |> Option.bind _.LineNumber
+                |> Option.defaultValue 0
+            Result.Ok(IntValue value, nextState)
+        | "ERNUM", [] ->
+            let value =
+                nextState.LastError
+                |> Option.map _.Number
+                |> Option.defaultValue 0
+            Result.Ok(IntValue value, nextState)
+        | ("ERR_NC" | "ERR_NJ" | "ERR_OM" | "ERR_OR" | "ERR_BO" | "ERR_NO" | "ERR_NF" | "ERR_EX" | "ERR_IU" | "ERR_EF" | "ERR_DF" | "ERR_BN" | "ERR_TE" | "ERR_FF" | "ERR_BP" | "ERR_FE" | "ERR_XP" | "ERR_OV" | "ERR_NI" | "ERR_RO" | "ERR_BL" as errorName), [] ->
+            let value =
+                match nextState.LastError with
+                | Some errorInfo when errorInfo.Name = errorName -> 1
+                | _ -> 0
+            Result.Ok(IntValue value, nextState)
         | "BEEPING", [] ->
             Result.Ok(IntValue(if nextState.Options.Host.Sound.IsBeeping() then 1 else 0), nextState)
         | "BEEPING", _ ->
@@ -622,6 +779,24 @@ and private withResolvedChannel state channelExpr pos action =
                     | Result.Ok() -> Result.Ok(flow, finalState)
                     | Result.Error hostError -> runtimeError UnsupportedChannelExecution (Some pos) (hostErrorText hostError))
             | Result.Error hostError -> runtimeError UnsupportedChannelExecution (Some pos) (hostErrorText hostError))
+
+and private withEffectiveChannel state channelExpr defaultChannel pos action =
+    match channelExpr with
+    | Some _ -> withResolvedChannel state channelExpr pos action
+    | None -> action defaultChannel state
+
+and private resolveRequiredChannelId state channelExpr defaultChannel pos name =
+    match channelExpr with
+    | None -> Result.Ok(defaultChannel, state)
+    | Some(ExplicitChannel(expr: HirExpr)) ->
+        evalExpr state expr
+        |> Result.map (fun (value, nextState) -> ChannelId(asInt value), nextState)
+    | Some(ImplicitChannel _) ->
+        runtimeError UnsupportedChannelExecution (Some pos) $"Built-in '{name}' does not support implicit channel execution."
+
+and private reportErrorToChannel resolvedChannel errorInfo state pos =
+    writeOutputToChannel resolvedChannel (formatReportedError errorInfo) state pos
+    |> Result.bind (fun finalState -> advanceScreenLine resolvedChannel finalState pos)
 
 and private resolveTargetCell state target =
     match target with
@@ -708,13 +883,17 @@ and private callRoutine state (routine: HirRoutine) args pos =
             | StopExecution, _ -> runtimeError EscapedStop (Some pos) $"STOP escaped from routine '{routine.Name}'."
             | JumpToLine lineNumber, _ -> runtimeError MissingGotoTarget (Some pos) $"GOTO target line {lineNumber} does not exist in routine '{routine.Name}'."
             | GosubToLine lineNumber, _ -> runtimeError MissingGosubTarget (Some pos) $"GOSUB target line {lineNumber} does not exist in routine '{routine.Name}'."
+            | RetryError _, _
+            | ContinueError _, _
+            | ReplaceProgram _, _
+            | RestartProgram _, _
             | ExitLoop _, _
             | NextLoop _, _ -> runtimeError EscapedLoopControl (Some pos) $"Loop control escaped from routine '{routine.Name}'."))
 
 and private executeBuiltInCall state kind channel args targets pos =
     match kind with
     | Print ->
-        withResolvedChannel state channel pos (fun resolvedChannel stateAfterChannel ->
+        withEffectiveChannel state channel (Some(ChannelId 1)) pos (fun resolvedChannel stateAfterChannel ->
             evalExprList stateAfterChannel args
             |> Result.bind (fun (values, nextState) ->
                 let line =
@@ -725,12 +904,7 @@ and private executeBuiltInCall state kind channel args targets pos =
                 |> Result.bind (fun finalState -> advanceScreenLine resolvedChannel finalState pos)
                 |> Result.map (fun finalState -> Continue, finalState)))
     | BuiltInKind.Input ->
-        withResolvedChannel state channel pos (fun resolvedChannel stateAfterChannel ->
-            let promptChannel =
-                match resolvedChannel with
-                | Some _ -> resolvedChannel
-                | None -> Some(ChannelId 0)
-
+        withEffectiveChannel state channel (Some(ChannelId 0)) pos (fun resolvedChannel stateAfterChannel ->
             let promptStateResult =
                 if List.isEmpty args then
                     Result.Ok stateAfterChannel
@@ -742,7 +916,7 @@ and private executeBuiltInCall state kind channel args targets pos =
                             | Result.Ok(value, _) -> formatOutputValue value
                             | Result.Error _ -> "")
                         |> String.concat " "
-                    writeOutputToChannel promptChannel promptText stateAfterChannel pos
+                    writeOutputToChannel resolvedChannel promptText stateAfterChannel pos
 
             promptStateResult
             |> Result.bind (fun promptState ->
@@ -786,8 +960,7 @@ and private executeBuiltInCall state kind channel args targets pos =
             | None -> runtimeError UnsupportedChannelExecution (Some pos) $"Built-in '{name}' requires a channel id."
 
         let executeScreenOp expectedArgCount atLeast (action: ChannelId option -> RuntimeState -> int list -> Result<RuntimeState, RuntimeError>) =
-            resolveChannelId state channel
-            |> Result.bind (fun (resolvedChannel, stateAfterChannel) ->
+            withEffectiveChannel state channel (Some(ChannelId 1)) pos (fun resolvedChannel stateAfterChannel ->
                 validateScreenChannel resolvedChannel stateAfterChannel pos
                 |> Result.bind (fun () ->
                     evalExprList stateAfterChannel args
@@ -800,6 +973,16 @@ and private executeBuiltInCall state kind channel args targets pos =
                             let numericArgs = values |> List.map asInt
                             action resolvedChannel nextState numericArgs
                             |> Result.map (fun finalState -> Continue, finalState)))))
+
+        let executeGraphicsStatement (body: ChannelId option -> RuntimeState -> Result<ControlFlow * RuntimeState, RuntimeError>) =
+            withEffectiveChannel state channel (Some(ChannelId 1)) pos (fun resolvedChannel stateAfterChannel ->
+                validateScreenChannel resolvedChannel stateAfterChannel pos
+                |> Result.bind (fun () -> body resolvedChannel stateAfterChannel))
+
+        let executeOptionalGraphicsStatement (body: ChannelId option -> RuntimeState -> Result<ControlFlow * RuntimeState, RuntimeError>) =
+            withEffectiveChannel state channel None pos (fun resolvedChannel stateAfterChannel ->
+                validateScreenChannel resolvedChannel stateAfterChannel pos
+                |> Result.bind (fun () -> body resolvedChannel stateAfterChannel))
 
         match normalized with
         | "STOP" -> Result.Ok(StopExecution, state)
@@ -833,76 +1016,225 @@ and private executeBuiltInCall state kind channel args targets pos =
                         Result.Ok(Continue, { nextState with RandomSource = Random(asInt seedValue) })
                     | _ ->
                         runtimeError BuiltInArityMismatch (Some pos) $"Built-in statement '{name}' expects zero or one argument."))
+        | "RUN" ->
+            unsupportedChannel ()
+            |> Result.bind (fun _ ->
+                evalExprList state args
+                |> Result.bind (fun (values, nextState) ->
+                    match values with
+                    | [] -> Result.Ok(RestartProgram(nextState.Program, nextState.SourceProgram, None), resetErrorProcessing nextState)
+                    | [ lineValue ] -> Result.Ok(RestartProgram(nextState.Program, nextState.SourceProgram, Some(asInt lineValue)), resetErrorProcessing nextState)
+                    | _ -> runtimeError BuiltInArityMismatch (Some pos) $"Built-in statement '{name}' expects zero or one argument."))
+        | "NEW" ->
+            unsupportedChannel ()
+            |> Result.bind (fun _ ->
+                requireArity 0 args.Length
+                |> Result.map (fun () ->
+                    let emptyProgram =
+                        { state.Program with
+                            Globals = []
+                            Routines = []
+                            DataEntries = []
+                            RestorePoints = []
+                            Main = [] }
+                    ReplaceProgram(emptyProgram, Some(SyntaxAst.Program(pos, []))), resetErrorProcessing state))
+        | "LOAD" ->
+            unsupportedChannel ()
+            |> Result.bind (fun _ ->
+                evalExprList state args
+                |> Result.bind (fun (values, nextState) ->
+                    match values with
+                    | [ pathValue ] ->
+                        match nextState.Options.LoadProgram(asString pathValue) with
+                        | Result.Ok loaded ->
+                            Result.Ok(ReplaceProgram(loaded.Hir, Some loaded.Ast), resetErrorProcessing nextState)
+                        | Result.Error message ->
+                            runtimeError UnsupportedChannelExecution (Some pos) message
+                    | _ -> runtimeError BuiltInArityMismatch (Some pos) $"Built-in statement '{name}' expects one argument."))
+        | "LRUN" ->
+            unsupportedChannel ()
+            |> Result.bind (fun _ ->
+                evalExprList state args
+                |> Result.bind (fun (values, nextState) ->
+                    match values with
+                    | [ pathValue ] ->
+                        match nextState.Options.LoadProgram(asString pathValue) with
+                        | Result.Ok loaded ->
+                            Result.Ok(RestartProgram(loaded.Hir, Some loaded.Ast, None), resetErrorProcessing nextState)
+                        | Result.Error message ->
+                            runtimeError UnsupportedChannelExecution (Some pos) message
+                    | _ -> runtimeError BuiltInArityMismatch (Some pos) $"Built-in statement '{name}' expects one argument."))
+        | "MERGE" ->
+            unsupportedChannel ()
+            |> Result.bind (fun _ ->
+                evalExprList state args
+                |> Result.bind (fun (values, nextState) ->
+                    match values, nextState.SourceProgram with
+                    | [ pathValue ], Some currentAst ->
+                        match nextState.Options.MergeProgram(currentAst, asString pathValue) with
+                        | Result.Ok loaded ->
+                            Result.Ok(ReplaceProgram(loaded.Hir, Some loaded.Ast), resetErrorProcessing nextState)
+                        | Result.Error message ->
+                            runtimeError UnsupportedChannelExecution (Some pos) message
+                    | [ _ ], None ->
+                        runtimeError BuiltInStatementNotImplemented (Some pos) "MERGE requires source program support."
+                    | _ -> runtimeError BuiltInArityMismatch (Some pos) $"Built-in statement '{name}' expects one argument."))
+        | "MRUN" ->
+            unsupportedChannel ()
+            |> Result.bind (fun _ ->
+                evalExprList state args
+                |> Result.bind (fun (values, nextState) ->
+                    match values, nextState.SourceProgram with
+                    | [ pathValue ], Some currentAst ->
+                        match nextState.Options.MergeProgram(currentAst, asString pathValue) with
+                        | Result.Ok loaded ->
+                            Result.Ok(RestartProgram(loaded.Hir, Some loaded.Ast, None), resetErrorProcessing nextState)
+                        | Result.Error message ->
+                            runtimeError UnsupportedChannelExecution (Some pos) message
+                    | [ _ ], None ->
+                        runtimeError BuiltInStatementNotImplemented (Some pos) "MRUN requires source program support."
+                    | _ -> runtimeError BuiltInArityMismatch (Some pos) $"Built-in statement '{name}' expects one argument."))
+        | "REPORT" ->
+            withEffectiveChannel state channel (Some(ChannelId 0)) pos (fun resolvedChannel stateAfterChannel ->
+                evalExprList stateAfterChannel args
+                |> Result.bind (fun (values, nextState) ->
+                    let reportedError =
+                        match values, nextState.LastError with
+                        | [], Some errorInfo -> Some errorInfo
+                        | [], None -> None
+                        | [ errorNumber ], _ ->
+                            let number = asInt errorNumber
+                            let name, description =
+                                qlErrorTable.Values
+                                |> Seq.tryFind (fun (candidateNumber, _, _) -> candidateNumber = number)
+                                |> Option.map (fun (_, candidateName, candidateDescription) -> candidateName, candidateDescription)
+                                |> Option.defaultValue("ERR_NI", "Not implemented")
+                            Some {
+                                Number = number
+                                Name = name
+                                Description = description
+                                LineNumber = None
+                                RetryLineNumber = None
+                                ContinueLineNumber = None
+                                RuntimeError = { Code = BuiltInStatementNotImplemented; Message = description; Position = Some pos }
+                            }
+                        | _ -> None
+
+                    match reportedError with
+                    | None when values.Length <= 1 -> Result.Ok(Continue, nextState)
+                    | None -> runtimeError BuiltInArityMismatch (Some pos) $"Built-in statement '{name}' expects zero or one argument."
+                    | Some errorInfo when values.Length <= 1 ->
+                        reportErrorToChannel resolvedChannel errorInfo nextState pos
+                        |> Result.map (fun finalState -> Continue, finalState)
+                    | Some _ ->
+                        runtimeError BuiltInArityMismatch (Some pos) $"Built-in statement '{name}' expects zero or one argument."))
+        | "CONTINUE" ->
+            unsupportedChannel ()
+            |> Result.bind (fun _ ->
+                if not state.InErrorHandler then
+                    runtimeError BuiltInStatementNotImplemented (Some pos) "CONTINUE is only valid inside WHEN ERROR."
+                else
+                    evalExprList state args
+                    |> Result.bind (fun (values, nextState) ->
+                        match values with
+                        | [] -> Result.Ok(ContinueError None, nextState)
+                        | [ lineValue ] -> Result.Ok(ContinueError(Some(asInt lineValue)), nextState)
+                        | _ -> runtimeError BuiltInArityMismatch (Some pos) $"Built-in statement '{name}' expects zero or one argument."))
+        | "RETRY" ->
+            unsupportedChannel ()
+            |> Result.bind (fun _ ->
+                if not state.InErrorHandler then
+                    runtimeError BuiltInStatementNotImplemented (Some pos) "RETRY is only valid inside WHEN ERROR."
+                else
+                    evalExprList state args
+                    |> Result.bind (fun (values, nextState) ->
+                        match values with
+                        | [] -> Result.Ok(RetryError None, nextState)
+                        | [ lineValue ] -> Result.Ok(RetryError(Some(asInt lineValue)), nextState)
+                        | _ -> runtimeError BuiltInArityMismatch (Some pos) $"Built-in statement '{name}' expects zero or one argument."))
         | "OPEN" ->
-            resolveChannelId state channel
-            |> Result.bind (fun (resolvedChannel, stateAfterChannel) ->
-                requireChannelId resolvedChannel
-                |> Result.bind (fun channelId ->
-                    evalExprList stateAfterChannel args
-                    |> Result.bind (fun (values, nextState) ->
-                        requireArity 1 values.Length
-                        |> Result.bind (fun () ->
-                            match values with
-                            | [ pathValue ] ->
-                                match nextState.Options.Host.Channels.OpenAs(channelId, asString pathValue) with
-                                | Result.Ok() -> Result.Ok(Continue, nextState)
-                                | Result.Error hostError -> runtimeError UnsupportedChannelExecution (Some pos) (hostErrorText hostError)
-                            | _ -> Result.Ok(Continue, nextState)))))
-        | "OPEN_IN" ->
-            resolveChannelId state channel
-            |> Result.bind (fun (resolvedChannel, stateAfterChannel) ->
-                requireChannelId resolvedChannel
-                |> Result.bind (fun channelId ->
-                    evalExprList stateAfterChannel args
-                    |> Result.bind (fun (values, nextState) ->
-                        requireArity 1 values.Length
-                        |> Result.bind (fun () ->
-                            match values with
-                            | [ pathValue ] ->
-                                match nextState.Options.Host.Files.OpenFileAs(channelId, asString pathValue, OpenForInput) with
-                                | Result.Ok() -> Result.Ok(Continue, nextState)
-                                | Result.Error hostError -> runtimeError UnsupportedChannelExecution (Some pos) (hostErrorText hostError)
-                            | _ -> Result.Ok(Continue, nextState)))))
-        | "OPEN_NEW" ->
-            resolveChannelId state channel
-            |> Result.bind (fun (resolvedChannel, stateAfterChannel) ->
-                requireChannelId resolvedChannel
-                |> Result.bind (fun channelId ->
-                    evalExprList stateAfterChannel args
-                    |> Result.bind (fun (values, nextState) ->
-                        requireArity 1 values.Length
-                        |> Result.bind (fun () ->
-                            match values with
-                            | [ pathValue ] ->
-                                match nextState.Options.Host.Files.OpenFileAs(channelId, asString pathValue, OpenForOutput) with
-                                | Result.Ok() -> Result.Ok(Continue, nextState)
-                                | Result.Error hostError -> runtimeError UnsupportedChannelExecution (Some pos) (hostErrorText hostError)
-                            | _ -> Result.Ok(Continue, nextState)))))
-        | "APPEND" ->
-            resolveChannelId state channel
-            |> Result.bind (fun (resolvedChannel, stateAfterChannel) ->
-                requireChannelId resolvedChannel
-                |> Result.bind (fun channelId ->
-                    evalExprList stateAfterChannel args
-                    |> Result.bind (fun (values, nextState) ->
-                        requireArity 1 values.Length
-                        |> Result.bind (fun () ->
-                            match values with
-                            | [ pathValue ] ->
-                                match nextState.Options.Host.Files.OpenFileAs(channelId, asString pathValue, OpenForAppend) with
-                                | Result.Ok() -> Result.Ok(Continue, nextState)
-                                | Result.Error hostError -> runtimeError UnsupportedChannelExecution (Some pos) (hostErrorText hostError)
-                            | _ -> Result.Ok(Continue, nextState)))))
-        | "CLOSE" ->
-            resolveChannelId state channel
-            |> Result.bind (fun (resolvedChannel, stateAfterChannel) ->
-                requireChannelId resolvedChannel
-                |> Result.bind (fun channelId ->
-                    requireArity 0 args.Length
+            resolveRequiredChannelId state channel (ChannelId 3) pos name
+            |> Result.bind (fun (channelId, stateAfterChannel) ->
+                evalExprList stateAfterChannel args
+                |> Result.bind (fun (values, nextState) ->
+                    requireArity 1 values.Length
                     |> Result.bind (fun () ->
-                        match stateAfterChannel.Options.Host.Channels.Close(channelId) with
-                        | Result.Ok() -> Result.Ok(Continue, stateAfterChannel)
-                        | Result.Error hostError -> runtimeError UnsupportedChannelExecution (Some pos) (hostErrorText hostError))))
+                        match values with
+                        | [ pathValue ] ->
+                            match nextState.Options.Host.Channels.OpenAs(channelId, asString pathValue) with
+                            | Result.Ok() -> Result.Ok(Continue, nextState)
+                            | Result.Error hostError -> runtimeError UnsupportedChannelExecution (Some pos) (hostErrorText hostError)
+                        | _ -> Result.Ok(Continue, nextState))))
+        | "OPEN_IN" ->
+            resolveRequiredChannelId state channel (ChannelId 3) pos name
+            |> Result.bind (fun (channelId, stateAfterChannel) ->
+                evalExprList stateAfterChannel args
+                |> Result.bind (fun (values, nextState) ->
+                    requireArity 1 values.Length
+                    |> Result.bind (fun () ->
+                        match values with
+                        | [ pathValue ] ->
+                            match nextState.Options.Host.Files.OpenFileAs(channelId, asString pathValue, OpenForInput) with
+                            | Result.Ok() -> Result.Ok(Continue, nextState)
+                            | Result.Error hostError -> runtimeError UnsupportedChannelExecution (Some pos) (hostErrorText hostError)
+                        | _ -> Result.Ok(Continue, nextState))))
+        | "OPEN_NEW" ->
+            resolveRequiredChannelId state channel (ChannelId 3) pos name
+            |> Result.bind (fun (channelId, stateAfterChannel) ->
+                evalExprList stateAfterChannel args
+                |> Result.bind (fun (values, nextState) ->
+                    requireArity 1 values.Length
+                    |> Result.bind (fun () ->
+                        match values with
+                        | [ pathValue ] ->
+                            match nextState.Options.Host.Files.OpenFileAs(channelId, asString pathValue, OpenForOutput) with
+                            | Result.Ok() -> Result.Ok(Continue, nextState)
+                            | Result.Error hostError -> runtimeError UnsupportedChannelExecution (Some pos) (hostErrorText hostError)
+                        | _ -> Result.Ok(Continue, nextState))))
+        | "APPEND" ->
+            resolveRequiredChannelId state channel (ChannelId 3) pos name
+            |> Result.bind (fun (channelId, stateAfterChannel) ->
+                evalExprList stateAfterChannel args
+                |> Result.bind (fun (values, nextState) ->
+                    requireArity 1 values.Length
+                    |> Result.bind (fun () ->
+                        match values with
+                        | [ pathValue ] ->
+                            match nextState.Options.Host.Files.OpenFileAs(channelId, asString pathValue, OpenForAppend) with
+                            | Result.Ok() -> Result.Ok(Continue, nextState)
+                            | Result.Error hostError -> runtimeError UnsupportedChannelExecution (Some pos) (hostErrorText hostError)
+                        | _ -> Result.Ok(Continue, nextState))))
+        | "CLOSE" ->
+            resolveRequiredChannelId state channel (ChannelId 3) pos name
+            |> Result.bind (fun (channelId, stateAfterChannel) ->
+                requireArity 0 args.Length
+                |> Result.bind (fun () ->
+                    match stateAfterChannel.Options.Host.Channels.Close(channelId) with
+                    | Result.Ok() -> Result.Ok(Continue, stateAfterChannel)
+                    | Result.Error hostError -> runtimeError UnsupportedChannelExecution (Some pos) (hostErrorText hostError)))
+        | "DIR" ->
+            withEffectiveChannel state channel (Some(ChannelId 1)) pos (fun resolvedChannel stateAfterChannel ->
+                evalExprList stateAfterChannel args
+                |> Result.bind (fun (values, nextState) ->
+                    if values.Length > 1 then
+                        runtimeError BuiltInArityMismatch (Some pos) $"Built-in statement '{name}' expects zero or one argument."
+                    else
+                        let pathSpec =
+                            match values with
+                            | [] -> None
+                            | [ pathValue ] -> Some(asString pathValue)
+                            | _ -> None
+                        match nextState.Options.Host.Files.ListDirectory(pathSpec) with
+                        | Result.Error hostError ->
+                            runtimeError UnsupportedChannelExecution (Some pos) (hostErrorText hostError)
+                        | Result.Ok entries ->
+                            ((Result.Ok nextState, entries)
+                             ||> List.fold (fun acc entry ->
+                                 acc
+                                 |> Result.bind (fun currentState ->
+                                     writeOutputToChannel resolvedChannel entry currentState pos
+                                     |> Result.bind (fun stateAfterWrite -> advanceScreenLine resolvedChannel stateAfterWrite pos))))
+                            |> Result.map (fun finalState -> Continue, finalState)))
         | "PAUSE" ->
             unsupportedChannel ()
             |> Result.bind (fun _ ->
@@ -984,8 +1316,7 @@ and private executeBuiltInCall state kind channel args targets pos =
                     executeChannelScreenOp resolvedChannel nextState pos (fun screenChannel -> screenChannel.SetBorder(first)) (fun screen -> screen.SetBorder(first))
                 | _ -> Result.Ok nextState)
         | "CLEAR" ->
-            resolveChannelId state channel
-            |> Result.bind (fun (resolvedChannel, stateAfterChannel) ->
+            executeGraphicsStatement (fun resolvedChannel stateAfterChannel ->
                 validateScreenChannel resolvedChannel stateAfterChannel pos
                 |> Result.bind (fun () ->
                     requireArity 0 args.Length
@@ -1023,66 +1354,51 @@ and private executeBuiltInCall state kind channel args targets pos =
                 | _ ->
                     executeChannelScreenOp resolvedChannel nextState pos (fun screenChannel -> screenChannel.SetPalette(numericArgs)) (fun screen -> screen.SetPalette(numericArgs)))
         | "PLOT" ->
-            resolveChannelId state channel
-            |> Result.bind (fun (resolvedChannel, stateAfterChannel) ->
-                validateScreenChannel resolvedChannel stateAfterChannel pos
-                |> Result.bind (fun () ->
-                    evalExprList stateAfterChannel args
-                    |> Result.bind (fun (values, nextState) ->
-                        requireArity 2 values.Length
-                        |> Result.bind (fun () ->
-                            match values with
-                            | [ x; y ] ->
-                                executeGraphicsOp resolvedChannel nextState pos (fun graphics -> graphics.Plot(normalizeNumber x, normalizeNumber y))
-                                |> Result.map (fun finalState -> Continue, finalState)
-                            | _ -> Result.Ok(Continue, nextState)))))
+            executeGraphicsStatement (fun resolvedChannel stateAfterChannel ->
+                evalExprList stateAfterChannel args
+                |> Result.bind (fun (values, nextState) ->
+                    requireArity 2 values.Length
+                    |> Result.bind (fun () ->
+                        match values with
+                        | [ x; y ] ->
+                            executeGraphicsOp resolvedChannel nextState pos (fun graphics -> graphics.Plot(normalizeNumber x, normalizeNumber y))
+                            |> Result.map (fun finalState -> Continue, finalState)
+                        | _ -> Result.Ok(Continue, nextState))))
         | "POINT" ->
-            resolveChannelId state channel
-            |> Result.bind (fun (resolvedChannel, stateAfterChannel) ->
-                validateScreenChannel resolvedChannel stateAfterChannel pos
-                |> Result.bind (fun () ->
-                    evalExprList stateAfterChannel args
-                    |> Result.bind (fun (values, nextState) ->
-                        requireArity 2 values.Length
-                        |> Result.bind (fun () ->
-                            match values with
-                            | [ x; y ] ->
-                                executeGraphicsOp resolvedChannel nextState pos (fun graphics -> graphics.Point(normalizeNumber x, normalizeNumber y))
-                                |> Result.map (fun finalState -> Continue, finalState)
-                            | _ -> Result.Ok(Continue, nextState)))))
+            executeGraphicsStatement (fun resolvedChannel stateAfterChannel ->
+                evalExprList stateAfterChannel args
+                |> Result.bind (fun (values, nextState) ->
+                    requireArity 2 values.Length
+                    |> Result.bind (fun () ->
+                        match values with
+                        | [ x; y ] ->
+                            executeGraphicsOp resolvedChannel nextState pos (fun graphics -> graphics.Point(normalizeNumber x, normalizeNumber y))
+                            |> Result.map (fun finalState -> Continue, finalState)
+                        | _ -> Result.Ok(Continue, nextState))))
         | "POINT_R" ->
-            resolveChannelId state channel
-            |> Result.bind (fun (resolvedChannel, stateAfterChannel) ->
-                validateScreenChannel resolvedChannel stateAfterChannel pos
-                |> Result.bind (fun () ->
-                    evalExprList stateAfterChannel args
-                    |> Result.bind (fun (values, nextState) ->
-                        requireArity 2 values.Length
-                        |> Result.bind (fun () ->
-                            match values with
-                            | [ dx; dy ] ->
-                                executeGraphicsOp resolvedChannel nextState pos (fun graphics -> graphics.PointRelative(normalizeNumber dx, normalizeNumber dy))
-                                |> Result.map (fun finalState -> Continue, finalState)
-                            | _ -> Result.Ok(Continue, nextState)))))
+            executeGraphicsStatement (fun resolvedChannel stateAfterChannel ->
+                evalExprList stateAfterChannel args
+                |> Result.bind (fun (values, nextState) ->
+                    requireArity 2 values.Length
+                    |> Result.bind (fun () ->
+                        match values with
+                        | [ dx; dy ] ->
+                            executeGraphicsOp resolvedChannel nextState pos (fun graphics -> graphics.PointRelative(normalizeNumber dx, normalizeNumber dy))
+                            |> Result.map (fun finalState -> Continue, finalState)
+                        | _ -> Result.Ok(Continue, nextState))))
         | "DRAW" ->
-            resolveChannelId state channel
-            |> Result.bind (fun (resolvedChannel, stateAfterChannel) ->
-                validateScreenChannel resolvedChannel stateAfterChannel pos
-                |> Result.bind (fun () ->
-                    evalExprList stateAfterChannel args
-                    |> Result.bind (fun (values, nextState) ->
-                        requireArity 2 values.Length
-                        |> Result.bind (fun () ->
-                            match values with
-                            | [ x; y ] ->
-                                executeGraphicsOp resolvedChannel nextState pos (fun graphics -> graphics.Draw(normalizeNumber x, normalizeNumber y))
-                                |> Result.map (fun finalState -> Continue, finalState)
-                            | _ -> Result.Ok(Continue, nextState)))))
+            executeGraphicsStatement (fun resolvedChannel stateAfterChannel ->
+                evalExprList stateAfterChannel args
+                |> Result.bind (fun (values, nextState) ->
+                    requireArity 2 values.Length
+                    |> Result.bind (fun () ->
+                        match values with
+                        | [ x; y ] ->
+                            executeGraphicsOp resolvedChannel nextState pos (fun graphics -> graphics.Draw(normalizeNumber x, normalizeNumber y))
+                            |> Result.map (fun finalState -> Continue, finalState)
+                        | _ -> Result.Ok(Continue, nextState))))
         | "DLINE" ->
-            resolveChannelId state channel
-            |> Result.bind (fun (resolvedChannel, stateAfterChannel) ->
-                validateScreenChannel resolvedChannel stateAfterChannel pos
-                |> Result.bind (fun () ->
+            executeOptionalGraphicsStatement (fun resolvedChannel stateAfterChannel ->
                     evalExprList stateAfterChannel args
                     |> Result.bind (fun (values, nextState) ->
                         requireAtLeast 4 values.Length
@@ -1091,12 +1407,9 @@ and private executeBuiltInCall state kind channel args targets pos =
                                 runtimeError BuiltInArityMismatch (Some pos) $"Built-in statement '{name}' expects an even number of coordinate arguments."
                             else
                                 executeGraphicsOp resolvedChannel nextState pos (fun graphics -> graphics.DLine(values |> List.map normalizeNumber))
-                                |> Result.map (fun finalState -> Continue, finalState)))))
+                                |> Result.map (fun finalState -> Continue, finalState))))
         | "LINE" ->
-            resolveChannelId state channel
-            |> Result.bind (fun (resolvedChannel, stateAfterChannel) ->
-                validateScreenChannel resolvedChannel stateAfterChannel pos
-                |> Result.bind (fun () ->
+            executeOptionalGraphicsStatement (fun resolvedChannel stateAfterChannel ->
                     evalExprList stateAfterChannel args
                     |> Result.bind (fun (values, nextState) ->
                         requireAtLeast 4 values.Length
@@ -1120,12 +1433,9 @@ and private executeBuiltInCall state kind channel args targets pos =
                                         |> Result.bind (fun currentState ->
                                             executeGraphicsOp resolvedChannel currentState pos (fun graphics -> graphics.Line(x1, y1, x2, y2))))
                                     (Result.Ok nextState)
-                                |> Result.map (fun finalState -> Continue, finalState)))))
+                                |> Result.map (fun finalState -> Continue, finalState))))
         | "LINE_R" ->
-            resolveChannelId state channel
-            |> Result.bind (fun (resolvedChannel, stateAfterChannel) ->
-                validateScreenChannel resolvedChannel stateAfterChannel pos
-                |> Result.bind (fun () ->
+            executeOptionalGraphicsStatement (fun resolvedChannel stateAfterChannel ->
                     evalExprList stateAfterChannel args
                     |> Result.bind (fun (values, nextState) ->
                         requireAtLeast 2 values.Length
@@ -1134,12 +1444,9 @@ and private executeBuiltInCall state kind channel args targets pos =
                                 runtimeError BuiltInArityMismatch (Some pos) $"Built-in statement '{name}' expects an even number of coordinate arguments."
                             else
                                 executeGraphicsOp resolvedChannel nextState pos (fun graphics -> graphics.LineRelative(values |> List.map normalizeNumber))
-                                |> Result.map (fun finalState -> Continue, finalState)))))
+                                |> Result.map (fun finalState -> Continue, finalState))))
         | "CIRCLE" ->
-            resolveChannelId state channel
-            |> Result.bind (fun (resolvedChannel, stateAfterChannel) ->
-                validateScreenChannel resolvedChannel stateAfterChannel pos
-                |> Result.bind (fun () ->
+            executeOptionalGraphicsStatement (fun resolvedChannel stateAfterChannel ->
                     evalExprList stateAfterChannel args
                     |> Result.bind (fun (values, nextState) ->
                         requireArity 3 values.Length
@@ -1148,12 +1455,9 @@ and private executeBuiltInCall state kind channel args targets pos =
                             | [ x; y; radius ] ->
                                 executeGraphicsOp resolvedChannel nextState pos (fun graphics -> graphics.Circle(normalizeNumber x, normalizeNumber y, normalizeNumber radius))
                                 |> Result.map (fun finalState -> Continue, finalState)
-                            | _ -> Result.Ok(Continue, nextState)))))
+                            | _ -> Result.Ok(Continue, nextState))))
         | "CIRCLE_R" ->
-            resolveChannelId state channel
-            |> Result.bind (fun (resolvedChannel, stateAfterChannel) ->
-                validateScreenChannel resolvedChannel stateAfterChannel pos
-                |> Result.bind (fun () ->
+            executeOptionalGraphicsStatement (fun resolvedChannel stateAfterChannel ->
                     evalExprList stateAfterChannel args
                     |> Result.bind (fun (values, nextState) ->
                         requireArity 3 values.Length
@@ -1162,12 +1466,9 @@ and private executeBuiltInCall state kind channel args targets pos =
                             | [ dx; dy; radius ] ->
                                 executeGraphicsOp resolvedChannel nextState pos (fun graphics -> graphics.CircleRelative(normalizeNumber dx, normalizeNumber dy, normalizeNumber radius))
                                 |> Result.map (fun finalState -> Continue, finalState)
-                            | _ -> Result.Ok(Continue, nextState)))))
+                            | _ -> Result.Ok(Continue, nextState))))
         | "ELLIPSE" ->
-            resolveChannelId state channel
-            |> Result.bind (fun (resolvedChannel, stateAfterChannel) ->
-                validateScreenChannel resolvedChannel stateAfterChannel pos
-                |> Result.bind (fun () ->
+            executeOptionalGraphicsStatement (fun resolvedChannel stateAfterChannel ->
                     evalExprList stateAfterChannel args
                     |> Result.bind (fun (values, nextState) ->
                         requireArity 5 values.Length
@@ -1176,12 +1477,9 @@ and private executeBuiltInCall state kind channel args targets pos =
                             | [ x; y; radius; ratio; angle ] ->
                                 executeGraphicsOp resolvedChannel nextState pos (fun graphics -> graphics.Ellipse(normalizeNumber x, normalizeNumber y, normalizeNumber radius, normalizeNumber ratio, normalizeNumber angle))
                                 |> Result.map (fun finalState -> Continue, finalState)
-                            | _ -> Result.Ok(Continue, nextState)))))
+                            | _ -> Result.Ok(Continue, nextState))))
         | "ELLIPSE_R" ->
-            resolveChannelId state channel
-            |> Result.bind (fun (resolvedChannel, stateAfterChannel) ->
-                validateScreenChannel resolvedChannel stateAfterChannel pos
-                |> Result.bind (fun () ->
+            executeOptionalGraphicsStatement (fun resolvedChannel stateAfterChannel ->
                     evalExprList stateAfterChannel args
                     |> Result.bind (fun (values, nextState) ->
                         requireArity 5 values.Length
@@ -1190,12 +1488,9 @@ and private executeBuiltInCall state kind channel args targets pos =
                             | [ dx; dy; radius; ratio; angle ] ->
                                 executeGraphicsOp resolvedChannel nextState pos (fun graphics -> graphics.EllipseRelative(normalizeNumber dx, normalizeNumber dy, normalizeNumber radius, normalizeNumber ratio, normalizeNumber angle))
                                 |> Result.map (fun finalState -> Continue, finalState)
-                            | _ -> Result.Ok(Continue, nextState)))))
+                            | _ -> Result.Ok(Continue, nextState))))
         | "ARC" ->
-            resolveChannelId state channel
-            |> Result.bind (fun (resolvedChannel, stateAfterChannel) ->
-                validateScreenChannel resolvedChannel stateAfterChannel pos
-                |> Result.bind (fun () ->
+            executeOptionalGraphicsStatement (fun resolvedChannel stateAfterChannel ->
                     evalExprList stateAfterChannel args
                     |> Result.bind (fun (values, nextState) ->
                         requireArity 5 values.Length
@@ -1204,12 +1499,9 @@ and private executeBuiltInCall state kind channel args targets pos =
                             | [ x; y; radius; startAngle; endAngle ] ->
                                 executeGraphicsOp resolvedChannel nextState pos (fun graphics -> graphics.Arc(normalizeNumber x, normalizeNumber y, normalizeNumber radius, normalizeNumber startAngle, normalizeNumber endAngle))
                                 |> Result.map (fun finalState -> Continue, finalState)
-                            | _ -> Result.Ok(Continue, nextState)))))
+                            | _ -> Result.Ok(Continue, nextState))))
         | "ARC_R" ->
-            resolveChannelId state channel
-            |> Result.bind (fun (resolvedChannel, stateAfterChannel) ->
-                validateScreenChannel resolvedChannel stateAfterChannel pos
-                |> Result.bind (fun () ->
+            executeOptionalGraphicsStatement (fun resolvedChannel stateAfterChannel ->
                     evalExprList stateAfterChannel args
                     |> Result.bind (fun (values, nextState) ->
                         requireArity 5 values.Length
@@ -1218,12 +1510,9 @@ and private executeBuiltInCall state kind channel args targets pos =
                             | [ dx; dy; radius; startAngle; endAngle ] ->
                                 executeGraphicsOp resolvedChannel nextState pos (fun graphics -> graphics.ArcRelative(normalizeNumber dx, normalizeNumber dy, normalizeNumber radius, normalizeNumber startAngle, normalizeNumber endAngle))
                                 |> Result.map (fun finalState -> Continue, finalState)
-                            | _ -> Result.Ok(Continue, nextState)))))
+                            | _ -> Result.Ok(Continue, nextState))))
         | "BLOCK" ->
-            resolveChannelId state channel
-            |> Result.bind (fun (resolvedChannel, stateAfterChannel) ->
-                validateScreenChannel resolvedChannel stateAfterChannel pos
-                |> Result.bind (fun () ->
+            executeOptionalGraphicsStatement (fun resolvedChannel stateAfterChannel ->
                     evalExprList stateAfterChannel args
                     |> Result.bind (fun (values, nextState) ->
                         requireArity 5 values.Length
@@ -1232,12 +1521,9 @@ and private executeBuiltInCall state kind channel args targets pos =
                             | [ width; height; x; y; color ] ->
                                 executeGraphicsOp resolvedChannel nextState pos (fun graphics -> graphics.Block(normalizeNumber width, normalizeNumber height, normalizeNumber x, normalizeNumber y, asInt color))
                                 |> Result.map (fun finalState -> Continue, finalState)
-                            | _ -> Result.Ok(Continue, nextState)))))
+                            | _ -> Result.Ok(Continue, nextState))))
         | "FILL" ->
-            resolveChannelId state channel
-            |> Result.bind (fun (resolvedChannel, stateAfterChannel) ->
-                validateScreenChannel resolvedChannel stateAfterChannel pos
-                |> Result.bind (fun () ->
+            executeOptionalGraphicsStatement (fun resolvedChannel stateAfterChannel ->
                     evalExprList stateAfterChannel args
                     |> Result.bind (fun (values, nextState) ->
                         requireArity 1 values.Length
@@ -1246,12 +1532,9 @@ and private executeBuiltInCall state kind channel args targets pos =
                             | [ fillValue ] ->
                                 executeGraphicsOp resolvedChannel nextState pos (fun graphics -> graphics.SetFill(asInt fillValue))
                                 |> Result.map (fun finalState -> Continue, finalState)
-                            | _ -> Result.Ok(Continue, nextState)))))
+                            | _ -> Result.Ok(Continue, nextState))))
         | "SCALE" ->
-            resolveChannelId state channel
-            |> Result.bind (fun (resolvedChannel, stateAfterChannel) ->
-                validateScreenChannel resolvedChannel stateAfterChannel pos
-                |> Result.bind (fun () ->
+            executeOptionalGraphicsStatement (fun resolvedChannel stateAfterChannel ->
                     evalExprList stateAfterChannel args
                     |> Result.bind (fun (values, nextState) ->
                         requireArity 3 values.Length
@@ -1268,12 +1551,9 @@ and private executeBuiltInCall state kind channel args targets pos =
                                         | None ->
                                             { finalState with DefaultGraphicsScale = scale }
                                     Continue, updatedState)
-                            | _ -> Result.Ok(Continue, nextState)))))
+                            | _ -> Result.Ok(Continue, nextState))))
         | "OVER" ->
-            resolveChannelId state channel
-            |> Result.bind (fun (resolvedChannel, stateAfterChannel) ->
-                validateScreenChannel resolvedChannel stateAfterChannel pos
-                |> Result.bind (fun () ->
+            executeOptionalGraphicsStatement (fun resolvedChannel stateAfterChannel ->
                     evalExprList stateAfterChannel args
                     |> Result.bind (fun (values, nextState) ->
                         requireAtLeast 1 values.Length
@@ -1282,12 +1562,9 @@ and private executeBuiltInCall state kind channel args targets pos =
                             | mode :: _ ->
                                 executeGraphicsOp resolvedChannel nextState pos (fun graphics -> graphics.SetOver(asInt mode))
                                 |> Result.map (fun finalState -> Continue, finalState)
-                            | _ -> Result.Ok(Continue, nextState)))))
+                            | _ -> Result.Ok(Continue, nextState))))
         | "UNDER" ->
-            resolveChannelId state channel
-            |> Result.bind (fun (resolvedChannel, stateAfterChannel) ->
-                validateScreenChannel resolvedChannel stateAfterChannel pos
-                |> Result.bind (fun () ->
+            executeOptionalGraphicsStatement (fun resolvedChannel stateAfterChannel ->
                     evalExprList stateAfterChannel args
                     |> Result.bind (fun (values, nextState) ->
                         requireAtLeast 1 values.Length
@@ -1296,12 +1573,9 @@ and private executeBuiltInCall state kind channel args targets pos =
                             | mode :: _ ->
                                 executeGraphicsOp resolvedChannel nextState pos (fun graphics -> graphics.SetUnder(asInt mode))
                                 |> Result.map (fun finalState -> Continue, finalState)
-                            | _ -> Result.Ok(Continue, nextState)))))
+                            | _ -> Result.Ok(Continue, nextState))))
         | "FLASH" ->
-            resolveChannelId state channel
-            |> Result.bind (fun (resolvedChannel, stateAfterChannel) ->
-                validateScreenChannel resolvedChannel stateAfterChannel pos
-                |> Result.bind (fun () ->
+            executeOptionalGraphicsStatement (fun resolvedChannel stateAfterChannel ->
                     evalExprList stateAfterChannel args
                     |> Result.bind (fun (values, nextState) ->
                         requireAtLeast 1 values.Length
@@ -1310,30 +1584,21 @@ and private executeBuiltInCall state kind channel args targets pos =
                             | mode :: _ ->
                                 executeGraphicsOp resolvedChannel nextState pos (fun graphics -> graphics.SetFlash(asInt mode))
                                 |> Result.map (fun finalState -> Continue, finalState)
-                            | _ -> Result.Ok(Continue, nextState)))))
+                            | _ -> Result.Ok(Continue, nextState))))
         | "PENDOWN" ->
-            resolveChannelId state channel
-            |> Result.bind (fun (resolvedChannel, stateAfterChannel) ->
-                validateScreenChannel resolvedChannel stateAfterChannel pos
-                |> Result.bind (fun () ->
+            executeOptionalGraphicsStatement (fun resolvedChannel stateAfterChannel ->
                     requireArity 0 args.Length
                     |> Result.bind (fun () ->
                         executeGraphicsOp resolvedChannel stateAfterChannel pos (fun graphics -> graphics.SetPenDown(true))
-                        |> Result.map (fun finalState -> Continue, finalState))))
+                        |> Result.map (fun finalState -> Continue, finalState)))
         | "PENUP" ->
-            resolveChannelId state channel
-            |> Result.bind (fun (resolvedChannel, stateAfterChannel) ->
-                validateScreenChannel resolvedChannel stateAfterChannel pos
-                |> Result.bind (fun () ->
+            executeOptionalGraphicsStatement (fun resolvedChannel stateAfterChannel ->
                     requireArity 0 args.Length
                     |> Result.bind (fun () ->
                         executeGraphicsOp resolvedChannel stateAfterChannel pos (fun graphics -> graphics.SetPenDown(false))
-                        |> Result.map (fun finalState -> Continue, finalState))))
+                        |> Result.map (fun finalState -> Continue, finalState)))
         | "TURN" ->
-            resolveChannelId state channel
-            |> Result.bind (fun (resolvedChannel, stateAfterChannel) ->
-                validateScreenChannel resolvedChannel stateAfterChannel pos
-                |> Result.bind (fun () ->
+            executeOptionalGraphicsStatement (fun resolvedChannel stateAfterChannel ->
                     evalExprList stateAfterChannel args
                     |> Result.bind (fun (values, nextState) ->
                         requireArity 1 values.Length
@@ -1342,12 +1607,9 @@ and private executeBuiltInCall state kind channel args targets pos =
                             | [ angle ] ->
                                 executeGraphicsOp resolvedChannel nextState pos (fun graphics -> graphics.Turn(normalizeNumber angle))
                                 |> Result.map (fun finalState -> Continue, finalState)
-                            | _ -> Result.Ok(Continue, nextState)))))
+                            | _ -> Result.Ok(Continue, nextState))))
         | "TURNTO" ->
-            resolveChannelId state channel
-            |> Result.bind (fun (resolvedChannel, stateAfterChannel) ->
-                validateScreenChannel resolvedChannel stateAfterChannel pos
-                |> Result.bind (fun () ->
+            executeOptionalGraphicsStatement (fun resolvedChannel stateAfterChannel ->
                     evalExprList stateAfterChannel args
                     |> Result.bind (fun (values, nextState) ->
                         requireArity 1 values.Length
@@ -1356,7 +1618,7 @@ and private executeBuiltInCall state kind channel args targets pos =
                             | [ angle ] ->
                                 executeGraphicsOp resolvedChannel nextState pos (fun graphics -> graphics.TurnTo(normalizeNumber angle))
                                 |> Result.map (fun finalState -> Continue, finalState)
-                            | _ -> Result.Ok(Continue, nextState)))))
+                            | _ -> Result.Ok(Continue, nextState))))
         | _ when normalized.StartsWith("TURBO") -> Result.Ok(Continue, state)
         | _ ->
             unsupportedChannel ()
@@ -1384,6 +1646,8 @@ and private executeStmt resolveLine gosubStack state stmt =
         executeBuiltInCall state kind channel args [] pos
     | Input(channel, prompts, targets, pos) ->
         executeBuiltInCall state BuiltInKind.Input channel prompts targets pos
+    | WhenError(body, _) ->
+        Result.Ok(Continue, { state with ActiveErrorHandler = Some body })
     | If(condition, thenBlock, elseBlock, _) ->
         evalExpr state condition
         |> Result.bind (fun (value, nextState) ->
@@ -1548,12 +1812,76 @@ and private executeStmt resolveLine gosubStack state stmt =
         assign state targets
     | Remark _ -> Result.Ok(Continue, state)
 
+and private findNextLineNumber block pc inheritedNextLine =
+    block
+    |> List.skip (pc + 1)
+    |> List.tryPick (function
+        | LineNumber(value, _) -> Some value
+        | _ -> None)
+    |> Option.orElse inheritedNextLine
+
+and private handleRuntimeError resolveLine block pc gosubStack state (error: RuntimeError) =
+    match state.ActiveErrorHandler, state.InErrorHandler with
+    | Some handler, false ->
+        let errorInfo = errorInfoFromRuntimeError state error
+        let handlerState =
+            { state with
+                LastError = Some errorInfo
+                InErrorHandler = true }
+
+        executeBlock resolveLine handlerState handler 0 gosubStack (fun currentState _ -> Result.Ok(Continue, currentState))
+        |> Result.bind (fun (flow, finalState) ->
+            let resumedState = { finalState with InErrorHandler = false }
+            match flow with
+            | RetryError lineOpt ->
+                match lineOpt with
+                | Some lineNumber -> Result.Ok(JumpToLine lineNumber, resumedState)
+                | None ->
+                    executeBlock resolveLine resumedState block pc gosubStack (fun currentState _ -> Result.Ok(Continue, currentState))
+                    |> Result.map (fun (nestedFlow, nestedState) ->
+                        match nestedFlow with
+                        | Continue -> TransferredContinue, nestedState
+                        | _ -> nestedFlow, nestedState)
+            | ContinueError lineOpt ->
+                match lineOpt with
+                | Some lineNumber -> Result.Ok(JumpToLine lineNumber, resumedState)
+                | None ->
+                    executeBlock resolveLine resumedState block (pc + 1) gosubStack (fun currentState _ -> Result.Ok(Continue, currentState))
+                    |> Result.map (fun (nestedFlow, nestedState) ->
+                        match nestedFlow with
+                        | Continue -> TransferredContinue, nestedState
+                        | _ -> nestedFlow, nestedState)
+            | StopExecution -> Result.Ok(StopExecution, resumedState)
+            | JumpToLine _
+            | GosubToLine _
+            | ReturnFromRoutine _
+            | BareReturn
+            | ReplaceProgram _
+            | RestartProgram _
+            | ExitLoop _
+            | NextLoop _
+            | Continue
+            | TransferredContinue ->
+                runtimeError EscapedReturn error.Position "WHEN ERROR handler must exit with RETRY, CONTINUE, or STOP.")
+    | _ ->
+        let finalState = { state with LastError = Some(errorInfoFromRuntimeError state error) }
+        Result.Error error
+
 and private executeBlock resolveLine state block pc gosubStack kContinue =
     if pc >= block.Length then
         kContinue state gosubStack
     else
-        executeStmt resolveLine gosubStack state block[pc]
-        |> Result.bind (fun (flow, nextState) ->
+        let currentStmt = block[pc]
+        let currentLineNumber =
+            match currentStmt with
+            | LineNumber(value, _) -> Some value
+            | _ -> state.CurrentLineNumber
+        let stateAtStmt =
+            { state with
+                CurrentLineNumber = currentLineNumber
+                NextLineNumber = findNextLineNumber block pc state.NextLineNumber }
+
+        let continueWithFlow (flow, nextState) =
             match flow with
             | Continue -> executeBlock resolveLine nextState block (pc + 1) gosubStack kContinue
             | JumpToLine lineNumber ->
@@ -1576,7 +1904,14 @@ and private executeBlock resolveLine state block pc gosubStack kContinue =
                 match gosubStack with
                 | returnCont :: _ -> returnCont nextState
                 | [] -> Result.Ok(BareReturn, nextState)
-            | _ -> Result.Ok(flow, nextState))
+            | _ -> Result.Ok(flow, nextState)
+
+        let stepResult =
+            match executeStmt resolveLine gosubStack stateAtStmt currentStmt with
+            | Result.Ok result -> Result.Ok result
+            | Result.Error error -> handleRuntimeError resolveLine block pc gosubStack stateAtStmt error
+
+        stepResult |> Result.bind continueWithFlow
 
 and private buildLineTargets rootBlock =
     let rec build block kContinue =
@@ -1602,6 +1937,7 @@ and private buildLineTargets rootBlock =
                         | None -> []
 
                     build thenBlock continueAfter @ elseTargets
+                | WhenError(handlerBlock, _) -> build handlerBlock continueAfter
                 | For(_, _, _, _, _, body, _)
                 | ForSequence(_, _, _, _, _, _, _, body, _)
                 | Repeat(_, _, body, _) -> build body continueAfter
@@ -1618,32 +1954,59 @@ and private buildLineTargets rootBlock =
 
     resolveLine
 
+let rec private executeTopLevelProgram state startLine =
+    let resolveLine = buildLineTargets state.Program.Main
+
+    let startResult =
+        match startLine with
+        | Some lineNumber ->
+            match resolveLine lineNumber with
+            | Some target -> target state []
+            | None -> runtimeError MissingGotoTarget None $"RUN target line {lineNumber} does not exist."
+        | None ->
+            executeBlock resolveLine state state.Program.Main 0 [] (fun currentState _ -> Result.Ok(Continue, currentState))
+
+    startResult
+    |> Result.bind (fun (flow, finalState) ->
+        match flow with
+        | Continue
+        | TransferredContinue
+        | StopExecution -> Result.Ok { Output = finalState.Output }
+        | ReplaceProgram(program, sourceProgram) ->
+            let _ = reinitializeProgramState finalState program sourceProgram
+            Result.Ok { Output = finalState.Output }
+        | RestartProgram(program, sourceProgram, startLineNumber) ->
+            let restartedState = reinitializeProgramState finalState program sourceProgram
+            executeTopLevelProgram restartedState startLineNumber
+        | ReturnFromRoutine _
+        | BareReturn -> runtimeError EscapedReturn None "Return escaped the top-level program."
+        | RetryError _
+        | ContinueError _ -> runtimeError EscapedLoopControl None "Error control escaped the top-level program."
+        | JumpToLine lineNumber -> runtimeError MissingGotoTarget None $"GOTO target line {lineNumber} does not exist."
+        | GosubToLine lineNumber -> runtimeError MissingGosubTarget None $"GOSUB target line {lineNumber} does not exist."
+        | ExitLoop _
+        | NextLoop _ -> runtimeError EscapedLoopControl None "Loop control escaped the top-level program.")
+
 let interpretProgramWithOptions options (program: HirProgram) =
     let initialState =
         { Program = program
+          SourceProgram = options.InitialSourceProgram
           Globals = allocateCells program.Globals
           Frames = []
           DataPointer = 0
           Output = []
           DefaultGraphicsScale = (100.0, 0.0, 0.0)
           ChannelGraphicsScales = Map.empty
+          CurrentLineNumber = None
+          NextLineNumber = None
+          ActiveErrorHandler = None
+          LastError = None
+          InErrorHandler = false
           RandomSource = options.Random
           Options = options }
+        |> resetErrorProcessing
 
-    let resolveLine = buildLineTargets program.Main
-
-    executeBlock resolveLine initialState program.Main 0 [] (fun state _ -> Result.Ok(Continue, state))
-    |> Result.bind (fun (flow, finalState) ->
-        match flow with
-        | Continue
-        | TransferredContinue
-        | StopExecution -> Result.Ok { Output = finalState.Output }
-        | ReturnFromRoutine _
-        | BareReturn -> runtimeError EscapedReturn None "Return escaped the top-level program."
-        | JumpToLine lineNumber -> runtimeError MissingGotoTarget None $"GOTO target line {lineNumber} does not exist."
-        | GosubToLine lineNumber -> runtimeError MissingGosubTarget None $"GOSUB target line {lineNumber} does not exist."
-        | ExitLoop _
-        | NextLoop _ -> runtimeError EscapedLoopControl None "Loop control escaped the top-level program.")
+    executeTopLevelProgram initialState None
 
 let interpretProgram program =
     interpretProgramWithOptions defaultRuntimeOptions program

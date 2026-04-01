@@ -306,6 +306,8 @@ and private emitStmt ctx builder level stmt =
             let reader =
                 $"ReadInputValue({index}, {hirTypeToken (match target with | WriteVar(_, t, _) | WriteArrayElem(_, _, t, _) | DynamicWriteVar(_, t, _) | DynamicWriteArrayElem(_, _, t, _) -> t)})"
             appendLine builder level (emitTargetWrite ctx target reader))
+    | WhenError(_, _) ->
+        appendLine builder level "throw new NotSupportedException(\"WHEN ERROR is only supported by the interpreter.\");"
     | If(condition, thenBlock, elseBlock, _) ->
         emitIf ctx builder level condition thenBlock elseBlock
     | For(loopId, symbolId, startExpr, endExpr, stepExpr, body, _) ->

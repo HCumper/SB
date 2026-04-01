@@ -174,11 +174,23 @@ let private stripQuotedString (valueText: string) =
 let private quoteString (value: string) =
     "\"" + value.Replace("\"", "\"\"") + "\""
 
+let private tryParseHexInt (valueText: string) =
+    if valueText.StartsWith("$") && valueText.Length > 1 then
+        match System.UInt32.TryParse(valueText[1..], NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture) with
+        | true, value -> true, int (int32 value)
+        | _ -> false, 0
+    else
+        false, 0
+
 let private tryParseFloat (valueText: string) =
-    System.Double.TryParse(valueText, NumberStyles.Float, CultureInfo.InvariantCulture)
+    match tryParseHexInt valueText with
+    | true, value -> true, float value
+    | _ -> System.Double.TryParse(valueText, NumberStyles.Float, CultureInfo.InvariantCulture)
 
 let private tryParseInt (valueText: string) =
-    System.Int32.TryParse(valueText, NumberStyles.Integer, CultureInfo.InvariantCulture)
+    match tryParseHexInt valueText with
+    | true, value -> true, value
+    | _ -> System.Int32.TryParse(valueText, NumberStyles.Integer, CultureInfo.InvariantCulture)
 
 let private formatReal (value: double) =
     value.ToString("G17", CultureInfo.InvariantCulture)
@@ -339,6 +351,9 @@ let tryEvaluateConstantIntegerExpr state expr =
             | true, n when System.Math.Abs(n - System.Math.Round(n)) < 1e-9 -> Some(int (System.Math.Round n))
             | _ -> None
     | None -> None
+
+let tryEvaluateConstantExprText state expr =
+    tryEvaluateConstantExpr state expr
 
 let recordExpressionResult expr evaluatedType valueText (state: ProcessingState) =
     recordFact ExpressionResult None (describeExpr expr) state.CurrentScope (posOfExpr expr) (Some evaluatedType) valueText state
@@ -571,7 +586,7 @@ let rec inferExprType (state: ProcessingState) expr =
 
     match expr with
     | NumberLiteral(_, _, value) ->
-        match System.Int32.TryParse value with
+        match tryParseInt value with
         | true, _ -> typed SBType.Integer state
         | _ -> typed SBType.Real state
     | StringLiteral _ -> typed SBType.String state

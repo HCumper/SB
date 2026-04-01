@@ -39,6 +39,7 @@ and Stmt =
     | DimStmt of SourcePosition * (string * Expr list) list
     | LocalStmt of SourcePosition * (string * Expr list option) list
     | ImplicitStmt of SourcePosition * string * string list
+    | ManifestStmt of SourcePosition * (string * Expr) list
     | ReferenceStmt of SourcePosition * Expr list
     | Assignment of SourcePosition * Expr * Expr
     | GotoStmt of SourcePosition * Expr

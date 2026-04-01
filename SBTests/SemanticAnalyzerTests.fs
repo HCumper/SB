@@ -327,6 +327,51 @@ let ``procedure implicit typing applies globally to later declarations`` () =
     | other -> Assert.Fail($"Expected variable symbol for score, got %A{other}")
 
 [<Test>]
+let ``implicitb and implicitl apply integer-compatible typing and implicitd applies real typing`` () =
+    let analyzed =
+        analyzeProgram "10 IMPLICITB flag\n20 IMPLICITD ratio\n30 IMPLICITL count\n40 flag = 1\n50 ratio = 1.5\n60 count = 2\n"
+
+    Assert.That(analyzed.Errors, Is.Empty)
+
+    match analyzed.SymTab[globalScope].Symbols[normalizeIdentifier "flag"] with
+    | VariableSym sym -> Assert.That(sym.Common.EvaluatedType, Is.EqualTo(SBType.Integer))
+    | other -> Assert.Fail($"Expected variable symbol for flag, got %A{other}")
+
+    match analyzed.SymTab[globalScope].Symbols[normalizeIdentifier "ratio"] with
+    | VariableSym sym -> Assert.That(sym.Common.EvaluatedType, Is.EqualTo(SBType.Real))
+    | other -> Assert.Fail($"Expected variable symbol for ratio, got %A{other}")
+
+    match analyzed.SymTab[globalScope].Symbols[normalizeIdentifier "count"] with
+    | VariableSym sym -> Assert.That(sym.Common.EvaluatedType, Is.EqualTo(SBType.Integer))
+    | other -> Assert.Fail($"Expected variable symbol for count, got %A{other}")
+
+[<Test>]
+let ``manifest declares constants with folded values`` () =
+    let analyzed =
+        analyzeProgram "10 MANIFEST : TRUE = 1 : FALSE = 0\n20 total = TRUE + 2\n"
+
+    Assert.That(analyzed.Errors, Is.Empty)
+
+    match analyzed.SymTab[globalScope].Symbols[normalizeIdentifier "TRUE"] with
+    | ConstantSym sym ->
+        Assert.That(sym.Common.EvaluatedType, Is.EqualTo(SBType.Integer))
+        Assert.That(sym.ValueText, Is.EqualTo(Some "1"))
+    | other -> Assert.Fail($"Expected constant symbol for TRUE, got %A{other}")
+
+    match analyzed.SymTab[globalScope].Symbols[normalizeIdentifier "FALSE"] with
+    | ConstantSym sym ->
+        Assert.That(sym.Common.EvaluatedType, Is.EqualTo(SBType.Integer))
+        Assert.That(sym.ValueText, Is.EqualTo(Some "0"))
+    | other -> Assert.Fail($"Expected constant symbol for FALSE, got %A{other}")
+
+[<Test>]
+let ``manifest rejects expressions and requires numeric literals`` () =
+    let analyzed =
+        analyzeProgram "10 MANIFEST : A = 1 + 2\n"
+
+    Assert.That(analyzed.Errors, Has.Some.Contains("MANIFEST 'A' must be assigned a numeric literal"))
+
+[<Test>]
 let ``assignment infers symbol types from expression results`` () =
     let analyzed =
         analyzeProgram "10 total = 1 + 2.5\n20 name$ = \"a\" & \"b\"\n"

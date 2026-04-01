@@ -82,7 +82,7 @@ let ``lowerToHir preserves empty when condition and empty select clause body`` (
     let hir = lowerProgram ast
 
     match hir.Main with
-    | [] -> ()
+    | [ WhenError([], _) ] -> ()
     | other -> Assert.Fail($"Unexpected main HIR: %A{other}")
 
 [<Test>]

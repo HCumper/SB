@@ -151,6 +151,9 @@ and private appendStmt (builder: StringBuilder) level stmt =
         appendLine builder level $"BuiltIn {formatBuiltInKind kind}{formatChannel channel} ({formatExprList args}) @{formatPosition pos}"
     | Input(channel, prompts, targets, pos) ->
         appendLine builder level $"Input{formatChannel channel}{formatPromptList prompts} targets=[{formatTargetList targets}] @{formatPosition pos}"
+    | WhenError(body, pos) ->
+        appendLine builder level $"WhenError @{formatPosition pos}"
+        appendBlock builder (level + 1) body
     | If(condition, thenBlock, elseBlock, pos) ->
         appendLine builder level $"If {formatExpr condition} @{formatPosition pos}"
         appendLine builder (level + 1) "Then"

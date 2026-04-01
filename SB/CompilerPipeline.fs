@@ -17,8 +17,10 @@ open AstDiagnostics
 open AstToHir
 open HirCBackend
 open HirCSharpBackend
+open Interpreter
 open ParseTreeVisitor
 open SymbolTableManager
+open SemanticAnalysisFacts
 open SemanticAnalyzer
 open TypeAnalyzer
 open SSB
@@ -165,6 +167,99 @@ let createLexer (input: AntlrInputStream) =
     let factory = CommonTokenFactory() :> ITokenFactory
     SBLexer(input, TokenFactory = factory)
 
+let private splitInlineElseBodies (sourceText: string) =
+    let normalizeNewlines (text: string) = text.Replace("\r\n", "\n")
+
+    let tryExpandLine (line: string) =
+        let trimmed = line.TrimStart()
+        let digitCount = trimmed |> Seq.takeWhile Char.IsDigit |> Seq.length
+
+        if digitCount = 0 then
+            None
+        else
+            let lineNumber = trimmed.Substring(0, digitCount)
+            let remainder = trimmed.Substring(digitCount).TrimStart()
+
+            if remainder.StartsWith("ELSE", StringComparison.OrdinalIgnoreCase) then
+                let afterElse = remainder.Substring(4).TrimStart()
+
+                if afterElse.StartsWith(":") then
+                    let body = afterElse.Substring(1).TrimStart()
+
+                    Some [
+                        $"{lineNumber} ELSE"
+                        $"{lineNumber} {body}"
+                    ]
+                else
+                    None
+            else
+                None
+
+    normalizeNewlines sourceText
+    |> fun text -> text.Split('\n')
+    |> Array.toList
+    |> List.collect (fun line ->
+        match tryExpandLine line with
+        | Some expanded -> expanded
+        | None -> [ line ])
+    |> String.concat "\n"
+
+let private splitInlineEndIfClosers (sourceText: string) =
+    let normalizeNewlines (text: string) = text.Replace("\r\n", "\n")
+
+    let tryExpandLine (line: string) =
+        let trimmed = line.TrimStart()
+        let digitCount = trimmed |> Seq.takeWhile Char.IsDigit |> Seq.length
+
+        if digitCount = 0 then
+            None
+        else
+            let lineNumber = trimmed.Substring(0, digitCount)
+            let remainder = trimmed.Substring(digitCount).TrimStart()
+
+            if String.IsNullOrWhiteSpace remainder then
+                None
+            else
+                let segments = remainder.Split(':') |> Array.toList
+                let trimmedSegments = segments |> List.map (fun segment -> segment.Trim())
+
+                let rec trailingEndIfCount count remaining =
+                    match remaining with
+                    | [] -> count
+                    | head :: tail when String.Equals(head, "END IF", StringComparison.OrdinalIgnoreCase) ->
+                        trailingEndIfCount (count + 1) tail
+                    | _ -> count
+
+                let endIfCount =
+                    trimmedSegments
+                    |> List.rev
+                    |> trailingEndIfCount 0
+
+                if endIfCount < 2 then
+                    None
+                else
+                    let prefixCount = segments.Length - endIfCount
+                    let prefixSegments = segments |> List.take prefixCount
+                    let firstLineBody =
+                        if prefixSegments.IsEmpty then
+                            "END IF"
+                        else
+                            String.concat ":" (prefixSegments @ [ " END IF" ])
+
+                    Some(
+                        [ yield $"{lineNumber} {firstLineBody}"
+                          for _ in 2 .. endIfCount do
+                              yield $"{lineNumber} END IF" ])
+
+    normalizeNewlines sourceText
+    |> fun text -> text.Split('\n')
+    |> Array.toList
+    |> List.collect (fun line ->
+        match tryExpandLine line with
+        | Some expanded -> expanded
+        | None -> [ line ])
+    |> String.concat "\n"
+
 // Preprocess SSB inputs into numbered source text before handing them to ANTLR.
 let private prepareSource (inputFileName: string) : Result<PreparedSource, ParseError> =
     try
@@ -175,9 +270,11 @@ let private prepareSource (inputFileName: string) : Result<PreparedSource, Parse
             let lines = sourceText.Replace("\r\n", "\n").Split('\n') |> Array.toList
             let kind = Ssb.classifySource lines
             let effectiveText =
-                match kind with
-                | Ssb.SourceKind.SuperBasic -> sourceText
-                | Ssb.SourceKind.Ssb -> Ssb.transformFile inputFileName
+                (match kind with
+                 | Ssb.SourceKind.SuperBasic -> sourceText
+                 | Ssb.SourceKind.Ssb -> Ssb.transformFile inputFileName)
+                |> splitInlineElseBodies
+                |> splitInlineEndIfClosers
 
             Ok {
                 OriginalPath = inputFileName
@@ -234,36 +331,12 @@ let processToAST ((tree: IParseTree), _inputStream) verbose : Ast =
     astRoot
 
 let private validateLineSequence ast =
-    let rec collectBlock contextName block =
-        match block with
-        | StatementBlock stmts -> collectStmts contextName stmts
-        | LineBlock lines -> collectLines contextName lines
-
-    and collectStmts contextName stmts =
+    let rec collectNestedLines contextName stmts =
         stmts
-        |> List.collect (fun stmt ->
-            match stmt with
+        |> List.collect (function
             | ProcedureDef(_, name, _, body, _, _)
             | FunctionDef(_, name, _, body, _, _) ->
                 collectLines $"routine '{name}'" body
-            | ForStmt(_, name, _, _, _, _, _, body, _) ->
-                collectBlock $"FOR loop '{name}'" body
-            | RepeatStmt(_, name, body, _) ->
-                collectBlock $"REPEAT loop '{name}'" body
-            | IfStmt(_, _, thenBlock, elseBlock) ->
-                let thenEntries = collectBlock $"{contextName} IF branch" thenBlock
-                let elseEntries =
-                    match elseBlock with
-                    | Some block -> collectBlock $"{contextName} ELSE branch" block
-                    | None -> []
-                thenEntries @ elseEntries
-            | SelectStmt(_, _, clauses) ->
-                clauses
-                |> List.choose (fun (SelectClause(_, _, _, block)) -> block)
-                |> List.distinct
-                |> List.collect (fun clauseBlock -> collectBlock $"{contextName} SELECT clause" clauseBlock)
-            | WhenStmt(_, _, body) ->
-                collectLines $"{contextName} WHEN body" body
             | _ -> [])
 
     and collectLines contextName lines =
@@ -273,7 +346,8 @@ let private validateLineSequence ast =
                 match lineNumber with
                 | Some value -> [ value, pos, contextName ]
                 | None -> []
-            currentEntry @ collectStmts contextName stmts)
+
+            currentEntry @ collectNestedLines contextName stmts)
 
     match ast with
     | Program(_, lines) ->
@@ -342,6 +416,14 @@ let generateCSharpFromLoweredHir className hirProgram =
 
 let generateCFromLoweredHir programName hirProgram =
     HirCBackend.generateCFromHir programName hirProgram
+
+let private formatHirLoweringErrorForRuntime (error: HirLoweringError) =
+    let location =
+        match error.Position with
+        | Some pos -> $" at %d{pos.EditorLineNo}:%d{pos.Column}"
+        | None -> String.Empty
+
+    $"[{error.Scope}] {error.Message}{location}"
 
 let private sanitizeManagedAssemblyName (value: string) =
     let chars =
@@ -503,3 +585,75 @@ let loadAstFromInput settings =
             match validateLineSequence ast with
             | [] -> Ok(parseTree, inputStream, ast)
             | errors -> Result.Error(ParseError(String.concat Environment.NewLine errors))
+
+let lowerAstForRuntime (ast: Ast) =
+    let state = runSemanticAnalysis ast
+
+    if not state.Errors.IsEmpty then
+        let messages =
+            if state.Diagnostics.IsEmpty then
+                state.Errors
+            else
+                state.Diagnostics |> List.map formatDiagnostic
+
+        Result.Error(String.concat Environment.NewLine messages)
+    else
+        runHirLowering state
+        |> Result.mapError (fun errors ->
+            errors
+            |> List.map formatHirLoweringErrorForRuntime
+            |> String.concat Environment.NewLine)
+
+let mergeRuntimeAst currentAst incomingAst =
+    let mergeLines currentLines incomingLines =
+        let incomingByLine =
+            incomingLines
+            |> List.choose (fun (Line(_, lineNumber, _) as line) -> lineNumber |> Option.map (fun value -> value, line))
+            |> Map.ofList
+
+        let mergedExisting =
+            currentLines
+            |> List.choose (fun (Line(_, lineNumber, _) as line) ->
+                match lineNumber with
+                | Some value ->
+                    match incomingByLine.TryFind value with
+                    | Some replacement -> Some replacement
+                    | None -> Some line
+                | None -> Some line)
+
+        let existingNumbered =
+            currentLines
+            |> List.choose (fun (Line(_, lineNumber, _)) -> lineNumber)
+            |> Set.ofList
+
+        let appendedIncoming =
+            incomingLines
+            |> List.choose (fun (Line(_, lineNumber, _) as line) ->
+                match lineNumber with
+                | Some value when not (existingNumbered.Contains value) -> Some(value, line)
+                | _ -> None)
+            |> List.sortBy fst
+            |> List.map snd
+
+        mergedExisting @ appendedIncoming
+
+    match currentAst, incomingAst with
+    | Program(pos, currentLines), Program(_, incomingLines) -> Program(pos, mergeLines currentLines incomingLines)
+
+let loadRuntimeProgram syntaxChecking verbose logger inputFileName : Result<RuntimeLoadedProgram, string> =
+    let settings =
+        { InputFileName = inputFileName
+          OutputFileName = String.Empty
+          Verbose = verbose
+          Backend = "interpret"
+          RuntimeHost = "console"
+          SyntaxChecking = syntaxChecking
+          AppName = "SB"
+          Logger = logger }
+
+    match loadAstFromInput settings with
+    | Result.Error(FileNotFound path) -> Result.Error $"File '{path}' not found."
+    | Result.Error(ParseError message) -> Result.Error message
+    | Result.Ok(_, _, ast) ->
+        lowerAstForRuntime ast
+        |> Result.map (fun hir -> { Ast = ast; Hir = hir })

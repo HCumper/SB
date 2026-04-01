@@ -111,6 +111,12 @@ let private validateImplicitChannelExpr pos exprType (state: ProcessingState) =
 let private isSizedStringDeclaration name (dims: Expr list) =
     suffixDeclaredType name = SBType.String && dims.Length = 1
 
+let rec private isManifestNumericLiteral expr =
+    match expr with
+    | NumberLiteral _ -> true
+    | UnaryExpr(_, _, op, inner) when op = "+" || op = "-" -> isManifestNumericLiteral inner
+    | _ -> false
+
 let rec private collectReferenceParameterNamesFromExpr expr =
     match expr with
     | Identifier(_, _, name)
@@ -121,6 +127,8 @@ let rec private collectReferenceParameterNamesFromStmt stmt =
     match stmt with
     | ReferenceStmt(_, exprs) ->
         exprs |> List.collect collectReferenceParameterNamesFromExpr
+    | ManifestStmt _ ->
+        []
     | IfStmt(_, _, thenBlock, elseBlock) ->
         collectReferenceParameterNamesFromBlock thenBlock
         @ (elseBlock |> Option.map collectReferenceParameterNamesFromBlock |> Option.defaultValue [])
@@ -286,6 +294,13 @@ and collectDeclarations (mode: SymbolAddMode) (node: Stmt) : State<ProcessingSta
 
         | ImplicitStmt(_, decorator, names) ->
             do! putState (updateImplicitTyping decorator (Set.ofList names) currentState)
+
+        | ManifestStmt(pos, items) ->
+            let nextState =
+                items
+                |> List.fold (fun state (name, _) ->
+                    declareConstant mode state.CurrentScope name pos (inferredVariableType state state.CurrentScope name) None state) currentState
+            do! putState nextState
 
         | ReferenceStmt _
         | DataStmt _ -> ()
@@ -495,6 +510,24 @@ and private resolveStmt (mode: SymbolAddMode) (node: Stmt) : State<ProcessingSta
             do! resolveExprList mode (items |> List.collect (snd >> Option.defaultValue []))
 
         | ImplicitStmt _ -> ()
+
+        | ManifestStmt(_, items) ->
+            let resolveManifestItem (name, expr) =
+                state {
+                    let! beforeExpr = getState
+                    if not (isManifestNumericLiteral expr) then
+                        let pos = posOfExpr expr
+                        do! putState (appendDiagnostic SemanticDiagnosticCode.Generic (Some name) (Some pos) $"MANIFEST '{name}' must be assigned a numeric literal at {pos.EditorLineNo}:{pos.Column}" beforeExpr)
+                    else
+                        do! resolveExpr mode expr
+                        let! stateAfterExpr = getState
+                        let exprType, typedState = inferExprType stateAfterExpr expr
+                        let valueText = tryEvaluateConstantExprText typedState expr
+                        let updatedTable =
+                            tryUpdateResolvedSymbolTypeAndValue exprType valueText typedState.CurrentScope name typedState.SymTab
+                        do! putState { typedState with SymTab = updatedTable }
+                }
+            do! stateIter resolveManifestItem items
 
         | ReferenceStmt(_, children)
         | DataStmt(_, children) ->

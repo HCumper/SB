@@ -286,8 +286,18 @@ let rec private lowerSelectClauses selector (clauses: HirSelectClause list) =
         | None ->
             lowerSelectClauses selector tail
 
+let private tryParseHexInt (value: string) =
+    if value.StartsWith("$") && value.Length > 1 then
+        match System.UInt32.TryParse(value[1..], NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture) with
+        | true, parsed -> Some(int (int32 parsed))
+        | _ -> None
+    else
+        None
+
 let private tryParseDouble (value: string) =
-    System.Double.TryParse(value, NumberStyles.Float ||| NumberStyles.AllowThousands, CultureInfo.InvariantCulture)
+    match tryParseHexInt value with
+    | Some integer -> true, float integer
+    | None -> System.Double.TryParse(value, NumberStyles.Float ||| NumberStyles.AllowThousands, CultureInfo.InvariantCulture)
 
 let private unquoteString (value: string) =
     if value.Length >= 2 && value.StartsWith("\"") && value.EndsWith("\"") then
@@ -298,14 +308,17 @@ let private unquoteString (value: string) =
         value
 
 let private lowerLiteral (pos: SourcePosition) (value: string) =
-    match System.Int32.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture) with
-    | true, n -> Literal(HirConst.ConstInt n, HirType.Int, pos)
-    | _ when (value.StartsWith("\"") && value.EndsWith("\"")) || (value.StartsWith("'") && value.EndsWith("'")) ->
-        Literal(HirConst.ConstString (unquoteString value), HirType.String, pos)
-    | _ ->
-        match tryParseDouble value with
-        | true, n -> Literal(HirConst.ConstFloat n, HirType.Float, pos)
-        | _ -> Literal(HirConst.ConstString value, HirType.String, pos)
+    match tryParseHexInt value with
+    | Some n -> Literal(HirConst.ConstInt n, HirType.Int, pos)
+    | None ->
+        match System.Int32.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture) with
+        | true, n -> Literal(HirConst.ConstInt n, HirType.Int, pos)
+        | _ when (value.StartsWith("\"") && value.EndsWith("\"")) || (value.StartsWith("'") && value.EndsWith("'")) ->
+            Literal(HirConst.ConstString (unquoteString value), HirType.String, pos)
+        | _ ->
+            match tryParseDouble value with
+            | true, n -> Literal(HirConst.ConstFloat n, HirType.Float, pos)
+            | _ -> Literal(HirConst.ConstString value, HirType.String, pos)
 
 let private unsupported ctx pos construct =
     fail ctx.CurrentScope (Some pos) $"HIR lowering does not support {construct} yet."
@@ -513,7 +526,8 @@ let rec private lowerStmt ctx stmt =
     | FunctionDef _
     | DimStmt _
     | LocalStmt _
-    | ImplicitStmt _ -> ok []
+    | ImplicitStmt _
+    | ManifestStmt _ -> ok []
     | ReferenceStmt(pos, exprs) ->
         lowerExprList ctx exprs
         |> map (fun lowered -> [ BuiltInCall(BuiltInKind.Reference, None, lowered, pos) ])
@@ -628,7 +642,7 @@ let rec private lowerStmt ctx stmt =
         |> map (fun (loweredConditionExpr, loweredBody) ->
             match loweredConditionExpr with
             | Some cond -> [ If(cond, loweredBody, None, pos) ]
-            | None -> loweredBody)
+            | None -> [ WhenError(loweredBody, pos) ])
     | ReturnStmt(pos, value) ->
         match value with
         | Some expr -> lowerExpr ctx expr |> map (fun lowered -> [ Return(Some lowered, pos) ])

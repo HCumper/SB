@@ -77,6 +77,7 @@ let rec private blockContainsInput (block: HIR.HirBlock) =
     |> List.exists (fun (stmt: HIR.HirStmt) ->
         match stmt with
         | HIR.HirStmt.Input(_, _, _, _) -> true
+        | HIR.HirStmt.WhenError(body, _) -> blockContainsInput body
         | HIR.HirStmt.If(_, thenBlock, elseBlock, _) ->
             blockContainsInput thenBlock
             || (elseBlock |> Option.exists blockContainsInput)
@@ -154,9 +155,27 @@ let main argv =
                             | Some handle ->
                                 { defaultRuntimeOptions with
                                     Host = handle.Host
-                                    Sleeper = fun milliseconds -> System.Threading.Thread.Sleep(milliseconds) }
+                                    Sleeper = fun milliseconds -> System.Threading.Thread.Sleep(milliseconds)
+                                    InitialSourceProgram = Some ast
+                                    LoadProgram = loadRuntimeProgram settings.SyntaxChecking settings.Verbose settings.Logger
+                                    MergeProgram =
+                                        fun (currentAst, path) ->
+                                            loadRuntimeProgram settings.SyntaxChecking settings.Verbose settings.Logger path
+                                            |> Result.bind (fun loaded ->
+                                                let mergedAst = mergeRuntimeAst currentAst loaded.Ast
+                                                lowerAstForRuntime mergedAst
+                                                |> Result.map (fun hir -> { Ast = mergedAst; Hir = hir })) }
                             | None ->
-                                defaultRuntimeOptions
+                                { defaultRuntimeOptions with
+                                    InitialSourceProgram = Some ast
+                                    LoadProgram = loadRuntimeProgram settings.SyntaxChecking settings.Verbose settings.Logger
+                                    MergeProgram =
+                                        fun (currentAst, path) ->
+                                            loadRuntimeProgram settings.SyntaxChecking settings.Verbose settings.Logger path
+                                            |> Result.bind (fun loaded ->
+                                                let mergedAst = mergeRuntimeAst currentAst loaded.Ast
+                                                lowerAstForRuntime mergedAst
+                                                |> Result.map (fun hir -> { Ast = mergedAst; Hir = hir })) }
 
                         match interpretProgramWithOptions options hirProgram with
                         | Ok _ -> 0

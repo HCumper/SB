@@ -155,6 +155,7 @@ type ISoundDevice =
 type IDeviceFileSystem =
     abstract OpenFile: string * FileOpenMode -> Result<ChannelId, RuntimeHostError>
     abstract OpenFileAs: ChannelId * string * FileOpenMode -> Result<unit, RuntimeHostError>
+    abstract ListDirectory: string option -> Result<string list, RuntimeHostError>
     abstract Exists: string -> bool
     abstract Delete: string -> Result<unit, RuntimeHostError>
 

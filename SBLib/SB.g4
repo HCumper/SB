@@ -9,7 +9,9 @@ options {
         TokenStream.LA(1) == Else || (TokenStream.LA(1) == Integer && TokenStream.LA(2) == Else);
 
     private bool IsEndIfLineAhead() =>
-        TokenStream.LA(1) == End || (TokenStream.LA(1) == Integer && TokenStream.LA(2) == End);
+        TokenStream.LA(1) == End
+        || (TokenStream.LA(1) == Integer && TokenStream.LA(2) == End)
+        || IsInlineEndIfLineAhead();
 
     private bool IsEndRepeatLineAhead() =>
         TokenStream.LA(1) == End || (TokenStream.LA(1) == Integer && TokenStream.LA(2) == End);
@@ -25,6 +27,26 @@ options {
 
     private bool IsSelectClauseHeaderAhead() =>
         TokenStream.LA(1) == Equal || (TokenStream.LA(1) == Integer && TokenStream.LA(2) == Equal);
+
+    private bool IsInlineEndIfLineAhead() {
+        int i = 1;
+        if (TokenStream.LA(i) == Integer) {
+            i++;
+        }
+
+        while (true) {
+            int la = TokenStream.LA(i);
+            if (la == Newline || la == Antlr4.Runtime.TokenConstants.EOF) {
+                return false;
+            }
+
+            if (la == Colon && TokenStream.LA(i + 1) == End) {
+                return true;
+            }
+
+            i++;
+        }
+    }
 }
 
 // ============================================================
@@ -62,7 +84,8 @@ stmt
 simpleStmt
     : Dimension dimList                                                               #Dim
     | Local localList                                                                 #LocalDecl
-    | Implic unparenthesizedlist                                                      #ImplicitDecl
+    | (Implic | ImplicBool | ImplicDouble | ImplicLong) unparenthesizedlist          #ImplicitDecl
+    | manifestStmt                                                                    #ManifestDecl
     | Refer unparenthesizedlist                                                       #ReferenceDecl
     | Comment                                                                         #Remark
     | Next ID                                                                         #NextStmt
@@ -144,7 +167,12 @@ stmtSegment
 
 stmtArg
     : chanArg
+    | toChanArg
     | rangedExpr
+    ;
+
+toChanArg
+    : To expr
     ;
 
 rangedExpr
@@ -303,14 +331,14 @@ repeatBodyLine
 ifStmt
     : If expr
       (
-          Then Newline ifBlock elseBlock? lineNumber? endIf         // long form
-        | Newline ifBlock elseBlock? lineNumber? endIf              // long form
+          Then Newline ifBlock elseBlock? ifTerminator              // long form
+        | Newline ifBlock elseBlock? ifTerminator                   // long form
         | (Then | Colon) stmtlist (Colon Else (Colon? stmtlist)?)?  // short form
       )
     ;
 
 ifBlock
-    : ifBodyLine+
+    : ifBodyLine*
     ;
 
 elseBlock
@@ -323,6 +351,11 @@ ifBodyLine
 
 elseBodyLine
     : {!IsEndIfLineAhead()}? line
+    ;
+
+ifTerminator
+    : lineNumber? endIf
+    | lineNumber? plainStmtlist Colon endIf
     ;
 
 // SELect ON expr
@@ -373,7 +406,7 @@ dimItem
 // WHEN ERROR ... END WHEN
 // WHEN expr  ... END WHEN
 whenStmt
-    : When ErrorKw Newline
+    : (When ErrorKw | WhenErrorKw) Newline
       whenBodyLine*
       lineNumber? endWhen                                           #WhenErrorStmt
     | When expr Newline
@@ -398,7 +431,7 @@ expr
     ;
 
 orExpr
-    : andExpr ((Or | Xor) andExpr)*
+    : andExpr ((Or | PipePipe | Xor | XorSym) andExpr)*
     ;
 
 andExpr
@@ -444,6 +477,7 @@ unaryExpr
 
 primary
     : Integer
+    | HexInteger
     | Real
     | String
     | LeftParen expr RightParen
@@ -468,6 +502,14 @@ localList
 
 localItem
     : ID (LeftParen exprList RightParen)?
+    ;
+
+manifestStmt
+    : Manifest Colon manifestItem (Colon manifestItem)*
+    ;
+
+manifestItem
+    : ID Equal expr
     ;
 
 separator
@@ -502,9 +544,13 @@ FunctionKw   : 'FUNC' ('TION')? ;
 End          : 'END' ;
 SelectKw     : 'SEL' ('ECT')? ;
 ErrorKw      : 'ERROR' ;
+WhenErrorKw  : 'WHEN_ERROR' ;
 
 Refer        : 'REFERENCE' ;
 Implic       : 'IMPLICIT%' | 'IMPLICIT$' ;
+ImplicBool   : 'IMPLICITB' ;
+ImplicDouble : 'IMPLICITD' ;
+ImplicLong   : 'IMPLICITL' ;
 Local        : 'LOCal' ;
 Dimension    : 'DIM' ;
 If           : 'IF' ;
@@ -528,6 +574,7 @@ Data         : 'DATA' ;
 Read         : 'READ' ;
 Restore      : 'REST' ('ORE')? ;
 Remainder    : 'REMAINDER' ;
+Manifest     : 'MANIFEST' ;
 
 // ---------- Operators ----------
 And          : 'AND' ;
@@ -550,9 +597,11 @@ Plus         : '+' ;
 Minus        : '-' ;
 Multiply     : '*' ;
 Divide       : '/' ;
+XorSym       : '^^' ;
 Caret        : '^' ;
 Amp          : '&' ;
 AmpAmp       : '&&' ;
+PipePipe     : '||' ;
 Hash         : '#' ;
 Colon        : ':' ;
 Semi         : ';' ;
@@ -580,10 +629,12 @@ Comment      : 'REMark' ~[\r\n]* ;
 
 // ---------- Identifiers ----------
 // Must appear after ALL keyword rules so keywords take lexer precedence
-ID           : LETTER [0-9A-Za-z_]* [%$]? ;
+ID           : [A-Za-z_] [0-9A-Za-z_]* [%$]? ;
 
 // ---------- Literals ----------
 Integer      : DIGIT+ ;
+
+HexInteger   : '$' HEXDIGIT+ ;
 
 // No leading minus — unaryExpr handles negation
 // DIGIT* allows forms like .5
@@ -598,3 +649,4 @@ String       : '"' ~["\r\n]* '"'
 // ---------- Fragments ----------
 fragment LETTER : [A-Za-z] ;
 fragment DIGIT  : [0-9] ;
+fragment HEXDIGIT : [0-9A-Fa-f] ;

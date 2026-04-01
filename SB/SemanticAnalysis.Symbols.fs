@@ -20,7 +20,7 @@ open SemanticAnalysisFacts
 let withDefaultRule (state: ProcessingState) : ImplicitTypingRule =
     match Map.tryFind globalScope state.ImplicitTyping with
     | Some rule -> rule
-    | None -> { Integers = Set.empty; Strings = Set.empty }
+    | None -> { Integers = Set.empty; Reals = Set.empty; Strings = Set.empty }
 
 let updateImplicitTyping (decorator: string) (names: Set<string>) (state: ProcessingState) =
     // IMPLICIT rules are normalized up front so later lookups stay case-insensitive
@@ -29,6 +29,12 @@ let updateImplicitTyping (decorator: string) (names: Set<string>) (state: Proces
     let currentRule = withDefaultRule state
     let updatedRule =
         if decorator.Contains "%" then
+            { currentRule with Integers = Set.union currentRule.Integers normalizedNames }
+        elif decorator.Contains "D" then
+            { currentRule with Reals = Set.union currentRule.Reals normalizedNames }
+        elif decorator.Contains "B" || decorator.Contains "L" then
+            // The current type system has no distinct Boolean or Long runtime type,
+            // so both implicit forms are represented as integer-compatible symbols.
             { currentRule with Integers = Set.union currentRule.Integers normalizedNames }
         elif decorator.Contains "$" then
             { currentRule with Strings = Set.union currentRule.Strings normalizedNames }
@@ -44,6 +50,9 @@ let createCommonSymbol name position evaluatedType =
 
 let createVariableSymbol name position evaluatedType =
     VariableSym { Common = createCommonSymbol name position evaluatedType; ValueText = None }
+
+let createConstantSymbol name position evaluatedType valueText =
+    ConstantSym { Common = createCommonSymbol name position evaluatedType; ValueText = valueText }
 
 let createParameterSymbol name position evaluatedType =
     ParameterSym { Common = createCommonSymbol name position evaluatedType; Passing = Flexible; ValueText = None }
@@ -109,6 +118,7 @@ let inferredVariableType (state: ProcessingState) scopeName name =
     match suffixDeclaredType name with
     | SBType.Unknown ->
         if currentRule.Integers.Contains normalizedName then SBType.Integer
+        elif currentRule.Reals.Contains normalizedName then SBType.Real
         elif currentRule.Strings.Contains normalizedName then SBType.String
         else SBType.Unknown
     | declaredType -> declaredType
@@ -179,6 +189,12 @@ let declareVariable mode scopeName name position state =
     state
     |> declareSymbol mode scopeName symbol
     |> recordFact DeclarationSite (Some SymbolCategory.Variable) name scopeName position (Some inferredType) None
+
+let declareConstant mode scopeName name position evaluatedType valueText state =
+    let symbol = createConstantSymbol name position evaluatedType valueText
+    state
+    |> declareSymbol mode scopeName symbol
+    |> recordFact DeclarationSite (Some SymbolCategory.Constant) name scopeName position (Some evaluatedType) valueText
 
 let declareArray mode scopeName name position dimensions state =
     let inferredType = inferredVariableType state scopeName name
