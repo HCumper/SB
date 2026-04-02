@@ -4,7 +4,6 @@ open System
 open System.Globalization
 open System.IO
 open System.Text
-open Antlr4.StringTemplate
 
 open HIR
 
@@ -20,11 +19,6 @@ let private indent level = String.replicate (level * 4) " "
 
 let private appendLine (builder: StringBuilder) level (text: string) =
     builder.Append(indent level).Append(text).AppendLine() |> ignore
-
-let private csharpRuntimeTemplateGroup =
-    lazy
-        let templatePath = Path.Combine(AppContext.BaseDirectory, "CSharpRuntime.stg")
-        TemplateGroupFile(templatePath)
 
 let private sanitizeIdentifier (value: string) =
     let normalized =
@@ -399,12 +393,15 @@ let private emitDataLayout builder (program: HirProgram) =
     appendLine builder 1 "private static string[] __inputBuffer = Array.Empty<string>();"
 
 let private emitRuntimeHelpers (builder: StringBuilder) =
-    let template =
-        match csharpRuntimeTemplateGroup.Value.GetInstanceOf("runtimeHelpers") with
-        | null -> failwith "Failed to load StringTemplate 'runtimeHelpers' from CSharpRuntime.stg."
-        | template -> template
-    let rendered = template.Render()
-    rendered.Split([| "\r\n"; "\n" |], StringSplitOptions.None)
+    let templatePath = Path.Combine(__SOURCE_DIRECTORY__, "CSharpRuntime.stg")
+    let lines = File.ReadAllLines(templatePath)
+    let content =
+        lines
+        |> Array.skipWhile (fun line -> not (line.Contains("::= <<")))
+        |> Array.skip 1
+        |> Array.takeWhile (fun line -> line <> ">>")
+
+    content
     |> Array.iter (appendLine builder 1)
 
 let generateCSharpFromHir className (program: HirProgram) =
@@ -414,6 +411,7 @@ let generateCSharpFromHir className (program: HirProgram) =
     appendLine builder 0 "using System;"
     appendLine builder 0 "using System.Collections.Generic;"
     appendLine builder 0 "using System.Globalization;"
+    appendLine builder 0 "using System.IO;"
     appendLine builder 0 "using System.Linq;"
     appendLine builder 0 ""
     appendLine builder 0 $"public static class {ctx.ClassName}"

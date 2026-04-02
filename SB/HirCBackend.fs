@@ -4,7 +4,6 @@ open System
 open System.Globalization
 open System.IO
 open System.Text
-open Antlr4.StringTemplate
 
 open HIR
 
@@ -21,11 +20,6 @@ let private indent level = String.replicate (level * 4) " "
 
 let private appendLine (builder: StringBuilder) level (text: string) =
     builder.Append(indent level).Append(text).AppendLine() |> ignore
-
-let private cTemplateGroup =
-    lazy
-        let templatePath = Path.Combine(AppContext.BaseDirectory, "CTemplates.stg")
-        TemplateGroupFile(templatePath)
 
 let private sanitizeIdentifier (value: string) =
     let normalized =
@@ -155,8 +149,11 @@ let rec private emitTargetRead ctx = function
     | WriteVar(symbolId, _, _) -> storageName ctx symbolId
     | WriteArrayElem(symbolId, indexes, _, _) ->
         emitCall "get_array_value" ([ "&" + storageName ctx symbolId; string indexes.Length ] @ (indexes |> List.map (emitExpr ctx)))
+    | WriteStringChar(symbolId, index, _, _) ->
+        emitCall "get_string_char_value" [ storageName ctx symbolId; $"as_int({emitExpr ctx index})" ]
     | DynamicWriteVar(name, _, _) -> $"unsupported_dynamic_write(\"{escapeCString name}\")"
     | DynamicWriteArrayElem(name, _, _, _) -> $"unsupported_dynamic_write(\"{escapeCString name}\")"
+    | DynamicWriteStringChar(name, _, _, _) -> $"unsupported_dynamic_write(\"{escapeCString name}\")"
 
 and private emitCallArg ctx = function
     | ValueArg expr -> emitExpr ctx expr
@@ -171,8 +168,11 @@ and private emitExpr ctx = function
     | ReadVar(symbolId, _, _) -> storageName ctx symbolId
     | ReadArrayElem(symbolId, indexes, _, _) ->
         emitCall "get_array_value" ([ "&" + storageName ctx symbolId; string indexes.Length ] @ (indexes |> List.map (emitExpr ctx)))
+    | ReadStringChar(symbolId, index, _, _) ->
+        emitCall "get_string_char_value" [ storageName ctx symbolId; $"as_int({emitExpr ctx index})" ]
     | DynamicReadVar(name, _, _) -> $"unsupported_dynamic_read(\"{escapeCString name}\")"
     | DynamicReadArrayElem(name, _, _, _) -> $"unsupported_dynamic_read(\"{escapeCString name}\")"
+    | DynamicReadStringChar(name, _, _, _) -> $"unsupported_dynamic_read(\"{escapeCString name}\")"
     | Unary(op, inner, _, _) ->
         let value = emitExpr ctx inner
         match op with
@@ -209,15 +209,18 @@ and private emitExpr ctx = function
         if Set.contains symbolId ctx.RoutineSymbols then
             emitCall (routineName ctx symbolId) renderedArgs
         else
-            emitCall "invoke_builtin_function" ($"\"{escapeCString (builtInName ctx symbolId)}\"" :: renderedArgs)
+            emitCall "invoke_builtin_function" ([ $"\"{escapeCString (builtInName ctx symbolId)}\""; string args.Length ] @ renderedArgs)
 
 let private emitTargetWrite ctx target valueExpr =
     match target with
     | WriteVar(symbolId, _, _) -> $"{storageName ctx symbolId} = {valueExpr};"
     | WriteArrayElem(symbolId, indexes, _, _) ->
         emitCall "set_array_value" ([ "&" + storageName ctx symbolId; valueExpr; string indexes.Length ] @ (indexes |> List.map (emitExpr ctx))) + ";"
+    | WriteStringChar(symbolId, index, _, _) ->
+        emitCall "set_string_char_value" [ "&" + storageName ctx symbolId; $"as_int({emitExpr ctx index})"; valueExpr ] + ";"
     | DynamicWriteVar(name, _, _) -> $"runtime_not_supported(\"Dynamic scoped write '{escapeCString name}' is not supported by the generated C backend yet.\");"
     | DynamicWriteArrayElem(name, _, _, _) -> $"runtime_not_supported(\"Dynamic scoped array write '{escapeCString name}' is not supported by the generated C backend yet.\");"
+    | DynamicWriteStringChar(name, _, _, _) -> $"runtime_not_supported(\"Dynamic scoped string write '{escapeCString name}' is not supported by the generated C backend yet.\");"
 
 let rec private emitBlock ctx builder level block =
     block |> List.iter (emitStmt ctx builder level)
@@ -313,8 +316,10 @@ and private emitStmt ctx builder level stmt =
                 match target with
                 | WriteVar(_, typ, _)
                 | WriteArrayElem(_, _, typ, _)
+                | WriteStringChar(_, _, typ, _)
                 | DynamicWriteVar(_, typ, _)
-                | DynamicWriteArrayElem(_, _, typ, _) -> $"read_input_value({index}, {typeTag typ})"
+                | DynamicWriteArrayElem(_, _, typ, _)
+                | DynamicWriteStringChar(_, _, typ, _) -> $"read_input_value({index}, {typeTag typ})"
             appendLine builder level (emitTargetWrite ctx target valueExpr))
     | WhenError(_, _) ->
         appendLine builder level "runtime_not_supported(\"WHEN ERROR is only supported by the interpreter.\");"
@@ -360,8 +365,10 @@ and private emitStmt ctx builder level stmt =
                 match target with
                 | WriteVar(_, typ, _)
                 | WriteArrayElem(_, _, typ, _)
+                | WriteStringChar(_, _, typ, _)
                 | DynamicWriteVar(_, typ, _)
-                | DynamicWriteArrayElem(_, _, typ, _) -> $"read_data_value({typeTag typ})"
+                | DynamicWriteArrayElem(_, _, typ, _)
+                | DynamicWriteStringChar(_, _, typ, _) -> $"read_data_value({typeTag typ})"
             appendLine builder level (emitTargetWrite ctx target valueExpr))
     | Remark(text, _) ->
         appendLine builder level $"/* {escapeCString text} */"
@@ -425,24 +432,111 @@ let private emitDataLayout builder (program: HirProgram) =
     appendLine builder 0 "static int sb_input_part_count = 0;"
     appendLine builder 0 ""
 
+let private getTemplateLines templateName =
+    let templatePath = Path.Combine(__SOURCE_DIRECTORY__, "CTemplates.stg")
+    let lines = File.ReadAllLines(templatePath)
+    let marker = $"{templateName}() ::= <<"
+    let startIndex =
+        lines
+        |> Array.tryFindIndex (fun line -> line.Trim() = marker)
+        |> Option.defaultWith (fun () -> failwith $"Failed to find template '{templateName}' in CTemplates.stg.")
+
+    let content =
+        lines
+        |> Array.skip (startIndex + 1)
+        |> Array.takeWhile (fun line -> line.Trim() <> ">>")
+
+    content
+
 let private emitTemplate (builder: StringBuilder) templateName =
-    let template =
-        match cTemplateGroup.Value.GetInstanceOf(templateName) with
-        | null -> failwith $"Failed to load StringTemplate '{templateName}' from CTemplates.stg."
-        | template -> template
-    let rendered = template.Render()
-    builder.Append(rendered) |> ignore
-    if not (rendered.EndsWith("\n")) then
-        builder.AppendLine() |> ignore
+    getTemplateLines templateName
+    |> Array.iter (fun line -> builder.AppendLine(line) |> ignore)
     builder.AppendLine() |> ignore
+
+let cRuntimeHeaderFileName = "sbruntime_c.h"
+let cRuntimeSourceFileName = "sbruntime_c.c"
+
+let generateCRuntimeHeader () =
+    let builder = StringBuilder()
+    builder.AppendLine("#ifndef SBRUNTIME_C_H") |> ignore
+    builder.AppendLine("#define SBRUNTIME_C_H") |> ignore
+    builder.AppendLine() |> ignore
+    getTemplateLines "runtimePrelude"
+    |> Array.iter (fun line -> builder.AppendLine(line) |> ignore)
+    builder.AppendLine() |> ignore
+    builder.AppendLine("extern DataValue sb_data[];") |> ignore
+    builder.AppendLine("extern int sb_data_count;") |> ignore
+    builder.AppendLine("extern RestorePoint sb_restore_points[];") |> ignore
+    builder.AppendLine("extern int sb_restore_point_count;") |> ignore
+    builder.AppendLine("extern int sb_data_pointer;") |> ignore
+    builder.AppendLine("extern char sb_input_buffer[4096];") |> ignore
+    builder.AppendLine("extern char* sb_input_parts[256];") |> ignore
+    builder.AppendLine("extern int sb_input_part_count;") |> ignore
+    builder.AppendLine() |> ignore
+    [ "Value make_null(void);"
+      "Value make_int(int value);"
+      "Value make_float(double value);"
+      "Value make_string(const char* value);"
+      "Value make_array(void);"
+      "void runtime_not_supported(const char* message);"
+      "Value unsupported_dynamic_read(const char* name);"
+      "Value unsupported_dynamic_write(const char* name);"
+      "int as_int(Value value);"
+      "double as_double(Value value);"
+      "const char* as_string(Value value);"
+      "int is_true(Value value);"
+      "Value negate_value(Value value);"
+      "Value bitwise_not_value(Value value);"
+      "Value concat_value(Value left, Value right);"
+      "Value add_value(Value left, Value right);"
+      "Value subtract_value(Value left, Value right);"
+      "Value multiply_value(Value left, Value right);"
+      "Value divide_value(Value left, Value right);"
+      "Value power_value(Value left, Value right);"
+      "Value integer_divide_value(Value left, Value right);"
+      "Value modulo_value(Value left, Value right);"
+      "Value bitwise_and_value(Value left, Value right);"
+      "Value bitwise_or_value(Value left, Value right);"
+      "Value bitwise_xor_value(Value left, Value right);"
+      "Value compare_equal(Value left, Value right);"
+      "Value compare_not_equal(Value left, Value right);"
+      "Value compare_less_than(Value left, Value right);"
+      "Value compare_less_than_or_equal(Value left, Value right);"
+      "Value compare_greater_than(Value left, Value right);"
+      "Value compare_greater_than_or_equal(Value left, Value right);"
+      "Value instr_value(Value left, Value right);"
+      "Value slice_range_value(Value left, Value right);"
+      "Value unsupported_unary(const char* name, Value value);"
+      "Value unsupported_binary(const char* name, Value left, Value right);"
+      "Value get_array_value(Value* array_value, int count, ...);"
+      "void set_array_value(Value* array_value, Value value, int count, ...);"
+      "Value get_string_char_value(Value source, int one_based_index);"
+      "void set_string_char_value(Value* target, int one_based_index, Value replacement);"
+      "Value invoke_builtin_function(const char* name, int arg_count, ...);"
+      "void execute_builtin_statement(const char* name, Value channel, int arg_count, ...);"
+      "void execute_input(Value channel, int prompt_count, ...);"
+      "Value read_input_value(int index, ValueType target_type);"
+      "Value read_data_value(ValueType target_type);"
+      "void restore_to_line(int line);" ]
+    |> List.iter (fun line -> builder.AppendLine(line) |> ignore)
+    builder.AppendLine() |> ignore
+    builder.AppendLine("#endif") |> ignore
+    builder.ToString()
+
+let generateCRuntimeSource () =
+    let builder = StringBuilder()
+    builder.AppendLine($"#include \"{cRuntimeHeaderFileName}\"") |> ignore
+    builder.AppendLine() |> ignore
+    emitTemplate builder "runtimeSupport"
+    builder.ToString()
 
 let generateCFromHir programName (program: HirProgram) =
     let ctx = buildContext programName program
     let builder = StringBuilder()
 
-    emitTemplate builder "runtimePrelude"
+    builder.AppendLine($"#include \"{cRuntimeHeaderFileName}\"") |> ignore
+    builder.AppendLine() |> ignore
     emitDataLayout builder program
-    emitTemplate builder "runtimeSupport"
     emitStorageDeclarations ctx builder 0 program.Globals
     if not (List.isEmpty program.Globals) then
         appendLine builder 0 ""

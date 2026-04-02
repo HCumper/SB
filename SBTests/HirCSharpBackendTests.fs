@@ -127,5 +127,33 @@ let ``generateCSharpFromHir emits array access routine calls and builtin functio
     Assert.That(generated, Does.Contain("private static readonly Dictionary<string, object?> v1_A = new();"))
     Assert.That(generated, Does.Contain("SetArrayValue(v1_A, r2_DOUBLEIT(), 1);"))
     Assert.That(generated, Does.Contain("v0_TOTAL = InvokeBuiltInFunction(\"ABS\", Negate(4));"))
-    Assert.That(generated, Does.Contain("Console.WriteLine"))
+    Assert.That(generated, Does.Contain("WriteLineToChannel(channel, string.Join(\" \", args.Select(AsString)));"))
     Assert.That(generated, Does.Contain("GetArrayValue(v1_A, 1)"))
+
+[<Test>]
+let ``generateCSharpFromHir includes expanded runtime support for memory channels and built-ins`` () =
+    let memorySymbol = SymbolId 0
+
+    let program =
+        { SymbolNames = [ memorySymbol, "PEEK_W" ] |> Map.ofList
+          Globals = []
+          Routines = []
+          DataEntries = []
+          RestorePoints = []
+          Main =
+            [ BuiltInCall(NamedBuiltIn "POKE_W", None, [ literalInt 200; literalInt 4660 ], pos)
+              BuiltInCall(NamedBuiltIn "RANDOMISE", None, [ literalInt 1234 ], pos)
+              BuiltInCall(NamedBuiltIn "OPEN_NEW", Some(ExplicitChannel(literalInt 9)), [ literalString "out.txt" ], pos)
+              BuiltInCall(NamedBuiltIn "LINE", None, [ literalInt 0; literalInt 0; literalInt 10; literalInt 10 ], pos)
+              Assign(WriteVar(memorySymbol, HirType.Int, pos), CallFunc(memorySymbol, [ ValueArg(literalInt 200) ], HirType.Int, pos), pos) ] }
+
+    let generated = generateCSharpFromHir "RuntimeSupportProgram" program
+
+    Assert.That(generated, Does.Contain("using System.IO;"))
+    Assert.That(generated, Does.Contain("private static readonly Dictionary<int, byte> __memory"))
+    Assert.That(generated, Does.Contain("private static readonly Dictionary<int, StreamReader> __channelReaders"))
+    Assert.That(generated, Does.Contain("case \"POKE_W\":"))
+    Assert.That(generated, Does.Contain("case \"PEEK_W\":"))
+    Assert.That(generated, Does.Contain("case \"RANDOMISE\":"))
+    Assert.That(generated, Does.Contain("case \"OPEN_NEW\":"))
+    Assert.That(generated, Does.Contain("case \"LINE\":"))

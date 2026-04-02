@@ -200,8 +200,14 @@ let main argv =
                 | "c" ->
                     let generated = generateCFromLoweredHir settings.AppName hirProgram
                     File.WriteAllText(settings.OutputFileName, generated)
+                    let outputDirectory =
+                        let directory = Path.GetDirectoryName(settings.OutputFileName)
+                        if String.IsNullOrWhiteSpace directory then Directory.GetCurrentDirectory() else directory
+                    File.WriteAllText(Path.Combine(outputDirectory, HirCBackend.cRuntimeHeaderFileName), HirCBackend.generateCRuntimeHeader())
+                    File.WriteAllText(Path.Combine(outputDirectory, HirCBackend.cRuntimeSourceFileName), HirCBackend.generateCRuntimeSource())
                     if settings.Verbose then
                         Console.WriteLine($"Generated C written to {settings.OutputFileName}")
+                        Console.WriteLine($"Shared C runtime written to {Path.Combine(outputDirectory, HirCBackend.cRuntimeHeaderFileName)} and {Path.Combine(outputDirectory, HirCBackend.cRuntimeSourceFileName)}")
                     0
                 | "dotnetexe"
                 | "dotnet-exe"

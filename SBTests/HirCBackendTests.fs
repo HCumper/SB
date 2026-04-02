@@ -63,6 +63,7 @@ let ``generateCFromHir emits globals routines labels and loop jumps`` () =
 
     let generated = generateCFromHir "sample_program" program
 
+    Assert.That(generated, Does.Contain("#include \"sbruntime_c.h\""))
     Assert.That(generated, Does.Contain("static Value v0_X;"))
     Assert.That(generated, Does.Contain("static Value r1_PROC(Value v2_P);"))
     Assert.That(generated, Does.Contain("static DataValue sb_data[] = { { TYPE_INT, 2, 2, NULL, NULL }, { TYPE_STRING, 0, 0.0, \"HELLO\", NULL } };"))
@@ -107,5 +108,68 @@ let ``generateCFromHir emits arrays routine calls and builtin function calls`` (
 
     Assert.That(generated, Does.Contain("v1_A = make_array();"))
     Assert.That(generated, Does.Contain("set_array_value(&v1_A, r2_DOUBLEIT(), 1, make_int(1));"))
-    Assert.That(generated, Does.Contain("v0_TOTAL = invoke_builtin_function(\"ABS\", negate_value(make_int(4)));"))
+    Assert.That(generated, Does.Contain("v0_TOTAL = invoke_builtin_function(\"ABS\", 1, negate_value(make_int(4)));"))
     Assert.That(generated, Does.Contain("get_array_value(&v1_A, 1, make_int(1))"))
+
+[<Test>]
+let ``generateCFromHir includes expanded runtime support for memory channels and built-ins`` () =
+    let memorySymbol = SymbolId 0
+
+    let program =
+        { SymbolNames = [ memorySymbol, "PEEK_W" ] |> Map.ofList
+          Globals = []
+          Routines = []
+          DataEntries = []
+          RestorePoints = []
+          Main =
+            [ BuiltInCall(NamedBuiltIn "POKE_W", None, [ literalInt 200; literalInt 4660 ], pos)
+              BuiltInCall(NamedBuiltIn "RANDOMISE", None, [ literalInt 1234 ], pos)
+              BuiltInCall(NamedBuiltIn "OPEN_NEW", Some(ExplicitChannel(literalInt 9)), [ literalString "out.dat" ], pos)
+              BuiltInCall(NamedBuiltIn "LINE", None, [ literalInt 0; literalInt 0; literalInt 10; literalInt 10 ], pos)
+              Assign(WriteVar(memorySymbol, HirType.Int, pos), CallFunc(memorySymbol, [ ValueArg(literalInt 200) ], HirType.Int, pos), pos) ] }
+
+    let generated = generateCFromHir "runtime_support_program" program
+
+    Assert.That(generated, Does.Contain("#include \"sbruntime_c.h\""))
+    Assert.That(generated, Does.Contain("execute_builtin_statement(\"LINE\", make_null(), 4, make_int(0), make_int(0), make_int(10), make_int(10));"))
+
+[<Test>]
+let ``generateCFromHir emits string character reads and writes`` () =
+    let textSymbol = SymbolId 0
+    let charSymbol = SymbolId 1
+
+    let program =
+        { SymbolNames = [ textSymbol, "TEXT$"; charSymbol, "CH$" ] |> Map.ofList
+          Globals =
+            [ storage textSymbol "TEXT$" HirType.String GlobalStorage
+              storage charSymbol "CH$" HirType.String GlobalStorage ]
+          Routines = []
+          DataEntries = []
+          RestorePoints = []
+          Main =
+            [ Assign(WriteVar(textSymbol, HirType.String, pos), literalString "AB", pos)
+              Assign(WriteStringChar(textSymbol, literalInt 2, HirType.String, pos), literalString "Z", pos)
+              Assign(WriteVar(charSymbol, HirType.String, pos), ReadStringChar(textSymbol, literalInt 2, HirType.String, pos), pos)
+              Input(None, [], [ WriteStringChar(textSymbol, literalInt 1, HirType.String, pos) ], pos)
+              Read([ WriteStringChar(textSymbol, literalInt 1, HirType.String, pos) ], pos) ] }
+
+    let generated = generateCFromHir "string_char_program" program
+
+    Assert.That(generated, Does.Contain("set_string_char_value(&v0_TEXT_, as_int(make_int(2)), make_string(\"Z\"));"))
+    Assert.That(generated, Does.Contain("v1_CH_ = get_string_char_value(v0_TEXT_, as_int(make_int(2)));"))
+    Assert.That(generated, Does.Contain("set_string_char_value(&v0_TEXT_, as_int(make_int(1)), read_input_value(0, TYPE_STRING));"))
+    Assert.That(generated, Does.Contain("set_string_char_value(&v0_TEXT_, as_int(make_int(1)), read_data_value(TYPE_STRING));"))
+
+[<Test>]
+let ``generateCRuntimeHeader and source expose shared C runtime`` () =
+    let header = generateCRuntimeHeader ()
+    let source = generateCRuntimeSource ()
+
+    Assert.That(header, Does.Contain("#ifndef SBRUNTIME_C_H"))
+    Assert.That(header, Does.Contain("typedef struct Value"))
+    Assert.That(header, Does.Contain("extern DataValue sb_data[];"))
+    Assert.That(header, Does.Contain("Value invoke_builtin_function(const char* name, int arg_count, ...);"))
+    Assert.That(source, Does.Contain("#include \"sbruntime_c.h\""))
+    Assert.That(source, Does.Contain("static MemoryEntry* sb_memory = NULL;"))
+    Assert.That(source, Does.Contain("Value get_string_char_value(Value source, int one_based_index)"))
+    Assert.That(source, Does.Contain("if (ci_compare(name, \"PEEK_W\") == 0)"))
