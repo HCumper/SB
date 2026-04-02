@@ -451,13 +451,38 @@ type private DefaultScreenChannel(id: ChannelId, kind: ChannelKind, reader: unit
     member this.ApplyMode(mode: ScreenModeInfo) =
         resetForMode mode
     member _.Snapshot() =
-        let paneSnapshot = paneBuffer.Snapshot().Panes.Head
-        { paneSnapshot with
-            ChannelId = Some channelNumber
-            Title = $"#{channelNumber}"
-            Kind = kind
-            Window = window
-            Cursor = cursor }
+        let width, height, x, y = window
+        let safeWidth = max 1 width
+        let safeHeight = max 1 height
+        let textSnapshot: ScreenTextCell[,] =
+            Array2D.init safeHeight safeWidth (fun row col ->
+                let sourceY = y + row
+                let sourceX = x + col
+                if sourceY >= 0 && sourceY < buffer.Mode.Height && sourceX >= 0 && sourceX < buffer.Mode.Width then
+                    let cell = buffer.Text[sourceY, sourceX]
+                    { Character = cell.Character
+                      Ink = cell.Ink
+                      Paper = cell.Paper }
+                else
+                    { Character = ' '
+                      Ink = 7
+                      Paper = paper })
+        let pixelSnapshot =
+            Array2D.init safeHeight safeWidth (fun row col ->
+                let sourceY = y + row
+                let sourceX = x + col
+                if sourceY >= 0 && sourceY < buffer.Mode.Height && sourceX >= 0 && sourceX < buffer.Mode.Width then
+                    buffer.Pixels[sourceY, sourceX]
+                else
+                    paper)
+
+        { ChannelId = Some channelNumber
+          Title = $"#{channelNumber}"
+          Kind = kind
+          Window = window
+          Cursor = cursor
+          Text = textSnapshot
+          Pixels = pixelSnapshot }
 
 type private DefaultFileChannel(id: ChannelId, path: string, mode: FileOpenMode) =
     let sharedStream, reader, writer =
@@ -907,6 +932,7 @@ type private NullFileSystem() =
 type private DefaultRuntimeHost(options: DefaultHostOptions) =
     let mutable currentMode = ScreenDefaults.supportedModes[0]
     let screenBuffer = ScreenBuffer(currentMode)
+    let memory = Dictionary<int, byte>()
     let channel0 = DefaultScreenChannel(ChannelId 0, ChannelKind.ConsoleChannel, options.ReadLine, options.WriteLine, true, currentMode, None, screenBuffer)
     let channel1 = DefaultScreenChannel(ChannelId 1, ChannelKind.ScreenChannel, options.ReadLine, options.WriteLine, false, currentMode, None, screenBuffer)
     let channel2 = DefaultScreenChannel(ChannelId 2, ChannelKind.ScreenChannel, options.ReadLine, options.WriteLine, false, currentMode, None, screenBuffer)
@@ -918,6 +944,41 @@ type private DefaultRuntimeHost(options: DefaultHostOptions) =
     let graphics = DefaultGraphicsDevice(screenBuffer) :> IGraphicsDevice
     let input = DefaultInputDevice(options.ReadLine, options.ReadKey, options.KeyAvailable, options.KeyRowState) :> IInputDevice
     let sound = NullSoundDevice() :> ISoundDevice
+    let tryReadByte address =
+        if address < 0 then
+            Result.Error(InvalidHostArgument $"Memory address {address} is invalid.")
+        else
+            match memory.TryGetValue address with
+            | true, value -> Result.Ok value
+            | false, _ -> Result.Ok 0uy
+    let writeByte address value =
+        if address < 0 then
+            Result.Error(InvalidHostArgument $"Memory address {address} is invalid.")
+        else
+            memory[address] <- value
+            Result.Ok()
+    let peekWord address =
+        tryReadByte address
+        |> Result.bind (fun b0 ->
+            tryReadByte (address + 1)
+            |> Result.map (fun b1 -> int b0 ||| (int b1 <<< 8)))
+    let peekLong address =
+        tryReadByte address
+        |> Result.bind (fun b0 ->
+            tryReadByte (address + 1)
+            |> Result.bind (fun b1 ->
+                tryReadByte (address + 2)
+                |> Result.bind (fun b2 ->
+                    tryReadByte (address + 3)
+                    |> Result.map (fun b3 -> int b0 ||| (int b1 <<< 8) ||| (int b2 <<< 16) ||| (int b3 <<< 24)))))
+    let pokeWord address value =
+        writeByte address (byte (value &&& 0xFF))
+        |> Result.bind (fun () -> writeByte (address + 1) (byte ((value >>> 8) &&& 0xFF)))
+    let pokeLong address value =
+        writeByte address (byte (value &&& 0xFF))
+        |> Result.bind (fun () -> writeByte (address + 1) (byte ((value >>> 8) &&& 0xFF)))
+        |> Result.bind (fun () -> writeByte (address + 2) (byte ((value >>> 16) &&& 0xFF)))
+        |> Result.bind (fun () -> writeByte (address + 3) (byte ((value >>> 24) &&& 0xFF)))
     let files =
         { new IDeviceFileSystem with
             member _.OpenFile(_path, _mode) =
@@ -966,6 +1027,20 @@ type private DefaultRuntimeHost(options: DefaultHostOptions) =
                     match System.Environment.GetEnvironmentVariable(name) |> Option.ofObj with
                     | Some value -> Some value
                     | None -> tryNames [ normalized ] }
+    let memoryDevice =
+        { new IMemoryDevice with
+            member _.Peek8(address) =
+                tryReadByte address |> Result.map int
+            member _.Peek16(address) =
+                peekWord address
+            member _.Peek32(address) =
+                peekLong address
+            member _.Poke8(address, value) =
+                writeByte address (byte (value &&& 0xFF))
+            member _.Poke16(address, value) =
+                pokeWord address value
+            member _.Poke32(address, value) =
+                pokeLong address value }
 
     member _.DisplaySurface =
         { new IDisplaySurface with
@@ -1017,6 +1092,7 @@ type private DefaultRuntimeHost(options: DefaultHostOptions) =
         member _.Sound = sound
         member _.Files = files
         member _.Environment = environment
+        member _.Memory = memoryDevice
 
 module DefaultHost =
     let create options : IRuntimeHost =

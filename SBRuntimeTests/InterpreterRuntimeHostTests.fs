@@ -51,6 +51,64 @@ let ``interpreter missing dynamic local reports runtime error code`` () =
     |> ignore
 
 [<Test>]
+let ``interpreter peek and poke built-ins use little endian virtual memory`` () =
+    let host, screenState = createScreenHost []
+    let ast =
+        Program(
+            pos,
+            [ Line(pos, Some 10, [ ProcedureCall(pos, "POKE", [ num "100"; num "18" ]) ])
+              Line(pos, Some 20, [ ProcedureCall(pos, "POKE_W", [ num "200"; num "13398" ]) ])
+              Line(pos, Some 30, [ ProcedureCall(pos, "POKE_L", [ num "300"; num "305419896" ]) ])
+              Line(pos, Some 40, [ ProcedureCall(pos, "PRINT", [ call "PEEK" [ num "100" ]
+                                                                 call "PEEK" [ num "200" ]
+                                                                 call "PEEK" [ num "201" ]
+                                                                 call "PEEK_W" [ num "200" ]
+                                                                 call "PEEK_L" [ num "300" ] ]) ]) ])
+
+    let hir = lowerProgram ast
+    let output =
+        interpretProgramWithOptions { defaultRuntimeOptions with Host = host } hir
+        |> function
+            | Result.Ok result -> result.Output
+            | Result.Error err -> Assert.Fail($"Expected interpretation to succeed, got %A{err}"); []
+
+    Assert.That(String.concat "|" output, Is.EqualTo("18 86 52 13398 305419896"))
+    Assert.That(screenState.Memory[100], Is.EqualTo(18uy))
+    Assert.That(screenState.Memory[200], Is.EqualTo(0x56uy))
+    Assert.That(screenState.Memory[201], Is.EqualTo(0x34uy))
+    Assert.That(screenState.Memory[300], Is.EqualTo(0x78uy))
+    Assert.That(screenState.Memory[301], Is.EqualTo(0x56uy))
+    Assert.That(screenState.Memory[302], Is.EqualTo(0x34uy))
+    Assert.That(screenState.Memory[303], Is.EqualTo(0x12uy))
+
+[<Test>]
+let ``interpreter peek invalid address reports bad parameter runtime error`` () =
+    let host, _ = createScreenHost []
+    let ast =
+        Program(
+            pos,
+            [ Line(pos, Some 10, [ ProcedureCall(pos, "PRINT", [ call "PEEK" [ num "-1" ] ]) ]) ])
+
+    let hir = lowerProgram ast
+
+    interpretProgramWithOptions { defaultRuntimeOptions with Host = host } hir
+    |> assertRuntimeError BuiltInUnsupportedArguments
+    |> ignore
+
+[<Test>]
+let ``default host supports peek and poke built-ins`` () =
+    let ast =
+        Program(
+            pos,
+            [ Line(pos, Some 10, [ ProcedureCall(pos, "POKE_W", [ num "200"; num "4660" ]) ])
+              Line(pos, Some 20, [ ProcedureCall(pos, "PRINT", [ call "PEEK" [ num "200" ]
+                                                                 call "PEEK" [ num "201" ]
+                                                                 call "PEEK_W" [ num "200" ] ]) ]) ])
+
+    let output = runProgram ast
+    Assert.That(String.concat "|" output, Is.EqualTo("52 18 4660"))
+
+[<Test>]
 let ``interpreter runtime errors prefer BASIC line numbers in messages`` () =
     let posWithBasicLine =
         { pos with

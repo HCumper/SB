@@ -162,6 +162,14 @@ type IDeviceFileSystem =
 type IEnvironmentProvider =
     abstract GetVariable: string -> string option
 
+type IMemoryDevice =
+    abstract Peek8: int -> Result<int, RuntimeHostError>
+    abstract Peek16: int -> Result<int, RuntimeHostError>
+    abstract Peek32: int -> Result<int, RuntimeHostError>
+    abstract Poke8: int * int -> Result<unit, RuntimeHostError>
+    abstract Poke16: int * int -> Result<unit, RuntimeHostError>
+    abstract Poke32: int * int -> Result<unit, RuntimeHostError>
+
 type ScreenTextCell = {
     Character: char
     Ink: int
@@ -194,3 +202,4 @@ type IRuntimeHost =
     abstract Sound: ISoundDevice
     abstract Files: IDeviceFileSystem
     abstract Environment: IEnvironmentProvider
+    abstract Memory: IMemoryDevice

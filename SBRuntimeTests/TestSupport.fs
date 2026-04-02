@@ -111,6 +111,7 @@ type ScreenWindowState = {
 type ScreenState = {
     mutable Mode: ScreenModeInfo
     Inputs: Collections.Generic.Queue<string>
+    Memory: Collections.Generic.Dictionary<int, byte>
     Windows: Map<int, ScreenWindowState>
     mutable TextBuffer: char[,]
     mutable PixelBuffer: int[,]
@@ -176,6 +177,7 @@ let createScreenHost (inputs: string list) =
     let state =
         { Mode = supportedModes[0]
           Inputs = Collections.Generic.Queue<string>(inputs)
+          Memory = Collections.Generic.Dictionary<int, byte>()
           Windows = windows
           TextBuffer = Array2D.create supportedModes[0].Height supportedModes[0].Width ' '
           PixelBuffer = Array2D.create supportedModes[0].Height supportedModes[0].Width 0
@@ -204,6 +206,47 @@ let createScreenHost (inputs: string list) =
 
     let reader () =
         if state.Inputs.Count > 0 then Some(state.Inputs.Dequeue()) else None
+
+    let tryReadByte address =
+        if address < 0 then
+            Result.Error(InvalidHostArgument $"Memory address {address} is invalid.")
+        else
+            match state.Memory.TryGetValue address with
+            | true, value -> Result.Ok value
+            | false, _ -> Result.Ok 0uy
+
+    let writeByte address value =
+        if address < 0 then
+            Result.Error(InvalidHostArgument $"Memory address {address} is invalid.")
+        else
+            state.Memory[address] <- value
+            Result.Ok()
+
+    let peekWord address =
+        tryReadByte address
+        |> Result.bind (fun b0 ->
+            tryReadByte (address + 1)
+            |> Result.map (fun b1 -> int b0 ||| (int b1 <<< 8)))
+
+    let peekLong address =
+        tryReadByte address
+        |> Result.bind (fun b0 ->
+            tryReadByte (address + 1)
+            |> Result.bind (fun b1 ->
+                tryReadByte (address + 2)
+                |> Result.bind (fun b2 ->
+                    tryReadByte (address + 3)
+                    |> Result.map (fun b3 -> int b0 ||| (int b1 <<< 8) ||| (int b2 <<< 16) ||| (int b3 <<< 24)))))
+
+    let pokeWord address value =
+        writeByte address (byte (value &&& 0xFF))
+        |> Result.bind (fun () -> writeByte (address + 1) (byte ((value >>> 8) &&& 0xFF)))
+
+    let pokeLong address value =
+        writeByte address (byte (value &&& 0xFF))
+        |> Result.bind (fun () -> writeByte (address + 1) (byte ((value >>> 8) &&& 0xFF)))
+        |> Result.bind (fun () -> writeByte (address + 2) (byte ((value >>> 16) &&& 0xFF)))
+        |> Result.bind (fun () -> writeByte (address + 3) (byte ((value >>> 24) &&& 0xFF)))
 
     let writeWindow channelId line =
         match Map.tryFind channelId state.Windows with
@@ -780,7 +823,21 @@ let createScreenHost (inputs: string list) =
                     member _.Delete(_path) = Result.Error(UnsupportedHostOperation "Files not implemented in test host.") }
             member _.Environment =
                 { new IEnvironmentProvider with
-                    member _.GetVariable(_name) = None } }
+                    member _.GetVariable(_name) = None }
+            member _.Memory =
+                { new IMemoryDevice with
+                    member _.Peek8(address) =
+                        tryReadByte address |> Result.map int
+                    member _.Peek16(address) =
+                        peekWord address
+                    member _.Peek32(address) =
+                        peekLong address
+                    member _.Poke8(address, value) =
+                        writeByte address (byte (value &&& 0xFF))
+                    member _.Poke16(address, value) =
+                        pokeWord address value
+                    member _.Poke32(address, value) =
+                        pokeLong address value } }
 
     host, state
 

@@ -53,8 +53,11 @@ type RuntimeSurfaceControl() =
             let drawArea = bounds.Deflate(margin)
             let modeWidth = max 1 snapshot.Mode.Width
             let modeHeight = max 1 snapshot.Mode.Height
-            let scaleX = drawArea.Width / float modeWidth
-            let scaleY = drawArea.Height / float modeHeight
+            let scale = min (drawArea.Width / float modeWidth) (drawArea.Height / float modeHeight)
+            let screenWidth = float modeWidth * scale
+            let screenHeight = float modeHeight * scale
+            let screenOriginX = drawArea.X + ((drawArea.Width - screenWidth) / 2.0)
+            let screenOriginY = drawArea.Y + ((drawArea.Height - screenHeight) / 2.0)
             let paneZOrder pane =
                 match pane.ChannelId with
                 | Some 2 -> 0
@@ -69,10 +72,10 @@ type RuntimeSurfaceControl() =
                 let width, height, x, y = pane.Window
                 let paneRect =
                     Rect(
-                        drawArea.X + (float x * scaleX),
-                        drawArea.Y + (float y * scaleY),
-                        max 24.0 (float width * scaleX),
-                        max 24.0 (float height * scaleY))
+                        screenOriginX + (float x * scale),
+                        screenOriginY + (float y * scale),
+                        max 24.0 (float width * scale),
+                        max 24.0 (float height * scale))
                 let innerRect = paneRect.Deflate(10.0)
                 let viewportRect = innerRect
                 let paneBackground =
@@ -84,8 +87,26 @@ type RuntimeSurfaceControl() =
 
                 let paneTextHeight = Array2D.length1 pane.Text
                 let paneTextWidth = Array2D.length2 pane.Text
+                let panePixelHeight = Array2D.length1 pane.Pixels
+                let panePixelWidth = Array2D.length2 pane.Pixels
                 let textRows = max 1 (height / textCellPixelHeight)
                 let textCols = max 1 (width / textCellPixelWidth)
+
+                use _clip = context.PushClip(viewportRect)
+
+                if panePixelHeight > 0 && panePixelWidth > 0 then
+                    let pixelWidth = max 1.0 (viewportRect.Width / float panePixelWidth)
+                    let pixelHeight = max 1.0 (viewportRect.Height / float panePixelHeight)
+
+                    for py = 0 to panePixelHeight - 1 do
+                        for px = 0 to panePixelWidth - 1 do
+                            let pixelRect =
+                                Rect(
+                                    viewportRect.X + (float px * pixelWidth),
+                                    viewportRect.Y + (float py * pixelHeight),
+                                    pixelWidth,
+                                    pixelHeight)
+                            context.FillRectangle(SolidColorBrush(colorFor pane.Pixels[py, px]), pixelRect)
 
                 if paneTextHeight > 0 && paneTextWidth > 0 then
                     let cellWidth = max 1.0 (viewportRect.Width / float textCols)
@@ -97,9 +118,8 @@ type RuntimeSurfaceControl() =
                         let lastVisibleRow = max 0 cursorY
                         max 0 (min (paneTextHeight - textRows) (lastVisibleRow - textRows + 1))
 
-                    context.FillRectangle(SolidColorBrush(colorFor defaultPaper), viewportRect)
-
-                    use _clip = context.PushClip(viewportRect)
+                    if panePixelHeight = 0 || panePixelWidth = 0 then
+                        context.FillRectangle(SolidColorBrush(colorFor defaultPaper), viewportRect)
 
                     for textRow = 0 to min (textRows - 1) (paneTextHeight - 1) do
                         for textCol = 0 to min (textCols - 1) (paneTextWidth - 1) do
@@ -110,9 +130,10 @@ type RuntimeSurfaceControl() =
                                     viewportRect.Y + (float textRow * cellHeight),
                                     cellWidth,
                                     cellHeight)
-                            context.FillRectangle(SolidColorBrush(colorFor cell.Paper), cellRect)
 
+                            // Keep text windows readable while allowing graphics to show through blank cells.
                             if cell.Character <> ' ' then
+                                context.FillRectangle(SolidColorBrush(colorFor cell.Paper), cellRect)
                                 let text =
                                     new FormattedText(
                                         string cell.Character,

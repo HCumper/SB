@@ -417,6 +417,38 @@ let private hostErrorText = function
     | UnsupportedHostOperation detail -> detail
     | InvalidHostArgument detail -> detail
 
+let private mapMemoryFunctionError pos = function
+    | InvalidHostArgument detail -> runtimeError BuiltInUnsupportedArguments (Some pos) detail
+    | hostError -> runtimeError BuiltInFunctionNotImplemented (Some pos) (hostErrorText hostError)
+
+let private mapMemoryStatementError pos = function
+    | InvalidHostArgument detail -> runtimeError BuiltInUnsupportedArguments (Some pos) detail
+    | hostError -> runtimeError BuiltInStatementNotImplemented (Some pos) (hostErrorText hostError)
+
+let private peekMemory state pos name address =
+    let operation =
+        match normalizeIdentifier name with
+        | "PEEK" -> state.Options.Host.Memory.Peek8
+        | "PEEK_W" -> state.Options.Host.Memory.Peek16
+        | "PEEK_L" -> state.Options.Host.Memory.Peek32
+        | _ -> failwith $"Unsupported memory function '{name}'."
+
+    match operation address with
+    | Result.Ok value -> Result.Ok(IntValue value, state)
+    | Result.Error hostError -> mapMemoryFunctionError pos hostError
+
+let private pokeMemory state pos name address value =
+    let operation =
+        match normalizeIdentifier name with
+        | "POKE" -> state.Options.Host.Memory.Poke8
+        | "POKE_W" -> state.Options.Host.Memory.Poke16
+        | "POKE_L" -> state.Options.Host.Memory.Poke32
+        | _ -> failwith $"Unsupported memory statement '{name}'."
+
+    match operation (address, value) with
+    | Result.Ok() -> Result.Ok(Continue, state)
+    | Result.Error hostError -> mapMemoryStatementError pos hostError
+
 let private screenModeFromNumber = function
     | 4 -> QlMode4
     | 8 -> QlMode8
@@ -731,6 +763,10 @@ and private evalBuiltInFunction state symbolId argExprs hirType pos =
                 runtimeError BuiltInUnsupportedArguments (Some pos) $"Built-in function '{name}' requires an array as its first argument."
         | "DIMN", _ ->
             runtimeError BuiltInArityMismatch (Some pos) $"Built-in function '{name}' expects two arguments."
+        | ("PEEK" | "PEEK_W" | "PEEK_L"), [ addressValue ] ->
+            peekMemory nextState pos name (asInt addressValue)
+        | ("PEEK" | "PEEK_W" | "PEEK_L"), _ ->
+            runtimeError BuiltInArityMismatch (Some pos) $"Built-in function '{name}' expects one argument."
         | _ ->
             BuiltInFunctions.evaluate
                 name
@@ -986,6 +1022,16 @@ and private executeBuiltInCall state kind channel args targets pos =
 
         match normalized with
         | "STOP" -> Result.Ok(StopExecution, state)
+        | ("POKE" | "POKE_W" | "POKE_L") ->
+            unsupportedChannel ()
+            |> Result.bind (fun _ ->
+                evalExprList state args
+                |> Result.bind (fun (values, nextState) ->
+                    match values with
+                    | [ addressValue; dataValue ] ->
+                        pokeMemory nextState pos name (asInt addressValue) (asInt dataValue)
+                    | _ ->
+                        runtimeError BuiltInArityMismatch (Some pos) $"Built-in statement '{name}' expects two arguments."))
         | "MODE" ->
             unsupportedChannel ()
             |> Result.bind (fun _ ->

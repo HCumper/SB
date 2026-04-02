@@ -232,6 +232,39 @@ let ``loadAstFromInput treats open device names as string literals`` () =
     )
 
 [<Test>]
+let ``loadAstFromInput nests numbered for next loop bodies across lines`` () =
+    withTempSource
+        "10 DEFine PROCedure demo\n20 FOR n=1 TO 3:PRINT n\n30 PRINT n+10\n40 NEXT n\n50 END DEFine\n"
+        (fun path ->
+            match loadAstFromInput (testSettingsWithSyntaxChecking Relaxed path) with
+            | Error err -> Assert.Fail($"Expected numbered FOR/NEXT source to parse, got %A{err}")
+            | Ok(_, _, Program(_, [ Line(_, Some 10, [ ProcedureDef(_, "demo", _, body, _, _) ]) ])) ->
+                match body with
+                | [ Line(_, Some 20, [ ForStmt(_, "n", [], NumberLiteral(_, _, "1"), NumberLiteral(_, _, "3"), [], None, LineBlock loopLines, _) ]) ] ->
+                    Assert.That(loopLines, Has.Length.EqualTo(2))
+                    match loopLines[0] with
+                    | Line(_, Some 20, [ ProcedureCall(_, "PRINT", [ Identifier(_, _, "n") ]) ]) -> ()
+                    | other -> Assert.Fail($"Unexpected first nested loop line: %A{other}")
+                    match loopLines[1] with
+                    | Line(_, Some 30, [ ProcedureCall(_, "PRINT", [ BinaryExpr(_, _, "+", Identifier(_, _, "n"), NumberLiteral(_, _, "10")) ]) ]) -> ()
+                    | other -> Assert.Fail($"Unexpected second nested loop line: %A{other}")
+                | other -> Assert.Fail($"Unexpected AST for numbered FOR/NEXT normalization: %A{other}")
+            | Ok(_, _, ast) -> Assert.Fail($"Unexpected AST root for numbered FOR/NEXT normalization: %A{ast}")
+        )
+
+[<Test>]
+let ``runSemanticAnalysis accepts numbered for next loops normalized by pipeline`` () =
+    withTempSource
+        "10 DEFine PROCedure demo\n20 FOR n=1 TO 3:PRINT n\n30 PRINT n+10\n40 NEXT n\n50 END DEFine\n"
+        (fun path ->
+            match loadAstFromInput (testSettingsWithSyntaxChecking Relaxed path) with
+            | Error err -> Assert.Fail($"Expected numbered FOR/NEXT source to parse, got %A{err}")
+            | Ok(_, _, ast) ->
+                let analyzed = runSemanticAnalysis ast
+                Assert.That(analyzed.Errors |> List.filter (fun message -> message.Contains("Loop control target")), Is.Empty)
+        )
+
+[<Test>]
 let ``loadAstFromInput expands chained end if closers on one numbered line`` () =
     withTempSource
         "12510 REPeat lp\n12514 IF Invalid_Address(link_ptr)\n12518 para_base = ALLOCATION(comms_area_sz,0,0)\n12546 EXIT lp : END IF\n12550 work_ptr = PEEK_L(4+link_ptr)\n12554 IF NOT Invalid_Address(work_ptr)\n12558 IF PEEK$(work_ptr+2,20) = watermark$\n12566 IF work_ptr > 0\n12570 IF PEEK_W(work_ptr) = 999\n12578 POKE_L work_ptr, 0\n12582 END IF : END IF\n12586 para_base = link_ptr : EXIT lp\n12590 END IF : END IF\n12594 prior_link = link_ptr\n12598 link_ptr = PEEK_L(link_ptr)\n12602 END REPeat lp\n"

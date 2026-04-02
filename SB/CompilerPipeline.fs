@@ -322,11 +322,107 @@ let parsePreparedSource syntaxChecking (preparedSource: PreparedSource) : Result
     with
     | ex -> Result.Error(ParseError ex.Message)
 
+let normalizeAst ast =
+    let rec normalizeStmt stmt =
+        let normalizeBlock = function
+            | StatementBlock stmts -> StatementBlock(List.map normalizeStmt stmts)
+            | LineBlock lines -> LineBlock(normalizeLines lines)
+
+        match stmt with
+        | ProcedureDef(pos, name, parameters, body, closingName, endLine) ->
+            ProcedureDef(pos, name, parameters, normalizeLines body, closingName, endLine)
+        | FunctionDef(pos, name, parameters, body, closingName, endLine) ->
+            FunctionDef(pos, name, parameters, normalizeLines body, closingName, endLine)
+        | ForStmt(pos, name, prefixExprs, startExpr, endExpr, suffixExprs, stepExpr, body, closingName) ->
+            ForStmt(pos, name, prefixExprs, startExpr, endExpr, suffixExprs, stepExpr, normalizeBlock body, closingName)
+        | RepeatStmt(pos, name, body, closingName) ->
+            RepeatStmt(pos, name, normalizeBlock body, closingName)
+        | IfStmt(pos, condition, thenBlock, elseBlock) ->
+            IfStmt(pos, condition, normalizeBlock thenBlock, elseBlock |> Option.map normalizeBlock)
+        | SelectStmt(pos, selector, clauses) ->
+            let normalizedClauses =
+                clauses
+                |> List.map (fun (SelectClause(clausePos, clauseSelector, rangeExpr, body)) ->
+                    SelectClause(clausePos, clauseSelector, rangeExpr, body |> Option.map normalizeBlock))
+            SelectStmt(pos, selector, normalizedClauses)
+        | WhenStmt(pos, condition, body) ->
+            WhenStmt(pos, condition, normalizeLines body)
+        | other -> other
+
+    and normalizeLine (Line(pos, lineNumber, stmts)) =
+        Line(pos, lineNumber, List.map normalizeStmt stmts)
+
+    and tryExtractFlatFor stmts =
+        match stmts with
+        | [ ForStmt(pos, name, prefixExprs, startExpr, endExpr, suffixExprs, stepExpr, StatementBlock inlineStmts, closingName) ] ->
+            Some(pos, name, prefixExprs, startExpr, endExpr, suffixExprs, stepExpr, inlineStmts, closingName)
+        | _ -> None
+
+    and tryMatchClosingNext loopName stmts =
+        let normalizedLoopName = normalizeIdentifier loopName
+        match stmts with
+        | NextStmt(_, nextName) :: trailing ->
+            let normalizedNext =
+                if String.IsNullOrWhiteSpace nextName then ""
+                else normalizeIdentifier nextName
+            if normalizedNext = "" || normalizedNext = normalizedLoopName then
+                Some trailing
+            else
+                None
+        | _ -> None
+
+    and normalizeLines lines =
+        let rec consumeFlatFor loopName depth collected remaining =
+            match remaining with
+            | [] -> List.rev collected, []
+            | (Line(_, _, stmts) as line) :: tail ->
+                match tryMatchClosingNext loopName stmts with
+                | Some trailingStmts when depth = 0 ->
+                    let remainingLines =
+                        match trailingStmts with
+                        | [] -> tail
+                        | _ ->
+                            match line with
+                            | Line(pos, lineNumber, _) -> Line(pos, lineNumber, trailingStmts) :: tail
+                    List.rev collected, remainingLines
+                | _ ->
+                    let nextDepth =
+                        match tryExtractFlatFor stmts, stmts with
+                        | Some _, _ -> depth + 1
+                        | None, NextStmt _ :: _ when depth > 0 -> depth - 1
+                        | _ -> depth
+                    consumeFlatFor loopName nextDepth (line :: collected) tail
+
+        let rec loop acc remaining =
+            match remaining with
+            | [] -> List.rev acc
+            | (Line(linePos, lineNumber, stmts) as line) :: tail ->
+                match tryExtractFlatFor stmts with
+                | Some(forPos, name, prefixExprs, startExpr, endExpr, suffixExprs, stepExpr, inlineStmts, closingName) ->
+                    let bodyLines, rest = consumeFlatFor name 0 [] tail
+                    let normalizedBodyLines = normalizeLines bodyLines
+                    let bodyBlock =
+                        match inlineStmts, normalizedBodyLines with
+                        | [], bodyOnly -> LineBlock(bodyOnly)
+                        | inlineOnly, [] -> StatementBlock(List.map normalizeStmt inlineOnly)
+                        | inlineOnly, bodyOnly ->
+                            LineBlock(Line(forPos, forPos.BasicLineNo, List.map normalizeStmt inlineOnly) :: bodyOnly)
+                    let normalizedFor =
+                        ForStmt(forPos, name, prefixExprs, startExpr, endExpr, suffixExprs, stepExpr, bodyBlock, closingName)
+                    loop (Line(linePos, lineNumber, [ normalizedFor ]) :: acc) rest
+                | None ->
+                    loop (normalizeLine line :: acc) tail
+
+        loop [] lines
+
+    match ast with
+    | Program(pos, lines) -> Program(pos, normalizeLines lines)
+
 let processToAST ((tree: IParseTree), _inputStream) verbose : Ast =
     // The parser visitor returns a list, but the grammar is rooted at a single
     // Program node, so the pipeline extracts the first AST root.
     let astNodes = convertTreeToAst tree
-    let astRoot = List.head astNodes
+    let astRoot = normalizeAst (List.head astNodes)
     if verbose then Console.WriteLine(prettyPrintAst astRoot)
     astRoot
 
@@ -380,8 +476,9 @@ let semanticAnalysisState : State<ProcessingState, ProcessingState> =
     }
 
 let runSemanticAnalysis (astRoot: Ast) =
+    let normalizedAst = normalizeAst astRoot
     let initialState =
-        { Ast = astRoot
+        { Ast = normalizedAst
           SymTab = emptySymbolTable
           CurrentScope = globalScope
           InParameterList = false

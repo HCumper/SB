@@ -137,7 +137,10 @@ let builtInResultType name =
         | "EOF"
         | "INSTR"
         | "KEYROW"
-        | "LEN" -> SBType.Integer
+        | "LEN"
+        | "PEEK"
+        | "PEEK_W"
+        | "PEEK_L" -> SBType.Integer
         | "ABS"
         | "ACOS"
         | "ACOT"
