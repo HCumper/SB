@@ -780,13 +780,15 @@
 7880 DEFine FuNction min(x,y)
 7890   IF x < 0 OR y < 0 THEN
 7900     RETurn 0
-7910   ELSE IF x < y THEN
-7920     RETurn x
-7930   ELSE
-7940     RETurn y
-7950   END IF
-7960 END DEFine min
-7970 :
+7910   ELSE
+7920     IF x < y THEN
+7930       RETurn x
+7940     ELSE
+7950       RETurn y
+7960     END IF
+7970   END IF
+7972 END DEFine min
+7974 :
 7980 :
 7990 DEFine FuNction dt$(shortDate$)
 8000   LOCal fullYear$

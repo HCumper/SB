@@ -63,11 +63,11 @@ line
     ;
 
 stmtlist
-    : stmt (Colon stmt)* Colon?
+    : Colon* stmt (Colon+ stmt)* Colon*
     ;
 
 plainStmtlist
-    : stmt (Colon stmt)*
+    : Colon* stmt (Colon+ stmt)*
     ;
 
 stmt

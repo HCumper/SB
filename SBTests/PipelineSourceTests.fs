@@ -232,6 +232,23 @@ let ``loadAstFromInput treats open device names as string literals`` () =
     )
 
 [<Test>]
+let ``loadAstFromInput accepts double colon empty separators in short form if bodies`` () =
+    withTempSource
+        "10 IF c(100,104)::c_s::inven:EXIT loop\n"
+        (fun path ->
+            match loadAstFromInput (testSettingsWithSyntaxChecking Rigorous path) with
+            | Error err -> Assert.Fail($"Expected double colon short-form IF source to parse, got %A{err}")
+            | Ok(_, _, Program(_, [ Line(_, Some 10, [ IfStmt(_, _, StatementBlock thenStmts, None) ]) ])) ->
+                Assert.That(thenStmts, Has.Length.EqualTo(3))
+                match thenStmts with
+                | [ ProcedureCall(_, "c_s", [])
+                    ProcedureCall(_, "inven", [])
+                    ExitStmt(_, "loop") ] -> ()
+                | other -> Assert.Fail($"Unexpected THEN statements for double-colon IF: %A{other}")
+            | Ok(_, _, ast) -> Assert.Fail($"Unexpected AST for double-colon IF source: %A{ast}")
+        )
+
+[<Test>]
 let ``loadAstFromInput nests numbered for next loop bodies across lines`` () =
     withTempSource
         "10 DEFine PROCedure demo\n20 FOR n=1 TO 3:PRINT n\n30 PRINT n+10\n40 NEXT n\n50 END DEFine\n"

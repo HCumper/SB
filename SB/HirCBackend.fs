@@ -2,7 +2,6 @@ module HirCBackend
 
 open System
 open System.Globalization
-open System.IO
 open System.Text
 
 open HIR
@@ -381,7 +380,7 @@ let private emitRoutinePrototype (ctx: EmitterContext) (builder: StringBuilder) 
         match routine.Parameters with
         | [] -> "void"
         | items -> items |> List.map (fun parameter -> $"Value {storageName ctx parameter.Storage.Symbol}") |> String.concat ", "
-    appendLine builder level $"static Value {routineName ctx routine.Symbol}({parameters});"
+    appendLine builder level $"static Value {routineName ctx routine.Symbol} _P_(( {parameters} ));"
 
 let private emitRoutine (ctx: EmitterContext) (builder: StringBuilder) (routine: HirRoutine) =
     let parameters =
@@ -422,113 +421,18 @@ let private emitDataLayout builder (program: HirProgram) =
         |> String.concat ", "
 
     let dataItems = String.concat ", " (program.DataEntries |> List.map renderEntry)
-    appendLine builder 0 $"static DataValue sb_data[] = {{ {dataItems} }};"
-    appendLine builder 0 $"static int sb_data_count = {program.DataEntries.Length};"
-    appendLine builder 0 $"static RestorePoint sb_restore_points[] = {{ {restorePoints} }};"
-    appendLine builder 0 $"static int sb_restore_point_count = {program.RestorePoints.Length};"
-    appendLine builder 0 "static int sb_data_pointer = 0;"
-    appendLine builder 0 "static char sb_input_buffer[4096];"
-    appendLine builder 0 "static char* sb_input_parts[256];"
-    appendLine builder 0 "static int sb_input_part_count = 0;"
+    appendLine builder 0 $"DataValue sb_data[] = {{ {dataItems} }};"
+    appendLine builder 0 $"int sb_data_count = {program.DataEntries.Length};"
+    appendLine builder 0 $"RestorePoint sb_restore_points[] = {{ {restorePoints} }};"
+    appendLine builder 0 $"int sb_restore_point_count = {program.RestorePoints.Length};"
+    appendLine builder 0 "int sb_data_pointer = 0;"
+    appendLine builder 0 "char sb_input_buffer[4096];"
+    appendLine builder 0 "char* sb_input_parts[256];"
+    appendLine builder 0 "int sb_input_part_count = 0;"
     appendLine builder 0 ""
-
-let private getTemplateLines templateName =
-    let templatePath = Path.Combine(__SOURCE_DIRECTORY__, "CTemplates.stg")
-    let lines = File.ReadAllLines(templatePath)
-    let marker = $"{templateName}() ::= <<"
-    let startIndex =
-        lines
-        |> Array.tryFindIndex (fun line -> line.Trim() = marker)
-        |> Option.defaultWith (fun () -> failwith $"Failed to find template '{templateName}' in CTemplates.stg.")
-
-    let content =
-        lines
-        |> Array.skip (startIndex + 1)
-        |> Array.takeWhile (fun line -> line.Trim() <> ">>")
-
-    content
-
-let private emitTemplate (builder: StringBuilder) templateName =
-    getTemplateLines templateName
-    |> Array.iter (fun line -> builder.AppendLine(line) |> ignore)
-    builder.AppendLine() |> ignore
 
 let cRuntimeHeaderFileName = "sbruntime_c.h"
 let cRuntimeSourceFileName = "sbruntime_c.c"
-
-let generateCRuntimeHeader () =
-    let builder = StringBuilder()
-    builder.AppendLine("#ifndef SBRUNTIME_C_H") |> ignore
-    builder.AppendLine("#define SBRUNTIME_C_H") |> ignore
-    builder.AppendLine() |> ignore
-    getTemplateLines "runtimePrelude"
-    |> Array.iter (fun line -> builder.AppendLine(line) |> ignore)
-    builder.AppendLine() |> ignore
-    builder.AppendLine("extern DataValue sb_data[];") |> ignore
-    builder.AppendLine("extern int sb_data_count;") |> ignore
-    builder.AppendLine("extern RestorePoint sb_restore_points[];") |> ignore
-    builder.AppendLine("extern int sb_restore_point_count;") |> ignore
-    builder.AppendLine("extern int sb_data_pointer;") |> ignore
-    builder.AppendLine("extern char sb_input_buffer[4096];") |> ignore
-    builder.AppendLine("extern char* sb_input_parts[256];") |> ignore
-    builder.AppendLine("extern int sb_input_part_count;") |> ignore
-    builder.AppendLine() |> ignore
-    [ "Value make_null(void);"
-      "Value make_int(int value);"
-      "Value make_float(double value);"
-      "Value make_string(const char* value);"
-      "Value make_array(void);"
-      "void runtime_not_supported(const char* message);"
-      "Value unsupported_dynamic_read(const char* name);"
-      "Value unsupported_dynamic_write(const char* name);"
-      "int as_int(Value value);"
-      "double as_double(Value value);"
-      "const char* as_string(Value value);"
-      "int is_true(Value value);"
-      "Value negate_value(Value value);"
-      "Value bitwise_not_value(Value value);"
-      "Value concat_value(Value left, Value right);"
-      "Value add_value(Value left, Value right);"
-      "Value subtract_value(Value left, Value right);"
-      "Value multiply_value(Value left, Value right);"
-      "Value divide_value(Value left, Value right);"
-      "Value power_value(Value left, Value right);"
-      "Value integer_divide_value(Value left, Value right);"
-      "Value modulo_value(Value left, Value right);"
-      "Value bitwise_and_value(Value left, Value right);"
-      "Value bitwise_or_value(Value left, Value right);"
-      "Value bitwise_xor_value(Value left, Value right);"
-      "Value compare_equal(Value left, Value right);"
-      "Value compare_not_equal(Value left, Value right);"
-      "Value compare_less_than(Value left, Value right);"
-      "Value compare_less_than_or_equal(Value left, Value right);"
-      "Value compare_greater_than(Value left, Value right);"
-      "Value compare_greater_than_or_equal(Value left, Value right);"
-      "Value instr_value(Value left, Value right);"
-      "Value slice_range_value(Value left, Value right);"
-      "Value unsupported_unary(const char* name, Value value);"
-      "Value unsupported_binary(const char* name, Value left, Value right);"
-      "Value get_array_value(Value* array_value, int count, ...);"
-      "void set_array_value(Value* array_value, Value value, int count, ...);"
-      "Value get_string_char_value(Value source, int one_based_index);"
-      "void set_string_char_value(Value* target, int one_based_index, Value replacement);"
-      "Value invoke_builtin_function(const char* name, int arg_count, ...);"
-      "void execute_builtin_statement(const char* name, Value channel, int arg_count, ...);"
-      "void execute_input(Value channel, int prompt_count, ...);"
-      "Value read_input_value(int index, ValueType target_type);"
-      "Value read_data_value(ValueType target_type);"
-      "void restore_to_line(int line);" ]
-    |> List.iter (fun line -> builder.AppendLine(line) |> ignore)
-    builder.AppendLine() |> ignore
-    builder.AppendLine("#endif") |> ignore
-    builder.ToString()
-
-let generateCRuntimeSource () =
-    let builder = StringBuilder()
-    builder.AppendLine($"#include \"{cRuntimeHeaderFileName}\"") |> ignore
-    builder.AppendLine() |> ignore
-    emitTemplate builder "runtimeSupport"
-    builder.ToString()
 
 let generateCFromHir programName (program: HirProgram) =
     let ctx = buildContext programName program
@@ -543,9 +447,12 @@ let generateCFromHir programName (program: HirProgram) =
     program.Routines |> List.iter (emitRoutinePrototype ctx builder 0)
     if not (List.isEmpty program.Routines) then
         appendLine builder 0 ""
+    appendLine builder 0 "int main _P_(( void ));"
+    appendLine builder 0 ""
     program.Routines |> List.iter (emitRoutine ctx builder)
     appendLine builder 0 "int main(void)"
     appendLine builder 0 "{"
+    appendLine builder 1 "sb_runtime_init();"
     program.Globals
     |> List.iter (fun storage ->
         let initial =

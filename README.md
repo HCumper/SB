@@ -2,6 +2,42 @@
 
 An F# SuperBASIC / Structured SuperBASIC toolchain targeting `.NET 10`.
 
+## Command line quick start
+
+Run commands from the repository root:
+
+```powershell
+dotnet run --project .\SB\SB.fsproj -- <input> <output> <verbose> <backend>
+```
+
+Arguments:
+
+- `<input>` - source file such as `.\q3.SB` or `.\program.ssb`
+- `<output>` - output path for generated backends, or any placeholder path when interpreting
+- `<verbose>` - `true` or `false`
+- `<backend>` - `interpret`, `csharp`, `c`, or `dotnetexe`
+
+Examples:
+
+```powershell
+# Interpret a program
+dotnet run --project .\SB\SB.fsproj -- .\q3.SB .\out.txt false interpret
+
+# Generate C
+dotnet run --project .\SB\SB.fsproj -- .\q3.SB .\q3.c false c
+
+# Generate C#
+dotnet run --project .\SB\SB.fsproj -- .\q3.SB .\q3.generated.cs false csharp
+
+# Publish a .NET executable
+dotnet run --project .\SB\SB.fsproj -- .\q3.SB .\q3.exe false dotnetexe
+```
+
+Notes:
+
+- Command-line arguments override the defaults in `SB/appsettings.json`.
+- The `c` backend writes the generated program and also copies `sbruntime_c.h` and `sbruntime_c.c` beside the output file.
+
 The active codebase currently supports:
 
 - SSB preprocessing into numbered SuperBASIC

@@ -65,8 +65,9 @@ let ``generateCFromHir emits globals routines labels and loop jumps`` () =
 
     Assert.That(generated, Does.Contain("#include \"sbruntime_c.h\""))
     Assert.That(generated, Does.Contain("static Value v0_X;"))
-    Assert.That(generated, Does.Contain("static Value r1_PROC(Value v2_P);"))
-    Assert.That(generated, Does.Contain("static DataValue sb_data[] = { { TYPE_INT, 2, 2, NULL, NULL }, { TYPE_STRING, 0, 0.0, \"HELLO\", NULL } };"))
+    Assert.That(generated, Does.Contain("static Value r1_PROC _P_(( Value v2_P ));"))
+    Assert.That(generated, Does.Contain("DataValue sb_data[] = { { TYPE_INT, 2, 2, NULL, NULL }, { TYPE_STRING, 0, 0.0, \"HELLO\", NULL } };"))
+    Assert.That(generated, Does.Contain("int main _P_(( void ));"))
     Assert.That(generated, Does.Contain("line_10: ;"))
     Assert.That(generated, Does.Contain("goto loop_0_next;"))
     Assert.That(generated, Does.Contain("loop_1_exit: ;"))
@@ -74,6 +75,7 @@ let ``generateCFromHir emits globals routines labels and loop jumps`` () =
     Assert.That(generated, Does.Contain("v0_X = read_data_value(TYPE_INT);"))
     Assert.That(generated, Does.Contain("restore_to_line(as_int(make_int(20)));"))
     Assert.That(generated, Does.Contain("case 2: goto line_20;"))
+    Assert.That(generated, Does.Contain("sb_runtime_init();"))
     Assert.That(generated, Does.Contain("runtime_not_supported(\"GOSUB is not supported by the generated C backend yet.\");"))
 
 [<Test>]
@@ -159,17 +161,3 @@ let ``generateCFromHir emits string character reads and writes`` () =
     Assert.That(generated, Does.Contain("v1_CH_ = get_string_char_value(v0_TEXT_, as_int(make_int(2)));"))
     Assert.That(generated, Does.Contain("set_string_char_value(&v0_TEXT_, as_int(make_int(1)), read_input_value(0, TYPE_STRING));"))
     Assert.That(generated, Does.Contain("set_string_char_value(&v0_TEXT_, as_int(make_int(1)), read_data_value(TYPE_STRING));"))
-
-[<Test>]
-let ``generateCRuntimeHeader and source expose shared C runtime`` () =
-    let header = generateCRuntimeHeader ()
-    let source = generateCRuntimeSource ()
-
-    Assert.That(header, Does.Contain("#ifndef SBRUNTIME_C_H"))
-    Assert.That(header, Does.Contain("typedef struct Value"))
-    Assert.That(header, Does.Contain("extern DataValue sb_data[];"))
-    Assert.That(header, Does.Contain("Value invoke_builtin_function(const char* name, int arg_count, ...);"))
-    Assert.That(source, Does.Contain("#include \"sbruntime_c.h\""))
-    Assert.That(source, Does.Contain("static MemoryEntry* sb_memory = NULL;"))
-    Assert.That(source, Does.Contain("Value get_string_char_value(Value source, int one_based_index)"))
-    Assert.That(source, Does.Contain("if (ci_compare(name, \"PEEK_W\") == 0)"))

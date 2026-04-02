@@ -10,6 +10,27 @@ open SymbolTableManager
 open SemanticAnalysisFacts
 open SBAvaloniaHost
 
+let private copyBundledCRuntime (outputFileName: string) =
+    let outputDirectory =
+        let directory = Path.GetDirectoryName(outputFileName)
+        if String.IsNullOrWhiteSpace directory then Directory.GetCurrentDirectory() else directory
+
+    let runtimeDirectory = Path.Combine(AppContext.BaseDirectory, "CRuntime")
+    let headerSourcePath = Path.Combine(runtimeDirectory, HirCBackend.cRuntimeHeaderFileName)
+    let sourceSourcePath = Path.Combine(runtimeDirectory, HirCBackend.cRuntimeSourceFileName)
+    let headerTargetPath = Path.Combine(outputDirectory, HirCBackend.cRuntimeHeaderFileName)
+    let sourceTargetPath = Path.Combine(outputDirectory, HirCBackend.cRuntimeSourceFileName)
+
+    if not (File.Exists(headerSourcePath)) then
+        failwith $"Bundled C runtime header not found: {headerSourcePath}"
+
+    if not (File.Exists(sourceSourcePath)) then
+        failwith $"Bundled C runtime source not found: {sourceSourcePath}"
+
+    File.Copy(headerSourcePath, headerTargetPath, true)
+    File.Copy(sourceSourcePath, sourceTargetPath, true)
+    headerTargetPath, sourceTargetPath
+
 // Program is the thin CLI shell over the compiler pipeline.
 //
 // It parses runtime settings, runs the pipeline, prints diagnostics or generated
@@ -200,14 +221,10 @@ let main argv =
                 | "c" ->
                     let generated = generateCFromLoweredHir settings.AppName hirProgram
                     File.WriteAllText(settings.OutputFileName, generated)
-                    let outputDirectory =
-                        let directory = Path.GetDirectoryName(settings.OutputFileName)
-                        if String.IsNullOrWhiteSpace directory then Directory.GetCurrentDirectory() else directory
-                    File.WriteAllText(Path.Combine(outputDirectory, HirCBackend.cRuntimeHeaderFileName), HirCBackend.generateCRuntimeHeader())
-                    File.WriteAllText(Path.Combine(outputDirectory, HirCBackend.cRuntimeSourceFileName), HirCBackend.generateCRuntimeSource())
+                    let headerPath, sourcePath = copyBundledCRuntime settings.OutputFileName
                     if settings.Verbose then
                         Console.WriteLine($"Generated C written to {settings.OutputFileName}")
-                        Console.WriteLine($"Shared C runtime written to {Path.Combine(outputDirectory, HirCBackend.cRuntimeHeaderFileName)} and {Path.Combine(outputDirectory, HirCBackend.cRuntimeSourceFileName)}")
+                        Console.WriteLine($"Shared C runtime written to {headerPath} and {sourcePath}")
                     0
                 | "dotnetexe"
                 | "dotnet-exe"

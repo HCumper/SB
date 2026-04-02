@@ -433,4 +433,26 @@ let ``ssb272 fixture semantic output preserves implicit integer defaults and get
 
     Assert.That(getenvResult.IsSome, Is.True)
 
+[<Test>]
+let ``c backend copies checked in runtime beside generated output`` () =
+    withTempDirectory (fun dir ->
+        let sourcePath = Path.Combine(dir, "simple.sb")
+        let outputPath = Path.Combine(dir, "simple.c")
+        File.WriteAllText(sourcePath, "10 PRINT 1" + Environment.NewLine)
+
+        let exitCode = Program.main [| sourcePath; outputPath; "false"; "c" |]
+
+        let copiedHeaderPath = Path.Combine(dir, HirCBackend.cRuntimeHeaderFileName)
+        let copiedSourcePath = Path.Combine(dir, HirCBackend.cRuntimeSourceFileName)
+        let bundledRuntimeDirectory = Path.Combine(AppContext.BaseDirectory, "CRuntime")
+        let bundledHeaderPath = Path.Combine(bundledRuntimeDirectory, HirCBackend.cRuntimeHeaderFileName)
+        let bundledSourcePath = Path.Combine(bundledRuntimeDirectory, HirCBackend.cRuntimeSourceFileName)
+
+        Assert.That(exitCode, Is.EqualTo(0))
+        Assert.That(File.Exists(outputPath), Is.True)
+        Assert.That(File.Exists(copiedHeaderPath), Is.True)
+        Assert.That(File.Exists(copiedSourcePath), Is.True)
+        Assert.That(File.ReadAllText(copiedHeaderPath), Is.EqualTo(File.ReadAllText(bundledHeaderPath)))
+        Assert.That(File.ReadAllText(copiedSourcePath), Is.EqualTo(File.ReadAllText(bundledSourcePath))))
+
 
