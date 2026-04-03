@@ -11,13 +11,93 @@ private sealed class LoopControlException : Exception
     public bool IsNext { get; }
 }
 
+private sealed class RetryControlException : Exception
+{
+    public RetryControlException(int? lineNumber)
+    {
+        LineNumber = lineNumber;
+    }
+
+    public int? LineNumber { get; }
+}
+
+private sealed class ContinueControlException : Exception
+{
+    public ContinueControlException(int? lineNumber)
+    {
+        LineNumber = lineNumber;
+    }
+
+    public int? LineNumber { get; }
+}
+
+private enum ErrorActionKind
+{
+    Retry,
+    Continue,
+    Stop
+}
+
+private readonly struct ErrorAction
+{
+    private ErrorAction(ErrorActionKind kind, int? lineNumber)
+    {
+        Kind = kind;
+        LineNumber = lineNumber;
+    }
+
+    public ErrorActionKind Kind { get; }
+    public int? LineNumber { get; }
+
+    public static ErrorAction Retry(int? lineNumber) => new ErrorAction(ErrorActionKind.Retry, lineNumber);
+    public static ErrorAction Continue(int? lineNumber) => new ErrorAction(ErrorActionKind.Continue, lineNumber);
+    public static ErrorAction Stop() => new ErrorAction(ErrorActionKind.Stop, null);
+}
+
+private sealed class Cell
+{
+    public Cell(object? value = null)
+    {
+        Value = value;
+    }
+
+    public object? Value { get; set; }
+}
+
+private sealed class DynamicFrameScope : IDisposable
+{
+    private readonly Dictionary<string, Cell> _bindings;
+
+    public DynamicFrameScope(Dictionary<string, Cell> bindings)
+    {
+        _bindings = bindings;
+        __dynamicFrames.Add(bindings);
+    }
+
+    public void Dispose()
+    {
+        if (__dynamicFrames.Count > 0 && ReferenceEquals(__dynamicFrames[^1], _bindings))
+        {
+            __dynamicFrames.RemoveAt(__dynamicFrames.Count - 1);
+        }
+    }
+}
+
 private static readonly DateTime QlEpoch = new DateTime(1961, 1, 1, 0, 0, 0, DateTimeKind.Utc);
 private static readonly Dictionary<int, byte> __memory = new Dictionary<int, byte>();
 private static readonly Dictionary<int, StreamReader> __channelReaders = new Dictionary<int, StreamReader>();
 private static readonly Dictionary<int, StreamWriter> __channelWriters = new Dictionary<int, StreamWriter>();
+private static readonly List<Dictionary<string, Cell>> __dynamicFrames = new List<Dictionary<string, Cell>>();
+private static readonly Dictionary<string, Cell> __globalCells = new Dictionary<string, Cell>(StringComparer.OrdinalIgnoreCase);
 private static Random __random = new Random();
 private static int __screenMode = 4;
 private static bool __beeping;
+private static int __lastErrorNumber;
+private static string __lastErrorName = string.Empty;
+private static string __lastErrorDescription = string.Empty;
+private static int? __lastErrorLine;
+private static int? __lastRetryLine;
+private static int? __lastContinueLine;
 
 private static int AsInt(object? value)
 {
@@ -67,16 +147,107 @@ private static bool IsTrue(object? value)
     };
 }
 
-private static string ArrayKey(params object?[] indexes) => string.Join(",", indexes.Select(AsInt));
-
-private static object? GetArrayValue(Dictionary<string, object?> array, params object?[] indexes)
+private static bool IsControlFlowException(Exception ex)
 {
-    return array.TryGetValue(ArrayKey(indexes), out var value) ? value : null;
+    return ex is LoopControlException
+        || ex is RetryControlException
+        || ex is ContinueControlException
+        || ex is OperationCanceledException;
 }
 
-private static void SetArrayValue(Dictionary<string, object?> array, object? value, params object?[] indexes)
+private static string ArrayKey(params object?[] indexes) => string.Join(",", indexes.Select(AsInt));
+
+private static void RecordLastError(Exception ex, int? lineNumber, int? retryLineNumber, int? continueLineNumber)
 {
-    array[ArrayKey(indexes)] = value;
+    var error = ex switch
+    {
+        NotSupportedException => (-19, "ERR_NI", "Not implemented"),
+        InvalidOperationException invalid when invalid.Message.Contains("Memory address", StringComparison.OrdinalIgnoreCase) => (-15, "ERR_BP", "Bad parameter"),
+        InvalidOperationException invalid when invalid.Message.Contains("READ moved past the end of DATA", StringComparison.OrdinalIgnoreCase) => (-21, "ERR_BL", "Bad line of Basic"),
+        InvalidOperationException invalid when invalid.Message.Contains("RESTORE line", StringComparison.OrdinalIgnoreCase) => (-21, "ERR_BL", "Bad line of Basic"),
+        InvalidOperationException invalid when invalid.Message.Contains("Dynamic storage", StringComparison.OrdinalIgnoreCase) => (-15, "ERR_BP", "Bad parameter"),
+        IOException => (-16, "ERR_FE", "File error"),
+        _ => (-19, "ERR_NI", "Not implemented")
+    };
+
+    __lastErrorNumber = error.Item1;
+    __lastErrorName = error.Item2;
+    __lastErrorDescription = error.Item3;
+    __lastErrorLine = lineNumber;
+    __lastRetryLine = retryLineNumber;
+    __lastContinueLine = continueLineNumber;
+}
+
+private static string FormatLastError()
+{
+    if (string.IsNullOrEmpty(__lastErrorDescription))
+    {
+        return string.Empty;
+    }
+
+    return __lastErrorLine.HasValue
+        ? $"{__lastErrorDescription} ({__lastErrorNumber}) at line {__lastErrorLine.Value}"
+        : $"{__lastErrorDescription} ({__lastErrorNumber})";
+}
+
+private static DynamicFrameScope PushDynamicFrame(Dictionary<string, Cell> bindings) => new DynamicFrameScope(bindings);
+
+private static void RegisterGlobal(string name, Cell cell)
+{
+    __globalCells[name] = cell;
+}
+
+private static Cell LookupDynamicCell(string name)
+{
+    for (var index = __dynamicFrames.Count - 1; index >= 0; index--)
+    {
+        if (__dynamicFrames[index].TryGetValue(name, out var frameCell))
+        {
+            return frameCell;
+        }
+    }
+
+    if (__globalCells.TryGetValue(name, out var globalCell))
+    {
+        return globalCell;
+    }
+
+    throw new InvalidOperationException($"Dynamic storage '{name}' does not exist.");
+}
+
+private static Dictionary<string, Cell> EnsureArray(Cell arrayCell)
+{
+    if (arrayCell.Value is Dictionary<string, Cell> existing)
+    {
+        return existing;
+    }
+
+    var created = new Dictionary<string, Cell>(StringComparer.OrdinalIgnoreCase);
+    arrayCell.Value = created;
+    return created;
+}
+
+private static Cell GetArrayCell(Cell arrayCell, params object?[] indexes)
+{
+    var array = EnsureArray(arrayCell);
+    var key = ArrayKey(indexes);
+    if (!array.TryGetValue(key, out var cell))
+    {
+        cell = new Cell();
+        array[key] = cell;
+    }
+
+    return cell;
+}
+
+private static object? GetArrayValue(Cell arrayCell, params object?[] indexes)
+{
+    return GetArrayCell(arrayCell, indexes).Value;
+}
+
+private static void SetArrayValue(Cell arrayCell, object? value, params object?[] indexes)
+{
+    GetArrayCell(arrayCell, indexes).Value = value;
 }
 
 private static object? GetStringCharValue(object? source, object? index)
@@ -91,9 +262,9 @@ private static object? GetStringCharValue(object? source, object? index)
     return text[oneBasedIndex - 1].ToString();
 }
 
-private static void SetStringCharValue(ref object? target, object? index, object? replacement)
+private static void SetStringCharValue(Cell target, object? index, object? replacement)
 {
-    var text = AsString(target);
+    var text = AsString(target.Value);
     var oneBasedIndex = AsInt(index);
     if (oneBasedIndex < 1)
     {
@@ -112,7 +283,7 @@ private static void SetStringCharValue(ref object? target, object? index, object
     }
 
     buffer[zeroBasedIndex] = replacementChar;
-    target = new string(buffer);
+    target.Value = new string(buffer);
 }
 
 private static object? Identity(object? value) => value;
@@ -334,6 +505,30 @@ private static object? InvokeBuiltInFunction(string name, params object?[] args)
         case "DATE": return SecondsSinceQlEpoch();
         case "EOF": return IsEndOfFile(AsInt(args.ElementAtOrDefault(0))) ? 1 : 0;
         case "EXP": return Math.Exp(AsDouble(args.ElementAtOrDefault(0)));
+        case "ERLIN": return __lastErrorLine ?? 0;
+        case "ERNUM": return __lastErrorNumber;
+        case "ERR_NC":
+        case "ERR_NJ":
+        case "ERR_OM":
+        case "ERR_OR":
+        case "ERR_BO":
+        case "ERR_NO":
+        case "ERR_NF":
+        case "ERR_EX":
+        case "ERR_IU":
+        case "ERR_EF":
+        case "ERR_DF":
+        case "ERR_BN":
+        case "ERR_TE":
+        case "ERR_FF":
+        case "ERR_BP":
+        case "ERR_FE":
+        case "ERR_XP":
+        case "ERR_OV":
+        case "ERR_NI":
+        case "ERR_RO":
+        case "ERR_BL":
+            return string.Equals(__lastErrorName, name.ToUpperInvariant(), StringComparison.Ordinal) ? 1 : 0;
         case "FILL$": return string.Concat(Enumerable.Repeat(AsString(args.ElementAtOrDefault(0)), Math.Max(0, AsInt(args.ElementAtOrDefault(1)))));
         case "GETENV$": return Environment.GetEnvironmentVariable(AsString(args.ElementAtOrDefault(0))) ?? string.Empty;
         case "INKEY":
@@ -431,6 +626,10 @@ private static void ExecuteBuiltInStatement(string name, object? channel, params
             break;
         case "REFERENCE":
             break;
+        case "RETRY":
+            throw new RetryControlException(args.Length == 0 ? null : AsInt(args.ElementAtOrDefault(0)));
+        case "CONTINUE":
+            throw new ContinueControlException(args.Length == 0 ? null : AsInt(args.ElementAtOrDefault(0)));
         case "RANDOMISE":
             __random = args.Length == 0 ? new Random() : new Random(AsInt(args.ElementAtOrDefault(0)));
             break;
@@ -488,6 +687,20 @@ private static void ExecuteBuiltInStatement(string name, object? channel, params
             }
             break;
         }
+        case "REPORT":
+            if (args.Length == 0)
+            {
+                var formatted = FormatLastError();
+                if (!string.IsNullOrEmpty(formatted))
+                {
+                    WriteLineToChannel(channel, formatted);
+                }
+            }
+            else
+            {
+                WriteLineToChannel(channel, AsString(args.ElementAtOrDefault(0)));
+            }
+            break;
         case "CLS":
             try { Console.Clear(); } catch { }
             break;

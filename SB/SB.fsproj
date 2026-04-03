@@ -9,7 +9,7 @@
         <Content Include="appsettings.json">
           <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
         </Content>
-        <Content Include="CSharpRuntime.stg">
+        <Content Include="CSharpRuntime\**\*">
           <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
         </Content>
         <Content Include="CRuntime\**\*">
@@ -69,6 +69,7 @@
     </ItemGroup>
 
     <ItemGroup>
+      <ProjectReference Include="..\SB.CSharpRuntime\SB.CSharpRuntime.csproj" />
       <ProjectReference Include="..\SBLib\SBLib.csproj" />
       <ProjectReference Include="..\SBRuntime\SBRuntime.fsproj" />
       <ProjectReference Include="..\SB.AvaloniaHost\SB.AvaloniaHost.fsproj" />

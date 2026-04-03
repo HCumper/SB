@@ -455,4 +455,21 @@ let ``c backend copies checked in runtime beside generated output`` () =
         Assert.That(File.ReadAllText(copiedHeaderPath), Is.EqualTo(File.ReadAllText(bundledHeaderPath)))
         Assert.That(File.ReadAllText(copiedSourcePath), Is.EqualTo(File.ReadAllText(bundledSourcePath))))
 
+[<Test>]
+let ``csharp backend copies checked in runtime beside generated output`` () =
+    withTempDirectory (fun dir ->
+        let sourcePath = Path.Combine(dir, "simple.sb")
+        let outputPath = Path.Combine(dir, "simple.cs")
+        File.WriteAllText(sourcePath, "10 PRINT 1" + Environment.NewLine)
+
+        let exitCode = Program.main [| sourcePath; outputPath; "false"; "csharp" |]
+
+        let copiedRuntimePath = Path.Combine(dir, HirCSharpBackend.cSharpRuntimeFileName)
+        let bundledRuntimePath = Path.Combine(AppContext.BaseDirectory, "CSharpRuntime", HirCSharpBackend.cSharpRuntimeFileName)
+
+        Assert.That(exitCode, Is.EqualTo(0))
+        Assert.That(File.Exists(outputPath), Is.True)
+        Assert.That(File.Exists(copiedRuntimePath), Is.True)
+        Assert.That(File.ReadAllText(copiedRuntimePath), Is.EqualTo(File.ReadAllText(bundledRuntimePath))))
+
 

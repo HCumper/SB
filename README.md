@@ -2,20 +2,50 @@
 
 An F# SuperBASIC / Structured SuperBASIC toolchain targeting `.NET 10`.
 
-## Command line quick start
+## Command line
 
-Run commands from the repository root:
+The CLI now supports a simple form.
+
+If you run the built tool as `sb`, the basic usage is:
+
+```powershell
+sb myprog
+sb myprog out.c
+sb myprog out.cs
+```
+
+Behavior:
+
+- `sb myprog`
+  - searches for `myprog.bas`, then `myprog.sb`, then `myprog.ssb`
+  - if no second argument is given, it interprets the program
+- `sb myprog out.c`
+  - resolves the input the same way
+  - generates C beside the input file if `out.c` is just a file name
+  - also copies `sbruntime_c.h` and `sbruntime_c.c` beside the generated `.c`
+- `sb myprog out.cs`
+  - resolves the input the same way
+  - generates C# beside the input file if `out.cs` is just a file name
+  - also copies `GeneratedRuntime.cs` beside the generated `.cs`
+
+Examples:
+
+```powershell
+# Interpret q3.bas / q3.sb / q3.ssb
+sb q3
+
+# Generate C in the same folder as the source
+sb q3 q3.c
+
+# Generate C# in the same folder as the source
+sb q3 q3.cs
+```
+
+If you are running directly from the repo rather than via a wrapper command, use:
 
 ```powershell
 dotnet run --project .\SB\SB.fsproj -- <input> <output> <verbose> <backend>
 ```
-
-Arguments:
-
-- `<input>` - source file such as `.\q3.SB` or `.\program.ssb`
-- `<output>` - output path for generated backends, or any placeholder path when interpreting
-- `<verbose>` - `true` or `false`
-- `<backend>` - `interpret`, `csharp`, `c`, or `dotnetexe`
 
 Examples:
 
@@ -36,7 +66,12 @@ dotnet run --project .\SB\SB.fsproj -- .\q3.SB .\q3.exe false dotnetexe
 Notes:
 
 - Command-line arguments override the defaults in `SB/appsettings.json`.
-- The `c` backend writes the generated program and also copies `sbruntime_c.h` and `sbruntime_c.c` beside the output file.
+- The simple two-argument form infers backend from the output extension:
+  - `.c` -> `c`
+  - `.cs` -> `csharp`
+- The `c` backend writes the generated program and copies `sbruntime_c.h` and `sbruntime_c.c`.
+- The `csharp` backend writes the generated program and copies `GeneratedRuntime.cs`.
+- `dotnetexe` lowers to HIR, generates C#, includes `GeneratedRuntime.cs`, and publishes a single-file `.NET` executable.
 
 The active codebase currently supports:
 
@@ -144,8 +179,9 @@ Important files in `SB/`:
 - `BuiltIns.fs` - built-in name/signature model
 - `HirCSharpBackend.fs` - HIR to C#
 - `HirCBackend.fs` - HIR to C
-- `CSharpRuntime.stg` - C# runtime helper template
-- `CTemplates.stg` - C runtime helper template
+- `CSharpRuntime/GeneratedRuntime.cs` - shared C# runtime source used by generated C#
+- `CRuntime/sbruntime_c.h` - shared C runtime header
+- `CRuntime/sbruntime_c.c` - shared C runtime source
 
 ## Status
 

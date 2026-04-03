@@ -64,19 +64,24 @@ let ``generateCFromHir emits globals routines labels and loop jumps`` () =
     let generated = generateCFromHir "sample_program" program
 
     Assert.That(generated, Does.Contain("#include \"sbruntime_c.h\""))
-    Assert.That(generated, Does.Contain("static Value v0_X;"))
-    Assert.That(generated, Does.Contain("static Value r1_PROC _P_(( Value v2_P ));"))
+    Assert.That(generated, Does.Contain("static Cell v0_X;"))
+    Assert.That(generated, Does.Contain("static Value r1_PROC _P_(( ParamBinding v2_P_arg ));"))
     Assert.That(generated, Does.Contain("DataValue sb_data[] = { { TYPE_INT, 2, 2, NULL, NULL }, { TYPE_STRING, 0, 0.0, \"HELLO\", NULL } };"))
     Assert.That(generated, Does.Contain("int main _P_(( void ));"))
     Assert.That(generated, Does.Contain("line_10: ;"))
     Assert.That(generated, Does.Contain("goto loop_0_next;"))
     Assert.That(generated, Does.Contain("loop_1_exit: ;"))
     Assert.That(generated, Does.Contain("execute_input(make_null(), 1, make_string(\"How many?\"));"))
-    Assert.That(generated, Does.Contain("v0_X = read_data_value(TYPE_INT);"))
+    Assert.That(generated, Does.Contain("v0_X = make_cell(make_null());"))
+    Assert.That(generated, Does.Contain("register_global(\"X\", &v0_X);"))
+    Assert.That(generated, Does.Contain("(v2_P)->value"))
+    Assert.That(generated, Does.Contain("(&v0_X)->value = read_data_value(TYPE_INT);"))
     Assert.That(generated, Does.Contain("restore_to_line(as_int(make_int(20)));"))
     Assert.That(generated, Does.Contain("case 2: goto line_20;"))
     Assert.That(generated, Does.Contain("sb_runtime_init();"))
-    Assert.That(generated, Does.Contain("runtime_not_supported(\"GOSUB is not supported by the generated C backend yet.\");"))
+    Assert.That(generated, Does.Contain("int __gosub_stack[1];"))
+    Assert.That(generated, Does.Contain("__gosub_stack[__gosub_top++] = 0;"))
+    Assert.That(generated, Does.Contain("__gosub_return_0: ;"))
 
 [<Test>]
 let ``generateCFromHir emits arrays routine calls and builtin function calls`` () =
@@ -108,10 +113,12 @@ let ``generateCFromHir emits arrays routine calls and builtin function calls`` (
 
     let generated = generateCFromHir "expr_program" program
 
-    Assert.That(generated, Does.Contain("v1_A = make_array();"))
+    Assert.That(generated, Does.Contain("v1_A = make_cell(make_array());"))
     Assert.That(generated, Does.Contain("set_array_value(&v1_A, r2_DOUBLEIT(), 1, make_int(1));"))
-    Assert.That(generated, Does.Contain("v0_TOTAL = invoke_builtin_function(\"ABS\", 1, negate_value(make_int(4)));"))
+    Assert.That(generated, Does.Contain("(&v0_TOTAL)->value = invoke_builtin_function(\"ABS\", 1, negate_value(make_int(4)));"))
     Assert.That(generated, Does.Contain("get_array_value(&v1_A, 1, make_int(1))"))
+    Assert.That(generated, Does.Not.Contain("line_"))
+    Assert.That(generated, Does.Not.Contain("goto line_"))
 
 [<Test>]
 let ``generateCFromHir includes expanded runtime support for memory channels and built-ins`` () =
@@ -119,7 +126,7 @@ let ``generateCFromHir includes expanded runtime support for memory channels and
 
     let program =
         { SymbolNames = [ memorySymbol, "PEEK_W" ] |> Map.ofList
-          Globals = []
+          Globals = [ storage memorySymbol "PEEK_W" HirType.Int GlobalStorage ]
           Routines = []
           DataEntries = []
           RestorePoints = []
@@ -158,6 +165,70 @@ let ``generateCFromHir emits string character reads and writes`` () =
     let generated = generateCFromHir "string_char_program" program
 
     Assert.That(generated, Does.Contain("set_string_char_value(&v0_TEXT_, as_int(make_int(2)), make_string(\"Z\"));"))
-    Assert.That(generated, Does.Contain("v1_CH_ = get_string_char_value(v0_TEXT_, as_int(make_int(2)));"))
+    Assert.That(generated, Does.Contain("(&v1_CH_)->value = get_string_char_value(&v0_TEXT_, as_int(make_int(2)));"))
     Assert.That(generated, Does.Contain("set_string_char_value(&v0_TEXT_, as_int(make_int(1)), read_input_value(0, TYPE_STRING));"))
     Assert.That(generated, Does.Contain("set_string_char_value(&v0_TEXT_, as_int(make_int(1)), read_data_value(TYPE_STRING));"))
+
+[<Test>]
+let ``generateCFromHir emits dynamic scope lookups and by reference parameter bindings`` () =
+    let globalSymbol = SymbolId 0
+    let routineSymbol = SymbolId 1
+    let parameterSymbol = SymbolId 2
+
+    let program =
+        { SymbolNames = [ globalSymbol, "TOTAL"; routineSymbol, "BUMP"; parameterSymbol, "P" ] |> Map.ofList
+          Globals = [ storage globalSymbol "TOTAL" HirType.Int GlobalStorage ]
+          Routines =
+            [ { Name = "BUMP"
+                Symbol = routineSymbol
+                Parameters = [ parameter parameterSymbol "P" HirType.Int (RoutineParameterStorage "BUMP") FlexibleBinding ]
+                Locals = []
+                Body =
+                  [ Assign(DynamicWriteVar("TOTAL", HirType.Int, pos), Binary(Add, DynamicReadVar("TOTAL", HirType.Int, pos), literalInt 1, HirType.Int, pos), pos)
+                    Assign(WriteVar(parameterSymbol, HirType.Int, pos), Binary(Add, ReadVar(parameterSymbol, HirType.Int, pos), literalInt 2, HirType.Int, pos), pos)
+                    Return(Some(ReadVar(parameterSymbol, HirType.Int, pos)), pos) ]
+                ReturnType = Some HirType.Int
+                EndLineNumber = None
+                Position = pos } ]
+          DataEntries = []
+          RestorePoints = []
+          Main =
+            [ Assign(WriteVar(globalSymbol, HirType.Int, pos), literalInt 1, pos)
+              ProcCall(routineSymbol, None, [ RefArg(WriteVar(globalSymbol, HirType.Int, pos)) ], pos)
+              Assign(WriteVar(globalSymbol, HirType.Int, pos), CallFunc(routineSymbol, [ ValueArg(literalInt 5) ], HirType.Int, pos), pos) ] }
+
+    let generated = generateCFromHir "dynamic_param_program" program
+
+    Assert.That(generated, Does.Contain("register_global(\"TOTAL\", &v0_TOTAL);"))
+    Assert.That(generated, Does.Contain("push_dynamic_frame(__frame_bindings, 1);"))
+    Assert.That(generated, Does.Contain("__frame_bindings[0].cell = v2_P;"))
+    Assert.That(generated, Does.Contain("(lookup_dynamic_cell(\"TOTAL\"))->value = add_value((lookup_dynamic_cell(\"TOTAL\"))->value, make_int(1));"))
+    Assert.That(generated, Does.Contain("r1_BUMP(make_ref_arg(&v0_TOTAL));"))
+    Assert.That(generated, Does.Contain("r1_BUMP(make_value_arg(make_int(5)))"))
+
+[<Test>]
+let ``generateCFromHir emits when error handler dispatch when needed`` () =
+    let valueSymbol = SymbolId 0
+
+    let program =
+        { SymbolNames = [ valueSymbol, "VALUE" ] |> Map.ofList
+          Globals = [ storage valueSymbol "VALUE" HirType.Int GlobalStorage ]
+          Routines = []
+          DataEntries = []
+          RestorePoints = []
+          Main =
+            [ WhenError([ BuiltInCall(NamedBuiltIn "CONTINUE", None, [], pos) ], pos)
+              LineNumber(100, pos)
+              BuiltInCall(NamedBuiltIn "POKE_W", None, [ literalInt -1; literalInt 1 ], pos)
+              Return(None, pos) ] }
+
+    let generated = generateCFromHir "when_error_program" program
+
+    Assert.That(generated, Does.Contain("int __active_when_error = -1;"))
+    Assert.That(generated, Does.Contain("jmp_buf __err_jmp;"))
+    Assert.That(generated, Does.Contain("sb_push_error_frame(&__err_jmp);"))
+    Assert.That(generated, Does.Contain("goto __when_error_dispatch;"))
+    Assert.That(generated, Does.Contain("__when_error_0: ;"))
+    Assert.That(generated, Does.Contain("__error_action = 2;"))
+    Assert.That(generated, Does.Contain("goto __when_error_resume;"))
+    Assert.That(generated, Does.Contain("switch (__active_when_error)"))

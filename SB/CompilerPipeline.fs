@@ -102,6 +102,35 @@ let private parseSyntaxCheckingMode (value: string) =
     | "" -> Relaxed
     | _ -> Relaxed
 
+let private resolveInputFileName (input: string) =
+    let extension = Path.GetExtension(input)
+    if not (String.IsNullOrWhiteSpace extension) then
+        input
+    else
+        [ ".bas"; ".sb"; ".ssb" ]
+        |> List.map (fun suffix -> input + suffix)
+        |> List.tryFind File.Exists
+        |> Option.defaultValue input
+
+let private resolveSiblingOutputPath (inputFileName: string) (output: string) =
+    let outputDirectory = Path.GetDirectoryName(output)
+    if Path.IsPathRooted(output) || not (String.IsNullOrWhiteSpace outputDirectory) then
+        output
+    else
+        let inputDirectory = Path.GetDirectoryName(inputFileName)
+        let targetDirectory =
+            if String.IsNullOrWhiteSpace inputDirectory then
+                Directory.GetCurrentDirectory()
+            else
+                inputDirectory
+        Path.Combine(targetDirectory, output)
+
+let private tryInferBackendFromOutput (output: string) =
+    match (Path.GetExtension(output) |> fun ext -> if isNull ext then "" else ext.Trim().ToLowerInvariant()) with
+    | ".c" -> Some "c"
+    | ".cs" -> Some "csharp"
+    | _ -> None
+
 let getSettings argv : RuntimeSettings =
     let configSettings = buildConfig ()
     let appName = configSettings.GetValue<string>("ApplicationName")
@@ -117,8 +146,30 @@ let getSettings argv : RuntimeSettings =
     let defaultRuntimeHost = if String.IsNullOrWhiteSpace runtimeHost then "console" else runtimeHost
 
     match argv with
+    | [| input; output |] ->
+        let resolvedInput = resolveInputFileName input
+        let resolvedOutput = resolveSiblingOutputPath resolvedInput output
+        match tryInferBackendFromOutput resolvedOutput with
+        | Some inferredBackend ->
+            { InputFileName = resolvedInput
+              OutputFileName = resolvedOutput
+              Verbose = verbosityLevel
+              Backend = inferredBackend
+              RuntimeHost = defaultRuntimeHost
+              SyntaxChecking = syntaxChecking
+              AppName = appName
+              Logger = logger }
+        | None ->
+            { InputFileName = resolvedInput
+              OutputFileName = resolvedOutput
+              Verbose = verbosityLevel
+              Backend = defaultBackend
+              RuntimeHost = defaultRuntimeHost
+              SyntaxChecking = syntaxChecking
+              AppName = appName
+              Logger = logger }
     | [| input; output; verbose; backendName; runtimeHostName |] ->
-        { InputFileName = input
+        { InputFileName = resolveInputFileName input
           OutputFileName = output
           Verbose = Boolean.Parse(verbose)
           Backend = backendName
@@ -127,7 +178,7 @@ let getSettings argv : RuntimeSettings =
           AppName = appName
           Logger = logger }
     | [| input; output; verbose; backendName |] ->
-        { InputFileName = input
+        { InputFileName = resolveInputFileName input
           OutputFileName = output
           Verbose = Boolean.Parse(verbose)
           Backend = backendName
@@ -136,7 +187,7 @@ let getSettings argv : RuntimeSettings =
           AppName = appName
           Logger = logger }
     | [| input; output; verbose |] ->
-        { InputFileName = input
+        { InputFileName = resolveInputFileName input
           OutputFileName = output
           Verbose = Boolean.Parse(verbose)
           Backend = defaultBackend
@@ -145,10 +196,10 @@ let getSettings argv : RuntimeSettings =
           AppName = appName
           Logger = logger }
     | [| input |] ->
-        { InputFileName = input
+        { InputFileName = resolveInputFileName input
           OutputFileName = outputFileName
           Verbose = verbosityLevel
-          Backend = defaultBackend
+          Backend = "interpret"
           RuntimeHost = defaultRuntimeHost
           SyntaxChecking = syntaxChecking
           AppName = appName
@@ -598,6 +649,7 @@ let generateDotNetExeFromLoweredHir appName outputPath hirProgram =
     let publishDirectory = Path.Combine(tempDirectory, "publish")
     let projectPath = Path.Combine(tempDirectory, $"{assemblyName}.csproj")
     let sourcePath = Path.Combine(tempDirectory, "Program.cs")
+    let runtimePath = Path.Combine(tempDirectory, HirCSharpBackend.cSharpRuntimeFileName)
     let runtimeIdentifier = RuntimeInformation.RuntimeIdentifier
 
     let projectText =
@@ -623,6 +675,10 @@ let generateDotNetExeFromLoweredHir appName outputPath hirProgram =
         Directory.CreateDirectory(outputDirectory) |> ignore
         File.WriteAllText(projectPath, projectText)
         File.WriteAllText(sourcePath, generatedSource)
+        File.Copy(
+            Path.Combine(AppContext.BaseDirectory, "CSharpRuntime", HirCSharpBackend.cSharpRuntimeFileName),
+            runtimePath,
+            true)
 
         match runProcess
                   "dotnet"

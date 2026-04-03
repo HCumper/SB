@@ -1,0 +1,858 @@
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
+using System.Linq;
+
+namespace SBGeneratedRuntime;
+
+public sealed class LoopControlException : Exception
+{
+    public LoopControlException(int loopId, bool isNext)
+    {
+        LoopId = loopId;
+        IsNext = isNext;
+    }
+
+    public int LoopId { get; }
+    public bool IsNext { get; }
+}
+
+public sealed class RetryControlException : Exception
+{
+    public RetryControlException(int? lineNumber)
+    {
+        LineNumber = lineNumber;
+    }
+
+    public int? LineNumber { get; }
+}
+
+public sealed class ContinueControlException : Exception
+{
+    public ContinueControlException(int? lineNumber)
+    {
+        LineNumber = lineNumber;
+    }
+
+    public int? LineNumber { get; }
+}
+
+public enum ErrorActionKind
+{
+    Retry,
+    Continue,
+    Stop
+}
+
+public readonly struct ErrorAction
+{
+    private ErrorAction(ErrorActionKind kind, int? lineNumber)
+    {
+        Kind = kind;
+        LineNumber = lineNumber;
+    }
+
+    public ErrorActionKind Kind { get; }
+    public int? LineNumber { get; }
+
+    public static ErrorAction Retry(int? lineNumber) => new ErrorAction(ErrorActionKind.Retry, lineNumber);
+    public static ErrorAction Continue(int? lineNumber) => new ErrorAction(ErrorActionKind.Continue, lineNumber);
+    public static ErrorAction Stop() => new ErrorAction(ErrorActionKind.Stop, null);
+}
+
+public sealed class Cell
+{
+    public Cell(object? value = null)
+    {
+        Value = value;
+    }
+
+    public object? Value { get; set; }
+}
+
+public static class GeneratedRuntime
+{
+    private sealed class DynamicFrameScope : IDisposable
+    {
+        private readonly Dictionary<string, Cell> _bindings;
+
+        public DynamicFrameScope(Dictionary<string, Cell> bindings)
+        {
+            _bindings = bindings;
+            __dynamicFrames.Add(bindings);
+        }
+
+        public void Dispose()
+        {
+            if (__dynamicFrames.Count > 0 && ReferenceEquals(__dynamicFrames[^1], _bindings))
+            {
+                __dynamicFrames.RemoveAt(__dynamicFrames.Count - 1);
+            }
+        }
+    }
+
+    private static readonly DateTime QlEpoch = new DateTime(1961, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+    private static readonly Dictionary<int, byte> __memory = new Dictionary<int, byte>();
+    private static readonly Dictionary<int, StreamReader> __channelReaders = new Dictionary<int, StreamReader>();
+    private static readonly Dictionary<int, StreamWriter> __channelWriters = new Dictionary<int, StreamWriter>();
+    private static readonly List<Dictionary<string, Cell>> __dynamicFrames = new List<Dictionary<string, Cell>>();
+    private static readonly Dictionary<string, Cell> __globalCells = new Dictionary<string, Cell>(StringComparer.OrdinalIgnoreCase);
+    private static Random __random = new Random();
+    private static int __screenMode = 4;
+    private static bool __beeping;
+    private static int __lastErrorNumber;
+    private static string __lastErrorName = string.Empty;
+    private static string __lastErrorDescription = string.Empty;
+    private static int? __lastErrorLine;
+    private static int? __lastRetryLine;
+    private static int? __lastContinueLine;
+    private static object?[] __data = Array.Empty<object?>();
+    private static Dictionary<int, int> __restorePoints = new Dictionary<int, int>();
+    private static int __dataPointer;
+    private static string[] __inputBuffer = Array.Empty<string>();
+
+    public static void InitializeProgramState(object?[] data, Dictionary<int, int> restorePoints)
+    {
+        foreach (var reader in __channelReaders.Values)
+        {
+            reader.Dispose();
+        }
+
+        foreach (var writer in __channelWriters.Values)
+        {
+            writer.Dispose();
+        }
+
+        __channelReaders.Clear();
+        __channelWriters.Clear();
+        __memory.Clear();
+        __dynamicFrames.Clear();
+        __globalCells.Clear();
+        __random = new Random();
+        __screenMode = 4;
+        __beeping = false;
+        __lastErrorNumber = 0;
+        __lastErrorName = string.Empty;
+        __lastErrorDescription = string.Empty;
+        __lastErrorLine = null;
+        __lastRetryLine = null;
+        __lastContinueLine = null;
+        __data = data ?? Array.Empty<object?>();
+        __restorePoints = restorePoints ?? new Dictionary<int, int>();
+        __dataPointer = 0;
+        __inputBuffer = Array.Empty<string>();
+    }
+
+    public static int AsInt(object? value)
+    {
+        return value switch
+        {
+            null => 0,
+            int i => i,
+            double d => (int)Math.Round(d),
+            float f => (int)Math.Round(f),
+            string s when int.TryParse(s, NumberStyles.Integer, CultureInfo.InvariantCulture, out var i) => i,
+            string s when double.TryParse(s, NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out var d) => (int)Math.Round(d),
+            ValueTuple<int, int> tuple => tuple.Item2,
+            _ => 0
+        };
+    }
+
+    public static double AsDouble(object? value)
+    {
+        return value switch
+        {
+            null => 0.0,
+            int i => i,
+            double d => d,
+            float f => f,
+            string s when double.TryParse(s, NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out var d) => d,
+            _ => 0.0
+        };
+    }
+
+    public static string AsString(object? value) => value switch
+    {
+        null => string.Empty,
+        string s => s,
+        double d => d.ToString("G17", CultureInfo.InvariantCulture),
+        float f => f.ToString("G9", CultureInfo.InvariantCulture),
+        ValueTuple<int, int> tuple => $"{tuple.Item1} TO {tuple.Item2}",
+        _ => Convert.ToString(value, CultureInfo.InvariantCulture) ?? string.Empty
+    };
+
+    public static bool IsTrue(object? value)
+    {
+        return value switch
+        {
+            null => false,
+            string s => !string.IsNullOrEmpty(s),
+            _ => Math.Abs(AsDouble(value)) > double.Epsilon
+        };
+    }
+
+    public static bool IsControlFlowException(Exception ex)
+    {
+        return ex is LoopControlException
+            || ex is RetryControlException
+            || ex is ContinueControlException
+            || ex is OperationCanceledException;
+    }
+
+    public static string ArrayKey(params object?[] indexes) => string.Join(",", indexes.Select(AsInt));
+
+    public static void RecordLastError(Exception ex, int? lineNumber, int? retryLineNumber, int? continueLineNumber)
+    {
+        var error = ex switch
+        {
+            NotSupportedException => (-19, "ERR_NI", "Not implemented"),
+            InvalidOperationException invalid when invalid.Message.Contains("Memory address", StringComparison.OrdinalIgnoreCase) => (-15, "ERR_BP", "Bad parameter"),
+            InvalidOperationException invalid when invalid.Message.Contains("READ moved past the end of DATA", StringComparison.OrdinalIgnoreCase) => (-21, "ERR_BL", "Bad line of Basic"),
+            InvalidOperationException invalid when invalid.Message.Contains("RESTORE line", StringComparison.OrdinalIgnoreCase) => (-21, "ERR_BL", "Bad line of Basic"),
+            InvalidOperationException invalid when invalid.Message.Contains("Dynamic storage", StringComparison.OrdinalIgnoreCase) => (-15, "ERR_BP", "Bad parameter"),
+            IOException => (-16, "ERR_FE", "File error"),
+            _ => (-19, "ERR_NI", "Not implemented")
+        };
+
+        __lastErrorNumber = error.Item1;
+        __lastErrorName = error.Item2;
+        __lastErrorDescription = error.Item3;
+        __lastErrorLine = lineNumber;
+        __lastRetryLine = retryLineNumber;
+        __lastContinueLine = continueLineNumber;
+    }
+
+    public static string FormatLastError()
+    {
+        if (string.IsNullOrEmpty(__lastErrorDescription))
+        {
+            return string.Empty;
+        }
+
+        return __lastErrorLine.HasValue
+            ? $"{__lastErrorDescription} ({__lastErrorNumber}) at line {__lastErrorLine.Value}"
+            : $"{__lastErrorDescription} ({__lastErrorNumber})";
+    }
+
+    public static IDisposable PushDynamicFrame(Dictionary<string, Cell> bindings) => new DynamicFrameScope(bindings);
+
+    public static void RegisterGlobal(string name, Cell cell)
+    {
+        __globalCells[name] = cell;
+    }
+
+    public static Cell LookupDynamicCell(string name)
+    {
+        for (var index = __dynamicFrames.Count - 1; index >= 0; index--)
+        {
+            if (__dynamicFrames[index].TryGetValue(name, out var frameCell))
+            {
+                return frameCell;
+            }
+        }
+
+        if (__globalCells.TryGetValue(name, out var globalCell))
+        {
+            return globalCell;
+        }
+
+        throw new InvalidOperationException($"Dynamic storage '{name}' does not exist.");
+    }
+
+    public static Dictionary<string, Cell> EnsureArray(Cell arrayCell)
+    {
+        if (arrayCell.Value is Dictionary<string, Cell> existing)
+        {
+            return existing;
+        }
+
+        var created = new Dictionary<string, Cell>(StringComparer.OrdinalIgnoreCase);
+        arrayCell.Value = created;
+        return created;
+    }
+
+    public static Cell GetArrayCell(Cell arrayCell, params object?[] indexes)
+    {
+        var array = EnsureArray(arrayCell);
+        var key = ArrayKey(indexes);
+        if (!array.TryGetValue(key, out var cell))
+        {
+            cell = new Cell();
+            array[key] = cell;
+        }
+
+        return cell;
+    }
+
+    public static object? GetArrayValue(Cell arrayCell, params object?[] indexes)
+    {
+        return GetArrayCell(arrayCell, indexes).Value;
+    }
+
+    public static void SetArrayValue(Cell arrayCell, object? value, params object?[] indexes)
+    {
+        GetArrayCell(arrayCell, indexes).Value = value;
+    }
+
+    public static object? GetStringCharValue(object? source, object? index)
+    {
+        var text = AsString(source);
+        var oneBasedIndex = AsInt(index);
+        if (oneBasedIndex < 1 || oneBasedIndex > text.Length)
+        {
+            return string.Empty;
+        }
+
+        return text[oneBasedIndex - 1].ToString();
+    }
+
+    public static void SetStringCharValue(Cell target, object? index, object? replacement)
+    {
+        var text = AsString(target.Value);
+        var oneBasedIndex = AsInt(index);
+        if (oneBasedIndex < 1)
+        {
+            return;
+        }
+
+        var zeroBasedIndex = oneBasedIndex - 1;
+        var replacementText = AsString(replacement);
+        var replacementChar = replacementText.Length > 0 ? replacementText[0] : ' ';
+        var bufferLength = Math.Max(text.Length, zeroBasedIndex + 1);
+        var buffer = new string(' ', bufferLength).ToCharArray();
+
+        for (var i = 0; i < text.Length; i++)
+        {
+            buffer[i] = text[i];
+        }
+
+        buffer[zeroBasedIndex] = replacementChar;
+        target.Value = new string(buffer);
+    }
+
+    public static object? Identity(object? value) => value;
+    public static object? Negate(object? value) => -AsDouble(value);
+    public static object? BitwiseNot(object? value) => ~AsInt(value);
+    public static object? Add(object? left, object? right) => left is string || right is string ? AsString(left) + AsString(right) : AsDouble(left) + AsDouble(right);
+    public static object? Subtract(object? left, object? right) => AsDouble(left) - AsDouble(right);
+    public static object? Multiply(object? left, object? right) => AsDouble(left) * AsDouble(right);
+    public static object? Divide(object? left, object? right) => AsDouble(left) / AsDouble(right);
+    public static object? Power(object? left, object? right) => Math.Pow(AsDouble(left), AsDouble(right));
+    public static object? Concat(object? left, object? right) => AsString(left) + AsString(right);
+    public static object? IntegerDivide(object? left, object? right) => AsInt(left) / AsInt(right);
+    public static object? Modulo(object? left, object? right) => AsInt(left) % AsInt(right);
+    public static object? BitwiseAnd(object? left, object? right) => AsInt(left) & AsInt(right);
+    public static object? BitwiseOr(object? left, object? right) => AsInt(left) | AsInt(right);
+    public static object? BitwiseXor(object? left, object? right) => AsInt(left) ^ AsInt(right);
+    public static int CompareEqual(object? left, object? right) => Equals(left is string || right is string ? AsString(left) : AsDouble(left), left is string || right is string ? AsString(right) : AsDouble(right)) ? 1 : 0;
+    public static int CompareNotEqual(object? left, object? right) => CompareEqual(left, right) == 0 ? 1 : 0;
+    public static int CompareLessThan(object? left, object? right) => (left is string || right is string ? string.CompareOrdinal(AsString(left), AsString(right)) < 0 : AsDouble(left) < AsDouble(right)) ? 1 : 0;
+    public static int CompareLessThanOrEqual(object? left, object? right) => (left is string || right is string ? string.CompareOrdinal(AsString(left), AsString(right)) <= 0 : AsDouble(left) <= AsDouble(right)) ? 1 : 0;
+    public static int CompareGreaterThan(object? left, object? right) => (left is string || right is string ? string.CompareOrdinal(AsString(left), AsString(right)) > 0 : AsDouble(left) > AsDouble(right)) ? 1 : 0;
+    public static int CompareGreaterThanOrEqual(object? left, object? right) => (left is string || right is string ? string.CompareOrdinal(AsString(left), AsString(right)) >= 0 : AsDouble(left) >= AsDouble(right)) ? 1 : 0;
+    public static int Instr(object? left, object? right) => AsString(left).IndexOf(AsString(right), StringComparison.Ordinal) + 1;
+    public static object? SliceRange(object? left, object? right) => (AsInt(left), AsInt(right));
+    public static object? ApplyUnary(string name, object? value) => throw new NotSupportedException($"Unary operator '{name}' is not supported by the generated backend yet.");
+    public static object? ApplyBinary(string name, object? left, object? right) => throw new NotSupportedException($"Binary operator '{name}' is not supported by the generated backend yet.");
+
+    public static int SecondsSinceQlEpoch() => (int)DateTime.UtcNow.Subtract(QlEpoch).TotalSeconds;
+
+    public static DateTime FromQlSeconds(long seconds) => QlEpoch.AddSeconds(seconds);
+
+    public static int NormalizeChannelId(object? channel, int defaultChannel) => channel is null ? defaultChannel : AsInt(channel);
+
+    public static TextWriter ResolveWriter(object? channel)
+    {
+        var channelId = NormalizeChannelId(channel, 1);
+        if (__channelWriters.TryGetValue(channelId, out var writer))
+        {
+            return writer;
+        }
+
+        return Console.Out;
+    }
+
+    public static TextReader ResolveReader(object? channel)
+    {
+        var channelId = NormalizeChannelId(channel, 0);
+        if (__channelReaders.TryGetValue(channelId, out var reader))
+        {
+            return reader;
+        }
+
+        return Console.In;
+    }
+
+    public static void WriteLineToChannel(object? channel, string line)
+    {
+        var writer = ResolveWriter(channel);
+        writer.WriteLine(line);
+        writer.Flush();
+    }
+
+    public static void WriteToChannel(object? channel, string text)
+    {
+        var writer = ResolveWriter(channel);
+        writer.Write(text);
+        writer.Flush();
+    }
+
+    public static string? ReadLineFromChannel(object? channel)
+    {
+        return ResolveReader(channel).ReadLine();
+    }
+
+    public static void CloseChannel(int channelId)
+    {
+        if (__channelReaders.TryGetValue(channelId, out var reader))
+        {
+            reader.Dispose();
+            __channelReaders.Remove(channelId);
+        }
+
+        if (__channelWriters.TryGetValue(channelId, out var writer))
+        {
+            writer.Dispose();
+            __channelWriters.Remove(channelId);
+        }
+    }
+
+    public static string ResolvePath(object? value)
+    {
+        var raw = AsString(value).Trim();
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            throw new InvalidOperationException("Path cannot be empty.");
+        }
+
+        return Path.GetFullPath(raw);
+    }
+
+    public static byte ReadMemoryByte(int address)
+    {
+        if (address < 0)
+        {
+            throw new InvalidOperationException($"Memory address {address} is invalid.");
+        }
+
+        return __memory.TryGetValue(address, out var value) ? value : (byte)0;
+    }
+
+    public static void WriteMemoryByte(int address, int value)
+    {
+        if (address < 0)
+        {
+            throw new InvalidOperationException($"Memory address {address} is invalid.");
+        }
+
+        __memory[address] = (byte)(value & 255);
+    }
+
+    public static int PeekMemory(int address, int width)
+    {
+        return width switch
+        {
+            1 => ReadMemoryByte(address),
+            2 => ReadMemoryByte(address) | (ReadMemoryByte(address + 1) << 8),
+            4 => ReadMemoryByte(address)
+                 | (ReadMemoryByte(address + 1) << 8)
+                 | (ReadMemoryByte(address + 2) << 16)
+                 | (ReadMemoryByte(address + 3) << 24),
+            _ => throw new InvalidOperationException($"Unsupported memory width {width}.")
+        };
+    }
+
+    public static void PokeMemory(int address, int value, int width)
+    {
+        switch (width)
+        {
+            case 1:
+                WriteMemoryByte(address, value);
+                break;
+            case 2:
+                WriteMemoryByte(address, value);
+                WriteMemoryByte(address + 1, value >> 8);
+                break;
+            case 4:
+                WriteMemoryByte(address, value);
+                WriteMemoryByte(address + 1, value >> 8);
+                WriteMemoryByte(address + 2, value >> 16);
+                WriteMemoryByte(address + 3, value >> 24);
+                break;
+            default:
+                throw new InvalidOperationException($"Unsupported memory width {width}.");
+        }
+    }
+
+    public static bool IsEndOfFile(int channelId)
+    {
+        if (__channelReaders.TryGetValue(channelId, out var reader))
+        {
+            return reader.EndOfStream;
+        }
+
+        return true;
+    }
+
+    public static ConsoleKeyInfo? TryReadConsoleKey()
+    {
+        try
+        {
+            if (Console.KeyAvailable)
+            {
+                return Console.ReadKey(intercept: true);
+            }
+        }
+        catch
+        {
+        }
+
+        return null;
+    }
+
+    public static object? InvokeBuiltInFunction(string name, params object?[] args)
+    {
+        switch (name.ToUpperInvariant())
+        {
+            case "ABS": return Math.Abs(AsDouble(args.ElementAtOrDefault(0)));
+            case "ACOS": return Math.Acos(AsDouble(args.ElementAtOrDefault(0)));
+            case "ACOT":
+            {
+                var number = AsDouble(args.ElementAtOrDefault(0));
+                return number == 0.0 ? Math.PI / 2.0 : Math.Atan(1.0 / number);
+            }
+            case "ADATE": return SecondsSinceQlEpoch() + AsInt(args.ElementAtOrDefault(0));
+            case "ASC":
+            case "CODE":
+            {
+                var text = AsString(args.ElementAtOrDefault(0));
+                return string.IsNullOrEmpty(text) ? 0 : (int)text[0];
+            }
+            case "ASIN": return Math.Asin(AsDouble(args.ElementAtOrDefault(0)));
+            case "ATAN": return Math.Atan(AsDouble(args.ElementAtOrDefault(0)));
+            case "CHR$":
+            {
+                var codePoint = (char)(AsInt(args.ElementAtOrDefault(0)) & 255);
+                return new string(codePoint, 1);
+            }
+            case "COS": return Math.Cos(AsDouble(args.ElementAtOrDefault(0)));
+            case "COT": return 1.0 / Math.Tan(AsDouble(args.ElementAtOrDefault(0)));
+            case "DATE$":
+            {
+                if (args.Length == 0) return DateTime.UtcNow.ToString("yyyy MMM dd HH:mm:ss", CultureInfo.InvariantCulture);
+                return FromQlSeconds(AsInt(args.ElementAtOrDefault(0))).ToString("yyyy MMM dd HH:mm:ss", CultureInfo.InvariantCulture);
+            }
+            case "DAY$":
+            {
+                if (args.Length == 0) return DateTime.UtcNow.ToString("dddd", CultureInfo.InvariantCulture);
+                return FromQlSeconds(AsInt(args.ElementAtOrDefault(0))).ToString("dddd", CultureInfo.InvariantCulture);
+            }
+            case "DEG": return AsDouble(args.ElementAtOrDefault(0)) * 180.0 / Math.PI;
+            case "DATE": return SecondsSinceQlEpoch();
+            case "EOF": return IsEndOfFile(AsInt(args.ElementAtOrDefault(0))) ? 1 : 0;
+            case "EXP": return Math.Exp(AsDouble(args.ElementAtOrDefault(0)));
+            case "ERLIN": return __lastErrorLine ?? 0;
+            case "ERNUM": return __lastErrorNumber;
+            case "ERR_NC":
+            case "ERR_NJ":
+            case "ERR_OM":
+            case "ERR_OR":
+            case "ERR_BO":
+            case "ERR_NO":
+            case "ERR_NF":
+            case "ERR_EX":
+            case "ERR_IU":
+            case "ERR_EF":
+            case "ERR_DF":
+            case "ERR_BN":
+            case "ERR_TE":
+            case "ERR_FF":
+            case "ERR_BP":
+            case "ERR_FE":
+            case "ERR_XP":
+            case "ERR_OV":
+            case "ERR_NI":
+            case "ERR_RO":
+            case "ERR_BL":
+                return string.Equals(__lastErrorName, name.ToUpperInvariant(), StringComparison.Ordinal) ? 1 : 0;
+            case "FILL$": return string.Concat(Enumerable.Repeat(AsString(args.ElementAtOrDefault(0)), Math.Max(0, AsInt(args.ElementAtOrDefault(1)))));
+            case "GETENV$": return Environment.GetEnvironmentVariable(AsString(args.ElementAtOrDefault(0))) ?? string.Empty;
+            case "INKEY":
+            {
+                var key = TryReadConsoleKey();
+                return key.HasValue ? (int)key.Value.KeyChar : 0;
+            }
+            case "INKEY$":
+            {
+                var key = TryReadConsoleKey();
+                return key.HasValue ? (key.Value.KeyChar == '\0' ? "\0" : key.Value.KeyChar.ToString()) : "\0";
+            }
+            case "INT": return (int)Math.Floor(AsDouble(args.ElementAtOrDefault(0)));
+            case "KEYROW": return 0;
+            case "LEN": return AsString(args.ElementAtOrDefault(0)).Length;
+            case "LEFT$":
+            {
+                var source = AsString(args.ElementAtOrDefault(0));
+                var length = Math.Max(0, Math.Min(source.Length, AsInt(args.ElementAtOrDefault(1))));
+                return source.Substring(0, length);
+            }
+            case "LN": return Math.Log(AsDouble(args.ElementAtOrDefault(0)));
+            case "LOG":
+            case "LOG10": return Math.Log10(AsDouble(args.ElementAtOrDefault(0)));
+            case "MID$":
+            {
+                var source = AsString(args.ElementAtOrDefault(0));
+                var start = Math.Max(0, Math.Min(source.Length, AsInt(args.ElementAtOrDefault(1)) - 1));
+                if (args.Length <= 2) return source.Substring(start);
+                var count = Math.Max(0, Math.Min(source.Length - start, AsInt(args.ElementAtOrDefault(2))));
+                return source.Substring(start, count);
+            }
+            case "PEEK": return PeekMemory(AsInt(args.ElementAtOrDefault(0)), 1);
+            case "PEEK_W": return PeekMemory(AsInt(args.ElementAtOrDefault(0)), 2);
+            case "PEEK_L": return PeekMemory(AsInt(args.ElementAtOrDefault(0)), 4);
+            case "PI": return Math.PI;
+            case "RAD": return AsDouble(args.ElementAtOrDefault(0)) * Math.PI / 180.0;
+            case "RIGHT$":
+            {
+                var source = AsString(args.ElementAtOrDefault(0));
+                var length = Math.Max(0, Math.Min(source.Length, AsInt(args.ElementAtOrDefault(1))));
+                return source.Substring(source.Length - length, length);
+            }
+            case "RND":
+            {
+                if (args.Length == 0) return __random.NextDouble();
+                if (args.ElementAtOrDefault(0) is ValueTuple<int, int> range)
+                {
+                    var minimum = Math.Min(range.Item1, range.Item2);
+                    var maximum = Math.Max(range.Item1, range.Item2);
+                    return __random.Next(minimum, maximum + 1);
+                }
+
+                var upper = Math.Max(1, AsInt(args.ElementAtOrDefault(0)));
+                return __random.Next(1, upper + 1);
+            }
+            case "REPL$":
+            {
+                var source = AsString(args.ElementAtOrDefault(0));
+                var replacement = AsString(args.ElementAtOrDefault(1));
+                var start = Math.Max(0, Math.Min(source.Length, AsInt(args.ElementAtOrDefault(2)) - 1));
+                var replaceCount =
+                    args.Length > 3
+                        ? Math.Max(0, Math.Min(source.Length - start, AsInt(args.ElementAtOrDefault(3))))
+                        : Math.Min(replacement.Length, source.Length - start);
+                return source.Substring(0, start) + replacement + source.Substring(start + replaceCount);
+            }
+            case "ROUND": return (int)Math.Round(AsDouble(args.ElementAtOrDefault(0)));
+            case "SGN":
+            {
+                var number = AsDouble(args.ElementAtOrDefault(0));
+                return number > 0 ? 1 : number < 0 ? -1 : 0;
+            }
+            case "SIN": return Math.Sin(AsDouble(args.ElementAtOrDefault(0)));
+            case "SQRT": return Math.Sqrt(AsDouble(args.ElementAtOrDefault(0)));
+            case "STR$": return AsString(args.ElementAtOrDefault(0));
+            case "TAN": return Math.Tan(AsDouble(args.ElementAtOrDefault(0)));
+            case "TIME":
+            {
+                var current = (int)DateTime.UtcNow.TimeOfDay.TotalSeconds;
+                if (args.Length == 0) return current;
+                var adjusted = (current + AsInt(args.ElementAtOrDefault(0))) % 86400;
+                return adjusted < 0 ? adjusted + 86400 : adjusted;
+            }
+            case "VAL": return AsDouble(args.ElementAtOrDefault(0));
+            default: throw new NotSupportedException($"Built-in function '{name}' is not supported by the generated C# backend yet.");
+        }
+    }
+
+    public static void ExecuteBuiltInStatement(string name, object? channel, params object?[] args)
+    {
+        switch (name.ToUpperInvariant())
+        {
+            case "PRINT":
+                WriteLineToChannel(channel, string.Join(" ", args.Select(AsString)));
+                break;
+            case "REFERENCE":
+                break;
+            case "RETRY":
+                throw new RetryControlException(args.Length == 0 ? null : AsInt(args.ElementAtOrDefault(0)));
+            case "CONTINUE":
+                throw new ContinueControlException(args.Length == 0 ? null : AsInt(args.ElementAtOrDefault(0)));
+            case "RANDOMISE":
+                __random = args.Length == 0 ? new Random() : new Random(AsInt(args.ElementAtOrDefault(0)));
+                break;
+            case "MODE":
+                __screenMode = AsInt(args.ElementAtOrDefault(0));
+                break;
+            case "PAUSE":
+                System.Threading.Thread.Sleep(Math.Max(0, AsInt(args.ElementAtOrDefault(0))));
+                break;
+            case "BEEP":
+                __beeping = true;
+                try { Console.Beep(Math.Max(37, AsInt(args.ElementAtOrDefault(0))), Math.Max(0, AsInt(args.ElementAtOrDefault(1)))); } catch { }
+                __beeping = false;
+                break;
+            case "POKE":
+                PokeMemory(AsInt(args.ElementAtOrDefault(0)), AsInt(args.ElementAtOrDefault(1)), 1);
+                break;
+            case "POKE_W":
+                PokeMemory(AsInt(args.ElementAtOrDefault(0)), AsInt(args.ElementAtOrDefault(1)), 2);
+                break;
+            case "POKE_L":
+                PokeMemory(AsInt(args.ElementAtOrDefault(0)), AsInt(args.ElementAtOrDefault(1)), 4);
+                break;
+            case "OPEN":
+            case "OPEN_IN":
+            case "OPEN_NEW":
+            case "APPEND":
+            {
+                var channelId = NormalizeChannelId(channel, 3);
+                CloseChannel(channelId);
+                var path = ResolvePath(args.ElementAtOrDefault(0));
+                switch (name.ToUpperInvariant())
+                {
+                    case "OPEN_IN":
+                        __channelReaders[channelId] = new StreamReader(File.Open(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite));
+                        break;
+                    case "APPEND":
+                        __channelWriters[channelId] = new StreamWriter(File.Open(path, FileMode.Append, FileAccess.Write, FileShare.Read)) { AutoFlush = true };
+                        break;
+                    default:
+                        __channelWriters[channelId] = new StreamWriter(File.Open(path, FileMode.Create, FileAccess.Write, FileShare.Read)) { AutoFlush = true };
+                        break;
+                }
+
+                break;
+            }
+            case "CLOSE":
+                CloseChannel(NormalizeChannelId(channel, 3));
+                break;
+            case "DIR":
+            {
+                var path = args.Length == 0 ? Directory.GetCurrentDirectory() : ResolvePath(args.ElementAtOrDefault(0));
+                foreach (var entry in Directory.EnumerateFileSystemEntries(path).Select(Path.GetFileName).OrderBy(x => x, StringComparer.OrdinalIgnoreCase))
+                {
+                    WriteLineToChannel(channel, entry ?? string.Empty);
+                }
+
+                break;
+            }
+            case "REPORT":
+                if (args.Length == 0)
+                {
+                    var formatted = FormatLastError();
+                    if (!string.IsNullOrEmpty(formatted))
+                    {
+                        WriteLineToChannel(channel, formatted);
+                    }
+                }
+                else
+                {
+                    WriteLineToChannel(channel, AsString(args.ElementAtOrDefault(0)));
+                }
+
+                break;
+            case "CLS":
+                try { Console.Clear(); } catch { }
+                break;
+            case "WINDOW":
+            case "AT":
+            case "CURSOR":
+            case "CSIZE":
+            case "CHAR_USE":
+            case "S_FONT":
+            case "INK":
+            case "PAPER":
+            case "BORDER":
+            case "CLEAR":
+            case "SCROLL":
+            case "WIDTH":
+            case "PAN":
+            case "RECOL":
+            case "PALETTE":
+            case "PLOT":
+            case "POINT":
+            case "POINT_R":
+            case "DRAW":
+            case "DLINE":
+            case "LINE":
+            case "LINE_R":
+            case "CIRCLE":
+            case "CIRCLE_R":
+            case "ELLIPSE":
+            case "ELLIPSE_R":
+            case "ARC":
+            case "ARC_R":
+            case "BLOCK":
+            case "FILL":
+            case "SCALE":
+            case "OVER":
+            case "UNDER":
+            case "FLASH":
+            case "PENDOWN":
+            case "PENUP":
+            case "TURN":
+            case "TURNTO":
+                break;
+            case "STOP":
+                throw new OperationCanceledException("STOP encountered.");
+            default:
+                if (name.StartsWith("TURBO", StringComparison.OrdinalIgnoreCase))
+                {
+                    return;
+                }
+
+                throw new NotSupportedException($"Built-in statement '{name}' is not supported by the generated C# backend yet.");
+        }
+    }
+
+    public static void ExecuteInput(object? channel, object?[] prompts)
+    {
+        if (prompts.Length > 0)
+        {
+            WriteToChannel(channel, string.Join(" ", prompts.Select(AsString)));
+        }
+
+        var line = ReadLineFromChannel(channel) ?? string.Empty;
+        __inputBuffer = line.Split(',').Select(part => part.Trim()).ToArray();
+    }
+
+    public static object? ReadInputValue(int index, string targetType)
+    {
+        var raw = index < __inputBuffer.Length ? __inputBuffer[index] : string.Empty;
+        return targetType switch
+        {
+            "string" => raw,
+            "float" when double.TryParse(raw, NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out var d) => d,
+            "float" => 0.0,
+            _ when int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var i) => i,
+            _ => 0
+        };
+    }
+
+    public static object? ReadDataValue(string targetType)
+    {
+        if (__dataPointer >= __data.Length)
+        {
+            throw new InvalidOperationException("READ moved past the end of DATA.");
+        }
+
+        var value = __data[__dataPointer++];
+        return targetType switch
+        {
+            "string" => AsString(value),
+            "float" => AsDouble(value),
+            _ => AsInt(value)
+        };
+    }
+
+    public static void RestoreToLine(int line)
+    {
+        if (!__restorePoints.TryGetValue(line, out var slot))
+        {
+            throw new InvalidOperationException($"RESTORE line {line} does not exist.");
+        }
+
+        __dataPointer = slot;
+    }
+}

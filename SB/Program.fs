@@ -31,6 +31,21 @@ let private copyBundledCRuntime (outputFileName: string) =
     File.Copy(sourceSourcePath, sourceTargetPath, true)
     headerTargetPath, sourceTargetPath
 
+let private copyBundledCSharpRuntime (outputFileName: string) =
+    let outputDirectory =
+        let directory = Path.GetDirectoryName(outputFileName)
+        if String.IsNullOrWhiteSpace directory then Directory.GetCurrentDirectory() else directory
+
+    let runtimeDirectory = Path.Combine(AppContext.BaseDirectory, "CSharpRuntime")
+    let sourcePath = Path.Combine(runtimeDirectory, HirCSharpBackend.cSharpRuntimeFileName)
+    let targetPath = Path.Combine(outputDirectory, HirCSharpBackend.cSharpRuntimeFileName)
+
+    if not (File.Exists(sourcePath)) then
+        failwith $"Bundled C# runtime source not found: {sourcePath}"
+
+    File.Copy(sourcePath, targetPath, true)
+    targetPath
+
 // Program is the thin CLI shell over the compiler pipeline.
 //
 // It parses runtime settings, runs the pipeline, prints diagnostics or generated
@@ -215,8 +230,10 @@ let main argv =
                 | "csharp" ->
                     let generated = generateCSharpFromLoweredHir settings.AppName hirProgram
                     File.WriteAllText(settings.OutputFileName, generated)
+                    let runtimePath = copyBundledCSharpRuntime settings.OutputFileName
                     if settings.Verbose then
                         Console.WriteLine($"Generated C# written to {settings.OutputFileName}")
+                        Console.WriteLine($"Shared C# runtime written to {runtimePath}")
                     0
                 | "c" ->
                     let generated = generateCFromLoweredHir settings.AppName hirProgram
