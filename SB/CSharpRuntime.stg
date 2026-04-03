@@ -79,6 +79,42 @@ private static void SetArrayValue(Dictionary<string, object?> array, object? val
     array[ArrayKey(indexes)] = value;
 }
 
+private static object? GetStringCharValue(object? source, object? index)
+{
+    var text = AsString(source);
+    var oneBasedIndex = AsInt(index);
+    if (oneBasedIndex < 1 || oneBasedIndex > text.Length)
+    {
+        return string.Empty;
+    }
+
+    return text[oneBasedIndex - 1].ToString();
+}
+
+private static void SetStringCharValue(ref object? target, object? index, object? replacement)
+{
+    var text = AsString(target);
+    var oneBasedIndex = AsInt(index);
+    if (oneBasedIndex < 1)
+    {
+        return;
+    }
+
+    var zeroBasedIndex = oneBasedIndex - 1;
+    var replacementText = AsString(replacement);
+    var replacementChar = replacementText.Length > 0 ? replacementText[0] : ' ';
+    var bufferLength = Math.Max(text.Length, zeroBasedIndex + 1);
+    var buffer = new string(' ', bufferLength).ToCharArray();
+
+    for (var i = 0; i < text.Length; i++)
+    {
+        buffer[i] = text[i];
+    }
+
+    buffer[zeroBasedIndex] = replacementChar;
+    target = new string(buffer);
+}
+
 private static object? Identity(object? value) => value;
 private static object? Negate(object? value) => -AsDouble(value);
 private static object? BitwiseNot(object? value) => ~AsInt(value);

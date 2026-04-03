@@ -157,3 +157,30 @@ let ``generateCSharpFromHir includes expanded runtime support for memory channel
     Assert.That(generated, Does.Contain("case \"RANDOMISE\":"))
     Assert.That(generated, Does.Contain("case \"OPEN_NEW\":"))
     Assert.That(generated, Does.Contain("case \"LINE\":"))
+
+[<Test>]
+let ``generateCSharpFromHir emits string character reads and writes`` () =
+    let textSymbol = SymbolId 0
+    let charSymbol = SymbolId 1
+
+    let program =
+        { SymbolNames = [ textSymbol, "TEXT$"; charSymbol, "CH$" ] |> Map.ofList
+          Globals =
+            [ storage textSymbol "TEXT$" HirType.String GlobalStorage
+              storage charSymbol "CH$" HirType.String GlobalStorage ]
+          Routines = []
+          DataEntries = []
+          RestorePoints = []
+          Main =
+            [ Assign(WriteVar(textSymbol, HirType.String, pos), literalString "AB", pos)
+              Assign(WriteStringChar(textSymbol, literalInt 2, HirType.String, pos), literalString "Z", pos)
+              Assign(WriteVar(charSymbol, HirType.String, pos), ReadStringChar(textSymbol, literalInt 2, HirType.String, pos), pos)
+              Input(None, [], [ WriteStringChar(textSymbol, literalInt 1, HirType.String, pos) ], pos)
+              Read([ WriteStringChar(textSymbol, literalInt 1, HirType.String, pos) ], pos) ] }
+
+    let generated = generateCSharpFromHir "StringCharProgram" program
+
+    Assert.That(generated, Does.Contain("SetStringCharValue(ref v0_TEXT_, 2, \"Z\");"))
+    Assert.That(generated, Does.Contain("v1_CH_ = GetStringCharValue(v0_TEXT_, 2);"))
+    Assert.That(generated, Does.Contain("SetStringCharValue(ref v0_TEXT_, 1, ReadInputValue(0, \"string\"));"))
+    Assert.That(generated, Does.Contain("SetStringCharValue(ref v0_TEXT_, 1, ReadDataValue(\"string\"));"))

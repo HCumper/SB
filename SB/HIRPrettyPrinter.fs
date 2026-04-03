@@ -92,10 +92,14 @@ let rec private formatExpr expr =
     | ReadArrayElem(symbolId, args, hirType, _) ->
         let argsText = args |> List.map formatExpr |> String.concat ", "
         $"{formatSymbolId symbolId}[{argsText}]:{formatType hirType}"
+    | ReadStringChar(symbolId, index, hirType, _) ->
+        $"{formatSymbolId symbolId}<{formatExpr index}>:{formatType hirType}"
     | DynamicReadVar(name, hirType, _) -> $"{name}:{formatType hirType}"
     | DynamicReadArrayElem(name, args, hirType, _) ->
         let argsText = args |> List.map formatExpr |> String.concat ", "
         $"{name}[{argsText}]:{formatType hirType}"
+    | DynamicReadStringChar(name, index, hirType, _) ->
+        $"{name}<{formatExpr index}>:{formatType hirType}"
     | Unary(op, inner, hirType, _) ->
         $"({formatUnaryOp op} {formatExpr inner}):{formatType hirType}"
     | Binary(op, lhs, rhs, hirType, _) ->
@@ -109,10 +113,14 @@ and private formatTarget = function
     | WriteArrayElem(symbolId, args, hirType, _) ->
         let argsText = args |> List.map formatExpr |> String.concat ", "
         $"{formatSymbolId symbolId}[{argsText}]:{formatType hirType}"
+    | WriteStringChar(symbolId, index, hirType, _) ->
+        $"{formatSymbolId symbolId}<{formatExpr index}>:{formatType hirType}"
     | DynamicWriteVar(name, hirType, _) -> $"{name}:{formatType hirType}"
     | DynamicWriteArrayElem(name, args, hirType, _) ->
         let argsText = args |> List.map formatExpr |> String.concat ", "
         $"{name}[{argsText}]:{formatType hirType}"
+    | DynamicWriteStringChar(name, index, hirType, _) ->
+        $"{name}<{formatExpr index}>:{formatType hirType}"
 
 and private formatCallArg = function
     | ValueArg expr -> formatExpr expr

@@ -374,7 +374,7 @@ let normalizeAst ast =
     and normalizeLines lines =
         let rec consumeFlatFor loopName depth collected remaining =
             match remaining with
-            | [] -> List.rev collected, []
+            | [] -> None
             | (Line(_, _, stmts) as line) :: tail ->
                 match tryMatchClosingNext loopName stmts with
                 | Some trailingStmts when depth = 0 ->
@@ -384,7 +384,7 @@ let normalizeAst ast =
                         | _ ->
                             match line with
                             | Line(pos, lineNumber, _) -> Line(pos, lineNumber, trailingStmts) :: tail
-                    List.rev collected, remainingLines
+                    Some(List.rev collected, remainingLines)
                 | _ ->
                     let nextDepth =
                         match tryExtractFlatFor stmts, stmts with
@@ -399,17 +399,20 @@ let normalizeAst ast =
             | (Line(linePos, lineNumber, stmts) as line) :: tail ->
                 match tryExtractFlatFor stmts with
                 | Some(forPos, name, prefixExprs, startExpr, endExpr, suffixExprs, stepExpr, inlineStmts, closingName) ->
-                    let bodyLines, rest = consumeFlatFor name 0 [] tail
-                    let normalizedBodyLines = normalizeLines bodyLines
-                    let bodyBlock =
-                        match inlineStmts, normalizedBodyLines with
-                        | [], bodyOnly -> LineBlock(bodyOnly)
-                        | inlineOnly, [] -> StatementBlock(List.map normalizeStmt inlineOnly)
-                        | inlineOnly, bodyOnly ->
-                            LineBlock(Line(forPos, forPos.BasicLineNo, List.map normalizeStmt inlineOnly) :: bodyOnly)
-                    let normalizedFor =
-                        ForStmt(forPos, name, prefixExprs, startExpr, endExpr, suffixExprs, stepExpr, bodyBlock, closingName)
-                    loop (Line(linePos, lineNumber, [ normalizedFor ]) :: acc) rest
+                    match consumeFlatFor name 0 [] tail with
+                    | Some(bodyLines, rest) ->
+                        let normalizedBodyLines = normalizeLines bodyLines
+                        let bodyBlock =
+                            match inlineStmts, normalizedBodyLines with
+                            | [], bodyOnly -> LineBlock(bodyOnly)
+                            | inlineOnly, [] -> StatementBlock(List.map normalizeStmt inlineOnly)
+                            | inlineOnly, bodyOnly ->
+                                LineBlock(Line(forPos, forPos.BasicLineNo, List.map normalizeStmt inlineOnly) :: bodyOnly)
+                        let normalizedFor =
+                            ForStmt(forPos, name, prefixExprs, startExpr, endExpr, suffixExprs, stepExpr, bodyBlock, closingName)
+                        loop (Line(linePos, lineNumber, [ normalizedFor ]) :: acc) rest
+                    | None ->
+                        loop (normalizeLine line :: acc) tail
                 | None ->
                     loop (normalizeLine line :: acc) tail
 

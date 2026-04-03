@@ -110,8 +110,11 @@ let rec private emitTargetRead ctx = function
     | WriteVar(symbolId, _, _) -> storageName ctx symbolId
     | WriteArrayElem(symbolId, indexes, _, _) ->
         emitInvocation "GetArrayValue" (storageName ctx symbolId :: (indexes |> List.map (emitExpr ctx)))
+    | WriteStringChar(symbolId, index, _, _) ->
+        emitInvocation "GetStringCharValue" [ storageName ctx symbolId; emitExpr ctx index ]
     | DynamicWriteVar(name, _, _) -> $"throw new NotSupportedException(\"Dynamic scoped write '{name}' is not supported by the generated C# backend yet.\")"
     | DynamicWriteArrayElem(name, _, _, _) -> $"throw new NotSupportedException(\"Dynamic scoped array write '{name}' is not supported by the generated C# backend yet.\")"
+    | DynamicWriteStringChar(name, _, _, _) -> $"throw new NotSupportedException(\"Dynamic scoped string write '{name}' is not supported by the generated C# backend yet.\")"
 
 and private emitCallArg ctx = function
     | ValueArg expr -> emitExpr ctx expr
@@ -124,8 +127,11 @@ and private emitExpr ctx = function
     | ReadVar(symbolId, _, _) -> storageName ctx symbolId
     | ReadArrayElem(symbolId, indexes, _, _) ->
         emitInvocation "GetArrayValue" (storageName ctx symbolId :: (indexes |> List.map (emitExpr ctx)))
+    | ReadStringChar(symbolId, index, _, _) ->
+        emitInvocation "GetStringCharValue" [ storageName ctx symbolId; emitExpr ctx index ]
     | DynamicReadVar(name, _, _) -> $"throw new NotSupportedException(\"Dynamic scoped read '{name}' is not supported by the generated C# backend yet.\")"
     | DynamicReadArrayElem(name, _, _, _) -> $"throw new NotSupportedException(\"Dynamic scoped array read '{name}' is not supported by the generated C# backend yet.\")"
+    | DynamicReadStringChar(name, _, _, _) -> $"throw new NotSupportedException(\"Dynamic scoped string read '{name}' is not supported by the generated C# backend yet.\")"
     | Unary(op, inner, _, _) ->
         match op with
         | Identity -> $"Identity({emitExpr ctx inner})"
@@ -169,8 +175,11 @@ let private emitTargetWrite ctx target valueExpr =
     | WriteArrayElem(symbolId, indexes, _, _) ->
         let invocation = emitInvocation "SetArrayValue" ([ storageName ctx symbolId; valueExpr ] @ (indexes |> List.map (emitExpr ctx)))
         invocation + ";"
+    | WriteStringChar(symbolId, index, _, _) ->
+        emitInvocation "SetStringCharValue" [ $"ref {storageName ctx symbolId}"; emitExpr ctx index; valueExpr ] + ";"
     | DynamicWriteVar(name, _, _) -> $"throw new NotSupportedException(\"Dynamic scoped write '{name}' is not supported by the generated C# backend yet.\");"
     | DynamicWriteArrayElem(name, _, _, _) -> $"throw new NotSupportedException(\"Dynamic scoped array write '{name}' is not supported by the generated C# backend yet.\");"
+    | DynamicWriteStringChar(name, _, _, _) -> $"throw new NotSupportedException(\"Dynamic scoped string write '{name}' is not supported by the generated C# backend yet.\");"
 
 let private emitLoopTransfer loopId isNext =
     let (LoopId id) = loopId
@@ -298,7 +307,7 @@ and private emitStmt ctx builder level stmt =
         targets
         |> List.iteri (fun index target ->
             let reader =
-                $"ReadInputValue({index}, {hirTypeToken (match target with | WriteVar(_, t, _) | WriteArrayElem(_, _, t, _) | DynamicWriteVar(_, t, _) | DynamicWriteArrayElem(_, _, t, _) -> t)})"
+                $"ReadInputValue({index}, {hirTypeToken (match target with | WriteVar(_, t, _) | WriteArrayElem(_, _, t, _) | WriteStringChar(_, _, t, _) | DynamicWriteVar(_, t, _) | DynamicWriteArrayElem(_, _, t, _) | DynamicWriteStringChar(_, _, t, _) -> t)})"
             appendLine builder level (emitTargetWrite ctx target reader))
     | WhenError(_, _) ->
         appendLine builder level "throw new NotSupportedException(\"WHEN ERROR is only supported by the interpreter.\");"
@@ -341,8 +350,10 @@ and private emitStmt ctx builder level stmt =
                 match target with
                 | WriteVar(_, targetType, _)
                 | WriteArrayElem(_, _, targetType, _)
+                | WriteStringChar(_, _, targetType, _)
                 | DynamicWriteVar(_, targetType, _)
-                | DynamicWriteArrayElem(_, _, targetType, _) -> $"ReadDataValue({hirTypeToken targetType})"
+                | DynamicWriteArrayElem(_, _, targetType, _)
+                | DynamicWriteStringChar(_, _, targetType, _) -> $"ReadDataValue({hirTypeToken targetType})"
             appendLine builder level (emitTargetWrite ctx target valueExpr))
     | Remark(text, _) ->
         appendLine builder level $"// {text}"

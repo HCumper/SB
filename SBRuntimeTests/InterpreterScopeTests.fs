@@ -52,6 +52,84 @@ let ``interpreter aliases bare array element procedure arguments without referen
     Assert.That(String.concat "|" output, Is.EqualTo("4"))
 
 [<Test>]
+let ``interpreter copies expression actual for flexible parameter without mutating caller`` () =
+    let ast =
+        Program(
+            pos,
+            [ Line(
+                pos,
+                Some 10,
+                [ ProcedureDef(
+                    pos,
+                    "bump",
+                    [ "a" ],
+                    [ Line(pos, Some 100, [ Assignment(pos, id "a", binary "+" (id "a") (num "1")) ])
+                      Line(pos, Some 110, [ ProcedureCall(pos, "PRINT", [ id "a" ]) ]) ],
+                    None, None) ])
+              Line(pos, Some 20, [ Assignment(pos, id "x", num "3") ])
+              Line(pos, Some 30, [ ProcedureCall(pos, "bump", [ binary "+" (id "x") (num "0") ]) ])
+              Line(pos, Some 40, [ ProcedureCall(pos, "PRINT", [ id "x" ]) ]) ])
+
+    let output = runProgram ast
+
+    Assert.That(String.concat "|" output, Is.EqualTo("4|3"))
+
+[<Test>]
+let ``interpreter rejects bare string character procedure arguments without reference`` () =
+    let ast =
+        Program(
+            pos,
+            [ Line(
+                pos,
+                Some 10,
+                [ ProcedureDef(
+                    pos,
+                    "bump",
+                    [ "a$" ],
+                    [ Line(pos, Some 100, [ Assignment(pos, id "a$", str "\"Z\"") ]) ],
+                    None, None) ])
+              Line(pos, Some 20, [ Assignment(pos, id "text$", str "\"abc\"") ])
+              Line(pos, Some 30, [ ProcedureCall(pos, "bump", [ mkPostfixName pos "text$" (Some [ num "2" ]) ]) ]) ])
+
+    let hir = lowerProgram ast
+
+    interpretProgramWithOptions defaultRuntimeOptions hir
+    |> assertRuntimeError InvalidReferenceActual
+    |> ignore
+
+[<Test>]
+let ``interpreter dynamic write to caller visible string character updates caller local`` () =
+    let ast =
+        Program(
+            pos,
+            [ Line(
+                pos,
+                Some 10,
+                [ ProcedureDef(
+                    pos,
+                    "zap",
+                    [],
+                    [ Line(pos, Some 100, [ Assignment(pos, mkPostfixName pos "text$" (Some [ num "2" ]), str "\"Z\"") ]) ],
+                    None, None) ])
+              Line(
+                pos,
+                Some 20,
+                [ ProcedureDef(
+                    pos,
+                    "main",
+                    [],
+                    [ Line(pos, Some 200, [ LocalStmt(pos, [ "text$", None ]) ])
+                      Line(pos, Some 210, [ Assignment(pos, id "text$", str "\"abc\"") ])
+                      Line(pos, Some 220, [ ProcedureCall(pos, "zap", []) ])
+                      Line(pos, Some 230, [ ProcedureCall(pos, "PRINT", [ id "text$"; mkPostfixName pos "text$" (Some [ num "2" ]) ]) ]) ],
+                    None, None) ])
+              Line(pos, Some 30, [ ProcedureCall(pos, "main", []) ]) ])
+
+    let output = runProgram ast
+
+    Assert.That(String.concat "|" output, Is.EqualTo("aZc Z"))
+
+[<Test>]
 let ``interpreter local is dynamically visible to called procedure`` () =
     let ast =
         Program(

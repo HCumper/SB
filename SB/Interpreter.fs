@@ -402,6 +402,31 @@ let private getOrCreateArrayEntry (entries: Dictionary<string, Cell>) innerType 
         entries[key] <- created
         created
 
+let private readStringCharValue sourceValue indexValue =
+    let oneBasedIndex = asInt indexValue
+    let text = asString sourceValue
+
+    if oneBasedIndex < 1 || oneBasedIndex > text.Length then
+        StringValue ""
+    else
+        StringValue(string text[oneBasedIndex - 1])
+
+let private writeStringCharValue sourceValue indexValue replacementValue =
+    let oneBasedIndex = asInt indexValue
+
+    if oneBasedIndex < 1 then
+        sourceValue
+    else
+        let text = asString sourceValue
+        let replacementText = asString replacementValue
+        let replacementChar = if String.IsNullOrEmpty replacementText then ' ' else replacementText[0]
+        let zeroBasedIndex = oneBasedIndex - 1
+        let bufferLength = max text.Length (zeroBasedIndex + 1)
+        let buffer = Array.create bufferLength ' '
+        text.ToCharArray() |> Array.iteri (fun index ch -> buffer[index] <- ch)
+        buffer[zeroBasedIndex] <- replacementChar
+        StringValue(System.String(buffer))
+
 let private allocateCells (storages: HirStorage list) =
     storages
     |> List.map (fun storage -> storage.Symbol, { Value = defaultValue storage.Type storage.Dimensions })
@@ -611,6 +636,12 @@ let rec private evalExpr state expr =
                     let key = indexValues |> List.map asInt |> arrayKey
                     let entry = getOrCreateArrayEntry entries (getArrayElementType cell.Value) key
                     entry.Value, nextState)))
+    | ReadStringChar(symbolId, index, _, pos) ->
+        requireCell state symbolId pos
+        |> Result.bind (fun cell ->
+            evalExpr state index
+            |> Result.map (fun (indexValue, nextState) ->
+                readStringCharValue cell.Value indexValue, nextState))
     | DynamicReadVar(name, _, pos) ->
         requireDynamicCell state name pos
         |> Result.map (fun cell -> cell.Value, state)
@@ -624,6 +655,12 @@ let rec private evalExpr state expr =
                     let key = indexValues |> List.map asInt |> arrayKey
                     let entry = getOrCreateArrayEntry entries (getArrayElementType cell.Value) key
                     entry.Value, nextState)))
+    | DynamicReadStringChar(name, index, _, pos) ->
+        requireDynamicCell state name pos
+        |> Result.bind (fun cell ->
+            evalExpr state index
+            |> Result.map (fun (indexValue, nextState) ->
+                readStringCharValue cell.Value indexValue, nextState))
     | Unary(op, inner, hirType, _) ->
         evalExpr state inner
         |> Result.map (fun (value, nextState) ->
@@ -862,12 +899,31 @@ and private resolveTargetCell state target =
                     let key = indexValues |> List.map asInt |> arrayKey
                     let entry = getOrCreateArrayEntry entries (getArrayElementType cell.Value) key
                     entry, nextState)))
+    | WriteStringChar(_, _, _, pos)
+    | DynamicWriteStringChar(_, _, _, pos) ->
+        runtimeError InvalidReferenceActual (Some pos) "String character targets cannot be used as by-reference storage locations."
 
 and private writeTarget state target value =
-    resolveTargetCell state target
-    |> Result.map (fun (cell, nextState) ->
-        cell.Value <- value
-        nextState)
+    match target with
+    | WriteStringChar(symbolId, index, _, pos) ->
+        requireCell state symbolId pos
+        |> Result.bind (fun cell ->
+            evalExpr state index
+            |> Result.map (fun (indexValue, nextState) ->
+                cell.Value <- writeStringCharValue cell.Value indexValue value
+                nextState))
+    | DynamicWriteStringChar(name, index, _, pos) ->
+        requireDynamicCell state name pos
+        |> Result.bind (fun cell ->
+            evalExpr state index
+            |> Result.map (fun (indexValue, nextState) ->
+                cell.Value <- writeStringCharValue cell.Value indexValue value
+                nextState))
+    | _ ->
+        resolveTargetCell state target
+        |> Result.map (fun (cell, nextState) ->
+            cell.Value <- value
+            nextState)
 
 and private callRoutine state (routine: HirRoutine) args pos =
     let bindCallArg currentState parameter arg =

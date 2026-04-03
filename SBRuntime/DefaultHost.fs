@@ -454,19 +454,7 @@ type private DefaultScreenChannel(id: ChannelId, kind: ChannelKind, reader: unit
         let width, height, x, y = window
         let safeWidth = max 1 width
         let safeHeight = max 1 height
-        let textSnapshot: ScreenTextCell[,] =
-            Array2D.init safeHeight safeWidth (fun row col ->
-                let sourceY = y + row
-                let sourceX = x + col
-                if sourceY >= 0 && sourceY < buffer.Mode.Height && sourceX >= 0 && sourceX < buffer.Mode.Width then
-                    let cell = buffer.Text[sourceY, sourceX]
-                    { Character = cell.Character
-                      Ink = cell.Ink
-                      Paper = cell.Paper }
-                else
-                    { Character = ' '
-                      Ink = 7
-                      Paper = paper })
+        let textSnapshot = paneBuffer.Snapshot().Panes.Head.Text
         let pixelSnapshot =
             Array2D.init safeHeight safeWidth (fun row col ->
                 let sourceY = y + row
