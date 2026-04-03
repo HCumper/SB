@@ -1,7 +1,7 @@
 #include "sbruntime_c.h"
 
 static int sb_runtime_initialized = 0;
-static const long long sb_ql_epoch_offset = 283996800LL;
+static const long sb_ql_epoch_offset = 283996800L;
 typedef struct DynamicFrame DynamicFrame;
 typedef struct GlobalBinding GlobalBinding;
 typedef struct ErrorFrame ErrorFrame;
@@ -410,8 +410,9 @@ void set_string_char_value(Cell* target, int one_based_index, Value replacement)
 static char* build_array_key(int count, va_list args)
 {
     static char buffer[256];
+    int i;
     buffer[0] = '\0';
-    for (int i = 0; i < count; i++)
+    for (i = 0; i < count; i++)
     {
         Value value = va_arg(args, Value);
         char part[32];
@@ -423,11 +424,12 @@ static char* build_array_key(int count, va_list args)
 
 Cell* get_array_cell(Cell* array_cell, int count, ...)
 {
-    if (array_cell->value.type != TYPE_ARRAY) array_cell->value = make_array();
     va_list args;
+    char* key;
     va_start(args, count);
-    char* key = build_array_key(count, args);
+    key = build_array_key(count, args);
     va_end(args);
+    if (array_cell->value.type != TYPE_ARRAY) array_cell->value = make_array();
     {
         ArrayEntry* entry;
         for (entry = array_cell->value.array_value; entry; entry = entry->next)
@@ -482,12 +484,12 @@ void set_array_value(Cell* array_cell, Value value, int count, ...)
     array_cell->value.array_value = entry;
 }
 
-static long long current_ql_seconds(void)
+static long current_ql_seconds(void)
 {
-    return (long long)time(NULL) + sb_ql_epoch_offset;
+    return (long)time(NULL) + sb_ql_epoch_offset;
 }
 
-static struct tm ql_seconds_to_tm(long long seconds)
+static struct tm ql_seconds_to_tm(long seconds)
 {
     time_t unix_time = (time_t)(seconds - sb_ql_epoch_offset);
     struct tm result;
@@ -499,7 +501,7 @@ static struct tm ql_seconds_to_tm(long long seconds)
     return result;
 }
 
-static Value make_formatted_time(long long seconds, const char* format)
+static Value make_formatted_time(long seconds, const char* format)
 {
     static char buffer[64];
     struct tm time_parts = ql_seconds_to_tm(seconds);
@@ -655,12 +657,16 @@ static Value fill_string(Value text_value, int count)
 {
     const char* text = as_string(text_value);
     size_t part_length = strlen(text);
+    size_t total_length;
+    char* buffer;
+    char* current;
+    int i;
     if (count <= 0 || part_length == 0) return make_string("");
-    size_t total_length = part_length * (size_t)count;
-    char* buffer = (char*)malloc(total_length + 1);
+    total_length = part_length * (size_t)count;
+    buffer = (char*)malloc(total_length + 1);
     if (!buffer) exit(1);
-    char* current = buffer;
-    for (int i = 0; i < count; i++)
+    current = buffer;
+    for (i = 0; i < count; i++)
     {
         memcpy(current, text, part_length);
         current += part_length;
@@ -706,8 +712,8 @@ Value invoke_builtin_function(const char* name, int arg_count, ...)
     if (ci_compare(name, "COS") == 0) { Value v = va_arg(args, Value); va_end(args); return make_float(cos(as_double(v))); }
     if (ci_compare(name, "COT") == 0) { Value v = va_arg(args, Value); va_end(args); return make_float(1.0 / tan(as_double(v))); }
     if (ci_compare(name, "DATE") == 0) { va_end(args); return make_int((int)SB_Date()); }
-    if (ci_compare(name, "DATE$") == 0) { long long seconds = (arg_count > 0) ? as_int(va_arg(args, Value)) : current_ql_seconds(); va_end(args); return make_formatted_time(seconds, "%Y %b %d %H:%M:%S"); }
-    if (ci_compare(name, "DAY$") == 0) { long long seconds = (arg_count > 0) ? as_int(va_arg(args, Value)) : current_ql_seconds(); va_end(args); return make_formatted_time(seconds, "%A"); }
+    if (ci_compare(name, "DATE$") == 0) { long seconds = (arg_count > 0) ? as_int(va_arg(args, Value)) : current_ql_seconds(); va_end(args); return make_formatted_time(seconds, "%Y %b %d %H:%M:%S"); }
+    if (ci_compare(name, "DAY$") == 0) { long seconds = (arg_count > 0) ? as_int(va_arg(args, Value)) : current_ql_seconds(); va_end(args); return make_formatted_time(seconds, "%A"); }
     if (ci_compare(name, "DEG") == 0) { Value v = va_arg(args, Value); va_end(args); return make_float(as_double(v) * 180.0 / M_PI); }
     if (ci_compare(name, "EOF") == 0) { Value v = va_arg(args, Value); va_end(args); return make_int(channel_eof(as_int(v)) ? 1 : 0); }
     if (ci_compare(name, "ERLIN") == 0) { va_end(args); return make_int(sb_last_error_line()); }
@@ -803,7 +809,8 @@ void execute_builtin_statement(const char* name, Value channel, int arg_count, .
     if (ci_compare(name, "PRINT") == 0)
     {
         FILE* writer = resolve_writer(channel);
-        for (int i = 0; i < arg_count; i++)
+        int i;
+        for (i = 0; i < arg_count; i++)
         {
             Value value = va_arg(args, Value);
             fputs(as_string(value), writer);
@@ -965,9 +972,11 @@ void execute_builtin_statement(const char* name, Value channel, int arg_count, .
 void execute_input(Value channel, int prompt_count, ...)
 {
     va_list args;
+    int i;
+    char* token;
     sb_runtime_init();
     va_start(args, prompt_count);
-    for (int i = 0; i < prompt_count; i++)
+    for (i = 0; i < prompt_count; i++)
     {
         Value prompt = va_arg(args, Value);
         write_to_channel(channel, as_string(prompt));
@@ -976,7 +985,7 @@ void execute_input(Value channel, int prompt_count, ...)
     va_end(args);
     if (!read_line_from_channel(channel, sb_input_buffer, sizeof(sb_input_buffer))) sb_input_buffer[0] = '\0';
     sb_input_part_count = 0;
-    char* token = strtok(sb_input_buffer, ",\r\n");
+    token = strtok(sb_input_buffer, ",\r\n");
     while (token && sb_input_part_count < 256)
     {
         sb_input_parts[sb_input_part_count++] = trim_left_in_place(token);
@@ -997,8 +1006,9 @@ Value read_input_value(int index, ValueType target_type)
 
 Value read_data_value(ValueType target_type)
 {
+    Value value;
     if (sb_data_pointer >= sb_data_count) runtime_not_supported("READ moved past the end of DATA.");
-    Value value = sb_data[sb_data_pointer++];
+    value = sb_data[sb_data_pointer++];
     switch (target_type)
     {
         case TYPE_STRING: return make_string(as_string(value));
@@ -1009,7 +1019,8 @@ Value read_data_value(ValueType target_type)
 
 void restore_to_line(int line)
 {
-    for (int i = 0; i < sb_restore_point_count; i++)
+    int i;
+    for (i = 0; i < sb_restore_point_count; i++)
     {
         if (sb_restore_points[i].line == line) { sb_data_pointer = sb_restore_points[i].slot; return; }
     }

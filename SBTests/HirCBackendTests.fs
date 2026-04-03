@@ -65,9 +65,9 @@ let ``generateCFromHir emits globals routines labels and loop jumps`` () =
 
     Assert.That(generated, Does.Contain("#include \"sbruntime_c.h\""))
     Assert.That(generated, Does.Contain("static Cell v0_X;"))
-    Assert.That(generated, Does.Contain("static Value r1_PROC _P_(( ParamBinding v2_P_arg ));"))
+    Assert.That(generated, Does.Contain("static Value r1_PROC(ParamBinding v2_P_arg);"))
     Assert.That(generated, Does.Contain("DataValue sb_data[] = { { TYPE_INT, 2, 2, NULL, NULL }, { TYPE_STRING, 0, 0.0, \"HELLO\", NULL } };"))
-    Assert.That(generated, Does.Contain("int main _P_(( void ));"))
+    Assert.That(generated, Does.Contain("int main(void);"))
     Assert.That(generated, Does.Contain("line_10: ;"))
     Assert.That(generated, Does.Contain("goto loop_0_next;"))
     Assert.That(generated, Does.Contain("loop_1_exit: ;"))
@@ -82,6 +82,8 @@ let ``generateCFromHir emits globals routines labels and loop jumps`` () =
     Assert.That(generated, Does.Contain("int __gosub_stack[1];"))
     Assert.That(generated, Does.Contain("__gosub_stack[__gosub_top++] = 0;"))
     Assert.That(generated, Does.Contain("__gosub_return_0: ;"))
+    Assert.That(generated, Does.Not.Contain("_P_(("))
+    Assert.That(generated, Does.Not.Contain("for (int "))
 
 [<Test>]
 let ``generateCFromHir emits arrays routine calls and builtin function calls`` () =
@@ -119,6 +121,7 @@ let ``generateCFromHir emits arrays routine calls and builtin function calls`` (
     Assert.That(generated, Does.Contain("get_array_value(&v1_A, 1, make_int(1))"))
     Assert.That(generated, Does.Not.Contain("line_"))
     Assert.That(generated, Does.Not.Contain("goto line_"))
+    Assert.That(generated, Does.Not.Contain("_P_(("))
 
 [<Test>]
 let ``generateCFromHir includes expanded runtime support for memory channels and built-ins`` () =

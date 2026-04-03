@@ -401,7 +401,8 @@ and private emitFor ctx builder level gosubReturnStart gosubReturnCount activeHa
     appendLine builder level "{"
     appendLine builder (level + 1) $"int {stepName} = as_int({emitExpr ctx stepExpr});"
     appendLine builder (level + 1) $"int {endName} = as_int({emitExpr ctx endExpr});"
-    appendLine builder (level + 1) $"for (int {indexName} = as_int({emitExpr ctx startExpr}); ({stepName} >= 0) ? ({indexName} <= {endName}) : ({indexName} >= {endName}); {indexName} += {stepName})"
+    appendLine builder (level + 1) $"int {indexName} = as_int({emitExpr ctx startExpr});"
+    appendLine builder (level + 1) $"for (; ({stepName} >= 0) ? ({indexName} <= {endName}) : ({indexName} >= {endName}); {indexName} += {stepName})"
     appendLine builder (level + 1) "{"
     appendLine builder (level + 2) $"{cellValueExpr (storageCellRef ctx symbolId)} = make_int({indexName});"
     emitBlock ctx builder (level + 2) gosubReturnStart gosubReturnCount activeHandlerVar hasWhenError currentLine inheritedNextLine body
@@ -648,7 +649,7 @@ let private emitRoutinePrototype (ctx: EmitterContext) (builder: StringBuilder) 
         match routine.Parameters with
         | [] -> "void"
         | items -> items |> List.map (fun parameter -> $"ParamBinding {storageName ctx parameter.Storage.Symbol}_arg") |> String.concat ", "
-    appendLine builder level $"static Value {routineName ctx routine.Symbol} _P_(( {parameters} ));"
+    appendLine builder level $"static Value {routineName ctx routine.Symbol}({parameters});"
 
 let private emitRoutine (ctx: EmitterContext) (builder: StringBuilder) (routine: HirRoutine) =
     let parameters =
@@ -673,11 +674,6 @@ let private emitRoutine (ctx: EmitterContext) (builder: StringBuilder) (routine:
         (routine.Parameters |> List.map _.Storage) @ routine.Locals
     if not allBindings.IsEmpty then
         appendLine builder 1 $"DynamicBinding __frame_bindings[{allBindings.Length}];"
-        allBindings
-        |> List.iteri (fun index storage ->
-            appendLine builder 1 $"__frame_bindings[{index}].name = \"{escapeCString storage.Name}\";"
-            appendLine builder 1 $"__frame_bindings[{index}].cell = {storageCellRef ctx storage.Symbol};")
-        appendLine builder 1 $"push_dynamic_frame(__frame_bindings, {allBindings.Length});"
     let gosubReturnCount = countGosubSitesInBlock routine.Body
     let gosubReturnStart = !ctx.NextGosubReturnId
     let hasWhenError = blockHasWhenError routine.Body
@@ -693,6 +689,12 @@ let private emitRoutine (ctx: EmitterContext) (builder: StringBuilder) (routine:
         appendLine builder 1 "int __error_target_line = 0;"
         appendLine builder 1 "int __error_retry_stmt = -1;"
         appendLine builder 1 "int __error_continue_stmt = -1;"
+    if not allBindings.IsEmpty then
+        allBindings
+        |> List.iteri (fun index storage ->
+            appendLine builder 1 $"__frame_bindings[{index}].name = \"{escapeCString storage.Name}\";"
+            appendLine builder 1 $"__frame_bindings[{index}].cell = {storageCellRef ctx storage.Symbol};")
+        appendLine builder 1 $"push_dynamic_frame(__frame_bindings, {allBindings.Length});"
     emitBlock ctx builder 1 gosubReturnStart gosubReturnCount "__active_when_error" hasWhenError None None routine.Body
     let stmtEndId = !ctx.NextStatementId - 1
     let whenErrorEndId = !ctx.NextWhenErrorId - 1
@@ -776,20 +778,11 @@ let generateCFromHir programName (program: HirProgram) =
     program.Routines |> List.iter (emitRoutinePrototype ctx builder 0)
     if not (List.isEmpty program.Routines) then
         appendLine builder 0 ""
-    appendLine builder 0 "int main _P_(( void ));"
+    appendLine builder 0 "int main(void);"
     appendLine builder 0 ""
     program.Routines |> List.iter (emitRoutine ctx builder)
     appendLine builder 0 "int main(void)"
     appendLine builder 0 "{"
-    appendLine builder 1 "sb_runtime_init();"
-    program.Globals
-    |> List.iter (fun storage ->
-        let initial =
-            match storage.Type with
-            | Array _ -> "make_cell(make_array())"
-            | _ -> "make_cell(make_null())"
-        appendLine builder 1 $"{storageName ctx storage.Symbol} = {initial};"
-        appendLine builder 1 $"register_global(\"{escapeCString storage.Name}\", &{storageName ctx storage.Symbol});")
     let mainGosubReturnCount = countGosubSitesInBlock program.Main
     let mainGosubReturnStart = !ctx.NextGosubReturnId
     let mainHasWhenError = blockHasWhenError program.Main
@@ -805,6 +798,15 @@ let generateCFromHir programName (program: HirProgram) =
         appendLine builder 1 "int __error_target_line = 0;"
         appendLine builder 1 "int __error_retry_stmt = -1;"
         appendLine builder 1 "int __error_continue_stmt = -1;"
+    appendLine builder 1 "sb_runtime_init();"
+    program.Globals
+    |> List.iter (fun storage ->
+        let initial =
+            match storage.Type with
+            | Array _ -> "make_cell(make_array())"
+            | _ -> "make_cell(make_null())"
+        appendLine builder 1 $"{storageName ctx storage.Symbol} = {initial};"
+        appendLine builder 1 $"register_global(\"{escapeCString storage.Name}\", &{storageName ctx storage.Symbol});")
     emitBlock ctx builder 1 mainGosubReturnStart mainGosubReturnCount "__active_when_error" mainHasWhenError None None program.Main
     let mainStmtEndId = !ctx.NextStatementId - 1
     let mainWhenErrorEndId = !ctx.NextWhenErrorId - 1
