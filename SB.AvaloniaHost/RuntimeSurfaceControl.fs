@@ -111,7 +111,7 @@ type RuntimeSurfaceControl() =
                 if paneTextHeight > 0 && paneTextWidth > 0 then
                     let cellWidth = max 1.0 (viewportRect.Width / float textCols)
                     let cellHeight = max 1.0 (viewportRect.Height / float textRows)
-                    let defaultPaper = pane.Text[0, 0].Paper
+                    let defaultStrip = pane.Text[0, 0].Strip
                     let fontSize = max 12.0 (min (cellHeight * 0.78) (cellWidth * 1.4))
                     let _, cursorY = pane.Cursor
                     let rowOffset =
@@ -119,7 +119,7 @@ type RuntimeSurfaceControl() =
                         max 0 (min (paneTextHeight - textRows) (lastVisibleRow - textRows + 1))
 
                     if panePixelHeight = 0 || panePixelWidth = 0 then
-                        context.FillRectangle(SolidColorBrush(colorFor defaultPaper), viewportRect)
+                        context.FillRectangle(SolidColorBrush(colorFor defaultStrip), viewportRect)
 
                     for textRow = 0 to min (textRows - 1) (paneTextHeight - 1) do
                         for textCol = 0 to min (textCols - 1) (paneTextWidth - 1) do
@@ -133,7 +133,7 @@ type RuntimeSurfaceControl() =
 
                             // Keep text windows readable while allowing graphics to show through blank cells.
                             if cell.Character <> ' ' then
-                                context.FillRectangle(SolidColorBrush(colorFor cell.Paper), cellRect)
+                                context.FillRectangle(SolidColorBrush(colorFor cell.Strip), cellRect)
                                 let text =
                                     new FormattedText(
                                         string cell.Character,

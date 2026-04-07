@@ -687,6 +687,12 @@ public static class GeneratedRuntime
             case "PAUSE":
                 System.Threading.Thread.Sleep(Math.Max(0, AsInt(args.ElementAtOrDefault(0))));
                 break;
+            case "FLUSH":
+                while (Console.KeyAvailable)
+                {
+                    Console.ReadKey(true);
+                }
+                break;
             case "BEEP":
                 __beeping = true;
                 try { Console.Beep(Math.Max(37, AsInt(args.ElementAtOrDefault(0))), Math.Max(0, AsInt(args.ElementAtOrDefault(1)))); } catch { }
@@ -763,6 +769,7 @@ public static class GeneratedRuntime
             case "S_FONT":
             case "INK":
             case "PAPER":
+            case "STRIP":
             case "BORDER":
             case "CLEAR":
             case "SCROLL":

@@ -156,11 +156,12 @@ type private TextCell = {
     mutable Character: char
     mutable Ink: int
     mutable Paper: int
+    mutable Strip: int
 }
 
 type private ScreenBuffer(mode: ScreenModeInfo) =
     let createText width height =
-        Array2D.init height width (fun _ _ -> { Character = ' '; Ink = 7; Paper = 0 } : TextCell)
+        Array2D.init height width (fun _ _ -> { Character = ' '; Ink = 7; Paper = 0; Strip = 0 } : TextCell)
 
     let mutable currentMode = mode
     let mutable text = createText mode.Width mode.Height
@@ -175,7 +176,8 @@ type private ScreenBuffer(mode: ScreenModeInfo) =
                 let cell = text[row, col]
                 { Character = cell.Character
                   Ink = cell.Ink
-                  Paper = cell.Paper })
+                  Paper = cell.Paper
+                  Strip = cell.Strip })
 
         let pixelSnapshot =
             Array2D.init currentMode.Height currentMode.Width (fun row col -> pixels[row, col])
@@ -198,7 +200,7 @@ type private ScreenBuffer(mode: ScreenModeInfo) =
         let maxY = min currentMode.Height (y + max 0 height)
         for row in max 0 y .. max 0 (maxY - 1) do
             for col in max 0 x .. max 0 (maxX - 1) do
-                text[row, col] <- { Character = ' '; Ink = 7; Paper = paper }
+                text[row, col] <- { Character = ' '; Ink = 7; Paper = paper; Strip = paper }
                 pixels[row, col] <- paper
     member _.ScrollTextWindow(width: int, height: int, x: int, y: int, paper: int) =
         let maxX = min currentMode.Width (x + max 0 width)
@@ -210,19 +212,19 @@ type private ScreenBuffer(mode: ScreenModeInfo) =
             for row in startY .. maxY - 2 do
                 for col in startX .. maxX - 1 do
                     let nextCell = text[row + 1, col]
-                    text[row, col] <- { Character = nextCell.Character; Ink = nextCell.Ink; Paper = nextCell.Paper }
+                    text[row, col] <- { Character = nextCell.Character; Ink = nextCell.Ink; Paper = nextCell.Paper; Strip = nextCell.Strip }
                     pixels[row, col] <- pixels[row + 1, col]
 
             for col in startX .. maxX - 1 do
-                text[maxY - 1, col] <- { Character = ' '; Ink = 7; Paper = paper }
+                text[maxY - 1, col] <- { Character = ' '; Ink = 7; Paper = paper; Strip = paper }
                 pixels[maxY - 1, col] <- paper
-    member _.WriteText(windowWidth: int, windowHeight: int, windowX: int, windowY: int, cursorX: int, cursorY: int, ink: int, paper: int, content: string) =
+    member _.WriteText(windowWidth: int, windowHeight: int, windowX: int, windowY: int, cursorX: int, cursorY: int, ink: int, paper: int, strip: int, content: string) =
         let row = windowY + cursorY
         if row >= 0 && row < currentMode.Height then
             for index = 0 to content.Length - 1 do
                 let col = windowX + cursorX + index
                 if col >= windowX && col < min currentMode.Width (windowX + windowWidth) then
-                    text[row, col] <- { Character = content[index]; Ink = ink; Paper = paper }
+                    text[row, col] <- { Character = content[index]; Ink = ink; Paper = paper; Strip = strip }
     member _.SetPixel(x: int, y: int, color: int) =
         if x >= 0 && x < currentMode.Width && y >= 0 && y < currentMode.Height then
             pixels[y, x] <- color
@@ -355,6 +357,7 @@ type private DefaultScreenChannel(id: ChannelId, kind: ChannelKind, reader: unit
     let mutable characterFonts = 0, 0
     let mutable ink = [ 7 ]
     let mutable paper = 0
+    let mutable strip = [ 0 ]
     let mutable border = 0
     let mutable mode = initialMode
     let mutable paneBuffer = ScreenBuffer(ScreenDefaults.paneMode initialMode 1 1)
@@ -372,6 +375,7 @@ type private DefaultScreenChannel(id: ChannelId, kind: ChannelKind, reader: unit
         characterFonts <- 0, 0
         ink <- [ 7 ]
         paper <- ScreenDefaults.defaultPaperForChannel channelNumber
+        strip <- [ paper ]
         border <- 0
         match config with
         | Some channelConfig ->
@@ -396,8 +400,9 @@ type private DefaultScreenChannel(id: ChannelId, kind: ChannelKind, reader: unit
             let width, height, x, y = window
             let cursorX, cursorY = cursor
             let foreground = ink |> List.tryHead |> Option.defaultValue 7
-            buffer.WriteText(width, height, x, y, cursorX, cursorY, foreground, paper, text)
-            paneBuffer.WriteText(width, height, 0, 0, cursorX, cursorY, foreground, paper, text)
+            let background = strip |> List.tryHead |> Option.defaultValue paper
+            buffer.WriteText(width, height, x, y, cursorX, cursorY, foreground, paper, background, text)
+            paneBuffer.WriteText(width, height, 0, 0, cursorX, cursorY, foreground, paper, background, text)
             let nextCursorX = min (max 0 (width - 1)) (cursorX + text.Length)
             cursor <- nextCursorX, cursorY
             if mirrorToWriter then
@@ -446,7 +451,11 @@ type private DefaultScreenChannel(id: ChannelId, kind: ChannelKind, reader: unit
                 (if font2 = -1 then currentFont2 else font2)
         member _.GetCharacterFonts() = characterFonts
         member _.SetInk(values: int list) = ink <- values
-        member _.SetPaper(value: int) = paper <- value
+        member _.SetPaper(value: int) =
+            paper <- value
+            strip <- [ value ]
+        member _.SetStrip(values: int list) =
+            strip <- if List.isEmpty values then [ paper ] else values
         member _.SetBorder(value: int) = border <- value
     member this.ApplyMode(mode: ScreenModeInfo) =
         resetForMode mode
@@ -644,6 +653,7 @@ type private DefaultScreenDevice(writer: string -> unit, buffer: ScreenBuffer) =
     let mutable characterFonts = 0, 0
     let mutable ink = [ 7 ]
     let mutable paper = 0
+    let mutable strip = [ 0 ]
     let mutable mode = ScreenDefaults.supportedModes[0]
     let mutable paneBuffer = ScreenBuffer(ScreenDefaults.paneMode ScreenDefaults.supportedModes[0] 1 1)
 
@@ -659,6 +669,7 @@ type private DefaultScreenDevice(writer: string -> unit, buffer: ScreenBuffer) =
         characterFonts <- 0, 0
         ink <- [ 7 ]
         paper <- 0
+        strip <- [ paper ]
         let width, height, _, _ = window
         paneBuffer <- ScreenBuffer(ScreenDefaults.paneMode selectedMode width height)
 
@@ -709,13 +720,18 @@ type private DefaultScreenDevice(writer: string -> unit, buffer: ScreenBuffer) =
             let width, height, x, y = window
             let cursorX, cursorY = cursor
             let foreground = ink |> List.tryHead |> Option.defaultValue 7
-            buffer.WriteText(width, height, x, y, cursorX, cursorY, foreground, paper, text)
-            paneBuffer.WriteText(width, height, 0, 0, cursorX, cursorY, foreground, paper, text)
+            let background = strip |> List.tryHead |> Option.defaultValue paper
+            buffer.WriteText(width, height, x, y, cursorX, cursorY, foreground, paper, background, text)
+            paneBuffer.WriteText(width, height, 0, 0, cursorX, cursorY, foreground, paper, background, text)
             let nextCursorX = min (max 0 (width - 1)) (cursorX + text.Length)
             cursor <- nextCursorX, cursorY
             writer text
         member _.SetInk(values: int list) = ink <- values
-        member _.SetPaper(value: int) = paper <- value
+        member _.SetPaper(value: int) =
+            paper <- value
+            strip <- [ value ]
+        member _.SetStrip(values: int list) =
+            strip <- if List.isEmpty values then [ paper ] else values
         member _.SetBorder(_value: int) = ()
         member _.GetSupportedModes() = ScreenDefaults.supportedModes
         member _.GetMode() = mode
@@ -892,6 +908,9 @@ type private DefaultInputDevice(reader: unit -> string option, readKey: unit -> 
         member _.ReadKey() = readKey ()
         member _.KeyAvailable() = keyAvailable ()
         member _.GetKeyRow(row) = keyRowState row
+        member _.Flush() =
+            while keyAvailable () do
+                readKey () |> ignore
 
 type private NullSoundDevice() =
     let mutable beepingUntil = DateTime.MinValue
@@ -1063,6 +1082,7 @@ type private DefaultRuntimeHost(options: DefaultHostOptions) =
                 member _.WriteText(text) = (channel1 :> IScreenChannel).WriteText(text)
                 member _.SetInk(values) = (channel1 :> IScreenChannel).SetInk(values)
                 member _.SetPaper(value) = (channel1 :> IScreenChannel).SetPaper(value)
+                member _.SetStrip(values) = (channel1 :> IScreenChannel).SetStrip(values)
                 member _.SetBorder(value) = (channel1 :> IScreenChannel).SetBorder(value)
                 member _.GetSupportedModes() = ScreenDefaults.supportedModes
                 member _.GetMode() = currentMode

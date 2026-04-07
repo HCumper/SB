@@ -73,7 +73,7 @@ let private coreCallableBuiltInNames =
       "AUTO"; "BAUD"; "BEEP"; "BEEPING"; "BLOCK"; "BORDER"
       "CALL"; "CHAR_USE"; "CHR$"; "CIRCLE"; "CIRCLE_R"; "CLEAR"; "CLOSE"; "CLS"; "CODE"; "CONTINUE"; "COPY"; "COPY_N"; "COS"; "COT"; "CSIZE"; "CURSOR"
       "DATE"; "DATE$"; "DAY$"; "DEG"; "DELETE"; "DIMN"; "DIR"; "DLINE"
-      "ELLIPSE"; "ELLIPSE_R"; "EOF"; "EXEC"; "EXEC_W"; "EXP"; "FILL"; "FILL$"; "FLASH"; "FORMAT"
+      "ELLIPSE"; "ELLIPSE_R"; "EOF"; "EXEC"; "EXEC_W"; "EXP"; "FILL"; "FILL$"; "FLASH"; "FLUSH"; "FORMAT"
       "ERLIN"; "ERNUM"; "ERR_NC"; "ERR_NJ"; "ERR_OM"; "ERR_OR"; "ERR_BO"; "ERR_NO"; "ERR_NF"; "ERR_EX"; "ERR_IU"; "ERR_EF"; "ERR_DF"; "ERR_BN"; "ERR_TE"; "ERR_FF"; "ERR_BP"; "ERR_FE"; "ERR_XP"; "ERR_OV"; "ERR_NI"; "ERR_RO"; "ERR_BL"; "REPORT"
       "INK"; "INKEY$"; "INPUT"; "INSTR"; "INT"
       "KEYROW"; "LBYTES"; "LEN"; "LINE"; "LINE_R"; "LIST"; "LN"; "LOAD"; "LOG10"; "LRUN"
@@ -224,6 +224,7 @@ let private builtInSignatures =
       signature "ERR_BL" (Some 0) (Some [])
       signature "EXP" (Some 1) (Some [ Numeric ])
       signature "FILL$" (Some 2) (Some [ String; Numeric ])
+      signature "FLUSH" (Some 0) (Some [])
       signature "GETENV$" (Some 1) (Some [ String ])
       signature "BEEPING" (Some 0) (Some [])
       signature "INKEY" None None

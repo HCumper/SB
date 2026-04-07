@@ -736,9 +736,10 @@ type ASTBuildingVisitor() =
     override this.VisitForStmt(ctx: SBParser.ForStmtContext) =
         let p = posOfTree ctx
         let name =
-            match ctx.ID() with
-            | null -> ""
-            | id -> id.GetText()
+            ctx.ID()
+            |> Seq.tryHead
+            |> Option.map _.GetText()
+            |> Option.defaultValue ""
 
         let prefixExprs =
             ctx.forPrefixItem()
@@ -1132,7 +1133,7 @@ type ASTBuildingVisitor() =
     override this.VisitTerminal(node: ITerminalNode) =
         let sym = node.Symbol
         let p = posOfToken sym
-        match SBLexer.DefaultVocabulary.GetSymbolicName(sym.Type) with
+        match SBGrammarApi.GetTokenSymbolicName(sym.Type) with
         | "INTEGER" -> single (ExprNode(mkNumberLiteral p sym.Text))
         | "HEXINTEGER" -> single (ExprNode(mkNumberLiteral p sym.Text))
         | "REAL" -> single (ExprNode(mkNumberLiteral p sym.Text))

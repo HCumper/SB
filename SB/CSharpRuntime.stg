@@ -639,6 +639,12 @@ private static void ExecuteBuiltInStatement(string name, object? channel, params
         case "PAUSE":
             System.Threading.Thread.Sleep(Math.Max(0, AsInt(args.ElementAtOrDefault(0))));
             break;
+        case "FLUSH":
+            while (Console.KeyAvailable)
+            {
+                Console.ReadKey(true);
+            }
+            break;
         case "BEEP":
             __beeping = true;
             try { Console.Beep(Math.Max(37, AsInt(args.ElementAtOrDefault(0))), Math.Max(0, AsInt(args.ElementAtOrDefault(1)))); } catch { }

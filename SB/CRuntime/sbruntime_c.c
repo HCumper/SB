@@ -832,6 +832,7 @@ void execute_builtin_statement(const char* name, Value channel, int arg_count, .
     }
     if (ci_compare(name, "MODE") == 0) { SB_Mode(arg_count == 0 ? 4 : as_int(va_arg(args, Value))); va_end(args); return; }
     if (ci_compare(name, "PAUSE") == 0) { runtime_pause_ms(arg_count == 0 ? 0 : as_int(va_arg(args, Value))); va_end(args); return; }
+    if (ci_compare(name, "FLUSH") == 0) { va_end(args); return; }
     if (ci_compare(name, "BEEP") == 0) { fputc('\a', stdout); fflush(stdout); va_end(args); return; }
     if (ci_compare(name, "POKE") == 0) { Value address = va_arg(args, Value); Value value = va_arg(args, Value); va_end(args); poke_memory(as_int(address), as_int(value), 1); return; }
     if (ci_compare(name, "POKE_W") == 0) { Value address = va_arg(args, Value); Value value = va_arg(args, Value); va_end(args); poke_memory(as_int(address), as_int(value), 2); return; }
@@ -902,6 +903,7 @@ void execute_builtin_statement(const char* name, Value channel, int arg_count, .
     }
     if (ci_compare(name, "INK") == 0) { _SB_Ink(resolve_writer(channel), (colour_t)as_int(va_arg(args, Value))); va_end(args); return; }
     if (ci_compare(name, "PAPER") == 0) { _SB_Paper(resolve_writer(channel), (colour_t)as_int(va_arg(args, Value))); va_end(args); return; }
+    if (ci_compare(name, "STRIP") == 0) { SB_Strip(resolve_writer(channel), as_int(va_arg(args, Value))); va_end(args); return; }
     if (ci_compare(name, "BORDER") == 0)
     {
         FILE* writer = resolve_writer(channel);
@@ -949,7 +951,7 @@ void execute_builtin_statement(const char* name, Value channel, int arg_count, .
     if (ci_compare(name, "FLASH") == 0) { SB_Flash(resolve_writer(channel), as_int(va_arg(args, Value))); va_end(args); return; }
     if (ci_compare(name, "WINDOW") == 0 || ci_compare(name, "AT") == 0 || ci_compare(name, "CURSOR") == 0
         || ci_compare(name, "CSIZE") == 0 || ci_compare(name, "CHAR_USE") == 0 || ci_compare(name, "S_FONT") == 0
-        || ci_compare(name, "INK") == 0 || ci_compare(name, "PAPER") == 0 || ci_compare(name, "BORDER") == 0
+        || ci_compare(name, "INK") == 0 || ci_compare(name, "PAPER") == 0 || ci_compare(name, "STRIP") == 0 || ci_compare(name, "BORDER") == 0
         || ci_compare(name, "CLEAR") == 0 || ci_compare(name, "SCROLL") == 0 || ci_compare(name, "WIDTH") == 0
         || ci_compare(name, "PAN") == 0 || ci_compare(name, "RECOL") == 0 || ci_compare(name, "PALETTE") == 0
         || ci_compare(name, "PLOT") == 0 || ci_compare(name, "POINT") == 0 || ci_compare(name, "POINT_R") == 0

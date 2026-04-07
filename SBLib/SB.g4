@@ -271,7 +271,8 @@ forStmt
     : For ID Equal forPrefixItem* forStartExpr To forEndExpr forSuffixItem* (Step forStepExpr)?
       (
           Colon Comment Newline forBody                            // long form + trailing remark
-        | Colon stmtlist                                            // short form
+        | Colon endFor ID?                                          // short form, empty body
+        | Colon stmtlist (Colon endFor ID?)?                        // short form, optional trailing END FOR
         | Newline forBody                                          // long form
       )
     ;

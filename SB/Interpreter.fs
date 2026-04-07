@@ -141,8 +141,21 @@ type private ControlFlow =
     | RestartProgram of HirProgram * SyntaxAst.Ast option * int option
     | StopExecution
 
-type private GosubReturn = RuntimeState -> Result<ControlFlow * RuntimeState, RuntimeError>
-type private LineTarget = RuntimeState -> GosubReturn list -> Result<ControlFlow * RuntimeState, RuntimeError>
+type private BlockContinuation = RuntimeState -> GosubReturn list -> Result<ControlFlow * RuntimeState, RuntimeError>
+
+and private PendingBlock =
+    { State: RuntimeState
+      Block: HirBlock
+      Pc: int
+      GosubStack: GosubReturn list
+      KContinue: BlockContinuation }
+
+and private ExecutionOutcome =
+    | Completed of Result<ControlFlow * RuntimeState, RuntimeError>
+    | Transfer of PendingBlock
+
+and private GosubReturn = RuntimeState -> PendingBlock
+and private LineTarget = RuntimeState -> GosubReturn list -> PendingBlock
 
 let private formatRuntimeErrorCode = function
     | MissingStorageCell -> "MissingStorageCell"
@@ -537,10 +550,21 @@ let private readInputFromChannel channelId state pos =
 
         Result.Ok(waitForLine ())
     | Some resolvedChannelId ->
-        match state.Options.Host.Channels.Get resolvedChannelId with
-        | Result.Ok channel -> Result.Ok(channel.ReadText())
-        | Result.Error hostError ->
-            runtimeError UnsupportedChannelExecution (Some pos) (hostErrorText hostError)
+        match resolvedChannelId with
+        | ChannelId 0 ->
+            let rec waitForConsoleLine () =
+                match state.Options.Host.Input.ReadLine() with
+                | Some line -> Some line
+                | None ->
+                    state.Options.Sleeper 50
+                    waitForConsoleLine ()
+
+            Result.Ok(waitForConsoleLine ())
+        | _ ->
+            match state.Options.Host.Channels.Get resolvedChannelId with
+            | Result.Ok channel -> Result.Ok(channel.ReadText())
+            | Result.Error hostError ->
+                runtimeError UnsupportedChannelExecution (Some pos) (hostErrorText hostError)
 
 let private validateScreenChannel channelId state pos =
     match channelId with
@@ -1351,6 +1375,15 @@ and private executeBuiltInCall state kind channel args targets pos =
                             |> max 0
                         nextState.Options.Sleeper duration
                         Continue, nextState)))
+        | "FLUSH" ->
+            unsupportedChannel ()
+            |> Result.bind (fun _ ->
+                evalExprList state args
+                |> Result.bind (fun (values, nextState) ->
+                    requireArity 0 values.Length
+                    |> Result.map (fun () ->
+                        nextState.Options.Host.Input.Flush()
+                        Continue, nextState)))
         | "BEEP" ->
             unsupportedChannel ()
             |> Result.bind (fun _ ->
@@ -1411,6 +1444,12 @@ and private executeBuiltInCall state kind channel args targets pos =
                 | first :: _ ->
                     executeChannelScreenOp resolvedChannel nextState pos (fun screenChannel -> screenChannel.SetPaper(first)) (fun screen -> screen.SetPaper(first))
                 | _ -> Result.Ok nextState)
+        | "STRIP" ->
+            executeScreenOp 1 true (fun resolvedChannel nextState numericArgs ->
+                match numericArgs with
+                | [] -> Result.Ok nextState
+                | _ ->
+                    executeChannelScreenOp resolvedChannel nextState pos (fun screenChannel -> screenChannel.SetStrip(numericArgs)) (fun screen -> screen.SetStrip(numericArgs)))
         | "BORDER" ->
             executeScreenOp 1 true (fun resolvedChannel nextState numericArgs ->
                 match numericArgs with
@@ -1732,6 +1771,22 @@ and private executeBuiltInCall state kind channel args targets pos =
     | OnGosubBuiltIn -> runtimeError BuiltInStatementNotImplemented (Some pos) $"Built-in statement '{kind}' is not implemented."
 
 and private executeStmt resolveLine gosubStack state stmt =
+    let rec blockHasLineJump block =
+        let rec stmtHasLineJump stmt =
+            match stmt with
+            | Goto _
+            | OnGoto _ -> true
+            | If(_, thenBlock, elseBlock, _) ->
+                blockHasLineJump thenBlock
+                || (elseBlock |> Option.exists blockHasLineJump)
+            | For(_, _, _, _, _, body, _)
+            | ForSequence(_, _, _, _, _, _, _, body, _)
+            | Repeat(_, _, body, _)
+            | WhenError(body, _) -> blockHasLineJump body
+            | _ -> false
+
+        block |> List.exists stmtHasLineJump
+
     match stmt with
     | Assign(target, expr, _) ->
         evalExpr state expr
@@ -1753,10 +1808,16 @@ and private executeStmt resolveLine gosubStack state stmt =
     | If(condition, thenBlock, elseBlock, _) ->
         evalExpr state condition
         |> Result.bind (fun (value, nextState) ->
-            if truthy value then executeBlock resolveLine nextState thenBlock 0 gosubStack (fun state _ -> Result.Ok(Continue, state))
+            let runBranch block =
+                if blockHasLineJump block then
+                    executeInlineBlock resolveLine nextState block 0 gosubStack (fun state _ -> Result.Ok(Continue, state)) |> fst
+                else
+                    executeBlock resolveLine nextState block 0 gosubStack (fun state _ -> Result.Ok(Continue, state))
+
+            if truthy value then runBranch thenBlock
             else
                 match elseBlock with
-                | Some block -> executeBlock resolveLine nextState block 0 gosubStack (fun state _ -> Result.Ok(Continue, state))
+                | Some block -> runBranch block
                 | None -> Result.Ok(Continue, nextState))
     | For(loopId, symbolId, startExpr, endExpr, stepExpr, body, pos) ->
         evalExprList state [ startExpr; endExpr; stepExpr ]
@@ -1970,8 +2031,87 @@ and private handleRuntimeError resolveLine block pc gosubStack state (error: Run
         Result.Error error
 
 and private executeBlock resolveLine state block pc gosubStack kContinue =
+    let mutable pending =
+        { State = state
+          Block = block
+          Pc = pc
+          GosubStack = gosubStack
+          KContinue = kContinue }
+
+    let mutable finished = false
+    let mutable result = Result.Ok(Continue, state)
+
+    while not finished do
+        let inlineResult, context =
+            executeInlineBlock resolveLine pending.State pending.Block pending.Pc pending.GosubStack pending.KContinue
+
+        match inlineResult with
+        | Result.Ok(JumpToLine lineNumber, nextState) ->
+            match resolveLine lineNumber with
+            | Some target ->
+                let targetPending = target nextState context.GosubStack
+                let wrappedContinue state gosubStack =
+                    targetPending.KContinue state gosubStack
+                    |> Result.map (fun (flow, state) ->
+                        match flow with
+                        | Continue -> TransferredContinue, state
+                        | _ -> flow, state)
+
+                pending <- { targetPending with KContinue = wrappedContinue }
+            | None ->
+                result <- Result.Ok(JumpToLine lineNumber, nextState)
+                finished <- true
+        | Result.Ok(GosubToLine lineNumber, nextState) ->
+            let returnCont returnState =
+                { State = returnState
+                  Block = context.Block
+                  Pc = context.Pc + 1
+                  GosubStack = context.GosubStack
+                  KContinue = context.KContinue }
+
+            match resolveLine lineNumber with
+            | Some target ->
+                pending <- target nextState (returnCont :: context.GosubStack)
+            | None ->
+                result <- Result.Ok(GosubToLine lineNumber, nextState)
+                finished <- true
+        | Result.Ok(BareReturn, nextState) ->
+            match context.GosubStack with
+            | returnCont :: _ ->
+                pending <- returnCont nextState
+            | [] ->
+                result <- Result.Ok(BareReturn, nextState)
+                finished <- true
+        | completedResult ->
+            result <- completedResult
+            finished <- true
+
+    result
+
+and private executeInlineBlock resolveLine state block pc gosubStack kContinue =
+    let mutable pending =
+        { State = state
+          Block = block
+          Pc = pc
+          GosubStack = gosubStack
+          KContinue = kContinue }
+
+    let mutable finished = false
+    let mutable result = Result.Ok(Continue, state)
+
+    while not finished do
+        match executeBlockCore resolveLine pending.State pending.Block pending.Pc pending.GosubStack pending.KContinue with
+        | Completed completedResult ->
+            result <- completedResult
+            finished <- true
+        | Transfer next ->
+            pending <- next
+
+    result, pending
+
+and private executeBlockCore resolveLine state block pc gosubStack kContinue =
     if pc >= block.Length then
-        kContinue state gosubStack
+        Completed(kContinue state gosubStack)
     else
         let currentStmt = block[pc]
         let currentLineNumber =
@@ -1985,35 +2125,23 @@ and private executeBlock resolveLine state block pc gosubStack kContinue =
 
         let continueWithFlow (flow, nextState) =
             match flow with
-            | Continue -> executeBlock resolveLine nextState block (pc + 1) gosubStack kContinue
-            | JumpToLine lineNumber ->
-                match resolveLine lineNumber with
-                | Some target ->
-                    target nextState gosubStack
-                    |> Result.map (fun (flow, state) ->
-                        match flow with
-                        | Continue -> TransferredContinue, state
-                        | _ -> flow, state)
-                | None -> Result.Ok(JumpToLine lineNumber, nextState)
-            | GosubToLine lineNumber ->
-                let returnCont returnState =
-                    executeBlock resolveLine returnState block (pc + 1) gosubStack kContinue
-
-                match resolveLine lineNumber with
-                | Some target -> target nextState (returnCont :: gosubStack)
-                | None -> Result.Ok(GosubToLine lineNumber, nextState)
-            | BareReturn ->
-                match gosubStack with
-                | returnCont :: _ -> returnCont nextState
-                | [] -> Result.Ok(BareReturn, nextState)
-            | _ -> Result.Ok(flow, nextState)
+            | Continue ->
+                Transfer
+                    { State = nextState
+                      Block = block
+                      Pc = pc + 1
+                      GosubStack = gosubStack
+                      KContinue = kContinue }
+            | _ -> Completed(Result.Ok(flow, nextState))
 
         let stepResult =
             match executeStmt resolveLine gosubStack stateAtStmt currentStmt with
             | Result.Ok result -> Result.Ok result
             | Result.Error error -> handleRuntimeError resolveLine block pc gosubStack stateAtStmt error
 
-        stepResult |> Result.bind continueWithFlow
+        match stepResult with
+        | Result.Ok result -> continueWithFlow result
+        | Result.Error error -> Completed(Result.Error error)
 
 and private buildLineTargets rootBlock =
     let rec build block kContinue =
@@ -2024,7 +2152,11 @@ and private buildLineTargets rootBlock =
                 | LineNumber(value, _) ->
                     [ value,
                       (fun state gosubStack ->
-                          executeBlock resolveLine state block index gosubStack kContinue) ]
+                          { State = state
+                            Block = block
+                            Pc = index
+                            GosubStack = gosubStack
+                            KContinue = kContinue }) ]
                 | _ -> []
 
             let continueAfter state gosubStack =
@@ -2063,7 +2195,9 @@ let rec private executeTopLevelProgram state startLine =
         match startLine with
         | Some lineNumber ->
             match resolveLine lineNumber with
-            | Some target -> target state []
+            | Some target ->
+                let pending = target state []
+                executeBlock resolveLine pending.State pending.Block pending.Pc pending.GosubStack pending.KContinue
             | None -> runtimeError MissingGotoTarget None $"RUN target line {lineNumber} does not exist."
         | None ->
             executeBlock resolveLine state state.Program.Main 0 [] (fun currentState _ -> Result.Ok(Continue, currentState))

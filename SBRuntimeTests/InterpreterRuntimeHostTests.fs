@@ -948,6 +948,30 @@ let ``interpreter minimum arity graphics and display primitives dispatch correct
         Assert.Fail($"Expected interpretation to succeed, got %A{err}")
 
 [<Test>]
+let ``interpreter strip dispatches separately from paper and paper resets strip`` () =
+    let host, screenState = createScreenHost []
+    let channel0 = H.Literal(H.ConstInt 0, H.HirType.Int, pos)
+    let hir =
+        makeProgram
+            Map.empty
+            []
+            [ H.BuiltInCall(H.NamedBuiltIn "PAPER", explicitChannel channel0, [ H.Literal(H.ConstInt 2, H.HirType.Int, pos) ], pos)
+              H.BuiltInCall(H.NamedBuiltIn "STRIP", explicitChannel channel0, [ H.Literal(H.ConstInt 7, H.HirType.Int, pos); H.Literal(H.ConstInt 0, H.HirType.Int, pos) ], pos)
+              H.BuiltInCall(H.NamedBuiltIn "PAPER", explicitChannel channel0, [ H.Literal(H.ConstInt 4, H.HirType.Int, pos) ], pos) ]
+
+    let result =
+        interpretProgramWithOptions
+            { defaultRuntimeOptions with Host = host }
+            hir
+
+    match result with
+    | Result.Ok _ ->
+        Assert.That(screenState.Windows[0].Paper, Is.EqualTo(Some 4))
+        Assert.That(screenState.Windows[0].Strip, Is.EqualTo(Some [ 4 ]))
+    | Result.Error err ->
+        Assert.Fail($"Expected interpretation to succeed, got %A{err}")
+
+[<Test>]
 let ``interpreter extended arity graphics and display primitives dispatch correctly`` () =
     let host, screenState = createScreenHost []
     let channel0 = H.Literal(H.ConstInt 0, H.HirType.Int, pos)
@@ -1623,6 +1647,31 @@ let ``default host pane snapshots stay independent per channel`` () =
     Assert.That(paneText pane1, Does.Not.Contain("TWO"))
     Assert.That(paneText pane2, Does.Contain("TWO"))
     Assert.That(paneText pane2, Does.Not.Contain("ONE"))
+
+[<Test>]
+let ``default host snapshot text cells use strip as text background`` () =
+    let host, display =
+        DefaultHost.createWithDisplay {
+            ReadLine = fun () -> None
+            ReadKey = fun () -> None
+            KeyAvailable = fun () -> false
+            KeyRowState = fun _ -> 0
+            WriteLine = ignore
+        }
+
+    match host.Channels.Get(ChannelId 1) with
+    | Result.Ok (:? IScreenChannel as screenChannel) ->
+        screenChannel.SetPaper(2)
+        screenChannel.SetStrip([ 7; 0 ])
+        screenChannel.WriteText("A")
+        let snapshot = display.GetSnapshot()
+        let pane = snapshot.Panes |> List.find (fun item -> item.ChannelId = Some 1)
+        Assert.That(pane.Text[0, 0].Paper, Is.EqualTo(2))
+        Assert.That(pane.Text[0, 0].Strip, Is.EqualTo(7))
+    | Result.Ok channel ->
+        Assert.Fail($"Expected screen channel, got {channel.Kind}")
+    | Result.Error err ->
+        Assert.Fail($"Expected channel lookup to succeed, got %A{err}")
 
 [<Test>]
 let ``default host maps unchanneled print to output window and input prompt to console window`` () =

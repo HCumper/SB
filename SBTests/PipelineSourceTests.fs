@@ -249,6 +249,33 @@ let ``loadAstFromInput accepts double colon empty separators in short form if bo
         )
 
 [<Test>]
+let ``loadAstFromInput accepts short form for with trailing end for marker`` () =
+    withTempSource
+        "10 FOR i=2 TO 4 : PRINT i : END FOR i\n"
+        (fun path ->
+            match loadAstFromInput (testSettingsWithSyntaxChecking Rigorous path) with
+            | Error err -> Assert.Fail($"Expected short-form FOR with trailing END FOR to parse, got %A{err}")
+            | Ok(_, _, Program(_, [ Line(_, Some 10, [ ForStmt(_, "i", [], NumberLiteral(_, _, "2"), NumberLiteral(_, _, "4"), [], None, StatementBlock bodyStmts, _) ]) ])) ->
+                Assert.That(bodyStmts, Has.Length.EqualTo(1))
+                match bodyStmts with
+                | [ ProcedureCall(_, "PRINT", [ Identifier(_, _, "i") ]) ] -> ()
+                | other -> Assert.Fail($"Unexpected short-form FOR body with trailing END FOR: %A{other}")
+            | Ok(_, _, ast) -> Assert.Fail($"Unexpected AST for short-form FOR with trailing END FOR: %A{ast}")
+        )
+
+[<Test>]
+let ``loadAstFromInput accepts short form for with empty body and trailing end for marker`` () =
+    withTempSource
+        "10 FOR i=1 TO 120 : END FOR i\n"
+        (fun path ->
+            match loadAstFromInput (testSettingsWithSyntaxChecking Rigorous path) with
+            | Error err -> Assert.Fail($"Expected empty short-form FOR with trailing END FOR to parse, got %A{err}")
+            | Ok(_, _, Program(_, [ Line(_, Some 10, [ ForStmt(_, "i", [], NumberLiteral(_, _, "1"), NumberLiteral(_, _, "120"), [], None, StatementBlock bodyStmts, _) ]) ])) ->
+                Assert.That(bodyStmts, Is.Empty)
+            | Ok(_, _, ast) -> Assert.Fail($"Unexpected AST for empty short-form FOR with trailing END FOR: %A{ast}")
+        )
+
+[<Test>]
 let ``loadAstFromInput nests numbered for next loop bodies across lines`` () =
     withTempSource
         "10 DEFine PROCedure demo\n20 FOR n=1 TO 3:PRINT n\n30 PRINT n+10\n40 NEXT n\n50 END DEFine\n"

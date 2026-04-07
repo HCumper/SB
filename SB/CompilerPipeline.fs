@@ -216,7 +216,7 @@ let getSettings argv : RuntimeSettings =
 
 let createLexer (input: AntlrInputStream) =
     let factory = CommonTokenFactory() :> ITokenFactory
-    SBLexer(input, TokenFactory = factory)
+    SBGrammarApi.CreateLexer(input, factory)
 
 let private splitInlineElseBodies (sourceText: string) =
     let normalizeNewlines (text: string) = text.Replace("\r\n", "\n")

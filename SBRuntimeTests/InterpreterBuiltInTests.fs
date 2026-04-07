@@ -680,6 +680,56 @@ let ``interpreter beep and beeping use host sound state`` () =
     Assert.That(screenState.Beeps[0], Is.EqualTo((1000, 10)))
 
 [<Test>]
+let ``interpreter flush clears pending input before input reads`` () =
+    let levelId = H.SymbolId 0
+    let levelStorage = makeStorage levelId 0 "LEVEL" H.HirType.Int H.GlobalStorage
+    let outputs = ResizeArray<string>()
+    let pendingLines = Collections.Generic.Queue<string>([ ""; "2" ])
+
+    let inputDevice =
+        { new IInputDevice with
+            member _.ReadLine() =
+                if pendingLines.Count > 0 then Some(pendingLines.Dequeue()) else None
+            member _.ReadKey() = None
+            member _.KeyAvailable() = false
+            member _.GetKeyRow(_row) = 0
+            member _.Flush() =
+                if pendingLines.Count > 0 then
+                    pendingLines.Dequeue() |> ignore }
+
+    let baseHost =
+        DefaultHost.create {
+            ReadLine = fun () -> None
+            ReadKey = fun () -> None
+            KeyAvailable = fun () -> false
+            KeyRowState = fun _ -> 0
+            WriteLine = fun line -> outputs.Add(line)
+        }
+
+    let host =
+        { new IRuntimeHost with
+            member _.Channels = baseHost.Channels
+            member _.Screen = baseHost.Screen
+            member _.Graphics = baseHost.Graphics
+            member _.Input = inputDevice
+            member _.Sound = baseHost.Sound
+            member _.Files = baseHost.Files
+            member _.Environment = baseHost.Environment
+            member _.Memory = baseHost.Memory }
+
+    let hir =
+        makeProgram
+            (Map.ofList [ levelId, "LEVEL" ])
+            [ levelStorage ]
+            [ H.BuiltInCall(H.NamedBuiltIn "FLUSH", None, [], pos);
+              H.HirStmt.Input(None, [ H.Literal(H.ConstString "WHICH LEVEL?", H.HirType.String, pos) ], [ H.WriteVar(levelId, H.HirType.Int, pos) ], pos);
+              H.BuiltInCall(H.Print, None, [ H.ReadVar(levelId, H.HirType.Int, pos) ], pos) ]
+
+    let output = runHirProgramWithOptions { defaultRuntimeOptions with Host = host } hir
+
+    Assert.That(String.concat "|" output, Is.EqualTo("WHICH LEVEL?|2"))
+
+[<Test>]
 let ``interpreter rnd unsupported arguments reports coded runtime error`` () =
     let rndId = H.SymbolId 0
     let xId = H.SymbolId 1

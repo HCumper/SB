@@ -78,6 +78,7 @@ type IScreenChannel =
     abstract GetCharacterFonts: unit -> int * int
     abstract SetInk: int list -> unit
     abstract SetPaper: int -> unit
+    abstract SetStrip: int list -> unit
     abstract SetBorder: int -> unit
 
 type IChannelManager =
@@ -110,6 +111,7 @@ type IScreenDevice =
     abstract WriteText: string -> unit
     abstract SetInk: int list -> unit
     abstract SetPaper: int -> unit
+    abstract SetStrip: int list -> unit
     abstract SetBorder: int -> unit
     abstract GetSupportedModes: unit -> ScreenModeInfo list
     abstract GetMode: unit -> ScreenModeInfo
@@ -147,6 +149,7 @@ type IInputDevice =
     abstract ReadKey: unit -> KeyInfo option
     abstract KeyAvailable: unit -> bool
     abstract GetKeyRow: int -> int
+    abstract Flush: unit -> unit
 
 type ISoundDevice =
     abstract Beep: int * int -> unit
@@ -174,6 +177,7 @@ type ScreenTextCell = {
     Character: char
     Ink: int
     Paper: int
+    Strip: int
 }
 
 type ScreenPaneSnapshot = {

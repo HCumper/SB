@@ -104,6 +104,7 @@ type ScreenWindowState = {
     mutable ClearCount: int
     mutable Ink: int list option
     mutable Paper: int option
+    mutable Strip: int list option
     mutable Border: int option
     Writes: ResizeArray<string>
 }
@@ -150,6 +151,7 @@ let createScreenHost (inputs: string list) =
         window.CharacterFonts <- 0, 0
         window.Ink <- Some [ 7 ]
         window.Paper <- Some 0
+        window.Strip <- Some [ 0 ]
         window.Border <- Some 0
 
     let makeWindowState () =
@@ -165,6 +167,7 @@ let createScreenHost (inputs: string list) =
           ClearCount = 0
           Ink = None
           Paper = None
+          Strip = None
           Border = None
           Writes = ResizeArray<string>() }
 
@@ -445,7 +448,13 @@ let createScreenHost (inputs: string list) =
                 | None -> ()
             member _.SetPaper(value: int) =
                 match Map.tryFind channelId state.Windows with
-                | Some window -> window.Paper <- Some value
+                | Some window ->
+                    window.Paper <- Some value
+                    window.Strip <- Some [ value ]
+                | None -> ()
+            member _.SetStrip(values: int list) =
+                match Map.tryFind channelId state.Windows with
+                | Some window -> window.Strip <- Some values
                 | None -> ()
             member _.SetBorder(value: int) =
                 match Map.tryFind channelId state.Windows with
@@ -552,7 +561,13 @@ let createScreenHost (inputs: string list) =
                 | None -> ()
             member _.SetPaper(value: int) =
                 match Map.tryFind channelId state.Windows with
-                | Some window -> window.Paper <- Some value
+                | Some window ->
+                    window.Paper <- Some value
+                    window.Strip <- Some [ value ]
+                | None -> ()
+            member _.SetStrip(values: int list) =
+                match Map.tryFind channelId state.Windows with
+                | Some window -> window.Strip <- Some values
                 | None -> ()
             member _.SetBorder(value: int) =
                 match Map.tryFind channelId state.Windows with
@@ -676,7 +691,13 @@ let createScreenHost (inputs: string list) =
                         | None -> ()
                     member _.SetPaper(value: int) =
                         match Map.tryFind 1 state.Windows with
-                        | Some window -> window.Paper <- Some value
+                        | Some window ->
+                            window.Paper <- Some value
+                            window.Strip <- Some [ value ]
+                        | None -> ()
+                    member _.SetStrip(values: int list) =
+                        match Map.tryFind 1 state.Windows with
+                        | Some window -> window.Strip <- Some values
                         | None -> ()
                     member _.SetBorder(value: int) =
                         match Map.tryFind 1 state.Windows with
@@ -807,7 +828,10 @@ let createScreenHost (inputs: string list) =
                     member _.ReadLine() = reader ()
                     member _.ReadKey() = None
                     member _.KeyAvailable() = false
-                    member _.GetKeyRow(_row) = 0 }
+                    member _.GetKeyRow(_row) = 0
+                    member _.Flush() =
+                        while state.Inputs.Count > 0 do
+                            state.Inputs.Dequeue() |> ignore }
             member _.Sound =
                 { new ISoundDevice with
                     member _.Beep(pitch, duration) =

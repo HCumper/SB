@@ -68,6 +68,27 @@ let ``interpreter goto jumps to numbered line target`` () =
     Assert.That(String.concat "|" output, Is.EqualTo("right"))
 
 [<Test>]
+let ``interpreter backward goto can iterate without growing the runtime stack`` () =
+    let ast =
+        Program(
+            pos,
+            [ Line(pos, Some 10, [ Assignment(pos, id "count", num "0") ])
+              Line(pos, Some 20, [ Assignment(pos, id "count", binary "+" (id "count") (num "1")) ])
+              Line(
+                pos,
+                Some 30,
+                [ IfStmt(
+                    pos,
+                    binary "<" (id "count") (num "5000"),
+                    LineBlock [ Line(pos, Some 35, [ GotoStmt(pos, num "20") ]) ],
+                    None) ])
+              Line(pos, Some 40, [ ProcedureCall(pos, "PRINT", [ id "count" ]) ]) ])
+
+    let output = runProgram ast
+
+    Assert.That(String.concat "|" output, Is.EqualTo("5000"))
+
+[<Test>]
 let ``interpreter gosub returns to following statement`` () =
     let ast =
         Program(
