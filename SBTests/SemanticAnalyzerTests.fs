@@ -149,6 +149,30 @@ let ``repeat closing name mismatch reports semantic error`` () =
     Assert.That(analyzed.Errors, Has.Some.Contains("Closing name 'inner' does not match REPEAT loop 'outer'"))
 
 [<Test>]
+let ``not accepts real operands via integer coercion`` () =
+    let analyzed =
+        analyzeProgram "10 value = 1.5\n20 result = NOT value\n"
+
+    Assert.That(analyzed.Errors, Is.Empty)
+
+    let invalidOperandTypes =
+        analyzed.Diagnostics
+        |> List.filter (fun diagnostic -> diagnostic.Code = SemanticDiagnosticCode.InvalidOperandTypes)
+
+    Assert.That(invalidOperandTypes, Is.Empty)
+
+[<Test>]
+let ``not accepts forward assigned unknown operands without premature type error`` () =
+    let analyzed =
+        analyzeProgram "10 IF NOT qualify THEN LET flag = 1\n20 qualify = 0\n"
+
+    let invalidOperandTypes =
+        analyzed.Diagnostics
+        |> List.filter (fun diagnostic -> diagnostic.Code = SemanticDiagnosticCode.InvalidOperandTypes)
+
+    Assert.That(invalidOperandTypes, Is.Empty)
+
+[<Test>]
 let ``dim inside procedure without local remains globally resolvable`` () =
     let analyzed =
         analyzeProgram "10 DEFine PROCedure initialise\n20 DIM score(100)\n30 END DEFine\n40 PRINT score(1)\n"
@@ -517,6 +541,17 @@ let ``assignment rejects built in constant like target`` () =
         analyzeProgram "10 PI=3\n"
 
     Assert.That(analyzed.Errors, Has.Some.Contains("Built-in 'PI' is not a writable assignment target"))
+
+[<Test>]
+let ``assignment target may shadow built in function name`` () =
+    let analyzed =
+        analyzeProgram "10 round=1\n20 round=round+1\n"
+
+    Assert.That(analyzed.Errors, Is.Empty)
+
+    match analyzed.SymTab[globalScope].Symbols[normalizeIdentifier "round"] with
+    | VariableSym sym -> Assert.That(sym.Common.EvaluatedType, Is.EqualTo(SBType.Integer))
+    | other -> Assert.Fail($"Expected variable symbol for round, got %A{other}")
 
 [<Test>]
 let ``procedure cannot be used in expression context`` () =

@@ -392,10 +392,39 @@ let ``interpreter handles input prompts and targets`` () =
     Assert.That(String.concat "|" output, Is.EqualTo("Enter|42"))
 
 [<Test>]
+let ``interpreter default input prompt follows default screen cursor state`` () =
+    let host, screenState = createScreenHost [ "2" ]
+    let levelId = H.SymbolId 0
+    let levelStorage = makeStorage levelId 0 "LEVEL" H.HirType.Int H.GlobalStorage
+    let hir =
+        makeProgram
+            (Map.ofList [ levelId, "LEVEL" ])
+            [ levelStorage ]
+            [ H.BuiltInCall(H.NamedBuiltIn "AT", None, [ H.Literal(H.ConstInt 10, H.HirType.Int, pos); H.Literal(H.ConstInt 0, H.HirType.Int, pos) ], pos)
+              H.HirStmt.Input(None, [ H.Literal(H.ConstString "WHICH LEVEL?", H.HirType.String, pos) ], [ H.WriteVar(levelId, H.HirType.Int, pos) ], pos) ]
+
+    let result =
+        interpretProgramWithOptions
+            { defaultRuntimeOptions with
+                Host = host }
+            hir
+
+    match result with
+    | Result.Ok execution ->
+        Assert.That(String.concat "|" execution.Output, Is.EqualTo("WHICH LEVEL?"))
+        Assert.That(screenState.Windows[1].Writes |> Seq.toList |> String.concat "|", Is.EqualTo("WHICH LEVEL?"))
+        Assert.That(screenState.Windows[0].Writes |> Seq.toList |> String.concat "|", Is.EqualTo(""))
+        Assert.That(screenState.Windows[1].Cursor, Is.EqualTo((12, 10)))
+    | Result.Error err ->
+        Assert.Fail($"Expected interpretation to succeed, got %A{err}")
+
+[<Test>]
 let ``default host exposes default channels zero through two`` () =
     let host =
         DefaultHost.create {
             ReadLine = fun () -> None
+            ReadScreenLine = fun _ -> None
+            FlushInput = fun () -> ()
             ReadKey = fun () -> None
             KeyAvailable = fun () -> false
             KeyRowState = fun _ -> 0
@@ -426,6 +455,8 @@ let ``default host exposes ql and extended screen modes`` () =
     let host =
         DefaultHost.create {
             ReadLine = fun () -> None
+            ReadScreenLine = fun _ -> None
+            FlushInput = fun () -> ()
             ReadKey = fun () -> None
             KeyAvailable = fun () -> false
             KeyRowState = fun _ -> 0
@@ -438,6 +469,14 @@ let ``default host exposes ql and extended screen modes`` () =
     Assert.That(modes |> List.exists (fun mode -> mode.Mode = QlMode8), Is.True)
     Assert.That(modes |> List.exists (fun mode -> mode.Mode = ExtendedMode 256), Is.True)
     Assert.That(modes |> List.exists (fun mode -> mode.Mode = ExtendedMode 512), Is.True)
+    let qlMode4 = modes |> List.find (fun mode -> mode.Mode = QlMode4)
+    let extended256 = modes |> List.find (fun mode -> mode.Mode = ExtendedMode 256)
+    Assert.That(qlMode4.BaseTextCellWidth, Is.EqualTo(8))
+    Assert.That(qlMode4.BaseTextCellHeight, Is.EqualTo(10))
+    Assert.That(qlMode4.DefaultCharacterSize, Is.EqualTo((0, 0)))
+    Assert.That(extended256.BaseTextCellWidth, Is.EqualTo(8))
+    Assert.That(extended256.BaseTextCellHeight, Is.EqualTo(8))
+    Assert.That(extended256.DefaultCharacterSize, Is.EqualTo((0, 0)))
 
 [<Test>]
 let ``interpreter print to screen channels does not mirror into console output`` () =
@@ -455,6 +494,8 @@ let ``interpreter print to screen channels does not mirror into console output``
                 Host =
                     DefaultHost.create {
                         ReadLine = fun () -> None
+                        ReadScreenLine = fun _ -> None
+                        FlushInput = fun () -> ()
                         ReadKey = fun () -> None
                         KeyAvailable = fun () -> false
                         KeyRowState = fun _ -> 0
@@ -490,6 +531,8 @@ let ``interpreter input from default channel uses host channel manager`` () =
                 Host =
                     DefaultHost.create {
                         ReadLine = fun () -> if inputs.Count > 0 then Some(inputs.Dequeue()) else None
+                        ReadScreenLine = fun _ -> if inputs.Count > 0 then Some(inputs.Dequeue()) else None
+                        FlushInput = fun () -> ()
                         ReadKey = fun () -> None
                         KeyAvailable = fun () -> false
                         KeyRowState = fun _ -> 0
@@ -541,7 +584,7 @@ let ``interpreter screen channel operations keep default window state independen
         Assert.That(window0.ClearCount, Is.EqualTo(1))
         Assert.That(window0.Window, Is.EqualTo((512, 256, 0, 0)))
         Assert.That(window0.Cursor, Is.EqualTo((4, 3)))
-        Assert.That(window0.CharacterSize, Is.EqualTo((1, 1)))
+        Assert.That(window0.CharacterSize, Is.EqualTo((0, 0)))
         Assert.That(window0.Ink, Is.EqualTo(Some [ 7 ]))
         Assert.That(window1.Window, Is.EqualTo((448, 40, 32, 216)))
         Assert.That(window1.Cursor, Is.EqualTo((10, 20)))
@@ -613,12 +656,12 @@ let ``interpreter display controls update per-window state`` () =
         Assert.That(window2.Scroll, Is.EqualTo(12))
         Assert.That(window2.Width, Is.EqualTo(Some 80))
         Assert.That(window2.Pan, Is.EqualTo(-150))
-        Assert.That(window2.Recolor, Is.EqualTo(Some 5))
+        Assert.That(window2.Recolor, Is.EqualTo(Some [ 5 ]))
         Assert.That(window2.Palette, Is.EqualTo(Some [ 1; 3; 5 ]))
         Assert.That(window1.Scroll, Is.EqualTo(-7))
         Assert.That(window1.Width, Is.EqualTo(Some 64))
         Assert.That(window1.Pan, Is.EqualTo(150))
-        Assert.That(window1.Recolor, Is.EqualTo(Some 2))
+        Assert.That(window1.Recolor, Is.EqualTo(Some [ 2 ]))
         Assert.That(window1.Palette, Is.EqualTo(Some [ 8; 6 ]))
         Assert.That(window0.Scroll, Is.EqualTo(0))
         Assert.That(window0.Width, Is.EqualTo(None))
@@ -706,7 +749,7 @@ let ``interpreter mode resets default screen geometry and default windows`` () =
     | Result.Ok _ ->
         Assert.That(screenState.Mode.Mode, Is.EqualTo(QlMode8))
         Assert.That(screenState.Windows[1].Window, Is.EqualTo((256, 256, 0, 0)))
-        Assert.That(screenState.Windows[1].CharacterSize, Is.EqualTo((1, 1)))
+        Assert.That(screenState.Windows[1].CharacterSize, Is.EqualTo((0, 0)))
         Assert.That(screenState.Windows[1].Cursor, Is.EqualTo((0, 0)))
         Assert.That(screenState.Windows[1].Width, Is.EqualTo(None))
         Assert.That(screenState.Windows[1].Pan, Is.EqualTo(0))
@@ -936,7 +979,7 @@ let ``interpreter minimum arity graphics and display primitives dispatch correct
         Assert.That(screenState.Windows[1].Scroll, Is.EqualTo(3))
         Assert.That(screenState.Windows[1].Width, Is.EqualTo(Some 40))
         Assert.That(screenState.Windows[1].Pan, Is.EqualTo(10))
-        Assert.That(screenState.Windows[1].Recolor, Is.EqualTo(Some 4))
+        Assert.That(screenState.Windows[1].Recolor, Is.EqualTo(Some [ 4 ]))
         Assert.That(screenState.Windows[1].Palette, Is.EqualTo(Some [ 9 ]))
         let expectedOps =
             [ "INK 7"
@@ -1063,6 +1106,8 @@ let ``interpreter open_new open_in and close handle file channels`` () =
             Host =
                 DefaultHost.create {
                     ReadLine = fun () -> None
+                    ReadScreenLine = fun _ -> None
+                    FlushInput = fun () -> ()
                     ReadKey = fun () -> None
                     KeyAvailable = fun () -> false
                     KeyRowState = fun _ -> 0
@@ -1096,6 +1141,8 @@ let ``interpreter print supports implicit channel to file`` () =
             Host =
                 DefaultHost.create {
                     ReadLine = fun () -> None
+                    ReadScreenLine = fun _ -> None
+                    FlushInput = fun () -> ()
                     ReadKey = fun () -> None
                     KeyAvailable = fun () -> false
                     KeyRowState = fun _ -> 0
@@ -1140,6 +1187,8 @@ let ``interpreter append adds to existing file channels`` () =
             Host =
                 DefaultHost.create {
                     ReadLine = fun () -> None
+                    ReadScreenLine = fun _ -> None
+                    FlushInput = fun () -> ()
                     ReadKey = fun () -> None
                     KeyAvailable = fun () -> false
                     KeyRowState = fun _ -> 0
@@ -1184,6 +1233,8 @@ let ``interpreter open_new and open_in support directory backed devices`` () =
             Host =
                 DefaultHost.create {
                     ReadLine = fun () -> None
+                    ReadScreenLine = fun _ -> None
+                    FlushInput = fun () -> ()
                     ReadKey = fun () -> None
                     KeyAvailable = fun () -> false
                     KeyRowState = fun _ -> 0
@@ -1232,6 +1283,8 @@ let ``interpreter append supports directory backed devices`` () =
             Host =
                 DefaultHost.create {
                     ReadLine = fun () -> None
+                    ReadScreenLine = fun _ -> None
+                    FlushInput = fun () -> ()
                     ReadKey = fun () -> None
                     KeyAvailable = fun () -> false
                     KeyRowState = fun _ -> 0
@@ -1273,6 +1326,8 @@ let ``interpreter open_new supports printer device`` () =
             Host =
                 DefaultHost.create {
                     ReadLine = fun () -> None
+                    ReadScreenLine = fun _ -> None
+                    FlushInput = fun () -> ()
                     ReadKey = fun () -> None
                     KeyAvailable = fun () -> false
                     KeyRowState = fun _ -> 0
@@ -1310,6 +1365,8 @@ let ``interpreter eof reflects file channel read position`` () =
             Host =
                 DefaultHost.create {
                     ReadLine = fun () -> None
+                    ReadScreenLine = fun _ -> None
+                    FlushInput = fun () -> ()
                     ReadKey = fun () -> None
                     KeyAvailable = fun () -> false
                     KeyRowState = fun _ -> 0
@@ -1346,6 +1403,8 @@ let ``interpreter open and close support dynamic screen channels`` () =
             Host =
                 DefaultHost.create {
                     ReadLine = fun () -> None
+                    ReadScreenLine = fun _ -> None
+                    FlushInput = fun () -> ()
                     ReadKey = fun () -> None
                     KeyAvailable = fun () -> false
                     KeyRowState = fun _ -> 0
@@ -1372,6 +1431,8 @@ let ``interpreter open parses screen device geometry strings`` () =
     let host =
         DefaultHost.create {
             ReadLine = fun () -> None
+            ReadScreenLine = fun _ -> None
+            FlushInput = fun () -> ()
             ReadKey = fun () -> None
             KeyAvailable = fun () -> false
             KeyRowState = fun _ -> 0
@@ -1404,6 +1465,8 @@ let ``interpreter graphics builtins support implicit channels`` () =
     let host, _ =
         DefaultHost.createWithDisplay {
             ReadLine = fun () -> None
+            ReadScreenLine = fun _ -> None
+            FlushInput = fun () -> ()
             ReadKey = fun () -> None
             KeyAvailable = fun () -> false
             KeyRowState = fun _ -> 0
@@ -1429,6 +1492,8 @@ let ``interpreter open parses console device strings and preserves configured wi
     let host =
         DefaultHost.create {
             ReadLine = fun () -> None
+            ReadScreenLine = fun _ -> None
+            FlushInput = fun () -> ()
             ReadKey = fun () -> None
             KeyAvailable = fun () -> false
             KeyRowState = fun _ -> 0
@@ -1533,6 +1598,8 @@ let ``interpreter open supports console null and printer devices`` () =
             Host =
                 DefaultHost.create {
                     ReadLine = fun () -> None
+                    ReadScreenLine = fun _ -> None
+                    FlushInput = fun () -> ()
                     ReadKey = fun () -> None
                     KeyAvailable = fun () -> false
                     KeyRowState = fun _ -> 0
@@ -1564,6 +1631,8 @@ let ``interpreter open supports directory backed devices`` () =
             Host =
                 DefaultHost.create {
                     ReadLine = fun () -> None
+                    ReadScreenLine = fun _ -> None
+                    FlushInput = fun () -> ()
                     ReadKey = fun () -> None
                     KeyAvailable = fun () -> false
                     KeyRowState = fun _ -> 0
@@ -1592,6 +1661,8 @@ let ``default host exposes ql style default screen panes`` () =
     let _, display =
         DefaultHost.createWithDisplay {
             ReadLine = fun () -> None
+            ReadScreenLine = fun _ -> None
+            FlushInput = fun () -> ()
             ReadKey = fun () -> None
             KeyAvailable = fun () -> false
             KeyRowState = fun _ -> 0
@@ -1607,17 +1678,42 @@ let ``default host exposes ql style default screen panes`` () =
     Assert.That(panes.ContainsKey 0, Is.True)
     Assert.That(panes.ContainsKey 1, Is.True)
     Assert.That(panes.ContainsKey 2, Is.True)
-    Assert.That(panes[0].Window, Is.EqualTo((448, 40, 32, 216)))
-    Assert.That(panes[1].Window, Is.EqualTo((448, 206, 32, 0)))
-    Assert.That(panes[2].Window, Is.EqualTo((448, 206, 32, 0)))
+    Assert.That(panes[0].Window, Is.EqualTo((512, 40, 0, 216)))
+    Assert.That(panes[1].Window, Is.EqualTo((256, 216, 256, 0)))
+    Assert.That(panes[2].Window, Is.EqualTo((256, 216, 0, 0)))
     Assert.That(panes[1].Text[0, 0].Paper, Is.EqualTo(2))
     Assert.That(panes[0].Text[0, 0].Paper, Is.EqualTo(0))
+
+[<Test>]
+let ``default host uses distinct ql style windows for output and listings`` () =
+    let _, display =
+        DefaultHost.createWithDisplay {
+            ReadLine = fun () -> None
+            ReadScreenLine = fun _ -> None
+            FlushInput = fun () -> ()
+            ReadKey = fun () -> None
+            KeyAvailable = fun () -> false
+            KeyRowState = fun _ -> 0
+            WriteLine = ignore
+        }
+
+    let snapshot = display.GetSnapshot()
+    let pane1 = snapshot.Panes |> List.find (fun pane -> pane.ChannelId = Some 1)
+    let pane2 = snapshot.Panes |> List.find (fun pane -> pane.ChannelId = Some 2)
+    let _, _, pane1X, _ = pane1.Window
+    let _, _, pane2X, _ = pane2.Window
+
+    Assert.That(pane1.Window, Is.Not.EqualTo(pane2.Window))
+    Assert.That(pane1X, Is.EqualTo(256))
+    Assert.That(pane2X, Is.EqualTo(0))
 
 [<Test>]
 let ``default host pane snapshots stay independent per channel`` () =
     let host, display =
         DefaultHost.createWithDisplay {
             ReadLine = fun () -> None
+            ReadScreenLine = fun _ -> None
+            FlushInput = fun () -> ()
             ReadKey = fun () -> None
             KeyAvailable = fun () -> false
             KeyRowState = fun _ -> 0
@@ -1653,6 +1749,8 @@ let ``default host snapshot text cells use strip as text background`` () =
     let host, display =
         DefaultHost.createWithDisplay {
             ReadLine = fun () -> None
+            ReadScreenLine = fun _ -> None
+            FlushInput = fun () -> ()
             ReadKey = fun () -> None
             KeyAvailable = fun () -> false
             KeyRowState = fun _ -> 0
@@ -1674,7 +1772,384 @@ let ``default host snapshot text cells use strip as text background`` () =
         Assert.Fail($"Expected channel lookup to succeed, got %A{err}")
 
 [<Test>]
-let ``default host maps unchanneled print to output window and input prompt to console window`` () =
+let ``default host pane snapshots preserve paper strip and border state`` () =
+    let host, display =
+        DefaultHost.createWithDisplay {
+            ReadLine = fun () -> None
+            ReadScreenLine = fun _ -> None
+            FlushInput = fun () -> ()
+            ReadKey = fun () -> None
+            KeyAvailable = fun () -> false
+            KeyRowState = fun _ -> 0
+            WriteLine = ignore
+        }
+
+    match host.Channels.Get(ChannelId 1) with
+    | Result.Ok (:? IScreenChannel as screenChannel) ->
+        screenChannel.SetPaper(4)
+        screenChannel.SetStrip([ 6; 0 ])
+        screenChannel.SetBorder(2)
+        let pane = display.GetSnapshot().Panes |> List.find (fun item -> item.ChannelId = Some 1)
+        Assert.That(pane.Paper, Is.EqualTo(4))
+        Assert.That(pane.Strip, Is.EqualTo(6))
+        Assert.That(pane.Border, Is.EqualTo(2))
+    | Result.Ok channel ->
+        Assert.Fail($"Expected screen channel, got {channel.Kind}")
+    | Result.Error err ->
+        Assert.Fail($"Expected channel lookup to succeed, got %A{err}")
+
+[<Test>]
+let ``default host pane snapshots preserve recolor and palette state`` () =
+    let host, display =
+        DefaultHost.createWithDisplay {
+            ReadLine = fun () -> None
+            ReadScreenLine = fun _ -> None
+            FlushInput = fun () -> ()
+            ReadKey = fun () -> None
+            KeyAvailable = fun () -> false
+            KeyRowState = fun _ -> 0
+            WriteLine = ignore
+        }
+
+    match host.Channels.Get(ChannelId 1) with
+    | Result.Ok (:? IScreenChannel as screenChannel) ->
+        screenChannel.SetRecolor([ 2; 3; 4; 5; 6; 7; 0; 1 ])
+        screenChannel.SetPalette([ 7; 6; 5; 4; 3; 2; 1; 0 ])
+        let pane = display.GetSnapshot().Panes |> List.find (fun item -> item.ChannelId = Some 1)
+        Assert.That(pane.Recolor, Is.EqualTo(Some [ 2; 3; 4; 5; 6; 7; 0; 1 ]))
+        Assert.That(pane.Palette, Is.EqualTo(Some [ 7; 6; 5; 4; 3; 2; 1; 0 ]))
+    | Result.Ok channel ->
+        Assert.Fail($"Expected screen channel, got {channel.Kind}")
+    | Result.Error err ->
+        Assert.Fail($"Expected channel lookup to succeed, got %A{err}")
+
+[<Test>]
+let ``default host preserves strip on explicitly written blank cells`` () =
+    let host, display =
+        DefaultHost.createWithDisplay {
+            ReadLine = fun () -> None
+            ReadScreenLine = fun _ -> None
+            FlushInput = fun () -> ()
+            ReadKey = fun () -> None
+            KeyAvailable = fun () -> false
+            KeyRowState = fun _ -> 0
+            WriteLine = ignore
+        }
+
+    match host.Channels.Get(ChannelId 1) with
+    | Result.Ok (:? IScreenChannel as screenChannel) ->
+        screenChannel.SetPaper(2)
+        screenChannel.SetStrip([ 6; 0 ])
+        screenChannel.WriteText(" ")
+        let pane = display.GetSnapshot().Panes |> List.find (fun item -> item.ChannelId = Some 1)
+        Assert.That(string pane.Text[0, 0].Character, Is.EqualTo(" "))
+        Assert.That(pane.Text[0, 0].Paper, Is.EqualTo(2))
+        Assert.That(pane.Text[0, 0].Strip, Is.EqualTo(6))
+    | Result.Ok channel ->
+        Assert.Fail($"Expected screen channel, got {channel.Kind}")
+    | Result.Error err ->
+        Assert.Fail($"Expected channel lookup to succeed, got %A{err}")
+
+[<Test>]
+let ``default host snapshot text cells preserve raw character codes`` () =
+    let host, display =
+        DefaultHost.createWithDisplay {
+            ReadLine = fun () -> None
+            ReadScreenLine = fun _ -> None
+            FlushInput = fun () -> ()
+            ReadKey = fun () -> None
+            KeyAvailable = fun () -> false
+            KeyRowState = fun _ -> 0
+            WriteLine = ignore
+        }
+
+    match host.Channels.Get(ChannelId 1) with
+    | Result.Ok channel ->
+        channel.WriteText(string (char 128))
+        let snapshot = display.GetSnapshot()
+        let pane = snapshot.Panes |> List.find (fun item -> item.ChannelId = Some 1)
+        Assert.That(pane.Text[0, 0].CodePoint, Is.EqualTo(128))
+    | Result.Error err ->
+        Assert.Fail($"Expected channel lookup to succeed, got %A{err}")
+
+[<Test>]
+let ``default host pane text grid follows window size and csize`` () =
+    let host, display =
+        DefaultHost.createWithDisplay {
+            ReadLine = fun () -> None
+            ReadScreenLine = fun _ -> None
+            FlushInput = fun () -> ()
+            ReadKey = fun () -> None
+            KeyAvailable = fun () -> false
+            KeyRowState = fun _ -> 0
+            WriteLine = ignore
+        }
+
+    match host.Channels.Get(ChannelId 1) with
+    | Result.Ok (:? IScreenChannel as screenChannel) ->
+        screenChannel.SetWindow(24, 20, 0, 0)
+        screenChannel.SetCharacterSize(0, 0)
+        screenChannel.WriteText("ABCD")
+        let pane = display.GetSnapshot().Panes |> List.find (fun item -> item.ChannelId = Some 1)
+        Assert.That(Array2D.length2 pane.Text, Is.EqualTo(8))
+        Assert.That(Array2D.length1 pane.Text, Is.EqualTo(2))
+        Assert.That(string pane.Text[0, 0].Character, Is.EqualTo("A"))
+        Assert.That(string pane.Text[0, 1].Character, Is.EqualTo("B"))
+        Assert.That(string pane.Text[0, 2].Character, Is.EqualTo("C"))
+        Assert.That(string pane.Text[0, 3].Character, Is.EqualTo("D"))
+        Assert.That(pane.Cursor, Is.EqualTo((4, 0)))
+    | Result.Ok channel ->
+        Assert.Fail($"Expected screen channel, got {channel.Kind}")
+    | Result.Error err ->
+        Assert.Fail($"Expected channel lookup to succeed, got %A{err}")
+
+[<Test>]
+let ``default host newline scrolls by visible text rows`` () =
+    let host, display =
+        DefaultHost.createWithDisplay {
+            ReadLine = fun () -> None
+            ReadScreenLine = fun _ -> None
+            FlushInput = fun () -> ()
+            ReadKey = fun () -> None
+            KeyAvailable = fun () -> false
+            KeyRowState = fun _ -> 0
+            WriteLine = ignore
+        }
+
+    match host.Channels.Get(ChannelId 1) with
+    | Result.Ok (:? IScreenChannel as screenChannel) ->
+        screenChannel.SetWindow(16, 20, 0, 0)
+        screenChannel.SetCharacterSize(0, 0)
+        screenChannel.WriteText("AB")
+        screenChannel.NewLine()
+        screenChannel.WriteText("CD")
+        screenChannel.NewLine()
+        screenChannel.WriteText("EF")
+        let pane = display.GetSnapshot().Panes |> List.find (fun item -> item.ChannelId = Some 1)
+        Assert.That(string pane.Text[0, 0].Character + string pane.Text[0, 1].Character, Is.EqualTo("CD"))
+        Assert.That(string pane.Text[1, 0].Character + string pane.Text[1, 1].Character, Is.EqualTo("EF"))
+        Assert.That(pane.Cursor, Is.EqualTo((2, 1)))
+    | Result.Ok channel ->
+        Assert.Fail($"Expected screen channel, got {channel.Kind}")
+    | Result.Error err ->
+        Assert.Fail($"Expected channel lookup to succeed, got %A{err}")
+
+[<Test>]
+let ``default host extended modes use denser text rows than classic ql modes`` () =
+    let host, display =
+        DefaultHost.createWithDisplay {
+            ReadLine = fun () -> None
+            ReadScreenLine = fun _ -> None
+            FlushInput = fun () -> ()
+            ReadKey = fun () -> None
+            KeyAvailable = fun () -> false
+            KeyRowState = fun _ -> 0
+            WriteLine = ignore
+        }
+
+    match host.Screen.SetMode(ExtendedMode 256), host.Channels.Get(ChannelId 1) with
+    | Result.Ok (), Result.Ok (:? IScreenChannel as screenChannel) ->
+        screenChannel.SetWindow(16, 16, 0, 0)
+        screenChannel.SetCharacterSize(0, 0)
+        let pane = display.GetSnapshot().Panes |> List.find (fun item -> item.ChannelId = Some 1)
+        Assert.That(Array2D.length2 pane.Text, Is.EqualTo(5))
+        Assert.That(Array2D.length1 pane.Text, Is.EqualTo(2))
+    | Result.Error err, _ ->
+        Assert.Fail($"Expected mode change to succeed, got %A{err}")
+    | _, Result.Ok channel ->
+        Assert.Fail($"Expected screen channel, got {channel.Kind}")
+    | _, Result.Error err ->
+        Assert.Fail($"Expected channel lookup to succeed, got %A{err}")
+
+[<Test>]
+let ``default host rasterizes dline circle ellipse and arc into pane pixels`` () =
+    let host, display =
+        DefaultHost.createWithDisplay {
+            ReadLine = fun () -> None
+            ReadScreenLine = fun _ -> None
+            FlushInput = fun () -> ()
+            ReadKey = fun () -> None
+            KeyAvailable = fun () -> false
+            KeyRowState = fun _ -> 0
+            WriteLine = ignore
+        }
+
+    match host.Channels.Get(ChannelId 1) with
+    | Result.Ok (:? IScreenChannel as screenChannel) ->
+        screenChannel.SetPaper(0)
+        screenChannel.Clear()
+        host.Graphics.SetDrawingContext(screenChannel.GetWindow(), screenChannel.GetPan(), (100.0, 0.0, 0.0))
+        host.Graphics.SetInk([ 7 ])
+        host.Graphics.DLine([ 0.0; 0.0; 20.0; 0.0; 20.0; 20.0 ])
+        host.Graphics.Circle(40.0, 40.0, 8.0)
+        host.Graphics.Ellipse(80.0, 40.0, 10.0, 0.5, 0.0)
+        host.Graphics.Arc(120.0, 40.0, 10.0, 0.0, 180.0)
+
+        let pane = display.GetSnapshot().Panes |> List.find (fun item -> item.ChannelId = Some 1)
+        let litPixels =
+            seq {
+                for row = 0 to Array2D.length1 pane.Pixels - 1 do
+                    for col = 0 to Array2D.length2 pane.Pixels - 1 do
+                        if (pane.Pixels[row, col] &&& 0x00FFFFFF) <> 0 then
+                            yield row, col
+            }
+            |> Seq.toArray
+
+        Assert.That(pane.Pixels[0, 0] &&& 0x00FFFFFF, Is.EqualTo(7))
+        Assert.That(pane.Pixels[0, 20] &&& 0x00FFFFFF, Is.EqualTo(7))
+        Assert.That(pane.Pixels[20, 20] &&& 0x00FFFFFF, Is.EqualTo(7))
+        Assert.That(litPixels.Length, Is.GreaterThan(90))
+    | Result.Ok channel ->
+        Assert.Fail($"Expected screen channel, got {channel.Kind}")
+    | Result.Error err ->
+        Assert.Fail($"Expected channel lookup to succeed, got %A{err}")
+
+[<Test>]
+let ``default host graphics modes apply xor under and flash to pixels`` () =
+    let host, display =
+        DefaultHost.createWithDisplay {
+            ReadLine = fun () -> None
+            ReadScreenLine = fun _ -> None
+            FlushInput = fun () -> ()
+            ReadKey = fun () -> None
+            KeyAvailable = fun () -> false
+            KeyRowState = fun _ -> 0
+            WriteLine = ignore
+        }
+
+    match host.Channels.Get(ChannelId 1) with
+    | Result.Ok (:? IScreenChannel as screenChannel) ->
+        screenChannel.SetPaper(0)
+        screenChannel.Clear()
+        host.Graphics.SetDrawingContext(screenChannel.GetWindow(), screenChannel.GetPan(), (100.0, 0.0, 0.0))
+        host.Graphics.SetInk([ 6 ])
+        host.Graphics.Plot(10.0, 10.0)
+        host.Graphics.SetOver(-1)
+        host.Graphics.Plot(10.0, 10.0)
+        host.Graphics.SetOver(0)
+        host.Graphics.SetInk([ 3 ])
+        host.Graphics.Plot(15.0, 15.0)
+        host.Graphics.SetUnder(1)
+        host.Graphics.SetInk([ 5 ])
+        host.Graphics.Plot(15.0, 15.0)
+        host.Graphics.Plot(16.0, 15.0)
+        host.Graphics.SetUnder(0)
+        host.Graphics.SetFlash(1)
+        host.Graphics.Plot(20.0, 20.0)
+
+        let pane = display.GetSnapshot().Panes |> List.find (fun item -> item.ChannelId = Some 1)
+        Assert.That(pane.Pixels[10, 10] &&& 0x00FFFFFF, Is.EqualTo(0))
+        Assert.That(pane.Pixels[15, 15] &&& 0x00FFFFFF, Is.EqualTo(3))
+        Assert.That(pane.Pixels[15, 16] &&& 0x00FFFFFF, Is.EqualTo(5))
+        Assert.That((pane.Pixels[20, 20] &&& 0x01000000) <> 0, Is.True)
+    | Result.Ok channel ->
+        Assert.Fail($"Expected screen channel, got {channel.Kind}")
+    | Result.Error err ->
+        Assert.Fail($"Expected channel lookup to succeed, got %A{err}")
+
+[<Test>]
+let ``default host text cells stay transparent until text writes a background`` () =
+    let host, display =
+        DefaultHost.createWithDisplay {
+            ReadLine = fun () -> None
+            ReadScreenLine = fun _ -> None
+            FlushInput = fun () -> ()
+            ReadKey = fun () -> None
+            KeyAvailable = fun () -> false
+            KeyRowState = fun _ -> 0
+            WriteLine = ignore
+        }
+
+    match host.Channels.Get(ChannelId 1) with
+    | Result.Ok (:? IScreenChannel as screenChannel) ->
+        screenChannel.SetPaper(0)
+        screenChannel.Clear()
+        host.Graphics.SetDrawingContext(screenChannel.GetWindow(), screenChannel.GetPan(), (100.0, 0.0, 0.0))
+        host.Graphics.SetInk([ 4 ])
+        host.Graphics.Plot(0.0, 0.0)
+
+        let beforeWrite = display.GetSnapshot().Panes |> List.find (fun item -> item.ChannelId = Some 1)
+        Assert.That(beforeWrite.Text[0, 0].HasBackground, Is.False)
+        Assert.That(beforeWrite.Pixels[0, 0] &&& 0x00FFFFFF, Is.EqualTo(4))
+
+        screenChannel.SetStrip([ 6; 0 ])
+        screenChannel.WriteText(" ")
+
+        let afterWrite = display.GetSnapshot().Panes |> List.find (fun item -> item.ChannelId = Some 1)
+        Assert.That(afterWrite.Text[0, 0].HasBackground, Is.True)
+        Assert.That(afterWrite.Text[0, 0].Strip, Is.EqualTo(6))
+    | Result.Ok channel ->
+        Assert.Fail($"Expected screen channel, got {channel.Kind}")
+    | Result.Error err ->
+        Assert.Fail($"Expected channel lookup to succeed, got %A{err}")
+
+[<Test>]
+let ``default host pane surface composes graphics and text in one raster`` () =
+    let host, display =
+        DefaultHost.createWithDisplay {
+            ReadLine = fun () -> None
+            ReadScreenLine = fun _ -> None
+            FlushInput = fun () -> ()
+            ReadKey = fun () -> None
+            KeyAvailable = fun () -> false
+            KeyRowState = fun _ -> 0
+            WriteLine = ignore
+        }
+
+    match host.Channels.Get(ChannelId 1) with
+    | Result.Ok (:? IScreenChannel as screenChannel) ->
+        screenChannel.SetWindow(16, 20, 0, 0)
+        screenChannel.SetCharacterSize(0, 0)
+        screenChannel.SetPaper(0)
+        screenChannel.SetStrip([ 6; 0 ])
+        screenChannel.Clear()
+        host.Graphics.SetDrawingContext(screenChannel.GetWindow(), screenChannel.GetPan(), (100.0, 0.0, 0.0))
+        host.Graphics.SetInk([ 4 ])
+        host.Graphics.Plot(15.0, 19.0)
+        screenChannel.WriteText("A")
+
+        let pane = display.GetSnapshot().Panes |> List.find (fun item -> item.ChannelId = Some 1)
+        Assert.That(pane.Surface[19, 15] &&& 0x00FFFFFF, Is.EqualTo(4))
+        Assert.That(pane.Surface[0, 0] &&& 0x00FFFFFF, Is.EqualTo(6))
+        Assert.That(pane.Surface[0, 2] &&& 0x00FFFFFF, Is.EqualTo(7))
+    | Result.Ok channel ->
+        Assert.Fail($"Expected screen channel, got {channel.Kind}")
+    | Result.Error err ->
+        Assert.Fail($"Expected channel lookup to succeed, got %A{err}")
+
+[<Test>]
+let ``default host pane surface preserves graphics under transparent text cells`` () =
+    let host, display =
+        DefaultHost.createWithDisplay {
+            ReadLine = fun () -> None
+            ReadScreenLine = fun _ -> None
+            FlushInput = fun () -> ()
+            ReadKey = fun () -> None
+            KeyAvailable = fun () -> false
+            KeyRowState = fun _ -> 0
+            WriteLine = ignore
+        }
+
+    match host.Channels.Get(ChannelId 1) with
+    | Result.Ok (:? IScreenChannel as screenChannel) ->
+        screenChannel.SetWindow(16, 20, 0, 0)
+        screenChannel.SetCharacterSize(0, 0)
+        screenChannel.SetPaper(0)
+        screenChannel.Clear()
+        host.Graphics.SetDrawingContext(screenChannel.GetWindow(), screenChannel.GetPan(), (100.0, 0.0, 0.0))
+        host.Graphics.SetInk([ 5 ])
+        host.Graphics.Plot(8.0, 10.0)
+
+        let pane = display.GetSnapshot().Panes |> List.find (fun item -> item.ChannelId = Some 1)
+        Assert.That(pane.Text[0, 1].HasBackground, Is.False)
+        Assert.That(pane.Surface[10, 8] &&& 0x00FFFFFF, Is.EqualTo(5))
+    | Result.Ok channel ->
+        Assert.Fail($"Expected screen channel, got {channel.Kind}")
+    | Result.Error err ->
+        Assert.Fail($"Expected channel lookup to succeed, got %A{err}")
+
+[<Test>]
+let ``default host maps unchanneled print and input prompt to output window`` () =
     let host, screenState = createScreenHost [ "42" ]
     let options = { defaultRuntimeOptions with Host = host }
 
@@ -1691,8 +2166,8 @@ let ``default host maps unchanneled print to output window and input prompt to c
 
     match result with
     | Result.Ok _ ->
-        Assert.That(screenState.Windows[1].Writes |> Seq.toList |> String.concat "|", Is.EqualTo("HELLO"))
-        Assert.That(screenState.Windows[0].Writes |> Seq.toList |> String.concat "|", Is.EqualTo("Enter"))
+        Assert.That(screenState.Windows[1].Writes |> Seq.toList |> String.concat "|", Is.EqualTo("HELLO|Enter"))
+        Assert.That(screenState.Windows[0].Writes |> Seq.toList |> String.concat "|", Is.EqualTo(""))
         Assert.That(screenState.Windows[2].Writes |> Seq.toList |> String.concat "|", Is.EqualTo(""))
     | Result.Error err ->
         Assert.Fail($"Expected interpretation to succeed, got %A{err}")

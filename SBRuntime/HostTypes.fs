@@ -30,6 +30,9 @@ type ScreenModeInfo = {
     Colors: int option
     Name: string
     IsQlCompatible: bool
+    BaseTextCellWidth: int
+    BaseTextCellHeight: int
+    DefaultCharacterSize: int * int
 }
 
 type KeyInfo = {
@@ -66,8 +69,8 @@ type IScreenChannel =
     abstract GetWidth: unit -> int option
     abstract SetPan: int -> unit
     abstract GetPan: unit -> int
-    abstract SetRecolor: int -> unit
-    abstract GetRecolor: unit -> int option
+    abstract SetRecolor: int list -> unit
+    abstract GetRecolor: unit -> int list option
     abstract SetPalette: int list -> unit
     abstract GetPalette: unit -> int list option
     abstract SetCursor: int * int -> unit
@@ -98,8 +101,8 @@ type IScreenDevice =
     abstract GetWidth: unit -> int option
     abstract SetPan: int -> unit
     abstract GetPan: unit -> int
-    abstract SetRecolor: int -> unit
-    abstract GetRecolor: unit -> int option
+    abstract SetRecolor: int list -> unit
+    abstract GetRecolor: unit -> int list option
     abstract SetPalette: int list -> unit
     abstract GetPalette: unit -> int list option
     abstract SetCursor: int * int -> unit
@@ -175,9 +178,11 @@ type IMemoryDevice =
 
 type ScreenTextCell = {
     Character: char
+    CodePoint: int
     Ink: int
     Paper: int
     Strip: int
+    HasBackground: bool
 }
 
 type ScreenPaneSnapshot = {
@@ -186,8 +191,16 @@ type ScreenPaneSnapshot = {
     Kind: ChannelKind
     Window: int * int * int * int
     Cursor: int * int
+    CharacterSize: int * int
+    Ink: int
+    Paper: int
+    Strip: int
+    Border: int
+    Recolor: int list option
+    Palette: int list option
     Text: ScreenTextCell[,]
     Pixels: int[,]
+    Surface: int[,]
 }
 
 type ScreenDisplaySnapshot = {

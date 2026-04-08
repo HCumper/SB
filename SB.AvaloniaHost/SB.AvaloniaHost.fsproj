@@ -6,6 +6,8 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="..\SBRuntime\Font8x8UnicodeData.fs" Link="Font8x8UnicodeData.fs" />
+    <Compile Include="QlBitmapFont.fs" />
     <Compile Include="RuntimeSurfaceControl.fs" />
     <Compile Include="MainWindow.fs" />
     <Compile Include="App.fs" />

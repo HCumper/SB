@@ -6,6 +6,8 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="Font8x8UnicodeData.fs" />
+    <Compile Include="..\SB.AvaloniaHost\QlBitmapFont.fs" Link="QlBitmapFont.fs" />
     <Compile Include="RuntimeErrors.fs" />
     <Compile Include="RuntimeValues.fs" />
     <Compile Include="HostTypes.fs" />

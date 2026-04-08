@@ -2,6 +2,7 @@ namespace SBAvaloniaHost
 
 open System
 open System.Collections.Concurrent
+open System.Text
 open System.Threading
 open Avalonia
 open Avalonia.Controls
@@ -15,10 +16,172 @@ type AvaloniaRuntimeSession(host: IRuntimeHost, display: IDisplaySurface, enqueu
     member _.EnqueueKey(keyInfo: KeyInfo) = enqueueKey keyInfo
     member _.EnqueueLine(line: string) = enqueueLine line
 
+module internal InteractiveInput =
+    let private tryGetScreenChannel (host: IRuntimeHost) (channelId: ChannelId) =
+        match host.Channels.Get(channelId) with
+        | Result.Ok (:? IScreenChannel as screenChannel) -> Some screenChannel
+        | _ -> None
+
+    let private textColumns (host: IRuntimeHost) (screenChannel: IScreenChannel) =
+        let width, _, _, _ = screenChannel.GetWindow()
+        let widthScale, _ = screenChannel.GetCharacterSize()
+        let cellWidth = host.Screen.GetMode().BaseTextCellWidth * max 1 (widthScale + 1)
+        max 1 (width / cellWidth)
+
+    type Controller(host: IRuntimeHost, enqueueKey: KeyInfo -> unit, enqueueLine: string -> unit) as this =
+        let gate = obj ()
+        let buffer = StringBuilder()
+        let submitted = ResizeArray<ChannelId * string>()
+        let mutable activeChannelId: ChannelId option = None
+        let mutable origin = 0, 0
+        let mutable caretIndex = 0
+        let mutable renderedLength = 0
+
+        let setCursorFromIndex (screenChannel: IScreenChannel) index =
+            let originX, originY = origin
+            let cols = textColumns host screenChannel
+            let absolute = originX + max 0 index
+            let cursorX = absolute % cols
+            let cursorY = originY + (absolute / cols)
+            screenChannel.SetCursor(cursorX, cursorY)
+
+        let redrawBuffer (screenChannel: IScreenChannel) =
+            screenChannel.SetCursor(fst origin, snd origin)
+            if renderedLength > 0 then
+                screenChannel.WriteText(String(' ', renderedLength))
+            screenChannel.SetCursor(fst origin, snd origin)
+            let text = buffer.ToString()
+            if text.Length > 0 then
+                screenChannel.WriteText(text)
+            renderedLength <- text.Length
+            setCursorFromIndex screenChannel caretIndex
+
+        let finishInput () =
+            activeChannelId <- None
+            buffer.Clear() |> ignore
+            caretIndex <- 0
+            renderedLength <- 0
+
+        let ensureInputStarted channelId =
+            if activeChannelId <> Some channelId then
+                activeChannelId <- Some channelId
+                let screenChannel =
+                    tryGetScreenChannel host channelId
+                    |> Option.defaultWith (fun () -> failwith $"Screen channel {channelId} is not available.")
+                origin <- screenChannel.GetCursor()
+                buffer.Clear() |> ignore
+                caretIndex <- 0
+                renderedLength <- 0
+                screenChannel
+            else
+                tryGetScreenChannel host channelId
+                |> Option.defaultWith (fun () -> failwith $"Screen channel {channelId} is not available.")
+
+        let queueKeyForRuntime (keyInfo: KeyInfo) =
+            enqueueKey keyInfo
+
+        member _.TryReadDefaultLine() =
+            this.TryReadLine(ChannelId 1)
+
+        member _.TryReadLine(channelId: ChannelId) =
+            lock gate (fun () ->
+                match submitted |> Seq.tryFindIndex (fun (submittedChannelId, _) -> submittedChannelId = channelId) with
+                | Some index ->
+                    let _, line = submitted[index]
+                    submitted.RemoveAt(index)
+                    Some line
+                | None ->
+                    ensureInputStarted channelId |> ignore
+                    None)
+
+        member _.HandleTextInput(text: string) =
+            if not (String.IsNullOrEmpty text) then
+                lock gate (fun () ->
+                    match activeChannelId |> Option.bind (tryGetScreenChannel host) with
+                    | Some screenChannel ->
+                        buffer.Insert(caretIndex, text) |> ignore
+                        caretIndex <- caretIndex + text.Length
+                        redrawBuffer screenChannel
+                    | None ->
+                        for ch in text do
+                            queueKeyForRuntime {
+                                KeyCode = int ch
+                                Character = Some ch
+                                Shift = false
+                                Control = false
+                            })
+
+        member _.HandleSpecialKey(keyInfo: KeyInfo) =
+            lock gate (fun () ->
+                match activeChannelId |> Option.bind (tryGetScreenChannel host) with
+                | Some screenChannel ->
+                    match keyInfo.KeyCode with
+                    | 13 ->
+                        let channelId = activeChannelId |> Option.defaultValue (ChannelId 1)
+                        let line = buffer.ToString()
+                        submitted.Add(channelId, line)
+                        enqueueLine line
+                        finishInput ()
+                        screenChannel.NewLine()
+                        true
+                    | 8 ->
+                        if caretIndex > 0 then
+                            buffer.Remove(caretIndex - 1, 1) |> ignore
+                            caretIndex <- caretIndex - 1
+                            redrawBuffer screenChannel
+                        true
+                    | 127 ->
+                        if caretIndex < buffer.Length then
+                            buffer.Remove(caretIndex, 1) |> ignore
+                            redrawBuffer screenChannel
+                        true
+                    | 28 ->
+                        if caretIndex > 0 then
+                            caretIndex <- caretIndex - 1
+                            setCursorFromIndex screenChannel caretIndex
+                        true
+                    | 29 ->
+                        if caretIndex < buffer.Length then
+                            caretIndex <- caretIndex + 1
+                            setCursorFromIndex screenChannel caretIndex
+                        true
+                    | 1 ->
+                        caretIndex <- 0
+                        setCursorFromIndex screenChannel caretIndex
+                        true
+                    | 5 ->
+                        caretIndex <- buffer.Length
+                        setCursorFromIndex screenChannel caretIndex
+                        true
+                    | 27 ->
+                        buffer.Clear() |> ignore
+                        caretIndex <- 0
+                        redrawBuffer screenChannel
+                        true
+                    | _ ->
+                        queueKeyForRuntime keyInfo
+                        true
+                | None ->
+                    queueKeyForRuntime keyInfo
+                    true)
+
+        member _.FlushInput() =
+            lock gate (fun () ->
+                submitted.Clear()
+                match activeChannelId |> Option.bind (tryGetScreenChannel host) with
+                | Some screenChannel ->
+                    buffer.Clear() |> ignore
+                    caretIndex <- 0
+                    redrawBuffer screenChannel
+                    finishInput ()
+                | None ->
+                    finishInput ())
+
 type AvaloniaRuntimeHost() =
     member _.CreateSession(writeLine: string -> unit) =
         let keyQueue = ConcurrentQueue<KeyInfo>()
         let lineQueue = ConcurrentQueue<string>()
+        let mutable controllerOpt : InteractiveInput.Controller option = None
 
         let readKey () =
             match keyQueue.TryDequeue() with
@@ -26,13 +189,23 @@ type AvaloniaRuntimeHost() =
             | _ -> None
 
         let readLine () =
-            match lineQueue.TryDequeue() with
-            | true, line -> Some line
-            | _ -> None
+            match controllerOpt with
+            | Some controller -> controller.TryReadDefaultLine()
+            | None -> None
 
         let host, display =
             DefaultHost.createWithDisplay {
                 ReadLine = readLine
+                ReadScreenLine =
+                    fun channelId ->
+                        match controllerOpt with
+                        | Some controller -> controller.TryReadLine(channelId)
+                        | None -> None
+                FlushInput =
+                    fun () ->
+                        match controllerOpt with
+                        | Some controller -> controller.FlushInput()
+                        | None -> ()
                 ReadKey = readKey
                 KeyAvailable = fun () -> not keyQueue.IsEmpty
                 KeyRowState = fun _ -> 0
@@ -44,7 +217,58 @@ type AvaloniaRuntimeHost() =
                             Dispatcher.UIThread.Post(fun () -> writeLine line)
             }
 
-        AvaloniaRuntimeSession(host, display, keyQueue.Enqueue, lineQueue.Enqueue)
+        let controller = InteractiveInput.Controller(host, keyQueue.Enqueue, lineQueue.Enqueue)
+        controllerOpt <- Some controller
+
+        AvaloniaRuntimeSession(
+            host,
+            display,
+            controller.HandleSpecialKey >> ignore,
+            lineQueue.Enqueue)
+
+    member internal _.CreateInteractiveSession(writeLine: string -> unit) =
+        let keyQueue = ConcurrentQueue<KeyInfo>()
+        let lineQueue = ConcurrentQueue<string>()
+        let mutable controllerOpt : InteractiveInput.Controller option = None
+
+        let readKey () =
+            match keyQueue.TryDequeue() with
+            | true, keyInfo -> Some keyInfo
+            | _ -> None
+
+        let readLine () =
+            match controllerOpt with
+            | Some controller -> controller.TryReadDefaultLine()
+            | None -> None
+
+        let host, display =
+            DefaultHost.createWithDisplay {
+                ReadLine = readLine
+                ReadScreenLine =
+                    fun channelId ->
+                        match controllerOpt with
+                        | Some controller -> controller.TryReadLine(channelId)
+                        | None -> None
+                FlushInput =
+                    fun () ->
+                        match controllerOpt with
+                        | Some controller -> controller.FlushInput()
+                        | None -> ()
+                ReadKey = readKey
+                KeyAvailable = fun () -> not keyQueue.IsEmpty
+                KeyRowState = fun _ -> 0
+                WriteLine =
+                    fun line ->
+                        if Dispatcher.UIThread.CheckAccess() then
+                            writeLine line
+                        else
+                            Dispatcher.UIThread.Post(fun () -> writeLine line)
+            }
+
+        let controller = InteractiveInput.Controller(host, keyQueue.Enqueue, lineQueue.Enqueue)
+        controllerOpt <- Some controller
+
+        host, display, controller
 
 type AvaloniaHostHandle internal (session: AvaloniaRuntimeSession, shutdown: unit -> unit, waitForExit: unit -> unit) =
     member _.Session = session
@@ -79,16 +303,19 @@ type AvaloniaHostService() =
         let thread =
             Thread(ThreadStart(fun () ->
                 try
-                    let session =
-                        (new AvaloniaRuntimeHost()).CreateSession(fun line ->
+                    let host, display, controller =
+                        (new AvaloniaRuntimeHost()).CreateInteractiveSession(fun line ->
                             match windowOpt with
                             | Some window -> window.AppendOutput(line)
                             | None -> ())
 
+                    let session =
+                        AvaloniaRuntimeSession(host, display, controller.HandleSpecialKey >> ignore, ignore)
+
                     sessionOpt <- Some session
                     HostAppState.CreateMainWindow <-
                         Some(fun () ->
-                            let window = MainWindow(session.Host, session.Display, session.EnqueueKey, session.EnqueueLine)
+                            let window = MainWindow(session.Display, controller.HandleTextInput, controller.HandleSpecialKey)
                             windowOpt <- Some window
                             window :> Window)
                     HostAppState.OnWindowReady <- Some(fun _ -> ready.Set())

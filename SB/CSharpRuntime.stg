@@ -98,6 +98,8 @@ private static string __lastErrorDescription = string.Empty;
 private static int? __lastErrorLine;
 private static int? __lastRetryLine;
 private static int? __lastContinueLine;
+private static readonly Dictionary<int, (int Left, int Top)> __screenWindowOrigins = new Dictionary<int, (int Left, int Top)>();
+private static readonly Dictionary<int, (int X, int Y)> __screenCursors = new Dictionary<int, (int X, int Y)>();
 
 private static int AsInt(object? value)
 {
@@ -317,6 +319,95 @@ private static DateTime FromQlSeconds(long seconds) => QlEpoch.AddSeconds(second
 
 private static int NormalizeChannelId(object? channel, int defaultChannel) => channel is null ? defaultChannel : AsInt(channel);
 
+private static bool IsConsoleBackedChannel(int channelId) =>
+    !__channelReaders.ContainsKey(channelId) && !__channelWriters.ContainsKey(channelId);
+
+private static void EnsureScreenState(int channelId)
+{
+    if (!__screenWindowOrigins.ContainsKey(channelId))
+    {
+        __screenWindowOrigins[channelId] = (0, 0);
+    }
+
+    if (!__screenCursors.ContainsKey(channelId))
+    {
+        __screenCursors[channelId] = (0, 0);
+    }
+}
+
+private static void SetScreenCursor(int channelId, int x, int y)
+{
+    EnsureScreenState(channelId);
+    __screenCursors[channelId] = (Math.Max(0, x), Math.Max(0, y));
+}
+
+private static void SetWindowOrigin(int channelId, int x, int y)
+{
+    EnsureScreenState(channelId);
+    __screenWindowOrigins[channelId] = (Math.Max(0, x), Math.Max(0, y));
+    __screenCursors[channelId] = (0, 0);
+}
+
+private static void PositionConsoleCursor(int channelId)
+{
+    if (!IsConsoleBackedChannel(channelId))
+    {
+        return;
+    }
+
+    try
+    {
+        if (Console.IsOutputRedirected)
+        {
+            return;
+        }
+
+        EnsureScreenState(channelId);
+        var origin = __screenWindowOrigins[channelId];
+        var cursor = __screenCursors[channelId];
+        var left = Math.Max(0, origin.Left + cursor.X);
+        var top = Math.Max(0, origin.Top + cursor.Y);
+        if (Console.BufferWidth > 0)
+        {
+            left = Math.Min(left, Console.BufferWidth - 1);
+        }
+
+        if (Console.BufferHeight > 0)
+        {
+            top = Math.Min(top, Console.BufferHeight - 1);
+        }
+
+        Console.SetCursorPosition(left, top);
+    }
+    catch
+    {
+    }
+}
+
+private static void CaptureConsoleCursor(int channelId)
+{
+    if (!IsConsoleBackedChannel(channelId))
+    {
+        return;
+    }
+
+    try
+    {
+        if (Console.IsOutputRedirected)
+        {
+            return;
+        }
+
+        EnsureScreenState(channelId);
+        var origin = __screenWindowOrigins[channelId];
+        __screenCursors[channelId] =
+            (Math.Max(0, Console.CursorLeft - origin.Left), Math.Max(0, Console.CursorTop - origin.Top));
+    }
+    catch
+    {
+    }
+}
+
 private static TextWriter ResolveWriter(object? channel)
 {
     var channelId = NormalizeChannelId(channel, 1);
@@ -339,16 +430,22 @@ private static TextReader ResolveReader(object? channel)
 
 private static void WriteLineToChannel(object? channel, string line)
 {
+    var channelId = NormalizeChannelId(channel, 1);
+    PositionConsoleCursor(channelId);
     var writer = ResolveWriter(channel);
     writer.WriteLine(line);
     writer.Flush();
+    CaptureConsoleCursor(channelId);
 }
 
 private static void WriteToChannel(object? channel, string text)
 {
+    var channelId = NormalizeChannelId(channel, 1);
+    PositionConsoleCursor(channelId);
     var writer = ResolveWriter(channel);
     writer.Write(text);
     writer.Flush();
+    CaptureConsoleCursor(channelId);
 }
 
 private static string? ReadLineFromChannel(object? channel)
@@ -708,11 +805,39 @@ private static void ExecuteBuiltInStatement(string name, object? channel, params
             }
             break;
         case "CLS":
+            SetScreenCursor(NormalizeChannelId(channel, 1), 0, 0);
             try { Console.Clear(); } catch { }
             break;
         case "WINDOW":
+        {
+            if (args.Length >= 4)
+            {
+                var channelId = NormalizeChannelId(channel, 1);
+                SetWindowOrigin(channelId, Math.Max(0, AsInt(args.ElementAtOrDefault(2)) / 8), Math.Max(0, AsInt(args.ElementAtOrDefault(3)) / 10));
+                PositionConsoleCursor(channelId);
+            }
+            break;
+        }
         case "AT":
+        {
+            if (args.Length >= 2)
+            {
+                var channelId = NormalizeChannelId(channel, 1);
+                SetScreenCursor(channelId, AsInt(args.ElementAtOrDefault(1)), AsInt(args.ElementAtOrDefault(0)));
+                PositionConsoleCursor(channelId);
+            }
+            break;
+        }
         case "CURSOR":
+        {
+            if (args.Length >= 2)
+            {
+                var channelId = NormalizeChannelId(channel, 1);
+                SetScreenCursor(channelId, AsInt(args.ElementAtOrDefault(0)), AsInt(args.ElementAtOrDefault(1)));
+                PositionConsoleCursor(channelId);
+            }
+            break;
+        }
         case "CSIZE":
         case "CHAR_USE":
         case "S_FONT":

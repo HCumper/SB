@@ -67,6 +67,8 @@ let runProgramWithInput input ast =
             Host =
                 DefaultHost.create {
                     ReadLine = fun () -> if inputs.Count > 0 then Some(inputs.Dequeue()) else None
+                    ReadScreenLine = fun _ -> if inputs.Count > 0 then Some(inputs.Dequeue()) else None
+                    FlushInput = fun () -> ()
                     ReadKey = fun () -> None
                     KeyAvailable = fun () -> false
                     KeyRowState = fun _ -> 0
@@ -96,7 +98,7 @@ type ScreenWindowState = {
     mutable Scroll: int
     mutable Width: int option
     mutable Pan: int
-    mutable Recolor: int option
+    mutable Recolor: int list option
     mutable Palette: int list option
     mutable Cursor: int * int
     mutable CharacterSize: int * int
@@ -134,10 +136,10 @@ type ScreenState = {
 
 let createScreenHost (inputs: string list) =
     let supportedModes =
-        [ { Mode = QlMode4; Width = 512; Height = 256; Colors = Some 4; Name = "QL Mode 4"; IsQlCompatible = true }
-          { Mode = QlMode8; Width = 256; Height = 256; Colors = Some 8; Name = "QL Mode 8"; IsQlCompatible = true }
-          { Mode = ExtendedMode 256; Width = 256; Height = 256; Colors = Some 8; Name = "Extended Mode 256"; IsQlCompatible = false }
-          { Mode = ExtendedMode 512; Width = 512; Height = 256; Colors = Some 4; Name = "Extended Mode 512"; IsQlCompatible = false } ]
+        [ { Mode = QlMode4; Width = 512; Height = 256; Colors = Some 4; Name = "QL Mode 4"; IsQlCompatible = true; BaseTextCellWidth = 8; BaseTextCellHeight = 10; DefaultCharacterSize = 0, 0 }
+          { Mode = QlMode8; Width = 256; Height = 256; Colors = Some 8; Name = "QL Mode 8"; IsQlCompatible = true; BaseTextCellWidth = 8; BaseTextCellHeight = 10; DefaultCharacterSize = 0, 0 }
+          { Mode = ExtendedMode 256; Width = 256; Height = 256; Colors = Some 8; Name = "Extended Mode 256"; IsQlCompatible = false; BaseTextCellWidth = 8; BaseTextCellHeight = 8; DefaultCharacterSize = 0, 0 }
+          { Mode = ExtendedMode 512; Width = 512; Height = 256; Colors = Some 4; Name = "Extended Mode 512"; IsQlCompatible = false; BaseTextCellWidth = 8; BaseTextCellHeight = 8; DefaultCharacterSize = 0, 0 } ]
 
     let applyModeToWindow (_channelId: int) (mode: ScreenModeInfo) (window: ScreenWindowState) =
         window.Cursor <- 0, 0
@@ -147,7 +149,7 @@ let createScreenHost (inputs: string list) =
         window.Pan <- 0
         window.Recolor <- None
         window.Palette <- None
-        window.CharacterSize <- 1, 1
+        window.CharacterSize <- mode.DefaultCharacterSize
         window.CharacterFonts <- 0, 0
         window.Ink <- Some [ 7 ]
         window.Paper <- Some 0
@@ -400,9 +402,9 @@ let createScreenHost (inputs: string list) =
                 match Map.tryFind channelId state.Windows with
                 | Some window -> window.Pan
                 | None -> 0
-            member _.SetRecolor(value) =
+            member _.SetRecolor(values) =
                 match Map.tryFind channelId state.Windows with
-                | Some window -> window.Recolor <- Some value
+                | Some window -> window.Recolor <- Some values
                 | None -> ()
             member _.GetRecolor() =
                 match Map.tryFind channelId state.Windows with
@@ -513,9 +515,9 @@ let createScreenHost (inputs: string list) =
                 match Map.tryFind channelId state.Windows with
                 | Some window -> window.Pan
                 | None -> 0
-            member _.SetRecolor(value) =
+            member _.SetRecolor(values) =
                 match Map.tryFind channelId state.Windows with
-                | Some window -> window.Recolor <- Some value
+                | Some window -> window.Recolor <- Some values
                 | None -> ()
             member _.GetRecolor() =
                 match Map.tryFind channelId state.Windows with
@@ -642,9 +644,9 @@ let createScreenHost (inputs: string list) =
                         match Map.tryFind 1 state.Windows with
                         | Some window -> window.Pan
                         | None -> 0
-                    member _.SetRecolor(value) =
+                    member _.SetRecolor(values) =
                         match Map.tryFind 1 state.Windows with
-                        | Some window -> window.Recolor <- Some value
+                        | Some window -> window.Recolor <- Some values
                         | None -> ()
                     member _.GetRecolor() =
                         match Map.tryFind 1 state.Windows with

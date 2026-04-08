@@ -19,6 +19,8 @@ let ``q3 fixture runtime completes sort check without inversion output`` () =
             Host =
                 DefaultHost.create {
                     ReadLine = fun () -> if inputs.Count > 0 then Some(inputs.Dequeue()) else None
+                    ReadScreenLine = fun _ -> if inputs.Count > 0 then Some(inputs.Dequeue()) else None
+                    FlushInput = fun () -> ()
                     ReadKey = fun () -> None
                     KeyAvailable = fun () -> false
                     KeyRowState = fun _ -> 0

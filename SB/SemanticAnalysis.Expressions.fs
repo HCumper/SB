@@ -689,7 +689,8 @@ let rec inferExprType (state: ProcessingState) expr =
                         | Some _ -> nextState
                         | None -> appendDiagnostic SemanticDiagnosticCode.InvalidOperandCoercion None (Some pos) $"Operator 'NOT' cannot coerce operand at {pos.EditorLineNo}:{pos.Column} to Integer" nextState
                     | None -> nextState
-                | _ -> appendDiagnostic SemanticDiagnosticCode.InvalidOperandTypes None (Some pos) $"Operator 'NOT' expects an integer-compatible expression at {pos.EditorLineNo}:{pos.Column}" nextState
+                | _ when innerType = SBType.Unknown -> nextState
+                | _ -> appendDiagnostic SemanticDiagnosticCode.InvalidOperandTypes None (Some pos) $"Operator 'NOT' expects an integer-coercible expression at {pos.EditorLineNo}:{pos.Column}" nextState
             typed SBType.Integer coercedState
         | "+"
         | "-" ->

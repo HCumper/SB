@@ -1,31 +1,141 @@
 namespace SBAvaloniaHost
 
-open System.Globalization
+open System
 open Avalonia
 open Avalonia.Controls
 open Avalonia.Media
+open SBDisplay
 open SBRuntime
 
 type RuntimeSurfaceControl() =
     inherit Control()
 
-    static let textCellPixelWidth = 8
-    static let textCellPixelHeight = 10
-    static let consoleTypeface = Typeface(FontFamily("Consolas, Courier New, Monospace"))
+    static let flashBit = 0x01000000
+    static let colorMask = 0x00FFFFFF
 
-    static let palette =
+    static let qlPalette =
         [| Color.Parse("#000000")
-           Color.Parse("#F5F0E6")
-           Color.Parse("#D96248")
-           Color.Parse("#6EA8A1")
-           Color.Parse("#D1A454")
-           Color.Parse("#5A8F6B")
-           Color.Parse("#89A7D8")
-           Color.Parse("#F9E4B7") |]
+           Color.Parse("#0000FF")
+           Color.Parse("#FF0000")
+           Color.Parse("#FF00FF")
+           Color.Parse("#00FF00")
+           Color.Parse("#00FFFF")
+           Color.Parse("#FFFF00")
+           Color.Parse("#FFFFFF") |]
 
-    let colorFor value =
-        let index = abs value % palette.Length
-        palette[index]
+    let legalQlColor (mode: ScreenMode) color =
+        let normalized = abs color % 8
+        match mode with
+        | QlMode4
+        | ExtendedMode 512 ->
+            match normalized with
+            | 0
+            | 1 -> 0
+            | 2
+            | 3 -> 2
+            | 4
+            | 5 -> 4
+            | _ -> 7
+        | _ ->
+            normalized
+
+    let paletteEntry entries index fallback =
+        entries
+        |> Option.bind (fun values -> List.tryItem index values)
+        |> Option.defaultValue fallback
+
+    let recoloredColor mode recolor color =
+        let logicalColor = abs color % 8
+        let remapped = paletteEntry recolor logicalColor logicalColor
+        legalQlColor mode remapped
+
+    let paletteMappedColor palette color =
+        paletteEntry palette color color
+
+    let colorFor mode recolor palette color =
+        let index =
+            color
+            |> recoloredColor mode recolor
+            |> paletteMappedColor palette
+            |> legalQlColor mode
+
+        qlPalette[index]
+
+    let decodeCompositeColor value =
+        let composite = abs value % 256
+        let mainColor = composite &&& 0b111
+        let xorBits = (composite >>> 3) &&& 0b111
+        let stipple = (composite >>> 6) &&& 0b11
+        let contrastColor = mainColor ^^^ xorBits
+        mainColor, contrastColor, stipple
+
+    let isFlashVisible =
+        let phase = DateTime.UtcNow.Ticks / TimeSpan.TicksPerMillisecond / 300L
+        phase % 2L = 0L
+
+    let fillRectangleWithColorSpec (context: DrawingContext) mode recolor palette screenX screenY (rect: Rect) colorSpec =
+        let flash = (colorSpec &&& flashBit) <> 0
+        let baseColorSpec = colorSpec &&& colorMask
+
+        if flash && not isFlashVisible then
+            ()
+        elif baseColorSpec >= 0 && baseColorSpec <= 7 then
+            context.FillRectangle(SolidColorBrush(colorFor mode recolor palette baseColorSpec), rect)
+        else
+            let mainColor, contrastColor, stipple = decodeCompositeColor baseColorSpec
+            let mainBrush = SolidColorBrush(colorFor mode recolor palette mainColor)
+            let contrastBrush = SolidColorBrush(colorFor mode recolor palette contrastColor)
+            let halfWidth = rect.Width / 2.0
+            let halfHeight = rect.Height / 2.0
+
+            let fillAt left top useContrast =
+                let target =
+                    Rect(
+                        rect.X + (if left then halfWidth else 0.0),
+                        rect.Y + (if top then halfHeight else 0.0),
+                        halfWidth,
+                        halfHeight)
+                context.FillRectangle((if useContrast then contrastBrush else mainBrush), target)
+
+            match stipple with
+            | 0 ->
+                fillAt false false false
+                fillAt true false false
+                fillAt false true false
+                fillAt true true true
+            | 1 ->
+                fillAt false false false
+                fillAt true false true
+                fillAt false true false
+                fillAt true true true
+            | 2 ->
+                fillAt false false false
+                fillAt true false false
+                fillAt false true true
+                fillAt true true true
+            | _ ->
+                let invert = (screenX + screenY) % 2 <> 0
+                fillAt false false invert
+                fillAt true false (not invert)
+                fillAt false true (not invert)
+                fillAt true true invert
+
+    let drawGlyph (context: DrawingContext) (brush: IBrush) (cellRect: Rect) (glyph: byte array) =
+        let columns = 8
+        let rows = min 8 glyph.Length
+        let pixelWidth = max 1.0 (cellRect.Width / float columns)
+        let pixelHeight = max 1.0 (cellRect.Height / float rows)
+        for row = 0 to rows - 1 do
+            let pattern = int glyph[row]
+            for col = 0 to columns - 1 do
+                if (pattern >>> col) &&& 1 = 1 then
+                    let pixelRect =
+                        Rect(
+                            cellRect.X + (float col * pixelWidth),
+                            cellRect.Y + (float row * pixelHeight),
+                            pixelWidth,
+                            pixelHeight)
+                    context.FillRectangle(brush, pixelRect)
 
     member val DisplaySurface: IDisplaySurface option = None with get, set
 
@@ -38,26 +148,20 @@ type RuntimeSurfaceControl() =
 
         let bounds = Rect(0.0, 0.0, this.Bounds.Width, this.Bounds.Height)
         let background = SolidColorBrush(Color.Parse("#10151B"))
-        let frame = Pen(SolidColorBrush(Color.Parse("#C78352")), 2.0)
-        let paneFrame = Pen(SolidColorBrush(Color.Parse("#6EA8A1")), 1.0)
 
         context.FillRectangle(background, bounds)
-        context.DrawRectangle(frame, bounds.Deflate(12.0))
 
         match this.DisplaySurface with
         | None ->
             ()
         | Some surface ->
             let snapshot = surface.GetSnapshot()
-            let margin = 24.0
-            let drawArea = bounds.Deflate(margin)
+            let drawArea = bounds
             let modeWidth = max 1 snapshot.Mode.Width
             let modeHeight = max 1 snapshot.Mode.Height
             let scale = min (drawArea.Width / float modeWidth) (drawArea.Height / float modeHeight)
-            let screenWidth = float modeWidth * scale
-            let screenHeight = float modeHeight * scale
-            let screenOriginX = drawArea.X + ((drawArea.Width - screenWidth) / 2.0)
-            let screenOriginY = drawArea.Y + ((drawArea.Height - screenHeight) / 2.0)
+            let screenOriginX = drawArea.X
+            let screenOriginY = drawArea.Y
             let paneZOrder pane =
                 match pane.ChannelId with
                 | Some 2 -> 0
@@ -67,83 +171,71 @@ type RuntimeSurfaceControl() =
                 | None -> 500
 
             snapshot.Panes
+            |> List.filter (fun pane -> pane.ChannelId <> Some 0)
             |> List.sortBy paneZOrder
             |> List.iteri (fun index pane ->
                 let width, height, x, y = pane.Window
+                let borderThickness =
+                    if pane.Border = 0 then 0.0
+                    else max 1.0 scale
                 let paneRect =
                     Rect(
                         screenOriginX + (float x * scale),
                         screenOriginY + (float y * scale),
                         max 24.0 (float width * scale),
                         max 24.0 (float height * scale))
-                let innerRect = paneRect.Deflate(10.0)
-                let viewportRect = innerRect
-                let paneBackground =
-                    let alpha = if index = 0 then 255uy else 205uy
-                    SolidColorBrush(Color.FromArgb(alpha, 22uy, 32uy, 40uy))
+                let viewportRect =
+                    if borderThickness > 0.0 then paneRect.Deflate(borderThickness)
+                    else paneRect
 
-                context.FillRectangle(paneBackground, paneRect)
-                context.DrawRectangle(paneFrame, paneRect)
+                fillRectangleWithColorSpec context snapshot.Mode.Mode pane.Recolor pane.Palette x y paneRect pane.Border
+                if borderThickness > 0.0 then
+                    fillRectangleWithColorSpec context snapshot.Mode.Mode pane.Recolor pane.Palette x y viewportRect pane.Paper
 
-                let paneTextHeight = Array2D.length1 pane.Text
-                let paneTextWidth = Array2D.length2 pane.Text
-                let panePixelHeight = Array2D.length1 pane.Pixels
-                let panePixelWidth = Array2D.length2 pane.Pixels
-                let textRows = max 1 (height / textCellPixelHeight)
-                let textCols = max 1 (width / textCellPixelWidth)
+                let paneSurfaceHeight = Array2D.length1 pane.Surface
+                let paneSurfaceWidth = Array2D.length2 pane.Surface
+                let charWidthScale, charHeightScale =
+                    let widthScale, heightScale = pane.CharacterSize
+                    max 1 (widthScale + 1), max 1 (heightScale + 1)
+                let logicalCellWidth = snapshot.Mode.BaseTextCellWidth * charWidthScale
+                let logicalCellHeight = snapshot.Mode.BaseTextCellHeight * charHeightScale
+                let logicalAdvance = max 1 (logicalCellWidth - max 4 ((2 * logicalCellWidth) / 3))
+                let textRows = max 1 (height / logicalCellHeight)
+                let textCols = max 1 (width / logicalCellWidth)
 
                 use _clip = context.PushClip(viewportRect)
 
-                if panePixelHeight > 0 && panePixelWidth > 0 then
-                    let pixelWidth = max 1.0 (viewportRect.Width / float panePixelWidth)
-                    let pixelHeight = max 1.0 (viewportRect.Height / float panePixelHeight)
+                if paneSurfaceHeight > 0 && paneSurfaceWidth > 0 then
+                    let pixelWidth = max 1.0 (viewportRect.Width / float paneSurfaceWidth)
+                    let pixelHeight = max 1.0 (viewportRect.Height / float paneSurfaceHeight)
 
-                    for py = 0 to panePixelHeight - 1 do
-                        for px = 0 to panePixelWidth - 1 do
+                    for py = 0 to paneSurfaceHeight - 1 do
+                        for px = 0 to paneSurfaceWidth - 1 do
+                            let pixel = pane.Surface[py, px]
                             let pixelRect =
                                 Rect(
                                     viewportRect.X + (float px * pixelWidth),
                                     viewportRect.Y + (float py * pixelHeight),
                                     pixelWidth,
                                     pixelHeight)
-                            context.FillRectangle(SolidColorBrush(colorFor pane.Pixels[py, px]), pixelRect)
+                            fillRectangleWithColorSpec context snapshot.Mode.Mode pane.Recolor pane.Palette (x + px) (y + py) pixelRect pixel
 
-                if paneTextHeight > 0 && paneTextWidth > 0 then
-                    let cellWidth = max 1.0 (viewportRect.Width / float textCols)
-                    let cellHeight = max 1.0 (viewportRect.Height / float textRows)
-                    let defaultStrip = pane.Text[0, 0].Strip
-                    let fontSize = max 12.0 (min (cellHeight * 0.78) (cellWidth * 1.4))
-                    let _, cursorY = pane.Cursor
-                    let rowOffset =
-                        let lastVisibleRow = max 0 cursorY
-                        max 0 (min (paneTextHeight - textRows) (lastVisibleRow - textRows + 1))
-
-                    if panePixelHeight = 0 || panePixelWidth = 0 then
-                        context.FillRectangle(SolidColorBrush(colorFor defaultStrip), viewportRect)
-
-                    for textRow = 0 to min (textRows - 1) (paneTextHeight - 1) do
-                        for textCol = 0 to min (textCols - 1) (paneTextWidth - 1) do
-                            let cell = pane.Text[rowOffset + textRow, textCol]
-                            let cellRect =
-                                Rect(
-                                    viewportRect.X + (float textCol * cellWidth),
-                                    viewportRect.Y + (float textRow * cellHeight),
-                                    cellWidth,
-                                    cellHeight)
-
-                            // Keep text windows readable while allowing graphics to show through blank cells.
-                            if cell.Character <> ' ' then
-                                context.FillRectangle(SolidColorBrush(colorFor cell.Strip), cellRect)
-                                let text =
-                                    new FormattedText(
-                                        string cell.Character,
-                                        CultureInfo.InvariantCulture,
-                                        FlowDirection.LeftToRight,
-                                        consoleTypeface,
-                                        fontSize,
-                                        SolidColorBrush(colorFor cell.Ink))
-                                let textLocation =
-                                    Point(
-                                        cellRect.X + max 0.0 ((cellRect.Width - text.Width) / 2.0),
-                                        cellRect.Y + max 0.0 ((cellRect.Height - text.Height) / 2.0))
-                                context.DrawText(text, textLocation))
+                let cellWidth = float logicalCellWidth * scale
+                let cellHeight = float logicalCellHeight * scale
+                let cellAdvance = float logicalAdvance * scale
+                let cursorX, cursorY = pane.Cursor
+                if cursorX >= 0 && cursorX < textCols && cursorY >= 0 && cursorY < textRows then
+                    let cursorRect =
+                        Rect(
+                            viewportRect.X + (float cursorX * cellAdvance),
+                            viewportRect.Y + (float cursorY * cellHeight),
+                            cellAdvance,
+                            cellHeight)
+                    let caretHeight = max 2.0 (scale * 2.0)
+                    let caretRect =
+                        Rect(
+                            cursorRect.X,
+                            cursorRect.Bottom - caretHeight,
+                            cursorRect.Width,
+                            caretHeight)
+                    context.FillRectangle(SolidColorBrush(Color.Parse("#FFFFFF")), caretRect))

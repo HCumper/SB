@@ -226,7 +226,8 @@ and private collectWritableDeclarations mode expr =
         | PostfixName(_, pos, name, None) ->
             do! putState (ensureWritableDeclared mode currentState.CurrentScope name pos currentState)
         | PostfixName(_, pos, name, Some _) ->
-            do! putState (ensureWritableDeclared mode currentState.CurrentScope name pos currentState)
+            if not (BuiltIns.isCallableBuiltIn name) then
+                do! putState (ensureWritableDeclared mode currentState.CurrentScope name pos currentState)
         | _ -> ()
     }
 

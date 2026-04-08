@@ -145,6 +145,23 @@ let tryResolveLocalSymbol scopeName symbolName (table: SymbolTable) =
     | None -> None
     | Some scope -> Map.tryFind (normalizeIdentifier symbolName) scope.Symbols
 
+let rec tryResolveDeclaredSymbol scopeName symbolName (table: SymbolTable) =
+    match Map.tryFind scopeName table with
+    | None -> None
+    | Some scope ->
+        match Map.tryFind (normalizeIdentifier symbolName) scope.Symbols with
+        | Some symbol -> Some(scopeName, symbol)
+        | None ->
+            match scope.Parent with
+            | Some parent -> tryResolveDeclaredSymbol parent symbolName table
+            | None -> None
+
+let private canImplicitlyShadowBuiltIn name =
+    match BuiltIns.tryGetFixedArity name with
+    | Some 0 -> false
+    | Some _ -> true
+    | None -> false
+
 let isRoutineScope scopeName (table: SymbolTable) =
     match Map.tryFind scopeName table with
     | Some scope when scopeName <> globalScope && scope.Parent = Some globalScope -> true
@@ -219,16 +236,22 @@ let declareParameter mode scopeName name position state =
     |> recordFact DeclarationSite (Some SymbolCategory.Parameter) name scopeName position (Some (inferredVariableType state scopeName name)) None
 
 let ensureVariableDeclaredInScope mode scopeName name position state =
-    match tryResolveSymbol scopeName name state.SymTab with
-    | Some _ -> state
-    | None -> declareVariable mode scopeName name position state
-
-let ensureWritableDeclared mode scopeName name position state =
-    match tryResolveSymbol scopeName name state.SymTab with
+    match tryResolveDeclaredSymbol scopeName name state.SymTab with
     | Some _ -> state
     | None ->
-        let targetScope = declarationScopeForWritable scopeName name state.SymTab
-        declareVariable mode targetScope name position state
+        match BuiltIns.tryFind name with
+        | Some _ when not (canImplicitlyShadowBuiltIn name) -> state
+        | _ -> declareVariable mode scopeName name position state
+
+let ensureWritableDeclared mode scopeName name position state =
+    match tryResolveDeclaredSymbol scopeName name state.SymTab with
+    | Some _ -> state
+    | None ->
+        match BuiltIns.tryFind name with
+        | Some _ when not (canImplicitlyShadowBuiltIn name) -> state
+        | _ ->
+            let targetScope = declarationScopeForWritable scopeName name state.SymTab
+            declareVariable mode targetScope name position state
 
 let referenceSymbol expectedCategory name position (state: ProcessingState) =
     // Reference recording always emits a fact, even for unresolved names, so tooling

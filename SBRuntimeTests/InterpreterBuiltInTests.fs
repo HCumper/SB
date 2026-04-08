@@ -132,6 +132,8 @@ let ``interpreter date uses runtime clock`` () =
             Host =
                 DefaultHost.create {
                     ReadLine = fun () -> None
+                    ReadScreenLine = fun _ -> None
+                    FlushInput = fun () -> ()
                     ReadKey = fun () -> None
                     KeyAvailable = fun () -> false
                     KeyRowState = fun _ -> 0
@@ -159,6 +161,8 @@ let ``interpreter date string built ins support zero argument forms`` () =
             Host =
                 DefaultHost.create {
                     ReadLine = fun () -> None
+                    ReadScreenLine = fun _ -> None
+                    FlushInput = fun () -> ()
                     ReadKey = fun () -> None
                     KeyAvailable = fun () -> false
                     KeyRowState = fun _ -> 0
@@ -186,6 +190,8 @@ let ``interpreter rnd supports deterministic float integer and range forms`` () 
             Host =
                 DefaultHost.create {
                     ReadLine = fun () -> None
+                    ReadScreenLine = fun _ -> None
+                    FlushInput = fun () -> ()
                     ReadKey = fun () -> None
                     KeyAvailable = fun () -> false
                     KeyRowState = fun _ -> 0
@@ -213,6 +219,8 @@ let ``interpreter rnd range accepts mixed numeric bound types`` () =
             Host =
                 DefaultHost.create {
                     ReadLine = fun () -> None
+                    ReadScreenLine = fun _ -> None
+                    FlushInput = fun () -> ()
                     ReadKey = fun () -> None
                     KeyAvailable = fun () -> false
                     KeyRowState = fun _ -> 0
@@ -243,6 +251,8 @@ let ``interpreter rnd without arguments returns deterministic float`` () =
             Host =
                 DefaultHost.create {
                     ReadLine = fun () -> None
+                    ReadScreenLine = fun _ -> None
+                    FlushInput = fun () -> ()
                     ReadKey = fun () -> None
                     KeyAvailable = fun () -> false
                     KeyRowState = fun _ -> 0
@@ -360,6 +370,8 @@ let ``interpreter date string family and character functions work`` () =
             Host =
                 DefaultHost.create {
                     ReadLine = fun () -> None
+                    ReadScreenLine = fun _ -> None
+                    FlushInput = fun () -> ()
                     ReadKey = fun () -> None
                     KeyAvailable = fun () -> false
                     KeyRowState = fun _ -> 0
@@ -427,6 +439,8 @@ let ``interpreter getenv len inkey and keyrow functions work`` () =
                 Host =
                     DefaultHost.create {
                         ReadLine = fun () -> None
+                        ReadScreenLine = fun _ -> None
+                        FlushInput = fun () -> ()
                         ReadKey = fun () -> if keyQueue.Count > 0 then Some(keyQueue.Dequeue()) else None
                         KeyAvailable = fun () -> keyQueue.Count > 0
                         KeyRowState = fun row -> row * 10
@@ -463,6 +477,8 @@ let ``interpreter getenv maps ql environment aliases to host values`` () =
                 Host =
                     DefaultHost.create {
                         ReadLine = fun () -> None
+                        ReadScreenLine = fun _ -> None
+                        FlushInput = fun () -> ()
                         ReadKey = fun () -> None
                         KeyAvailable = fun () -> false
                         KeyRowState = fun _ -> 0
@@ -551,6 +567,8 @@ let ``interpreter time and string helper functions work`` () =
             Host =
                 DefaultHost.create {
                     ReadLine = fun () -> None
+                    ReadScreenLine = fun _ -> None
+                    FlushInput = fun () -> ()
                     ReadKey = fun () -> None
                     KeyAvailable = fun () -> false
                     KeyRowState = fun _ -> 0
@@ -686,36 +704,19 @@ let ``interpreter flush clears pending input before input reads`` () =
     let outputs = ResizeArray<string>()
     let pendingLines = Collections.Generic.Queue<string>([ ""; "2" ])
 
-    let inputDevice =
-        { new IInputDevice with
-            member _.ReadLine() =
-                if pendingLines.Count > 0 then Some(pendingLines.Dequeue()) else None
-            member _.ReadKey() = None
-            member _.KeyAvailable() = false
-            member _.GetKeyRow(_row) = 0
-            member _.Flush() =
-                if pendingLines.Count > 0 then
-                    pendingLines.Dequeue() |> ignore }
-
-    let baseHost =
+    let host =
         DefaultHost.create {
-            ReadLine = fun () -> None
+            ReadLine = fun () -> if pendingLines.Count > 0 then Some(pendingLines.Dequeue()) else None
+            ReadScreenLine = fun _ -> if pendingLines.Count > 0 then Some(pendingLines.Dequeue()) else None
+            FlushInput =
+                fun () ->
+                    if pendingLines.Count > 0 then
+                        pendingLines.Dequeue() |> ignore
             ReadKey = fun () -> None
             KeyAvailable = fun () -> false
             KeyRowState = fun _ -> 0
             WriteLine = fun line -> outputs.Add(line)
         }
-
-    let host =
-        { new IRuntimeHost with
-            member _.Channels = baseHost.Channels
-            member _.Screen = baseHost.Screen
-            member _.Graphics = baseHost.Graphics
-            member _.Input = inputDevice
-            member _.Sound = baseHost.Sound
-            member _.Files = baseHost.Files
-            member _.Environment = baseHost.Environment
-            member _.Memory = baseHost.Memory }
 
     let hir =
         makeProgram
@@ -728,6 +729,35 @@ let ``interpreter flush clears pending input before input reads`` () =
     let output = runHirProgramWithOptions { defaultRuntimeOptions with Host = host } hir
 
     Assert.That(String.concat "|" output, Is.EqualTo("WHICH LEVEL?|2"))
+
+[<Test>]
+let ``interpreter explicit screen channel input reads from screen channel queue`` () =
+    let levelId = H.SymbolId 0
+    let levelStorage = makeStorage levelId 0 "LEVEL" H.HirType.Int H.GlobalStorage
+    let outputs = ResizeArray<string>()
+    let pendingLines = Collections.Generic.Queue<string>([ "7" ])
+
+    let baseHost =
+        DefaultHost.create {
+            ReadLine = fun () -> None
+            ReadScreenLine = fun _ -> if pendingLines.Count > 0 then Some(pendingLines.Dequeue()) else None
+            FlushInput = fun () -> ()
+            ReadKey = fun () -> None
+            KeyAvailable = fun () -> false
+            KeyRowState = fun _ -> 0
+            WriteLine = fun line -> outputs.Add(line)
+        }
+
+    let hir =
+        makeProgram
+            (Map.ofList [ levelId, "LEVEL" ])
+            [ levelStorage ]
+            [ H.HirStmt.Input(Some(H.ExplicitChannel(H.Literal(H.ConstInt 1, H.HirType.Int, pos))), [ H.Literal(H.ConstString "LEVEL?", H.HirType.String, pos) ], [ H.WriteVar(levelId, H.HirType.Int, pos) ], pos)
+              H.BuiltInCall(H.Print, None, [ H.ReadVar(levelId, H.HirType.Int, pos) ], pos) ]
+
+    let output = runHirProgramWithOptions { defaultRuntimeOptions with Host = baseHost } hir
+
+    Assert.That(String.concat "|" output, Is.EqualTo("LEVEL?|7"))
 
 [<Test>]
 let ``interpreter rnd unsupported arguments reports coded runtime error`` () =
@@ -768,6 +798,8 @@ let ``interpreter inkey$ returns queued key and then null character`` () =
             Host =
                 DefaultHost.create {
                     ReadLine = fun () -> None
+                    ReadScreenLine = fun _ -> None
+                    FlushInput = fun () -> ()
                     ReadKey = fun () -> if keys.Count > 0 then Some(keys.Dequeue()) else None
                     KeyAvailable = fun () -> keys.Count > 0
                     KeyRowState = fun _ -> 0
@@ -803,6 +835,8 @@ let ``interpreter inkey$ accepts timeout and channel arguments`` () =
             Host =
                 DefaultHost.create {
                     ReadLine = fun () -> None
+                    ReadScreenLine = fun _ -> None
+                    FlushInput = fun () -> ()
                     ReadKey = fun () -> if keys.Count > 0 then Some(keys.Dequeue()) else None
                     KeyAvailable = fun () -> keys.Count > 0
                     KeyRowState = fun _ -> 0

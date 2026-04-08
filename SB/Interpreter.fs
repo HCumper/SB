@@ -75,6 +75,8 @@ let defaultRuntimeOptions =
     { Host =
         DefaultHost.create {
             ReadLine = fun () -> Console.ReadLine() |> Option.ofObj
+            ReadScreenLine = fun _ -> Console.ReadLine() |> Option.ofObj
+            FlushInput = fun () -> ()
             ReadKey =
                 fun () ->
                     try
@@ -539,32 +541,32 @@ let private advanceScreenLine channelId state pos =
             runtimeError UnsupportedChannelExecution (Some pos) (hostErrorText hostError)
 
 let private readInputFromChannel channelId state pos =
+    let rec waitForHostLine () =
+        match state.Options.Host.Input.ReadLine() with
+        | Some line -> Some line
+        | None ->
+            state.Options.Sleeper 50
+            waitForHostLine ()
+
+    let rec waitForChannelLine (reader: unit -> string option) =
+        match reader () with
+        | Some line -> Some line
+        | None ->
+            state.Options.Sleeper 50
+            waitForChannelLine reader
+
     match channelId with
     | None ->
-        let rec waitForLine () =
-            match state.Options.Host.Input.ReadLine() with
-            | Some line -> Some line
-            | None ->
-                state.Options.Sleeper 50
-                waitForLine ()
-
-        Result.Ok(waitForLine ())
+        match state.Options.Host.Channels.Get(ChannelId 1) with
+        | Result.Ok channel -> Result.Ok(waitForChannelLine channel.ReadText)
+        | Result.Error hostError ->
+            runtimeError UnsupportedChannelExecution (Some pos) (hostErrorText hostError)
     | Some resolvedChannelId ->
-        match resolvedChannelId with
-        | ChannelId 0 ->
-            let rec waitForConsoleLine () =
-                match state.Options.Host.Input.ReadLine() with
-                | Some line -> Some line
-                | None ->
-                    state.Options.Sleeper 50
-                    waitForConsoleLine ()
-
-            Result.Ok(waitForConsoleLine ())
-        | _ ->
-            match state.Options.Host.Channels.Get resolvedChannelId with
-            | Result.Ok channel -> Result.Ok(channel.ReadText())
-            | Result.Error hostError ->
-                runtimeError UnsupportedChannelExecution (Some pos) (hostErrorText hostError)
+        match state.Options.Host.Channels.Get resolvedChannelId with
+        | Result.Ok (:? SBRuntime.IScreenChannel as screenChannel) -> Result.Ok(waitForChannelLine screenChannel.ReadText)
+        | Result.Ok channel -> Result.Ok(channel.ReadText())
+        | Result.Error hostError ->
+            runtimeError UnsupportedChannelExecution (Some pos) (hostErrorText hostError)
 
 let private validateScreenChannel channelId state pos =
     match channelId with
@@ -1020,7 +1022,7 @@ and private executeBuiltInCall state kind channel args targets pos =
                 |> Result.bind (fun finalState -> advanceScreenLine resolvedChannel finalState pos)
                 |> Result.map (fun finalState -> Continue, finalState)))
     | BuiltInKind.Input ->
-        withEffectiveChannel state channel (Some(ChannelId 0)) pos (fun resolvedChannel stateAfterChannel ->
+        withEffectiveChannel state channel (Some(ChannelId 1)) pos (fun resolvedChannel stateAfterChannel ->
             let promptStateResult =
                 if List.isEmpty args then
                     Result.Ok stateAfterChannel
@@ -1485,9 +1487,9 @@ and private executeBuiltInCall state kind channel args targets pos =
         | "RECOL" ->
             executeScreenOp 1 true (fun resolvedChannel nextState numericArgs ->
                 match numericArgs with
-                | first :: _ ->
-                    executeChannelScreenOp resolvedChannel nextState pos (fun screenChannel -> screenChannel.SetRecolor(first)) (fun screen -> screen.SetRecolor(first))
-                | _ -> Result.Ok nextState)
+                | [] -> Result.Ok nextState
+                | _ ->
+                    executeChannelScreenOp resolvedChannel nextState pos (fun screenChannel -> screenChannel.SetRecolor(numericArgs)) (fun screen -> screen.SetRecolor(numericArgs)))
         | "PALETTE" ->
             executeScreenOp 1 true (fun resolvedChannel nextState numericArgs ->
                 match numericArgs with
