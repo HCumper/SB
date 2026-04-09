@@ -188,12 +188,6 @@ type RuntimeSurfaceControl() =
                     if borderThickness > 0.0 then paneRect.Deflate(borderThickness)
                     else paneRect
 
-                fillRectangleWithColorSpec context snapshot.Mode.Mode pane.Recolor pane.Palette x y paneRect pane.Border
-                if borderThickness > 0.0 then
-                    fillRectangleWithColorSpec context snapshot.Mode.Mode pane.Recolor pane.Palette x y viewportRect pane.Paper
-
-                let paneSurfaceHeight = Array2D.length1 pane.Surface
-                let paneSurfaceWidth = Array2D.length2 pane.Surface
                 let charWidthScale, charHeightScale =
                     let widthScale, heightScale = pane.CharacterSize
                     max 1 (widthScale + 1), max 1 (heightScale + 1)
@@ -201,9 +195,16 @@ type RuntimeSurfaceControl() =
                 let logicalCellHeight = snapshot.Mode.BaseTextCellHeight * charHeightScale
                 let logicalAdvance = max 1 (logicalCellWidth - max 4 ((2 * logicalCellWidth) / 3))
                 let textRows = max 1 (height / logicalCellHeight)
-                let textCols = max 1 (width / logicalCellWidth)
+                let textCols = max 1 (width / logicalAdvance)
+
+                fillRectangleWithColorSpec context snapshot.Mode.Mode pane.Recolor pane.Palette x y paneRect pane.Border
+                if borderThickness > 0.0 then
+                    fillRectangleWithColorSpec context snapshot.Mode.Mode pane.Recolor pane.Palette x y viewportRect pane.Paper
 
                 use _clip = context.PushClip(viewportRect)
+
+                let paneSurfaceHeight = Array2D.length1 pane.Surface
+                let paneSurfaceWidth = Array2D.length2 pane.Surface
 
                 if paneSurfaceHeight > 0 && paneSurfaceWidth > 0 then
                     let pixelWidth = max 1.0 (viewportRect.Width / float paneSurfaceWidth)

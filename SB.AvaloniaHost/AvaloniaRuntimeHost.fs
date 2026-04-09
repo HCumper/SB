@@ -22,11 +22,14 @@ module internal InteractiveInput =
         | Result.Ok (:? IScreenChannel as screenChannel) -> Some screenChannel
         | _ -> None
 
+    let private visualAdvance cellWidth =
+        max 1 (cellWidth - max 4 ((2 * cellWidth) / 3))
+
     let private textColumns (host: IRuntimeHost) (screenChannel: IScreenChannel) =
         let width, _, _, _ = screenChannel.GetWindow()
         let widthScale, _ = screenChannel.GetCharacterSize()
         let cellWidth = host.Screen.GetMode().BaseTextCellWidth * max 1 (widthScale + 1)
-        max 1 (width / cellWidth)
+        max 1 (width / visualAdvance cellWidth)
 
     type Controller(host: IRuntimeHost, enqueueKey: KeyInfo -> unit, enqueueLine: string -> unit) as this =
         let gate = obj ()

@@ -5,6 +5,7 @@ open Avalonia
 open Avalonia.Controls
 open Avalonia.Input
 open Avalonia.Media
+open Avalonia.Controls.ApplicationLifetimes
 open Avalonia.Threading
 open SBRuntime
 
@@ -64,6 +65,13 @@ type MainWindow(display: IDisplaySurface, handleTextInput: string -> unit, handl
         repaintTimer.Start()
         this.Content <- surface
         this.Opened.Add(fun _ -> this.Focus() |> ignore)
+        this.Closed.Add(fun _ ->
+            match Application.Current with
+            | null -> ()
+            | app ->
+                match app.ApplicationLifetime with
+                | :? IClassicDesktopStyleApplicationLifetime as desktop -> desktop.Shutdown()
+                | _ -> ())
 
     member _.AppendOutput(text: string) =
         ()

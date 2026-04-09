@@ -35,7 +35,7 @@ module private ScreenDefaults =
 
         match channelNumber with
         | 0 -> mode.Width, bottomHeight, 0, bottomY
-        | 1 -> rightWidth, topHeight, mode.Width - rightWidth, 0
+        | 1 -> mode.Width, topHeight, 0, 0
         | 2 -> leftWidth, topHeight, 0, 0
         | _ -> mode.Width, mode.Height, 0, 0
 
@@ -56,7 +56,7 @@ module private ScreenDefaults =
             BaseTextCellHeight = 10
             DefaultCharacterSize = 0, 0 }
           { Mode = QlMode8
-            Width = 256
+            Width = 512
             Height = 256
             Colors = Some 8
             Name = "QL Mode 8"
@@ -612,9 +612,39 @@ type private DefaultScreenChannel(id: ChannelId, kind: ChannelKind, screenReader
         let foreground = ink |> List.tryHead |> Option.defaultValue 7
         let background = strip |> List.tryHead |> Option.defaultValue paper
         let mutable cursorX, cursorY = clampCursorPosition cursor
+        let cellWidth, cellHeight = TextLayout.cellSize mode characterSize
+        let cellAdvance = TextLayout.visualAdvance cellWidth
+
+        let rasterizeCharToSharedPixels col row inkColor stripColor hasBackground ch =
+            let originX = (textX + col) * cellAdvance
+            let originY = (textY + row) * cellHeight
+
+            if hasBackground then
+                for py = originY to min (buffer.Mode.Height - 1) (originY + cellHeight - 1) do
+                    for px = originX to min (buffer.Mode.Width - 1) (originX + cellAdvance - 1) do
+                        buffer.SetPixel(px, py, stripColor)
+
+            if ch <> ' ' then
+                let glyph = QlBitmapFont.glyphForCharacter (int ch) ch
+                let glyphRows = min 8 glyph.Length
+                let renderWidth = min cellWidth 8
+                let renderHeight = min cellHeight glyphRows
+                let verticalInset = max 0 ((cellHeight - renderHeight) / 2)
+
+                for glyphRow = 0 to glyphRows - 1 do
+                    let pattern = int glyph[glyphRow]
+                    for targetCol = 0 to renderWidth - 1 do
+                        let glyphCol =
+                            min 7 (int (float targetCol * 8.0 / float renderWidth))
+                        if (pattern >>> glyphCol) &&& 1 = 1 then
+                            let px = originX + targetCol
+                            let py = originY + verticalInset + glyphRow
+                            if px >= 0 && px < buffer.Mode.Width && py >= 0 && py < buffer.Mode.Height then
+                                buffer.SetPixel(px, py, inkColor)
 
         let writeChar ch =
             buffer.SetTextCell(textX + cursorX, textY + cursorY, foreground, paper, background, true, ch)
+            rasterizeCharToSharedPixels cursorX cursorY foreground background true ch
             paneBuffer.SetTextCell(cursorX, cursorY, foreground, paper, background, true, ch)
             cursorX <- cursorX + 1
 
@@ -702,7 +732,7 @@ type private DefaultScreenChannel(id: ChannelId, kind: ChannelKind, screenReader
         member _.GetCursor() = cursor
         member _.SetCharacterSize(width, height) =
             characterSize <- width, height
-            rebuildPaneBuffer true
+            rebuildPaneBuffer false
         member _.GetCharacterSize() = characterSize
         member _.SetCharacterFonts(font1, font2) =
             let currentFont1, currentFont2 = characterFonts
@@ -732,6 +762,20 @@ type private DefaultScreenChannel(id: ChannelId, kind: ChannelKind, screenReader
                     buffer.Pixels[sourceY, sourceX]
                 else
                     paper)
+        let cellWidth, cellHeight = TextLayout.cellSize mode characterSize
+        let cellAdvance = TextLayout.visualAdvance cellWidth
+        let textRows = Array2D.length1 textSnapshot
+        let textCols = Array2D.length2 textSnapshot
+
+        for row = 0 to textRows - 1 do
+            for col = 0 to textCols - 1 do
+                let cell = textSnapshot[row, col]
+                if cell.HasBackground then
+                    let startX = col * cellAdvance
+                    let startY = row * cellHeight
+                    for py = startY to min (safeHeight - 1) (startY + cellHeight - 1) do
+                        for px = startX to min (safeWidth - 1) (startX + cellWidth - 1) do
+                            pixelSnapshot[py, px] <- cell.Strip
         let surfaceSnapshot = buffer.ComposeSurface(mode, characterSize, textSnapshot, pixelSnapshot)
 
         { ChannelId = Some channelNumber
@@ -879,7 +923,7 @@ type private DefaultChannelManager(defaultChannels: IChannel list, screenReader:
         | true, _ -> Result.Error(InvalidHostArgument $"Channel #{requestedId} already exists.")
         | false, _ ->
             createNamedChannel requestedId name fileModeOverride
-            |> Result.map (fun channel -> channels[requestedId] <- channel)
+            |> Result.bind this.Register
 
     interface IChannelManager with
         member _.Open(name: string) =
@@ -1044,7 +1088,7 @@ type private DefaultScreenDevice(writer: string -> unit, buffer: ScreenBuffer) =
         member _.GetCursor() = cursor
         member _.SetCharacterSize(width, height) =
             characterSize <- width, height
-            rebuildPaneBuffer true
+            rebuildPaneBuffer false
         member _.GetCharacterSize() = characterSize
         member _.SetCharacterFonts(font1, font2) =
             let currentFont1, currentFont2 = characterFonts
