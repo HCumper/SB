@@ -52,6 +52,16 @@ let parseAstFromFile fileName =
     |> convertTreeToAst
     |> List.head
 
+let parseAstFromSource (input: string) =
+    let inputStream = AntlrInputStream(input)
+    let lexer = CompilerPipeline.createLexer inputStream
+    let tokenStream = CommonTokenStream(lexer)
+    let parser = SBParser(tokenStream)
+
+    parser.program()
+    |> convertTreeToAst
+    |> List.head
+
 let lowerProgram ast =
     let analyzed = runSemanticAnalysis ast
     match lowerToHir analyzed with
@@ -94,6 +104,7 @@ let runProgram ast =
     runProgramWithInput [] ast
 
 type ScreenWindowState = {
+    mutable OuterWindow: int * int * int * int
     mutable Window: int * int * int * int
     mutable Scroll: int
     mutable Width: int option
@@ -107,7 +118,8 @@ type ScreenWindowState = {
     mutable Ink: int list option
     mutable Paper: int option
     mutable Strip: int list option
-    mutable Border: int option
+    mutable BorderSize: int option
+    mutable BorderColor: int option
     Writes: ResizeArray<string>
 }
 
@@ -141,9 +153,31 @@ let createScreenHost (inputs: string list) =
           { Mode = ExtendedMode 256; Width = 256; Height = 256; Colors = Some 8; Name = "Extended Mode 256"; IsQlCompatible = false; BaseTextCellWidth = 8; BaseTextCellHeight = 8; DefaultCharacterSize = 0, 0 }
           { Mode = ExtendedMode 512; Width = 512; Height = 256; Colors = Some 4; Name = "Extended Mode 512"; IsQlCompatible = false; BaseTextCellWidth = 8; BaseTextCellHeight = 8; DefaultCharacterSize = 0, 0 } ]
 
+    let sideBorderWidth size =
+        if size <= 0 then 0
+        else
+            let widened = if size % 2 <> 0 then size + 1 else size
+            max 2 widened
+
+    let applyBorder (window: ScreenWindowState) size color =
+        window.BorderSize <- Some(max 0 size)
+        window.BorderColor <- if size > 0 then color else None
+        let outerWidth, outerHeight, outerX, outerY = window.OuterWindow
+        let verticalInset = max 0 size
+        let horizontalInset = sideBorderWidth size
+        if size <= 0 then
+            window.Window <- window.OuterWindow
+        else
+            window.Window <-
+                max 1 (outerWidth - (2 * horizontalInset)),
+                max 1 (outerHeight - (2 * verticalInset)),
+                outerX + horizontalInset,
+                outerY + verticalInset
+
     let applyModeToWindow (_channelId: int) (mode: ScreenModeInfo) (window: ScreenWindowState) =
         window.Cursor <- 0, 0
-        window.Window <- mode.Width, mode.Height, 0, 0
+        window.OuterWindow <- mode.Width, mode.Height, 0, 0
+        window.Window <- window.OuterWindow
         window.Scroll <- 0
         window.Width <- None
         window.Pan <- 0
@@ -154,10 +188,12 @@ let createScreenHost (inputs: string list) =
         window.Ink <- Some [ 7 ]
         window.Paper <- Some 0
         window.Strip <- Some [ 0 ]
-        window.Border <- Some 0
+        window.BorderSize <- Some 0
+        window.BorderColor <- None
 
     let makeWindowState () =
         { Cursor = 0, 0
+          OuterWindow = 0, 0, 0, 0
           Window = 0, 0, 0, 0
           Scroll = 0
           Width = None
@@ -170,7 +206,8 @@ let createScreenHost (inputs: string list) =
           Ink = None
           Paper = None
           Strip = None
-          Border = None
+          BorderSize = None
+          BorderColor = None
           Writes = ResizeArray<string>() }
 
     let windows =
@@ -371,7 +408,8 @@ let createScreenHost (inputs: string list) =
             member _.SetWindow(width, height, x, y) =
                 match Map.tryFind channelId state.Windows with
                 | Some window ->
-                    window.Window <- width, height, x, y
+                    window.OuterWindow <- width, height, x, y
+                    applyBorder window (window.BorderSize |> Option.defaultValue 0) window.BorderColor
                     window.Cursor <- 0, 0
                 | None -> ()
             member _.GetWindow() =
@@ -458,9 +496,9 @@ let createScreenHost (inputs: string list) =
                 match Map.tryFind channelId state.Windows with
                 | Some window -> window.Strip <- Some values
                 | None -> ()
-            member _.SetBorder(value: int) =
+            member _.SetBorder(size: int, color: int option) =
                 match Map.tryFind channelId state.Windows with
-                | Some window -> window.Border <- Some value
+                | Some window -> applyBorder window size color
                 | None -> () }
 
     let makeScreenChannel channelId =
@@ -484,7 +522,8 @@ let createScreenHost (inputs: string list) =
             member _.SetWindow(width, height, x, y) =
                 match Map.tryFind channelId state.Windows with
                 | Some window ->
-                    window.Window <- width, height, x, y
+                    window.OuterWindow <- width, height, x, y
+                    applyBorder window (window.BorderSize |> Option.defaultValue 0) window.BorderColor
                     window.Cursor <- 0, 0
                 | None -> ()
             member _.GetWindow() =
@@ -571,9 +610,9 @@ let createScreenHost (inputs: string list) =
                 match Map.tryFind channelId state.Windows with
                 | Some window -> window.Strip <- Some values
                 | None -> ()
-            member _.SetBorder(value: int) =
+            member _.SetBorder(size: int, color: int option) =
                 match Map.tryFind channelId state.Windows with
-                | Some window -> window.Border <- Some value
+                | Some window -> applyBorder window size color
                 | None -> () }
 
     let channels =
@@ -613,7 +652,8 @@ let createScreenHost (inputs: string list) =
                     member _.SetWindow(width, height, x, y) =
                         match Map.tryFind 1 state.Windows with
                         | Some window ->
-                            window.Window <- width, height, x, y
+                            window.OuterWindow <- width, height, x, y
+                            applyBorder window (window.BorderSize |> Option.defaultValue 0) window.BorderColor
                             window.Cursor <- 0, 0
                         | None -> ()
                     member _.GetWindow() =
@@ -701,9 +741,9 @@ let createScreenHost (inputs: string list) =
                         match Map.tryFind 1 state.Windows with
                         | Some window -> window.Strip <- Some values
                         | None -> ()
-                    member _.SetBorder(value: int) =
+                    member _.SetBorder(size: int, color: int option) =
                         match Map.tryFind 1 state.Windows with
-                        | Some window -> window.Border <- Some value
+                        | Some window -> applyBorder window size color
                         | None -> ()
                     member _.GetSupportedModes() = supportedModes
                     member _.GetMode() = state.Mode
@@ -780,13 +820,21 @@ let createScreenHost (inputs: string list) =
                     member _.EllipseRelative(dx, dy, radius, ratio, angle) =
                         let tx, ty = transformDelta dx dy
                         state.GraphicsOps.Add($"ELLIPSE_R {tx:G17},{ty:G17},{radius:G17},{ratio:G17},{angle:G17}")
-                    member _.Arc(x, y, radius, startAngle, endAngle) =
-                        let tx, ty = transformAbsolute x y
-                        state.GraphicsOps.Add($"ARC {tx:G17},{ty:G17},{radius:G17},{startAngle:G17},{endAngle:G17}")
-                        setPixel (int (Math.Round tx)) (int (Math.Round ty)) (state.GraphicsInk |> List.tryHead |> Option.defaultValue 7)
-                    member _.ArcRelative(dx, dy, radius, startAngle, endAngle) =
-                        let tx, ty = transformDelta dx dy
-                        state.GraphicsOps.Add($"ARC_R {tx:G17},{ty:G17},{radius:G17},{startAngle:G17},{endAngle:G17}")
+                    member _.Arc(x1, y1, x2, y2, angle) =
+                        let endX, endY = transformAbsolute x2 y2
+                        if Double.IsNaN x1 || Double.IsNaN y1 then
+                            state.GraphicsOps.Add($"ARC TO {endX:G17},{endY:G17},{angle:G17}")
+                        else
+                            let startX, startY = transformAbsolute x1 y1
+                            state.GraphicsOps.Add($"ARC {startX:G17},{startY:G17} TO {endX:G17},{endY:G17},{angle:G17}")
+                            setPixel (int (Math.Round startX)) (int (Math.Round startY)) (state.GraphicsInk |> List.tryHead |> Option.defaultValue 7)
+                    member _.ArcRelative(dx1, dy1, dx2, dy2, angle) =
+                        let endX, endY = transformDelta dx2 dy2
+                        if Double.IsNaN dx1 || Double.IsNaN dy1 then
+                            state.GraphicsOps.Add($"ARC_R TO {endX:G17},{endY:G17},{angle:G17}")
+                        else
+                            let startX, startY = transformDelta dx1 dy1
+                            state.GraphicsOps.Add($"ARC_R {startX:G17},{startY:G17} TO {endX:G17},{endY:G17},{angle:G17}")
                     member _.Block(width, height, x, y, color) =
                         let tx, ty = transformAbsolute x y
                         state.GraphicsOps.Add($"BLOCK {width:G17},{height:G17},{tx:G17},{ty:G17},{color}")

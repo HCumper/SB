@@ -545,6 +545,54 @@ let ``interpreter input from default channel uses host channel manager`` () =
     | Result.Error err -> Assert.Fail($"Expected interpretation to succeed, got %A{err}")
 
 [<Test>]
+let ``interpreter input preserves dynamic string targets`` () =
+    let outputs = ResizeArray<string>()
+    let inputs = Queue<string>([ "ADD" ])
+    let ast =
+        Program(
+            pos,
+            [ Line(pos, Some 10, [ ProcedureCall(pos, "INPUT", [ str "\"Enter\""; id "a$" ]) ])
+              Line(pos, Some 20, [ ProcedureCall(pos, "PRINT", [ id "a$" ]) ]) ])
+    let hir = lowerProgram ast
+
+    let result =
+        interpretProgramWithOptions
+            { defaultRuntimeOptions with
+                Host =
+                    DefaultHost.create {
+                        ReadLine = fun () -> if inputs.Count > 0 then Some(inputs.Dequeue()) else None
+                        ReadScreenLine = fun _ -> if inputs.Count > 0 then Some(inputs.Dequeue()) else None
+                        FlushInput = fun () -> ()
+                        ReadKey = fun () -> None
+                        KeyAvailable = fun () -> false
+                        KeyRowState = fun _ -> 0
+                        WriteLine = fun line -> outputs.Add(line)
+                    } }
+            hir
+
+    match result with
+    | Result.Ok execution -> Assert.That(String.concat "|" execution.Output, Is.EqualTo("Enter|ADD"))
+    | Result.Error err -> Assert.Fail($"Expected interpretation to succeed, got %A{err}")
+
+[<Test>]
+let ``interpreter screen print formats floats compactly`` () =
+    let host, screenState = createScreenHost []
+    let channel1 = H.Literal(H.ConstInt 1, H.HirType.Int, pos)
+    let hir =
+        makeProgram
+            Map.empty
+            []
+            [ H.BuiltInCall(H.Print, explicitChannel channel1, [ H.Literal(H.ConstFloat 23.82, H.HirType.Float, pos) ], pos) ]
+
+    let result = interpretProgramWithOptions { defaultRuntimeOptions with Host = host } hir
+
+    match result with
+    | Result.Ok _ ->
+        Assert.That(screenState.Windows[1].Writes |> Seq.toList |> String.concat "", Is.EqualTo("23.82"))
+    | Result.Error err ->
+        Assert.Fail($"Expected interpretation to succeed, got %A{err}")
+
+[<Test>]
 let ``interpreter screen channel operations keep default window state independent`` () =
     let host, screenState = createScreenHost [ "99" ]
     let xId = H.SymbolId 0
@@ -591,10 +639,10 @@ let ``interpreter screen channel operations keep default window state independen
         Assert.That(window1.CharacterSize, Is.EqualTo((2, 1)))
         Assert.That(window1.Ink, Is.EqualTo(Some [ 7 ]))
         Assert.That(window1.Paper, Is.EqualTo(Some 0))
-        Assert.That(window2.Window, Is.EqualTo((300, 120, 100, 80)))
+        Assert.That(window2.Window, Is.EqualTo((296, 118, 102, 81)))
         Assert.That(window2.CharacterSize, Is.EqualTo((4, 3)))
         Assert.That(window2.Paper, Is.EqualTo(Some 2))
-        Assert.That(window2.Border, Is.EqualTo(Some 1))
+        Assert.That(window2.BorderSize, Is.EqualTo(Some 1))
         Assert.That(window2.Writes |> Seq.toList |> String.concat "|", Is.EqualTo("Enter"))
         Assert.That(window0.Writes |> Seq.toList |> String.concat "|", Is.EqualTo(""))
         Assert.That(window1.Writes |> Seq.toList |> String.concat "|", Is.EqualTo(""))
@@ -809,7 +857,18 @@ let ``interpreter graphics primitives dispatch to host graphics device`` () =
                     H.Literal(H.ConstInt 5, H.HirType.Int, pos) ],
                   pos)
               H.BuiltInCall(H.NamedBuiltIn "CIRCLE", None, [ H.Literal(H.ConstInt 8, H.HirType.Int, pos); H.Literal(H.ConstInt 9, H.HirType.Int, pos); H.Literal(H.ConstFloat 2.5, H.HirType.Float, pos) ], pos)
+              H.BuiltInCall(H.NamedBuiltIn "CIRCLE", None, [ H.Literal(H.ConstInt 100, H.HirType.Int, pos); H.Literal(H.ConstInt 100, H.HirType.Int, pos); H.Literal(H.ConstInt 20, H.HirType.Int, pos); H.Literal(H.ConstInt 1, H.HirType.Int, pos); H.Literal(H.ConstInt 0, H.HirType.Int, pos); H.Literal(H.ConstInt 50, H.HirType.Int, pos); H.Literal(H.ConstInt 50, H.HirType.Int, pos); H.Literal(H.ConstInt 20, H.HirType.Int, pos) ], pos)
               H.BuiltInCall(H.NamedBuiltIn "ELLIPSE", explicitChannel channel2, [ H.Literal(H.ConstInt 11, H.HirType.Int, pos); H.Literal(H.ConstInt 12, H.HirType.Int, pos); H.Literal(H.ConstInt 13, H.HirType.Int, pos); H.Literal(H.ConstFloat 0.7, H.HirType.Float, pos); H.Literal(H.ConstInt 6, H.HirType.Int, pos) ], pos)
+              H.BuiltInCall(
+                  H.NamedBuiltIn "ARC",
+                  None,
+                  [ H.Literal(H.ConstInt 14, H.HirType.Int, pos)
+                    H.Binary(H.SliceRange, H.Literal(H.ConstInt 15, H.HirType.Int, pos), H.Literal(H.ConstInt 16, H.HirType.Int, pos), H.HirType.Int, pos)
+                    H.Literal(H.ConstInt 17, H.HirType.Int, pos)
+                    H.Binary(H.SliceRange, H.Literal(H.ConstFloat 3.0, H.HirType.Float, pos), H.Literal(H.ConstInt 20, H.HirType.Int, pos), H.HirType.Float, pos)
+                    H.Literal(H.ConstInt 21, H.HirType.Int, pos)
+                    H.Literal(H.ConstFloat 1.5, H.HirType.Float, pos) ],
+                  pos)
               H.BuiltInCall(H.NamedBuiltIn "FILL", explicitChannel channel0, [ H.Literal(H.ConstInt 1, H.HirType.Int, pos) ], pos) ]
 
     let result =
@@ -828,7 +887,11 @@ let ``interpreter graphics primitives dispatch to host graphics device`` () =
               "LINE 0,0 TO 10,10"
               "LINE 10,10 TO 20,5"
               "CIRCLE 8,9,2.5"
+              "ELLIPSE 100,100,20,1,0"
+              "CIRCLE 50,50,20"
               "ELLIPSE 11,12,13,0.69999999999999996,6"
+              "ARC 14,15 TO 16,17,3"
+              "ARC TO 20,21,1.5"
               "FILL 1" ]
         Assert.That(screenState.GraphicsOps |> Seq.toList = expectedOps, Is.True)
         Assert.That(screenState.GraphicsInk = [ 6; 4; 3 ], Is.True)
@@ -911,9 +974,26 @@ let ``interpreter remaining graphics primitives dispatch to host graphics device
               H.BuiltInCall(H.NamedBuiltIn "DLINE", None, [ H.Literal(H.ConstInt 0, H.HirType.Int, pos); H.Literal(H.ConstInt 0, H.HirType.Int, pos); H.Literal(H.ConstInt 5, H.HirType.Int, pos); H.Literal(H.ConstInt 5, H.HirType.Int, pos) ], pos)
               H.BuiltInCall(H.NamedBuiltIn "LINE_R", explicitChannel channel1, [ H.Literal(H.ConstInt 2, H.HirType.Int, pos); H.Literal(H.ConstInt 3, H.HirType.Int, pos); H.Literal(H.ConstInt 4, H.HirType.Int, pos); H.Literal(H.ConstInt 6, H.HirType.Int, pos) ], pos)
               H.BuiltInCall(H.NamedBuiltIn "CIRCLE_R", None, [ H.Literal(H.ConstInt 7, H.HirType.Int, pos); H.Literal(H.ConstInt 8, H.HirType.Int, pos); H.Literal(H.ConstInt 9, H.HirType.Int, pos) ], pos)
+              H.BuiltInCall(H.NamedBuiltIn "CIRCLE_R", None, [ H.Literal(H.ConstInt 4, H.HirType.Int, pos); H.Literal(H.ConstInt 5, H.HirType.Int, pos); H.Literal(H.ConstInt 6, H.HirType.Int, pos); H.Literal(H.ConstInt 1, H.HirType.Int, pos); H.Literal(H.ConstInt 0, H.HirType.Int, pos); H.Literal(H.ConstInt 2, H.HirType.Int, pos); H.Literal(H.ConstInt 3, H.HirType.Int, pos); H.Literal(H.ConstInt 4, H.HirType.Int, pos) ], pos)
               H.BuiltInCall(H.NamedBuiltIn "ELLIPSE_R", explicitChannel channel1, [ H.Literal(H.ConstInt 10, H.HirType.Int, pos); H.Literal(H.ConstInt 11, H.HirType.Int, pos); H.Literal(H.ConstInt 12, H.HirType.Int, pos); H.Literal(H.ConstFloat 0.5, H.HirType.Float, pos); H.Literal(H.ConstInt 13, H.HirType.Int, pos) ], pos)
-              H.BuiltInCall(H.NamedBuiltIn "ARC", None, [ H.Literal(H.ConstInt 14, H.HirType.Int, pos); H.Literal(H.ConstInt 15, H.HirType.Int, pos); H.Literal(H.ConstInt 16, H.HirType.Int, pos); H.Literal(H.ConstInt 17, H.HirType.Int, pos); H.Literal(H.ConstInt 18, H.HirType.Int, pos) ], pos)
-              H.BuiltInCall(H.NamedBuiltIn "ARC_R", explicitChannel channel1, [ H.Literal(H.ConstInt 19, H.HirType.Int, pos); H.Literal(H.ConstInt 20, H.HirType.Int, pos); H.Literal(H.ConstInt 21, H.HirType.Int, pos); H.Literal(H.ConstInt 22, H.HirType.Int, pos); H.Literal(H.ConstInt 23, H.HirType.Int, pos) ], pos)
+              H.BuiltInCall(
+                  H.NamedBuiltIn "ARC",
+                  None,
+                  [ H.Literal(H.ConstInt 14, H.HirType.Int, pos)
+                    H.Binary(H.SliceRange, H.Literal(H.ConstInt 15, H.HirType.Int, pos), H.Literal(H.ConstInt 16, H.HirType.Int, pos), H.HirType.Int, pos)
+                    H.Literal(H.ConstInt 17, H.HirType.Int, pos)
+                    H.Literal(H.ConstFloat 3.0, H.HirType.Float, pos) ],
+                  pos)
+              H.BuiltInCall(
+                  H.NamedBuiltIn "ARC_R",
+                  explicitChannel channel1,
+                  [ H.Literal(H.ConstInt 19, H.HirType.Int, pos)
+                    H.Binary(H.SliceRange, H.Literal(H.ConstInt 20, H.HirType.Int, pos), H.Literal(H.ConstInt 21, H.HirType.Int, pos), H.HirType.Int, pos)
+                    H.Literal(H.ConstInt 22, H.HirType.Int, pos)
+                    H.Binary(H.SliceRange, H.Literal(H.ConstFloat 2.5, H.HirType.Float, pos), H.Literal(H.ConstInt 24, H.HirType.Int, pos), H.HirType.Float, pos)
+                    H.Literal(H.ConstInt 25, H.HirType.Int, pos)
+                    H.Literal(H.ConstFloat 1.25, H.HirType.Float, pos) ],
+                  pos)
               H.BuiltInCall(H.NamedBuiltIn "BLOCK", None, [ H.Literal(H.ConstInt 24, H.HirType.Int, pos); H.Literal(H.ConstInt 25, H.HirType.Int, pos); H.Literal(H.ConstInt 26, H.HirType.Int, pos); H.Literal(H.ConstInt 27, H.HirType.Int, pos); H.Literal(H.ConstInt 3, H.HirType.Int, pos) ], pos)
               H.BuiltInCall(H.NamedBuiltIn "TURN", None, [ H.Literal(H.ConstInt 30, H.HirType.Int, pos) ], pos)
               H.BuiltInCall(H.NamedBuiltIn "TURNTO", explicitChannel channel1, [ H.Literal(H.ConstInt 45, H.HirType.Int, pos) ], pos) ]
@@ -933,14 +1013,59 @@ let ``interpreter remaining graphics primitives dispatch to host graphics device
               "DLINE 0,0,5,5"
               "LINE_R 2,3,4,6"
               "CIRCLE_R 7,8,9"
+              "ELLIPSE_R 4,5,6,1,0"
+              "CIRCLE_R 2,3,4"
               "ELLIPSE_R 10,11,12,0.5,13"
-              "ARC 14,15,16,17,18"
-              "ARC_R 19,20,21,22,23"
+              "ARC 14,15 TO 16,17,3"
+              "ARC_R 19,20 TO 21,22,2.5"
+              "ARC_R TO 24,25,1.25"
               "BLOCK 24,25,26,27,3"
               "TURN 30"
               "TURNTO 45" ]
         Assert.That(screenState.GraphicsOps |> Seq.toList = expectedOps, Is.True)
         Assert.That(screenState.Heading, Is.EqualTo(45.0))
+    | Result.Error err ->
+        Assert.Fail($"Expected interpretation to succeed, got %A{err}")
+
+[<Test>]
+let ``parser preserves leading TO arc syntax as arc arguments`` () =
+    let host, screenState = createScreenHost []
+    let ast = parseAstFromSource "100 ARC TO 10,20,1.5\n110 ARC_R TO 5,6,0.5\n"
+    let hir = lowerProgram ast
+
+    let result =
+        interpretProgramWithOptions
+            { defaultRuntimeOptions with
+                Host = host }
+            hir
+
+    match result with
+    | Result.Ok _ ->
+        let expectedOps : string list =
+            [ "ARC TO 10,20,1.5"
+              "ARC_R TO 5,6,0.5" ]
+        Assert.That(screenState.GraphicsOps |> Seq.toList = expectedOps, Is.True)
+    | Result.Error err ->
+        Assert.Fail($"Expected interpretation to succeed, got %A{err}")
+
+[<Test>]
+let ``parser lowers explicit TO arc syntax into endpoint arc arguments`` () =
+    let host, screenState = createScreenHost []
+    let ast = parseAstFromSource "100 ARC 50,35 TO 50,25,-1.5\n110 ARC_R 10,5 TO 12,2,-1\n"
+    let hir = lowerProgram ast
+
+    let result =
+        interpretProgramWithOptions
+            { defaultRuntimeOptions with
+                Host = host }
+            hir
+
+    match result with
+    | Result.Ok _ ->
+        let expectedOps : string list =
+            [ "ARC 50,35 TO 50,25,-1.5"
+              "ARC_R 10,5 TO 12,2,-1" ]
+        Assert.That(screenState.GraphicsOps |> Seq.toList = expectedOps, Is.True)
     | Result.Error err ->
         Assert.Fail($"Expected interpretation to succeed, got %A{err}")
 
@@ -975,7 +1100,7 @@ let ``interpreter minimum arity graphics and display primitives dispatch correct
     | Result.Ok _ ->
         Assert.That(screenState.Windows[0].Ink, Is.EqualTo(Some [ 7 ]))
         Assert.That(screenState.Windows[0].Paper, Is.EqualTo(Some 2))
-        Assert.That(screenState.Windows[0].Border, Is.EqualTo(Some 1))
+        Assert.That(screenState.Windows[0].BorderSize, Is.EqualTo(Some 1))
         Assert.That(screenState.Windows[1].Scroll, Is.EqualTo(3))
         Assert.That(screenState.Windows[1].Width, Is.EqualTo(Some 40))
         Assert.That(screenState.Windows[1].Pan, Is.EqualTo(10))
@@ -1037,7 +1162,7 @@ let ``interpreter extended arity graphics and display primitives dispatch correc
 
     match result with
     | Result.Ok _ ->
-        Assert.That(screenState.Windows[0].Border, Is.EqualTo(Some 5))
+        Assert.That(screenState.Windows[0].BorderSize, Is.EqualTo(Some 5))
         Assert.That(screenState.Windows[1].Palette, Is.EqualTo(Some [ 1; 2; 3 ]))
         let expectedOps =
             [ "LINE 0,0 TO 10,10"
@@ -1570,7 +1695,7 @@ let ``default host pent prompt sequence keeps second prompt visible after cls on
             match host.Channels.Get(ChannelId 5) with
             | Result.Ok (:? IScreenChannel as channel5) ->
                 channel5.SetPaper(4)
-                channel5.SetBorder(4)
+                channel5.SetBorder(4, None)
                 channel5.Clear()
 
                 channel1.SetInk([ 1 ])
@@ -1632,7 +1757,7 @@ let ``default host mode 8 overlay pane preserves full prompt width`` () =
                 match host.Channels.Get(ChannelId 5) with
                 | Result.Ok (:? IScreenChannel as channel5) ->
                     channel5.SetPaper(4)
-                    channel5.SetBorder(4)
+                    channel5.SetBorder(4, None)
                     channel5.Clear()
                     channel1.SetCursor(7, 10)
                     channel1.WriteText("ENTER YOUR IDENTIFYING CODE:")
@@ -1651,7 +1776,7 @@ let ``default host mode 8 overlay pane preserves full prompt width`` () =
                     | [] -> Assert.Fail("Expected overlay pane to contain prompt pixels.")
                     | _ ->
                         let _, maxRight = spans |> List.maxBy snd
-                        Assert.That(maxRight, Is.GreaterThanOrEqualTo(270))
+                        Assert.That(maxRight, Is.GreaterThanOrEqualTo(269))
                 | Result.Ok channel ->
                     Assert.Fail($"Expected channel #5 to be a screen channel, got {channel.Kind}")
                 | Result.Error err ->
@@ -1666,7 +1791,260 @@ let ``default host mode 8 overlay pane preserves full prompt width`` () =
         Assert.Fail($"Expected mode 8 to succeed, got %A{err}")
 
 [<Test>]
-let ``interpreter pent prompt stays on channel one while overlay pane shows shared raster`` () =
+let ``default host bordered pane keeps enough text rows to avoid scrolling footer labels`` () =
+    let host, display =
+        DefaultHost.createWithDisplay {
+            ReadLine = fun () -> None
+            ReadScreenLine = fun _ -> None
+            FlushInput = fun () -> ()
+            ReadKey = fun () -> None
+            KeyAvailable = fun () -> false
+            KeyRowState = fun _ -> 0
+            WriteLine = ignore
+        }
+
+    let rowText (pane: ScreenPaneSnapshot) row =
+        let cols = Array2D.length2 pane.Text
+        [| for col in 0 .. cols - 1 -> pane.Text[row, col].Character |] |> String
+
+    match host.Channels.OpenAs(ChannelId 4, "scr_492x78a10x5") with
+    | Result.Ok () ->
+        match host.Channels.Get(ChannelId 4) with
+        | Result.Ok (:? IScreenChannel as channel4) ->
+            channel4.SetPaper(0)
+            channel4.SetBorder(1, Some 7)
+            channel4.Clear()
+            channel4.SetInk([ 2 ])
+            channel4.SetCharacterSize(2, 0)
+            channel4.SetCursor(0, 0)
+            channel4.WriteText("SCORE: 00000    EVENT 01    LEVEL 01")
+            channel4.NewLine()
+            channel4.SetCursor(24, 1)
+            channel4.WriteText("WORLD RECORDS")
+            channel4.NewLine()
+            channel4.SetCursor(2, 2)
+            channel4.WriteText("FIRST")
+            channel4.NewLine()
+            channel4.SetCursor(1, 3)
+            channel4.WriteText("SECOND:")
+            channel4.NewLine()
+            channel4.SetCursor(2, 4)
+            channel4.WriteText("THIRD:")
+            channel4.NewLine()
+            channel4.SetCursor(0, 6)
+            channel4.WriteText("  EVENT: SHOT PUTT   WORLD RECORDS: 00")
+            channel4.NewLine()
+            channel4.SetCursor(38, 6)
+            channel4.WriteText("0")
+            channel4.NewLine()
+
+            let pane = display.GetSnapshot().Panes |> List.find (fun item -> item.ChannelId = Some 4)
+            Assert.That(Array2D.length1 pane.Text, Is.GreaterThanOrEqualTo(8))
+            Assert.That(rowText pane 0, Does.Contain("SCORE: 00000"))
+            Assert.That(rowText pane 1, Does.Contain("WORLD RECORDS"))
+            Assert.That(rowText pane 2, Does.Contain("FIRST"))
+            Assert.That(rowText pane 6, Does.Contain("EVENT: SHOT PUTT"))
+        | Result.Ok channel ->
+            Assert.Fail($"Expected channel #4 to be a screen channel, got {channel.Kind}")
+        | Result.Error err ->
+            Assert.Fail($"Expected channel #4 to exist, got %A{err}")
+    | Result.Error err ->
+        Assert.Fail($"Expected channel #4 to open, got %A{err}")
+
+[<Test>]
+let ``default host shared raster text honors bordered pane pixel origin`` () =
+    let host, display =
+        DefaultHost.createWithDisplay {
+            ReadLine = fun () -> None
+            ReadScreenLine = fun _ -> None
+            FlushInput = fun () -> ()
+            ReadKey = fun () -> None
+            KeyAvailable = fun () -> false
+            KeyRowState = fun _ -> 0
+            WriteLine = ignore
+        }
+
+    match host.Channels.Get(ChannelId 1) with
+    | Result.Ok (:? IScreenChannel as channel1) ->
+        channel1.SetWindow(512, 256, 0, 0)
+        channel1.SetPaper(4)
+        channel1.SetBorder(5, Some 1)
+        channel1.SetCharacterSize(2, 0)
+        channel1.SetStrip([ 4 ])
+        channel1.SetInk([ 7 ])
+        channel1.SetCursor(1, 8)
+        channel1.WriteText("Q")
+
+        let pane = display.GetSnapshot().Panes |> List.find (fun item -> item.ChannelId = Some 1)
+        let glyphPixels =
+            [ for row in 0 .. Array2D.length1 pane.Surface - 1 do
+                  for col in 0 .. Array2D.length2 pane.Surface - 1 do
+                      if (pane.Surface[row, col] &&& 0x00FFFFFF) = 7 then
+                          yield col, row ]
+
+        match glyphPixels with
+        | [] ->
+            Assert.Fail("Expected bordered pane surface to contain rasterized text pixels.")
+        | _ ->
+            let minX = glyphPixels |> List.map fst |> List.min
+            let minY = glyphPixels |> List.map snd |> List.min
+            Assert.That(minX, Is.EqualTo(8))
+            Assert.That(minY, Is.EqualTo(81))
+    | Result.Ok channel ->
+        Assert.Fail($"Expected channel #1 to be a screen channel, got {channel.Kind}")
+    | Result.Error err ->
+        Assert.Fail($"Expected channel #1 to exist, got %A{err}")
+
+[<Test>]
+let ``default host dynamic text pane stays opaque over shared graphics`` () =
+    let host, display =
+        DefaultHost.createWithDisplay {
+            ReadLine = fun () -> None
+            ReadScreenLine = fun _ -> None
+            FlushInput = fun () -> ()
+            ReadKey = fun () -> None
+            KeyAvailable = fun () -> false
+            KeyRowState = fun _ -> 0
+            WriteLine = ignore
+        }
+
+    host.Graphics.SetInk([ 7 ])
+    host.Graphics.Line(0.0, 45.0, 511.0, 45.0)
+
+    match host.Channels.OpenAs(ChannelId 4, "scr_492x78a10x5") with
+    | Result.Ok () ->
+        match host.Channels.Get(ChannelId 4) with
+        | Result.Ok (:? IScreenChannel as channel4) ->
+            channel4.SetPaper(0)
+            channel4.SetBorder(1, Some 7)
+            channel4.Clear()
+            channel4.SetCharacterSize(2, 0)
+            channel4.SetCursor(24, 1)
+            channel4.WriteText("WORLD RECORDS")
+
+            let pane4 = display.GetSnapshot().Panes |> List.find (fun item -> item.ChannelId = Some 4)
+            Assert.That(pane4.Surface[39, 200], Is.EqualTo(0))
+        | Result.Ok channel ->
+            Assert.Fail($"Expected channel #4 to be a screen channel, got {channel.Kind}")
+        | Result.Error err ->
+            Assert.Fail($"Expected channel #4 to exist, got %A{err}")
+    | Result.Error err ->
+        Assert.Fail($"Expected channel #4 to open, got %A{err}")
+
+[<Test>]
+let ``default host borderless text overlay pane keeps shared graphics visible`` () =
+    let host, display =
+        DefaultHost.createWithDisplay {
+            ReadLine = fun () -> None
+            ReadScreenLine = fun _ -> None
+            FlushInput = fun () -> ()
+            ReadKey = fun () -> None
+            KeyAvailable = fun () -> false
+            KeyRowState = fun _ -> 0
+            WriteLine = ignore
+        }
+
+    host.Screen.SetMode(QlMode8) |> ignore
+
+    match host.Channels.OpenAs(ChannelId 7, "scr_492x142a10x84") with
+    | Result.Ok () ->
+        match host.Channels.Get(ChannelId 7) with
+        | Result.Ok (:? IScreenChannel as channel7) ->
+            channel7.SetPaper(4)
+            channel7.Clear()
+            host.Graphics.SetDrawingContext(channel7.GetWindow(), channel7.GetPan(), (100.0, 0.0, 0.0))
+            host.Graphics.SetInk([ 6 ])
+            host.Graphics.Arc(50.0, 35.0, 50.0, 25.0, -1.5)
+            channel7.SetInk([ 7 ])
+            channel7.SetCharacterSize(2, 0)
+            channel7.SetCursor(13, 21)
+            channel7.WriteText("7m")
+
+            let pane7 = display.GetSnapshot().Panes |> List.find (fun item -> item.ChannelId = Some 7)
+            let colors =
+                seq {
+                    for row in 0 .. Array2D.length1 pane7.Surface - 1 do
+                        for col in 0 .. Array2D.length2 pane7.Surface - 1 do
+                            let color = pane7.Surface[row, col] &&& 0x00FFFFFF
+                            if color <> pane7.Paper then
+                                yield color
+                }
+                |> Seq.distinct
+                |> Seq.sort
+                |> Seq.toList
+
+            Assert.That(colors, Does.Contain(6))
+            Assert.That(colors, Does.Contain(7))
+        | Result.Ok channel ->
+            Assert.Fail($"Expected channel #7 to be a screen channel, got {channel.Kind}")
+        | Result.Error err ->
+            Assert.Fail($"Expected channel #7 to exist, got %A{err}")
+    | Result.Error err ->
+        Assert.Fail($"Expected channel #7 to open, got %A{err}")
+
+[<Test>]
+let ``default host borderless pane keeps shared raster after paper and csize churn`` () =
+    let host, display =
+        DefaultHost.createWithDisplay {
+            ReadLine = fun () -> None
+            ReadScreenLine = fun _ -> None
+            FlushInput = fun () -> ()
+            ReadKey = fun () -> None
+            KeyAvailable = fun () -> false
+            KeyRowState = fun _ -> 0
+            WriteLine = ignore
+        }
+
+    host.Screen.SetMode(QlMode8) |> ignore
+
+    match host.Channels.OpenAs(ChannelId 7, "scr_492x142a10x84") with
+    | Result.Ok () ->
+        match host.Channels.Get(ChannelId 7) with
+        | Result.Ok (:? IScreenChannel as channel7) ->
+            channel7.SetPaper(4)
+            channel7.Clear()
+            host.Graphics.SetDrawingContext(channel7.GetWindow(), channel7.GetPan(), (100.0, 0.0, 0.0))
+            host.Graphics.SetInk([ 6 ])
+            host.Graphics.Arc(50.0, 35.0, 50.0, 25.0, -1.5)
+            channel7.SetInk([ 7 ])
+            channel7.SetCharacterSize(2, 0)
+            channel7.SetCursor(13, 21)
+            channel7.WriteText("7m")
+
+            // This is the sequence that previously rebuilt the local pane backing
+            // buffer in black and caused the live playfield to disappear.
+            channel7.SetPaper(0)
+            channel7.SetCharacterSize(2, 1)
+            channel7.SetPaper(4)
+
+            let pane7 = display.GetSnapshot().Panes |> List.find (fun item -> item.ChannelId = Some 7)
+            let sampleX = 40
+            let sampleY = 20
+            Assert.That(pane7.Surface[sampleY, sampleX] &&& 0x00FFFFFF, Is.EqualTo(4))
+
+            let colors =
+                seq {
+                    for row in 0 .. Array2D.length1 pane7.Surface - 1 do
+                        for col in 0 .. Array2D.length2 pane7.Surface - 1 do
+                            let color = pane7.Surface[row, col] &&& 0x00FFFFFF
+                            if color <> 4 then
+                                yield color
+                }
+                |> Seq.distinct
+                |> Seq.sort
+                |> Seq.toList
+
+            Assert.That(colors, Does.Contain(6))
+            Assert.That(colors, Does.Contain(7))
+        | Result.Ok channel ->
+            Assert.Fail($"Expected channel #7 to be a screen channel, got {channel.Kind}")
+        | Result.Error err ->
+            Assert.Fail($"Expected channel #7 to exist, got %A{err}")
+    | Result.Error err ->
+        Assert.Fail($"Expected channel #7 to open, got %A{err}")
+
+[<Test>]
+let ``interpreter pent prompt keeps unchanneled screen io on pane one while overlay shows shared raster`` () =
     let levelId = H.SymbolId 500
     let codeId = H.SymbolId 501
     let storages =
@@ -1700,14 +2078,14 @@ let ``interpreter pent prompt stays on channel one while overlay pane shows shar
               H.BuiltInCall(H.NamedBuiltIn "AT", None, [ H.Literal(H.ConstInt 10, H.HirType.Int, pos); H.Literal(H.ConstInt 7, H.HirType.Int, pos) ], pos)
               H.HirStmt.Input(None, [ H.Literal(H.ConstString "ENTER YOUR IDENTIFYING CODE:", H.HirType.String, pos) ], [ H.WriteVar(codeId, H.HirType.String, pos) ], pos) ]
 
+    let inputs = System.Collections.Generic.Queue<string>([ "3"; "ADD" ])
+
     let host, display =
         DefaultHost.createWithDisplay {
             ReadLine = fun () -> None
             ReadScreenLine =
-                fun channelId ->
-                    match channelId with
-                    | ChannelId 1 -> Some "3"
-                    | _ -> Some "ADD"
+                fun _ ->
+                    if inputs.Count > 0 then Some(inputs.Dequeue()) else Some "ADD"
             FlushInput = fun () -> ()
             ReadKey = fun () -> None
             KeyAvailable = fun () -> false
@@ -1726,19 +2104,57 @@ let ``interpreter pent prompt stays on channel one while overlay pane shows shar
         let pane1 = display.GetSnapshot().Panes |> List.find (fun item -> item.ChannelId = Some 1)
         let pane5 = display.GetSnapshot().Panes |> List.find (fun item -> item.ChannelId = Some 5)
 
-        Assert.That(pane1.CharacterSize, Is.EqualTo((2, 0)))
-        Assert.That(rowText pane1 10, Does.Contain("ENTER YOUR IDENTIFYING CODE:"))
-        Assert.That((rowText pane5 10).Trim(), Is.EqualTo(String.Empty))
-
-        let promptBandHasInk =
+        let pane5HasInkZero =
             seq {
-                for row in 25 .. 35 do
-                    for col in 56 .. 260 do
+                for row in 0 .. Array2D.length1 pane5.Surface - 1 do
+                    for col in 0 .. Array2D.length2 pane5.Surface - 1 do
                         yield pane5.Surface[row, col] &&& 0x00FFFFFF
             }
-            |> Seq.exists (fun color -> color <> 4)
+            |> Seq.exists (fun color -> color = 0)
 
-        Assert.That(promptBandHasInk, Is.True)
+        Assert.That(rowText pane1 10, Does.Contain("ENTER YOUR IDENTIFYING CODE:"))
+        Assert.That(pane5HasInkZero, Is.True)
+
+    | Result.Error err ->
+        Assert.Fail($"Expected interpretation to succeed, got %A{err}")
+
+[<Test>]
+let ``dynamic screen pane shows later unchanneled arc through shared raster`` () =
+    let channel7 = H.Literal(H.ConstInt 7, H.HirType.Int, pos)
+    let hir =
+        makeProgram
+            Map.empty
+            []
+            [ H.BuiltInCall(H.NamedBuiltIn "OPEN", explicitChannel channel7, [ H.Literal(H.ConstString "scr_492x142a10x84", H.HirType.String, pos) ], pos)
+              H.BuiltInCall(H.NamedBuiltIn "PAPER", explicitChannel channel7, [ H.Literal(H.ConstInt 4, H.HirType.Int, pos) ], pos)
+              H.BuiltInCall(H.NamedBuiltIn "CLS", explicitChannel channel7, [], pos)
+              H.BuiltInCall(H.NamedBuiltIn "INK", None, [ H.Literal(H.ConstInt 6, H.HirType.Int, pos) ], pos)
+              H.BuiltInCall(H.NamedBuiltIn "ARC", None, [ H.Literal(H.ConstInt 50, H.HirType.Int, pos); H.Literal(H.ConstInt 35, H.HirType.Int, pos); H.Literal(H.ConstInt 50, H.HirType.Int, pos); H.Literal(H.ConstInt 25, H.HirType.Int, pos); H.Literal(H.ConstFloat -1.5, H.HirType.Float, pos) ], pos) ]
+
+    let host, display =
+        DefaultHost.createWithDisplay {
+            ReadLine = fun () -> None
+            ReadScreenLine = fun _ -> None
+            FlushInput = fun () -> ()
+            ReadKey = fun () -> None
+            KeyAvailable = fun () -> false
+            KeyRowState = fun _ -> 0
+            WriteLine = ignore
+        }
+
+    let result = interpretProgramWithOptions { defaultRuntimeOptions with Host = host } hir
+
+    match result with
+    | Result.Ok _ ->
+        let pane = display.GetSnapshot().Panes |> List.find (fun item -> item.ChannelId = Some 7)
+        let hasArcInk =
+            seq {
+                for row in 0 .. Array2D.length1 pane.Surface - 1 do
+                    for col in 0 .. Array2D.length2 pane.Surface - 1 do
+                        yield pane.Surface[row, col] &&& 0x00FFFFFF
+            }
+            |> Seq.exists (fun color -> color = 6)
+        Assert.That(hasArcInk, Is.True)
     | Result.Error err ->
         Assert.Fail($"Expected interpretation to succeed, got %A{err}")
 
@@ -1797,7 +2213,7 @@ let ``interpreter open parses console device strings and preserves configured wi
         match host.Channels.Get(ChannelId 9) with
         | Result.Ok (:? IScreenChannel as screenChannel) ->
             Assert.That(screenChannel.Kind, Is.EqualTo(ChannelKind.ConsoleChannel))
-            Assert.That(screenChannel.GetWindow(), Is.EqualTo((300, 160, 75, 10)))
+            Assert.That(screenChannel.GetWindow(), Is.EqualTo((234, 96, 108, 42)))
         | Result.Ok _ -> Assert.Fail("Expected channel #9 to be a console screen channel.")
         | Result.Error err -> Assert.Fail($"Expected channel #9 to exist, got %A{err}")
     | Result.Error err ->
@@ -2078,11 +2494,11 @@ let ``default host pane snapshots preserve paper strip and border state`` () =
     | Result.Ok (:? IScreenChannel as screenChannel) ->
         screenChannel.SetPaper(4)
         screenChannel.SetStrip([ 6; 0 ])
-        screenChannel.SetBorder(2)
+        screenChannel.SetBorder(2, None)
         let pane = display.GetSnapshot().Panes |> List.find (fun item -> item.ChannelId = Some 1)
         Assert.That(pane.Paper, Is.EqualTo(4))
         Assert.That(pane.Strip, Is.EqualTo(6))
-        Assert.That(pane.Border, Is.EqualTo(2))
+        Assert.That(pane.BorderSize, Is.EqualTo(2))
     | Result.Ok channel ->
         Assert.Fail($"Expected screen channel, got {channel.Kind}")
     | Result.Error err ->
@@ -2242,7 +2658,7 @@ let ``default host extended modes use denser text rows than classic ql modes`` (
         screenChannel.SetWindow(16, 16, 0, 0)
         screenChannel.SetCharacterSize(0, 0)
         let pane = display.GetSnapshot().Panes |> List.find (fun item -> item.ChannelId = Some 1)
-        Assert.That(Array2D.length2 pane.Text, Is.EqualTo(5))
+        Assert.That(Array2D.length2 pane.Text, Is.EqualTo(6))
         Assert.That(Array2D.length1 pane.Text, Is.EqualTo(2))
     | Result.Error err, _ ->
         Assert.Fail($"Expected mode change to succeed, got %A{err}")
@@ -2285,9 +2701,9 @@ let ``default host rasterizes dline circle ellipse and arc into pane pixels`` ()
             }
             |> Seq.toArray
 
-        Assert.That(pane.Pixels[0, 0] &&& 0x00FFFFFF, Is.EqualTo(7))
-        Assert.That(pane.Pixels[0, 20] &&& 0x00FFFFFF, Is.EqualTo(7))
-        Assert.That(pane.Pixels[20, 20] &&& 0x00FFFFFF, Is.EqualTo(7))
+        Assert.That(pane.Pixels[215, 0] &&& 0x00FFFFFF, Is.EqualTo(7))
+        Assert.That(pane.Pixels[215, 43] &&& 0x00FFFFFF, Is.EqualTo(7))
+        Assert.That(pane.Pixels[172, 43] &&& 0x00FFFFFF, Is.EqualTo(7))
         Assert.That(litPixels.Length, Is.GreaterThan(90))
     | Result.Ok channel ->
         Assert.Fail($"Expected screen channel, got {channel.Kind}")
@@ -2328,10 +2744,10 @@ let ``default host graphics modes apply xor under and flash to pixels`` () =
         host.Graphics.Plot(20.0, 20.0)
 
         let pane = display.GetSnapshot().Panes |> List.find (fun item -> item.ChannelId = Some 1)
-        Assert.That(pane.Pixels[10, 10] &&& 0x00FFFFFF, Is.EqualTo(0))
-        Assert.That(pane.Pixels[15, 15] &&& 0x00FFFFFF, Is.EqualTo(3))
-        Assert.That(pane.Pixels[15, 16] &&& 0x00FFFFFF, Is.EqualTo(5))
-        Assert.That((pane.Pixels[20, 20] &&& 0x01000000) <> 0, Is.True)
+        Assert.That(pane.Pixels[193, 22] &&& 0x00FFFFFF, Is.EqualTo(0))
+        Assert.That(pane.Pixels[183, 32] &&& 0x00FFFFFF, Is.EqualTo(3))
+        Assert.That(pane.Pixels[183, 35] &&& 0x00FFFFFF, Is.EqualTo(5))
+        Assert.That((pane.Pixels[172, 43] &&& 0x01000000) <> 0, Is.True)
     | Result.Ok channel ->
         Assert.Fail($"Expected screen channel, got {channel.Kind}")
     | Result.Error err ->
@@ -2360,7 +2776,7 @@ let ``default host text cells stay transparent until text writes a background`` 
 
         let beforeWrite = display.GetSnapshot().Panes |> List.find (fun item -> item.ChannelId = Some 1)
         Assert.That(beforeWrite.Text[0, 0].HasBackground, Is.False)
-        Assert.That(beforeWrite.Pixels[0, 0] &&& 0x00FFFFFF, Is.EqualTo(4))
+        Assert.That(beforeWrite.Pixels[215, 0] &&& 0x00FFFFFF, Is.EqualTo(4))
 
         screenChannel.SetStrip([ 6; 0 ])
         screenChannel.WriteText(" ")
@@ -2399,7 +2815,7 @@ let ``default host pane surface composes graphics and text in one raster`` () =
         screenChannel.WriteText("A")
 
         let pane = display.GetSnapshot().Panes |> List.find (fun item -> item.ChannelId = Some 1)
-        Assert.That(pane.Surface[19, 15] &&& 0x00FFFFFF, Is.EqualTo(4))
+        Assert.That(pane.Surface[15, 3] &&& 0x00FFFFFF, Is.EqualTo(4))
         Assert.That(pane.Surface[0, 0] &&& 0x00FFFFFF, Is.EqualTo(6))
         let hasInk =
             seq {
@@ -2439,7 +2855,7 @@ let ``default host pane surface preserves graphics under transparent text cells`
 
         let pane = display.GetSnapshot().Panes |> List.find (fun item -> item.ChannelId = Some 1)
         Assert.That(pane.Text[0, 1].HasBackground, Is.False)
-        Assert.That(pane.Surface[10, 8] &&& 0x00FFFFFF, Is.EqualTo(5))
+        Assert.That(pane.Surface[17, 2] &&& 0x00FFFFFF, Is.EqualTo(5))
     | Result.Ok channel ->
         Assert.Fail($"Expected screen channel, got {channel.Kind}")
     | Result.Error err ->

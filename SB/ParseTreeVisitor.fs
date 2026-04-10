@@ -220,6 +220,22 @@ type ASTBuildingVisitor() =
                 Some(channelExpr, remainingArgs)
         | _ -> None
 
+    member private this.TryCollectLeadingToArgs(tail: SBParser.StmtTailContext) =
+        let segments = tail.stmtSegment() |> Seq.toList
+        match segments with
+        | first :: rest when isNull (first.separator()) && not (isNull (first.stmtArg())) ->
+            match first.stmtArg().toChanArg() with
+            | null -> None
+            | toChanArg ->
+                let firstArg = this.SafeAcceptExpr(toChanArg.expr())
+                let remainingArgs =
+                    rest
+                    |> List.collect (fun segment -> segment.Accept(this))
+                    |> List.map (fun node -> singleExpr tail [ node ])
+
+                Some(firstArg :: remainingArgs)
+        | _ -> None
+
     member private this.CollectPrintCallsFromStmtTail(pos: SourcePosition, name: string, mkStmt: Expr list -> Stmt, tail: SBParser.StmtTailContext) =
         let mutable groups : Expr list list = []
         let mutable currentGroup : Expr list = []
@@ -625,6 +641,7 @@ type ASTBuildingVisitor() =
     override this.VisitProcedureCallStmt(ctx: SBParser.ProcedureCallStmtContext) =
         let p = posOfTree ctx
         let name = ctx.ID().GetText()
+        let normalizedName = normalizeIdentifier name
         if this.IsIgnoredDirectiveName name then
             single (StmtNode(Remark(p, ctx.GetText())))
         else
@@ -634,6 +651,22 @@ type ASTBuildingVisitor() =
                 match this.TryCollectImplicitChannelCall(sa.stmtTail()) with
                 | Some(channelExpr, args) ->
                     single (StmtNode(ImplicitChannelProcedureCall(p, name, channelExpr, this.NormalizeOpenArgs name args)))
+                | None when normalizedName = "ARC" || normalizedName = "ARC_R" ->
+                    match this.TryCollectLeadingToArgs(sa.stmtTail()) with
+                    | Some args ->
+                        single (StmtNode(ProcedureCall(p, name, this.NormalizeOpenArgs name args)))
+                    | None ->
+                        match this.TryCollectToChannelCall(sa.stmtTail()) with
+                        | Some(channelExpr, args) ->
+                            single (StmtNode(ChannelProcedureCall(p, name, channelExpr, this.NormalizeOpenArgs name args)))
+                        | None when String.Equals(name, "PRINT", StringComparison.OrdinalIgnoreCase) ->
+                            this.CollectPrintCallsFromStmtTail(p, name, (fun args -> ProcedureCall(p, name, args)), sa.stmtTail())
+                        | None ->
+                            let args =
+                                sa.Accept(this)
+                                |> List.map (fun node -> singleExpr sa [ node ])
+                                |> this.NormalizeOpenArgs name
+                            single (StmtNode(ProcedureCall(p, name, args)))
                 | None ->
                     match this.TryCollectToChannelCall(sa.stmtTail()) with
                     | Some(channelExpr, args) ->

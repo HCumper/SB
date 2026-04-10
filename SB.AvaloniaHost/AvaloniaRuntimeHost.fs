@@ -88,14 +88,19 @@ module internal InteractiveInput =
 
         member _.TryReadLine(channelId: ChannelId) =
             lock gate (fun () ->
-                match submitted |> Seq.tryFindIndex (fun (submittedChannelId, _) -> submittedChannelId = channelId) with
-                | Some index ->
-                    let _, line = submitted[index]
-                    submitted.RemoveAt(index)
-                    Some line
-                | None ->
-                    ensureInputStarted channelId |> ignore
-                    None)
+                ensureInputStarted channelId |> ignore
+
+                let rec waitForSubmitted () =
+                    match submitted |> Seq.tryFindIndex (fun (submittedChannelId, _) -> submittedChannelId = channelId) with
+                    | Some index ->
+                        let _, line = submitted[index]
+                        submitted.RemoveAt(index)
+                        Some line
+                    | None ->
+                        Monitor.Wait(gate) |> ignore
+                        waitForSubmitted ()
+
+                waitForSubmitted ())
 
         member _.HandleTextInput(text: string) =
             if not (String.IsNullOrEmpty text) then
@@ -123,6 +128,7 @@ module internal InteractiveInput =
                         let channelId = activeChannelId |> Option.defaultValue (ChannelId 1)
                         let line = buffer.ToString()
                         submitted.Add(channelId, line)
+                        Monitor.PulseAll(gate)
                         enqueueLine line
                         finishInput ()
                         screenChannel.NewLine()
@@ -171,6 +177,7 @@ module internal InteractiveInput =
         member _.FlushInput() =
             lock gate (fun () ->
                 submitted.Clear()
+                Monitor.PulseAll(gate)
                 match activeChannelId |> Option.bind (tryGetScreenChannel host) with
                 | Some screenChannel ->
                     buffer.Clear() |> ignore

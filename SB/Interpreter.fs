@@ -108,6 +108,7 @@ let defaultRuntimeOptions =
 type private Frame = {
     Cells: Map<SymbolId, Cell>
     ReturnType: HirType option
+    ScreenChannel: ChannelId
 }
 
 type private RuntimeState = {
@@ -117,6 +118,7 @@ type private RuntimeState = {
     Frames: Frame list
     DataPointer: int
     Output: string list
+    CurrentScreenChannel: ChannelId
     DefaultGraphicsScale: double * double * double
     ChannelGraphicsScales: Map<ChannelId, double * double * double>
     CurrentLineNumber: int option
@@ -333,6 +335,20 @@ let private makeNumericValue hirType number =
     | HIR.HirType.Float -> FloatValue number
     | _ -> IntValue (int (Math.Round(number)))
 
+let private encodeCompositeColorSpec values =
+    match values with
+    | [] -> None
+    | [ mainColor ] -> Some(abs mainColor % 8)
+    | [ mainColor; contrastColor ] ->
+        let main = abs mainColor % 8
+        let contrast = abs contrastColor % 8
+        Some(main ||| ((main ^^^ contrast) <<< 3) ||| (3 <<< 6))
+    | mainColor :: contrastColor :: stipple :: _ ->
+        let main = abs mainColor % 8
+        let contrast = abs contrastColor % 8
+        let pattern = abs stipple % 4
+        Some(main ||| ((main ^^^ contrast) <<< 3) ||| (pattern <<< 6))
+
 let private toRuntimeBuiltInValue value =
     match value with
     | IntValue n -> RuntimeValues.ofInt n
@@ -348,6 +364,25 @@ let private fromRuntimeBuiltInValue value =
     | Uninitialized -> IntValue 0
 
 let private formatOutputValue value = asString value
+
+let private formatScreenOutputValue value =
+    match value with
+    | FloatValue f when not (Double.IsNaN f || Double.IsInfinity f) ->
+        let tryFixed decimals =
+            let rounded = Math.Round(f, decimals, MidpointRounding.AwayFromZero)
+            if abs (rounded - f) < 1e-9 then
+                rounded
+                    .ToString($"F{decimals}", CultureInfo.InvariantCulture)
+                    .TrimEnd('0')
+                    .TrimEnd('.')
+                |> Some
+            else
+                None
+
+        [ 0 .. 6 ]
+        |> List.tryPick tryFixed
+        |> Option.defaultValue (f.ToString("G15", CultureInfo.InvariantCulture))
+    | _ -> asString value
 
 let private lookupCell state symbolId =
     let rec find frames =
@@ -501,6 +536,7 @@ let private reinitializeProgramState state program sourceProgram =
         Globals = allocateCells program.Globals
         Frames = []
         DataPointer = 0
+        CurrentScreenChannel = ChannelId 1
         CurrentLineNumber = None
         NextLineNumber = None }
     |> resetErrorProcessing
@@ -524,6 +560,35 @@ let private writeOutputToChannel channelId line state pos =
                 Result.Ok state
         | Result.Error hostError ->
             runtimeError UnsupportedChannelExecution (Some pos) (hostErrorText hostError)
+
+let private writeRenderedOutputToChannel channelId renderedLine capturedLine state pos =
+    match channelId with
+    | None ->
+        state.Options.Host.Screen.WriteText renderedLine
+        Result.Ok { state with Output = state.Output @ [ capturedLine ] }
+    | Some resolvedChannelId ->
+        match state.Options.Host.Channels.Get resolvedChannelId with
+        | Result.Ok channel ->
+            channel.WriteText renderedLine
+            let captureOutput =
+                match channel.Kind with
+                | NamedChannel "NUL" -> false
+                | _ -> true
+            if captureOutput then
+                Result.Ok { state with Output = state.Output @ [ capturedLine ] }
+            else
+                Result.Ok state
+        | Result.Error hostError ->
+            runtimeError UnsupportedChannelExecution (Some pos) (hostErrorText hostError)
+
+let private isScreenLikeOutputChannel channelId state =
+    match channelId with
+    | None -> true
+    | Some resolvedChannelId ->
+        match state.Options.Host.Channels.Get resolvedChannelId with
+        | Result.Ok (:? IScreenChannel) -> true
+        | Result.Ok _ -> false
+        | Result.Error _ -> false
 
 let private advanceScreenLine channelId state pos =
     match channelId with
@@ -641,7 +706,7 @@ let private withFrame frame state =
 
 let private popFrame state =
     match state.Frames with
-    | _ :: rest -> { state with Frames = rest }
+    | frame :: rest -> { state with Frames = rest; CurrentScreenChannel = frame.ScreenChannel }
     | [] -> state
 
 let rec private evalExpr state expr =
@@ -884,6 +949,9 @@ and private withEffectiveChannel state channelExpr defaultChannel pos action =
     | Some _ -> withResolvedChannel state channelExpr pos action
     | None -> action defaultChannel state
 
+and private defaultScreenChannelId state =
+    Some(ChannelId 1)
+
 and private resolveRequiredChannelId state channelExpr defaultChannel pos name =
     match channelExpr with
     | None -> Result.Ok(defaultChannel, state)
@@ -980,7 +1048,8 @@ and private callRoutine state (routine: HirRoutine) args pos =
 
         let frame =
             { Cells = Map.fold (fun acc key value -> Map.add key value acc) localCells parameterCells
-              ReturnType = routine.ReturnType }
+              ReturnType = routine.ReturnType
+              ScreenChannel = stateAfterArgs.CurrentScreenChannel }
 
         let stateWithFrame = withFrame frame stateAfterArgs
 
@@ -1011,27 +1080,40 @@ and private callRoutine state (routine: HirRoutine) args pos =
 and private executeBuiltInCall state kind channel args targets pos =
     match kind with
     | Print ->
-        withEffectiveChannel state channel (Some(ChannelId 1)) pos (fun resolvedChannel stateAfterChannel ->
+        withEffectiveChannel state channel (defaultScreenChannelId state) pos (fun resolvedChannel stateAfterChannel ->
             evalExprList stateAfterChannel args
             |> Result.bind (fun (values, nextState) ->
-                let line =
+                let capturedLine =
                     values
                     |> List.map toRuntimeBuiltInValue
                     |> BuiltInStatements.formatPrintLine
-                writeOutputToChannel resolvedChannel line nextState pos
+                let renderedLine =
+                    if isScreenLikeOutputChannel resolvedChannel nextState then
+                        values
+                        |> List.map formatScreenOutputValue
+                        |> String.concat ""
+                    else
+                        capturedLine
+                writeRenderedOutputToChannel resolvedChannel renderedLine capturedLine nextState pos
                 |> Result.bind (fun finalState -> advanceScreenLine resolvedChannel finalState pos)
                 |> Result.map (fun finalState -> Continue, finalState)))
     | BuiltInKind.Input ->
-        withEffectiveChannel state channel (Some(ChannelId 1)) pos (fun resolvedChannel stateAfterChannel ->
+        withEffectiveChannel state channel (defaultScreenChannelId state) pos (fun resolvedChannel stateAfterChannel ->
             let promptStateResult =
                 if List.isEmpty args then
                     Result.Ok stateAfterChannel
                 else
                     let promptText =
+                        let promptFormatter =
+                            if isScreenLikeOutputChannel resolvedChannel stateAfterChannel then
+                                formatScreenOutputValue
+                            else
+                                formatOutputValue
+
                         args
                         |> List.map (fun expr ->
                             match evalExpr stateAfterChannel expr with
-                            | Result.Ok(value, _) -> formatOutputValue value
+                            | Result.Ok(value, _) -> promptFormatter value
                             | Result.Error _ -> "")
                         |> String.concat " "
                     writeOutputToChannel resolvedChannel promptText stateAfterChannel pos
@@ -1046,9 +1128,13 @@ and private executeBuiltInCall state kind channel args targets pos =
                         let expectedType =
                             match target with
                             | WriteVar(_, HIR.HirType.String, _)
-                            | WriteArrayElem(_, _, HIR.HirType.String, _) -> BuiltInInputType.InputString
+                            | WriteArrayElem(_, _, HIR.HirType.String, _)
+                            | DynamicWriteVar(_, HIR.HirType.String, _)
+                            | DynamicWriteArrayElem(_, _, HIR.HirType.String, _) -> BuiltInInputType.InputString
                             | WriteVar(_, HIR.HirType.Float, _)
-                            | WriteArrayElem(_, _, HIR.HirType.Float, _) -> BuiltInInputType.InputFloat
+                            | WriteArrayElem(_, _, HIR.HirType.Float, _)
+                            | DynamicWriteVar(_, HIR.HirType.Float, _)
+                            | DynamicWriteArrayElem(_, _, HIR.HirType.Float, _) -> BuiltInInputType.InputFloat
                             | _ -> BuiltInInputType.InputInt
                         writeTarget currentState target (BuiltInStatements.parseInputValue expectedType raw |> fromRuntimeBuiltInValue)
 
@@ -1078,7 +1164,7 @@ and private executeBuiltInCall state kind channel args targets pos =
             | None -> runtimeError UnsupportedChannelExecution (Some pos) $"Built-in '{name}' requires a channel id."
 
         let executeScreenOp expectedArgCount atLeast (action: ChannelId option -> RuntimeState -> int list -> Result<RuntimeState, RuntimeError>) =
-            withEffectiveChannel state channel (Some(ChannelId 1)) pos (fun resolvedChannel stateAfterChannel ->
+            withEffectiveChannel state channel (defaultScreenChannelId state) pos (fun resolvedChannel stateAfterChannel ->
                 validateScreenChannel resolvedChannel stateAfterChannel pos
                 |> Result.bind (fun () ->
                     evalExprList stateAfterChannel args
@@ -1093,14 +1179,149 @@ and private executeBuiltInCall state kind channel args targets pos =
                             |> Result.map (fun finalState -> Continue, finalState)))))
 
         let executeGraphicsStatement (body: ChannelId option -> RuntimeState -> Result<ControlFlow * RuntimeState, RuntimeError>) =
-            withEffectiveChannel state channel (Some(ChannelId 1)) pos (fun resolvedChannel stateAfterChannel ->
+            withEffectiveChannel state channel (defaultScreenChannelId state) pos (fun resolvedChannel stateAfterChannel ->
                 validateScreenChannel resolvedChannel stateAfterChannel pos
                 |> Result.bind (fun () -> body resolvedChannel stateAfterChannel))
 
         let executeOptionalGraphicsStatement (body: ChannelId option -> RuntimeState -> Result<ControlFlow * RuntimeState, RuntimeError>) =
-            withEffectiveChannel state channel None pos (fun resolvedChannel stateAfterChannel ->
+            withEffectiveChannel state channel (defaultScreenChannelId state) pos (fun resolvedChannel stateAfterChannel ->
                 validateScreenChannel resolvedChannel stateAfterChannel pos
                 |> Result.bind (fun () -> body resolvedChannel stateAfterChannel))
+
+        let trySplitRange expr =
+            match expr with
+            | Binary(SliceRange, lhs, rhs, _, _) -> Some(lhs, rhs)
+            | _ -> None
+
+        let parseCircleGroups values =
+            let rec loop remaining =
+                match remaining with
+                | [] -> Some []
+                | [ x; y; radius ] ->
+                    Some [ Choice1Of2(x, y, radius) ]
+                | [ x; y; radius; ratio; ecc ] ->
+                    Some [ Choice2Of2(x, y, radius, ratio, ecc) ]
+                | x :: y :: radius :: ratio :: ecc :: rest ->
+                    match loop rest with
+                    | Some groups -> Some(Choice2Of2(x, y, radius, ratio, ecc) :: groups)
+                    | None ->
+                        match loop (ratio :: ecc :: rest) with
+                        | Some groups -> Some(Choice1Of2(x, y, radius) :: groups)
+                        | None -> None
+                | x :: y :: radius :: rest ->
+                    match loop rest with
+                    | Some groups -> Some(Choice1Of2(x, y, radius) :: groups)
+                    | None -> None
+                | _ -> None
+
+            loop values
+
+        let executeArcStatement relative =
+            let invalidArcArity () =
+                runtimeError BuiltInArityMismatch (Some pos) $"Built-in statement '{name}' expects arguments in groups of x1,y1 TO x2,y2,angle or TO x2,y2,angle."
+
+            let validateArcAngle value =
+                if abs value >= (2.0 * Math.PI) then
+                    runtimeError BuiltInUnsupportedArguments (Some pos) $"Built-in statement '{name}' requires ABS(angle) to be less than 2*PI."
+                else
+                    Result.Ok()
+
+            let executeArcGroup resolvedChannel currentState useCurrentPoint x1Expr y1Expr x2Expr y2Expr angleExpr =
+                let startResult =
+                    match x1Expr, y1Expr with
+                    | Some sx, Some sy ->
+                        evalExpr currentState sx
+                        |> Result.bind (fun (x1Value, stateAfterX1) ->
+                            evalExpr stateAfterX1 sy
+                            |> Result.map (fun (y1Value, stateAfterY1) -> Some(normalizeNumber x1Value, normalizeNumber y1Value), stateAfterY1))
+                    | _ -> Result.Ok(None, currentState)
+
+                startResult
+                |> Result.bind (fun (startPoint, stateAfterStart) ->
+                    evalExpr stateAfterStart x2Expr
+                    |> Result.bind (fun (x2Value, stateAfterX2) ->
+                        evalExpr stateAfterX2 y2Expr
+                        |> Result.bind (fun (y2Value, stateAfterY2) ->
+                            evalExpr stateAfterY2 angleExpr
+                            |> Result.bind (fun (angleValue, stateAfterAngle) ->
+                                let x2 = normalizeNumber x2Value
+                                let y2 = normalizeNumber y2Value
+                                let angle = normalizeNumber angleValue
+
+                                validateArcAngle angle
+                                |> Result.bind (fun () ->
+                                    let startX, startY =
+                                        match startPoint with
+                                        | Some(x1, y1) -> x1, y1
+                                        | None when useCurrentPoint -> Double.NaN, Double.NaN
+                                        | None -> Double.NaN, Double.NaN
+
+                                    executeGraphicsOp resolvedChannel stateAfterAngle pos (fun graphics ->
+                                        if relative then
+                                            graphics.ArcRelative(startX, startY, x2, y2, angle)
+                                        else
+                                            graphics.Arc(startX, startY, x2, y2, angle)))))))
+
+            let rec executeArcGroups resolvedChannel currentState pendingEndX remaining =
+                match pendingEndX, remaining with
+                | None, [] -> Result.Ok currentState
+                | Some _, [] -> invalidArcArity ()
+                | Some endXExpr, y2Expr :: angleOrContinuation :: rest ->
+                    let angleExpr, nextEndX =
+                        match trySplitRange angleOrContinuation with
+                        | Some(angleExpr, chainedEndXExpr) -> angleExpr, Some chainedEndXExpr
+                        | None -> angleOrContinuation, None
+
+                    executeArcGroup resolvedChannel currentState true None None endXExpr y2Expr angleExpr
+                    |> Result.bind (fun stateAfterGroup -> executeArcGroups resolvedChannel stateAfterGroup nextEndX rest)
+                | None, x1Expr :: Binary(SliceRange, y1Expr, x2Expr, _, _) :: y2Expr :: angleOrContinuation :: rest ->
+                    let angleExpr, nextEndX =
+                        match trySplitRange angleOrContinuation with
+                        | Some(angleExpr, chainedEndXExpr) -> angleExpr, Some chainedEndXExpr
+                        | None -> angleOrContinuation, None
+
+                    executeArcGroup resolvedChannel currentState false (Some x1Expr) (Some y1Expr) x2Expr y2Expr angleExpr
+                    |> Result.bind (fun stateAfterGroup -> executeArcGroups resolvedChannel stateAfterGroup nextEndX rest)
+                | None, x1Expr :: y1Expr :: x2Expr :: y2Expr :: angleExpr :: rest ->
+                    executeArcGroup resolvedChannel currentState false (Some x1Expr) (Some y1Expr) x2Expr y2Expr angleExpr
+                    |> Result.bind (fun stateAfterGroup -> executeArcGroups resolvedChannel stateAfterGroup None rest)
+                | None, x2Expr :: y2Expr :: angleExpr :: rest ->
+                    executeArcGroup resolvedChannel currentState true None None x2Expr y2Expr angleExpr
+                    |> Result.bind (fun stateAfterGroup -> executeArcGroups resolvedChannel stateAfterGroup None rest)
+                | _ -> invalidArcArity ()
+
+            executeOptionalGraphicsStatement (fun resolvedChannel stateAfterChannel ->
+                    executeArcGroups resolvedChannel stateAfterChannel None args
+                    |> Result.map (fun finalState -> Continue, finalState))
+
+        let executeCircleStatement relative =
+            executeOptionalGraphicsStatement (fun resolvedChannel stateAfterChannel ->
+                    evalExprList stateAfterChannel args
+                    |> Result.bind (fun (values, nextState) ->
+                        requireAtLeast 3 values.Length
+                        |> Result.bind (fun () ->
+                            match parseCircleGroups values with
+                            | None ->
+                                runtimeError BuiltInArityMismatch (Some pos) $"Built-in statement '{name}' expects arguments in groups of 3 or 5."
+                            | Some groups ->
+                                groups
+                                |> List.fold
+                                    (fun acc group ->
+                                        acc
+                                        |> Result.bind (fun currentState ->
+                                            match group with
+                                            | Choice1Of2(x, y, radius) ->
+                                                if relative then
+                                                    executeGraphicsOp resolvedChannel currentState pos (fun graphics -> graphics.CircleRelative(normalizeNumber x, normalizeNumber y, normalizeNumber radius))
+                                                else
+                                                    executeGraphicsOp resolvedChannel currentState pos (fun graphics -> graphics.Circle(normalizeNumber x, normalizeNumber y, normalizeNumber radius))
+                                            | Choice2Of2(x, y, radius, ratio, ecc) ->
+                                                if relative then
+                                                    executeGraphicsOp resolvedChannel currentState pos (fun graphics -> graphics.EllipseRelative(normalizeNumber x, normalizeNumber y, normalizeNumber radius, normalizeNumber ratio, normalizeNumber ecc))
+                                                else
+                                                    executeGraphicsOp resolvedChannel currentState pos (fun graphics -> graphics.Ellipse(normalizeNumber x, normalizeNumber y, normalizeNumber radius, normalizeNumber ratio, normalizeNumber ecc))))
+                                    (Result.Ok nextState)
+                                |> Result.map (fun finalState -> Continue, finalState))))
 
         match normalized with
         | "STOP" -> Result.Ok(StopExecution, state)
@@ -1341,7 +1562,7 @@ and private executeBuiltInCall state kind channel args targets pos =
                     | Result.Ok() -> Result.Ok(Continue, stateAfterChannel)
                     | Result.Error hostError -> runtimeError UnsupportedChannelExecution (Some pos) (hostErrorText hostError)))
         | "DIR" ->
-            withEffectiveChannel state channel (Some(ChannelId 1)) pos (fun resolvedChannel stateAfterChannel ->
+            withEffectiveChannel state channel (defaultScreenChannelId state) pos (fun resolvedChannel stateAfterChannel ->
                 evalExprList stateAfterChannel args
                 |> Result.bind (fun (values, nextState) ->
                     if values.Length > 1 then
@@ -1453,11 +1674,22 @@ and private executeBuiltInCall state kind channel args targets pos =
                 | _ ->
                     executeChannelScreenOp resolvedChannel nextState pos (fun screenChannel -> screenChannel.SetStrip(numericArgs)) (fun screen -> screen.SetStrip(numericArgs)))
         | "BORDER" ->
-            executeScreenOp 1 true (fun resolvedChannel nextState numericArgs ->
-                match numericArgs with
-                | first :: _ ->
-                    executeChannelScreenOp resolvedChannel nextState pos (fun screenChannel -> screenChannel.SetBorder(first)) (fun screen -> screen.SetBorder(first))
-                | _ -> Result.Ok nextState)
+            withEffectiveChannel state channel (defaultScreenChannelId state) pos (fun resolvedChannel stateAfterChannel ->
+                validateScreenChannel resolvedChannel stateAfterChannel pos
+                |> Result.bind (fun () ->
+                    evalExprList stateAfterChannel args
+                    |> Result.bind (fun (values, nextState) ->
+                        let numericArgs = values |> List.map asInt
+                        match numericArgs with
+                        | [] ->
+                            executeChannelScreenOp resolvedChannel nextState pos (fun screenChannel -> screenChannel.SetBorder(0, None)) (fun screen -> screen.SetBorder(0, None))
+                            |> Result.map (fun finalState -> Continue, finalState)
+                        | size :: colorParts when colorParts.Length <= 3 ->
+                            let color = encodeCompositeColorSpec colorParts
+                            executeChannelScreenOp resolvedChannel nextState pos (fun screenChannel -> screenChannel.SetBorder(size, color)) (fun screen -> screen.SetBorder(size, color))
+                            |> Result.map (fun finalState -> Continue, finalState)
+                        | _ ->
+                            runtimeError BuiltInArityMismatch (Some pos) $"Built-in statement '{name}' expects zero to four arguments.")))
         | "CLEAR" ->
             executeGraphicsStatement (fun resolvedChannel stateAfterChannel ->
                 validateScreenChannel resolvedChannel stateAfterChannel pos
@@ -1589,27 +1821,9 @@ and private executeBuiltInCall state kind channel args targets pos =
                                 executeGraphicsOp resolvedChannel nextState pos (fun graphics -> graphics.LineRelative(values |> List.map normalizeNumber))
                                 |> Result.map (fun finalState -> Continue, finalState))))
         | "CIRCLE" ->
-            executeOptionalGraphicsStatement (fun resolvedChannel stateAfterChannel ->
-                    evalExprList stateAfterChannel args
-                    |> Result.bind (fun (values, nextState) ->
-                        requireArity 3 values.Length
-                        |> Result.bind (fun () ->
-                            match values with
-                            | [ x; y; radius ] ->
-                                executeGraphicsOp resolvedChannel nextState pos (fun graphics -> graphics.Circle(normalizeNumber x, normalizeNumber y, normalizeNumber radius))
-                                |> Result.map (fun finalState -> Continue, finalState)
-                            | _ -> Result.Ok(Continue, nextState))))
+            executeCircleStatement false
         | "CIRCLE_R" ->
-            executeOptionalGraphicsStatement (fun resolvedChannel stateAfterChannel ->
-                    evalExprList stateAfterChannel args
-                    |> Result.bind (fun (values, nextState) ->
-                        requireArity 3 values.Length
-                        |> Result.bind (fun () ->
-                            match values with
-                            | [ dx; dy; radius ] ->
-                                executeGraphicsOp resolvedChannel nextState pos (fun graphics -> graphics.CircleRelative(normalizeNumber dx, normalizeNumber dy, normalizeNumber radius))
-                                |> Result.map (fun finalState -> Continue, finalState)
-                            | _ -> Result.Ok(Continue, nextState))))
+            executeCircleStatement true
         | "ELLIPSE" ->
             executeOptionalGraphicsStatement (fun resolvedChannel stateAfterChannel ->
                     evalExprList stateAfterChannel args
@@ -1633,27 +1847,9 @@ and private executeBuiltInCall state kind channel args targets pos =
                                 |> Result.map (fun finalState -> Continue, finalState)
                             | _ -> Result.Ok(Continue, nextState))))
         | "ARC" ->
-            executeOptionalGraphicsStatement (fun resolvedChannel stateAfterChannel ->
-                    evalExprList stateAfterChannel args
-                    |> Result.bind (fun (values, nextState) ->
-                        requireArity 5 values.Length
-                        |> Result.bind (fun () ->
-                            match values with
-                            | [ x; y; radius; startAngle; endAngle ] ->
-                                executeGraphicsOp resolvedChannel nextState pos (fun graphics -> graphics.Arc(normalizeNumber x, normalizeNumber y, normalizeNumber radius, normalizeNumber startAngle, normalizeNumber endAngle))
-                                |> Result.map (fun finalState -> Continue, finalState)
-                            | _ -> Result.Ok(Continue, nextState))))
+            executeArcStatement false
         | "ARC_R" ->
-            executeOptionalGraphicsStatement (fun resolvedChannel stateAfterChannel ->
-                    evalExprList stateAfterChannel args
-                    |> Result.bind (fun (values, nextState) ->
-                        requireArity 5 values.Length
-                        |> Result.bind (fun () ->
-                            match values with
-                            | [ dx; dy; radius; startAngle; endAngle ] ->
-                                executeGraphicsOp resolvedChannel nextState pos (fun graphics -> graphics.ArcRelative(normalizeNumber dx, normalizeNumber dy, normalizeNumber radius, normalizeNumber startAngle, normalizeNumber endAngle))
-                                |> Result.map (fun finalState -> Continue, finalState)
-                            | _ -> Result.Ok(Continue, nextState))))
+            executeArcStatement true
         | "BLOCK" ->
             executeOptionalGraphicsStatement (fun resolvedChannel stateAfterChannel ->
                     evalExprList stateAfterChannel args
@@ -2233,6 +2429,7 @@ let interpretProgramWithOptions options (program: HirProgram) =
           Frames = []
           DataPointer = 0
           Output = []
+          CurrentScreenChannel = ChannelId 1
           DefaultGraphicsScale = (100.0, 0.0, 0.0)
           ChannelGraphicsScales = Map.empty
           CurrentLineNumber = None

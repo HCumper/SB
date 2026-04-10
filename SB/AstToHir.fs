@@ -102,7 +102,9 @@ let private lowerBuiltInKind name =
 
 let private normalizeBuiltInArgs name args =
     match normalizeIdentifier name with
-    | "LINE" ->
+    | "LINE"
+    | "ARC"
+    | "ARC_R" ->
         args
         |> List.collect (function
             | SliceRange(_, _, lhs, rhs) -> [ lhs; rhs ]
@@ -121,6 +123,106 @@ let private nextLoopId ctx =
 
 let private withLoop ctx loopName loopId =
     { ctx with LoopStack = (loopName, loopId) :: ctx.LoopStack }
+
+let rec private bindLoopCounterExpr (counterName: string) (symbolId: SymbolId) expr =
+    let sameName name = normalizeIdentifier name = normalizeIdentifier counterName
+    match expr with
+    | DynamicReadVar(name, hirType, pos) when sameName name ->
+        ReadVar(symbolId, hirType, pos)
+    | DynamicReadArrayElem(name, args, hirType, pos) ->
+        DynamicReadArrayElem(name, args |> List.map (bindLoopCounterExpr counterName symbolId), hirType, pos)
+    | DynamicReadStringChar(name, index, hirType, pos) ->
+        DynamicReadStringChar(name, bindLoopCounterExpr counterName symbolId index, hirType, pos)
+    | Unary(op, inner, hirType, pos) ->
+        Unary(op, bindLoopCounterExpr counterName symbolId inner, hirType, pos)
+    | Binary(op, lhs, rhs, hirType, pos) ->
+        Binary(op, bindLoopCounterExpr counterName symbolId lhs, bindLoopCounterExpr counterName symbolId rhs, hirType, pos)
+    | CallFunc(callee, args, hirType, pos) ->
+        let loweredArgs =
+            args
+            |> List.map (function
+                | ValueArg valueExpr -> ValueArg(bindLoopCounterExpr counterName symbolId valueExpr)
+                | RefArg target -> RefArg(bindLoopCounterTarget counterName symbolId target))
+        CallFunc(callee, loweredArgs, hirType, pos)
+    | ReadArrayElem(arraySymbol, args, hirType, pos) ->
+        ReadArrayElem(arraySymbol, args |> List.map (bindLoopCounterExpr counterName symbolId), hirType, pos)
+    | ReadStringChar(arraySymbol, index, hirType, pos) ->
+        ReadStringChar(arraySymbol, bindLoopCounterExpr counterName symbolId index, hirType, pos)
+    | other -> other
+
+and private bindLoopCounterTarget (counterName: string) (symbolId: SymbolId) target =
+    let sameName name = normalizeIdentifier name = normalizeIdentifier counterName
+    match target with
+    | DynamicWriteVar(name, hirType, pos) when sameName name ->
+        WriteVar(symbolId, hirType, pos)
+    | WriteArrayElem(arraySymbol, args, hirType, pos) ->
+        WriteArrayElem(arraySymbol, args |> List.map (bindLoopCounterExpr counterName symbolId), hirType, pos)
+    | WriteStringChar(arraySymbol, index, hirType, pos) ->
+        WriteStringChar(arraySymbol, bindLoopCounterExpr counterName symbolId index, hirType, pos)
+    | DynamicWriteArrayElem(name, args, hirType, pos) ->
+        DynamicWriteArrayElem(name, args |> List.map (bindLoopCounterExpr counterName symbolId), hirType, pos)
+    | DynamicWriteStringChar(name, index, hirType, pos) ->
+        DynamicWriteStringChar(name, bindLoopCounterExpr counterName symbolId index, hirType, pos)
+    | other -> other
+
+and private bindLoopCounterStmt (counterName: string) (symbolId: SymbolId) stmt =
+    match stmt with
+    | Assign(target, expr, pos) ->
+        Assign(bindLoopCounterTarget counterName symbolId target, bindLoopCounterExpr counterName symbolId expr, pos)
+    | ProcCall(callee, channel, args, pos) ->
+        let loweredChannel =
+            channel
+            |> Option.map (function
+                | ExplicitChannel channelExpr -> ExplicitChannel(bindLoopCounterExpr counterName symbolId channelExpr)
+                | ImplicitChannel channelExpr -> ImplicitChannel(bindLoopCounterExpr counterName symbolId channelExpr))
+        let loweredArgs =
+            args
+            |> List.map (function
+                | ValueArg valueExpr -> ValueArg(bindLoopCounterExpr counterName symbolId valueExpr)
+                | RefArg target -> RefArg(bindLoopCounterTarget counterName symbolId target))
+        ProcCall(callee, loweredChannel, loweredArgs, pos)
+    | BuiltInCall(kind, channel, args, pos) ->
+        let loweredChannel =
+            channel
+            |> Option.map (function
+                | ExplicitChannel channelExpr -> ExplicitChannel(bindLoopCounterExpr counterName symbolId channelExpr)
+                | ImplicitChannel channelExpr -> ImplicitChannel(bindLoopCounterExpr counterName symbolId channelExpr))
+        BuiltInCall(kind, loweredChannel, args |> List.map (bindLoopCounterExpr counterName symbolId), pos)
+    | Input(channel, prompts, targets, pos) ->
+        let loweredChannel =
+            channel
+            |> Option.map (function
+                | ExplicitChannel channelExpr -> ExplicitChannel(bindLoopCounterExpr counterName symbolId channelExpr)
+                | ImplicitChannel channelExpr -> ImplicitChannel(bindLoopCounterExpr counterName symbolId channelExpr))
+        Input(loweredChannel, prompts |> List.map (bindLoopCounterExpr counterName symbolId), targets |> List.map (bindLoopCounterTarget counterName symbolId), pos)
+    | If(condition, thenBlock, elseBlock, pos) ->
+        If(bindLoopCounterExpr counterName symbolId condition, bindLoopCounterBlock counterName symbolId thenBlock, elseBlock |> Option.map (bindLoopCounterBlock counterName symbolId), pos)
+    | For(loopId, innerSymbolId, startExpr, endExpr, stepExpr, body, pos) ->
+        For(loopId, innerSymbolId, bindLoopCounterExpr counterName symbolId startExpr, bindLoopCounterExpr counterName symbolId endExpr, bindLoopCounterExpr counterName symbolId stepExpr, body, pos)
+    | ForSequence(loopId, innerSymbolId, prefixExprs, startExpr, endExpr, suffixExprs, stepExpr, body, pos) ->
+        ForSequence(loopId, innerSymbolId, prefixExprs |> List.map (bindLoopCounterExpr counterName symbolId), bindLoopCounterExpr counterName symbolId startExpr, bindLoopCounterExpr counterName symbolId endExpr, suffixExprs |> List.map (bindLoopCounterExpr counterName symbolId), bindLoopCounterExpr counterName symbolId stepExpr, body, pos)
+    | Repeat(loopId, loopName, body, pos) ->
+        Repeat(loopId, loopName, bindLoopCounterBlock counterName symbolId body, pos)
+    | WhenError(body, pos) ->
+        WhenError(bindLoopCounterBlock counterName symbolId body, pos)
+    | Goto(target, pos) ->
+        Goto(bindLoopCounterExpr counterName symbolId target, pos)
+    | OnGoto(selector, targets, pos) ->
+        OnGoto(bindLoopCounterExpr counterName symbolId selector, targets |> List.map (bindLoopCounterExpr counterName symbolId), pos)
+    | Gosub(target, pos) ->
+        Gosub(bindLoopCounterExpr counterName symbolId target, pos)
+    | OnGosub(selector, targets, pos) ->
+        OnGosub(bindLoopCounterExpr counterName symbolId selector, targets |> List.map (bindLoopCounterExpr counterName symbolId), pos)
+    | Return(Some valueExpr, pos) ->
+        Return(Some(bindLoopCounterExpr counterName symbolId valueExpr), pos)
+    | Restore(Some valueExpr, pos) ->
+        Restore(Some(bindLoopCounterExpr counterName symbolId valueExpr), pos)
+    | Read(targets, pos) ->
+        Read(targets |> List.map (bindLoopCounterTarget counterName symbolId), pos)
+    | other -> other
+
+and private bindLoopCounterBlock (counterName: string) (symbolId: SymbolId) block =
+    block |> List.map (bindLoopCounterStmt counterName symbolId)
 
 let private normalizeKey scopeName symbolName =
     scopeName, normalizeIdentifier symbolName
@@ -601,10 +703,17 @@ let rec private lowerStmt ctx stmt =
             |> bind (fun loweredBody ->
                 requireSymbolIdForName ctx ctx.CurrentScope name pos
                     |> map (fun symbolId ->
-                        if List.isEmpty loweredPrefix && List.isEmpty loweredSuffix then
-                            [ For(loopId, symbolId, loweredStart, loweredEnd, loweredStepExpr, loweredBody, pos) ]
+                        let boundPrefix = loweredPrefix |> List.map (bindLoopCounterExpr name symbolId)
+                        let boundStart = bindLoopCounterExpr name symbolId loweredStart
+                        let boundEnd = bindLoopCounterExpr name symbolId loweredEnd
+                        let boundSuffix = loweredSuffix |> List.map (bindLoopCounterExpr name symbolId)
+                        let boundStep = bindLoopCounterExpr name symbolId loweredStepExpr
+                        let boundBody = bindLoopCounterBlock name symbolId loweredBody
+
+                        if List.isEmpty boundPrefix && List.isEmpty boundSuffix then
+                            [ For(loopId, symbolId, boundStart, boundEnd, boundStep, boundBody, pos) ]
                         else
-                            [ ForSequence(loopId, symbolId, loweredPrefix, loweredStart, loweredEnd, loweredSuffix, loweredStepExpr, loweredBody, pos) ])))
+                            [ ForSequence(loopId, symbolId, boundPrefix, boundStart, boundEnd, boundSuffix, boundStep, boundBody, pos) ])))
     | RepeatStmt(pos, label, body, _) ->
         let loopName = lowerLoopName label
         let loopId = nextLoopId ctx

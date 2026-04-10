@@ -161,6 +161,40 @@ let ``interpreter local is dynamically visible to called procedure`` () =
     Assert.That(String.concat "|" output, Is.EqualTo("7"))
 
 [<Test>]
+let ``interpreter for loop body reads local loop counter instead of dynamic caller variable`` () =
+    let ast =
+        Program(
+            pos,
+            [ Line(pos, Some 10, [ Assignment(pos, id "i", num "0") ])
+              Line(
+                pos,
+                Some 20,
+                [ ProcedureDef(
+                    pos,
+                    "show",
+                    [],
+                    [ Line(pos, Some 100, [ LocalStmt(pos, [ "i", None ]) ])
+                      Line(
+                        pos,
+                        Some 110,
+                        [ ForStmt(
+                            pos,
+                            "i",
+                            [],
+                            num "1",
+                            num "3",
+                            [],
+                            None,
+                            StatementBlock [ ProcedureCall(pos, "PRINT", [ binary "+" (id "i") (num "1") ]) ],
+                            None) ]) ],
+                    None, None) ])
+              Line(pos, Some 30, [ ProcedureCall(pos, "show", []) ]) ])
+
+    let output = runProgram ast
+
+    Assert.That(String.concat "|" output, Is.EqualTo("2|3|4"))
+
+[<Test>]
 let ``interpreter local shadows global in called procedure`` () =
     let ast =
         Program(

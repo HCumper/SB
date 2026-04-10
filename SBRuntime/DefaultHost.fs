@@ -99,8 +99,9 @@ module private TextLayout =
 
     let visibleCellSize (mode: ScreenModeInfo) width height characterSize =
         let cellWidth, cellHeight = cellSize mode characterSize
-        max 1 (width / visualAdvance cellWidth),
-        max 1 (height / cellHeight)
+        let advance = visualAdvance cellWidth
+        max 1 ((width + advance - 1) / advance),
+        max 1 ((height + cellHeight - 1) / cellHeight)
 
     let textOrigin (mode: ScreenModeInfo) x y characterSize =
         let cellWidth, cellHeight = cellSize mode characterSize
@@ -226,7 +227,11 @@ type private ScreenBuffer(mode: ScreenModeInfo, ?textWidth: int, ?textHeight: in
         let surfaceWidth = Array2D.length2 pixelSnapshot
         let surface = Array2D.init surfaceHeight surfaceWidth (fun row col -> pixelSnapshot[row, col])
         let cellWidth, cellHeight = TextLayout.cellSize targetMode characterSize
-        let cellAdvance = TextLayout.visualAdvance cellWidth
+        let cellAdvance =
+            if targetMode.IsQlCompatible && characterSize = (0, 0) then
+                cellWidth
+            else
+                TextLayout.visualAdvance cellWidth
         let textRows = Array2D.length1 textSnapshot
         let textCols = Array2D.length2 textSnapshot
 
@@ -248,7 +253,7 @@ type private ScreenBuffer(mode: ScreenModeInfo, ?textWidth: int, ?textHeight: in
                 if cell.Character <> ' ' then
                     let glyph = QlBitmapFont.glyphForCharacter cell.CodePoint cell.Character
                     let glyphRows = min 8 glyph.Length
-                    let renderWidth = min cellWidth 8
+                    let renderWidth = min cellAdvance 8
                     let renderHeight = min cellHeight glyphRows
                     let verticalInset = max 0 ((cellHeight - renderHeight) / 2)
 
@@ -295,12 +300,14 @@ type private ScreenBuffer(mode: ScreenModeInfo, ?textWidth: int, ?textHeight: in
                 Title = "screen"
                 Kind = ScreenChannel
                 Window = 0, 0, 0, 0
+                OuterWindow = 0, 0, 0, 0
                 Cursor = 0, 0
                 CharacterSize = 0, 0
                 Ink = 7
                 Paper = 0
                 Strip = 0
-                Border = 0
+                BorderSize = 0
+                BorderColor = None
                 Recolor = None
                 Palette = None
                 Text = textSnapshot
@@ -545,8 +552,9 @@ type private DefaultPrinterChannel(id: ChannelId, writer: string -> unit) =
         member _.Flush() = ()
         member _.Close() = ()
 
-type private DefaultScreenChannel(id: ChannelId, kind: ChannelKind, screenReader: ChannelId -> string option, writer: string -> unit, mirrorToWriter: bool, initialMode: ScreenModeInfo, config: ScreenChannelConfig option, buffer: ScreenBuffer) =
+type private DefaultScreenChannel(id: ChannelId, kind: ChannelKind, screenReader: ChannelId -> string option, writer: string -> unit, mirrorToWriter: bool, initialMode: ScreenModeInfo, config: ScreenChannelConfig option, buffer: ScreenBuffer, gate: obj) =
     let (ChannelId channelNumber) = id
+    let mutable outerWindow = 0, 0, 0, 0
     let mutable window = 0, 0, 0, 0
     let mutable scroll = 0
     let mutable width = None
@@ -559,9 +567,34 @@ type private DefaultScreenChannel(id: ChannelId, kind: ChannelKind, screenReader
     let mutable ink = [ 7 ]
     let mutable paper = 0
     let mutable strip = [ 0 ]
-    let mutable border = 0
+    let mutable borderSize = 0
+    let mutable borderColor: int option = None
     let mutable mode = initialMode
     let mutable paneBuffer = ScreenBuffer(ScreenDefaults.paneMode initialMode 1 1)
+
+    let sideBorderWidth size =
+        if size <= 0 then 0
+        else
+            let widened = if size % 2 <> 0 then size + 1 else size
+            max 2 widened
+
+    let applyBorder size color =
+        borderSize <- max 0 size
+        borderColor <- if borderSize = 0 then None else color
+        let outerWidth, outerHeight, outerX, outerY = outerWindow
+        let verticalInset = borderSize
+        let cellWidth, _ = TextLayout.cellSize mode characterSize
+        let cellAdvance = TextLayout.visualAdvance cellWidth
+        let rawHorizontalInset = sideBorderWidth borderSize
+        let horizontalInset =
+            if rawHorizontalInset <= 0 then 0
+            else ((rawHorizontalInset + cellAdvance - 1) / cellAdvance) * cellAdvance
+        if borderSize <= 0 then
+            window <- outerWindow
+        else
+            let contentWidth = max 1 (outerWidth - (2 * horizontalInset))
+            let contentHeight = max 1 (outerHeight - (2 * verticalInset))
+            window <- contentWidth, contentHeight, outerX + horizontalInset, outerY + verticalInset
 
     let textMetrics() =
         let width, height, _, _ = window
@@ -609,6 +642,7 @@ type private DefaultScreenChannel(id: ChannelId, kind: ChannelKind, screenReader
     let writeText content =
         let cols, rows = textMetrics()
         let textX, textY = textOrigin()
+        let _, _, windowX, windowY = window
         let foreground = ink |> List.tryHead |> Option.defaultValue 7
         let background = strip |> List.tryHead |> Option.defaultValue paper
         let mutable cursorX, cursorY = clampCursorPosition cursor
@@ -616,8 +650,8 @@ type private DefaultScreenChannel(id: ChannelId, kind: ChannelKind, screenReader
         let cellAdvance = TextLayout.visualAdvance cellWidth
 
         let rasterizeCharToSharedPixels col row inkColor stripColor hasBackground ch =
-            let originX = (textX + col) * cellAdvance
-            let originY = (textY + row) * cellHeight
+            let originX = windowX + (col * cellAdvance)
+            let originY = windowY + (row * cellHeight)
 
             if hasBackground then
                 for py = originY to min (buffer.Mode.Height - 1) (originY + cellHeight - 1) do
@@ -627,7 +661,7 @@ type private DefaultScreenChannel(id: ChannelId, kind: ChannelKind, screenReader
             if ch <> ' ' then
                 let glyph = QlBitmapFont.glyphForCharacter (int ch) ch
                 let glyphRows = min 8 glyph.Length
-                let renderWidth = min cellWidth 8
+                let renderWidth = min cellAdvance 8
                 let renderHeight = min cellHeight glyphRows
                 let verticalInset = max 0 ((cellHeight - renderHeight) / 2)
 
@@ -644,7 +678,8 @@ type private DefaultScreenChannel(id: ChannelId, kind: ChannelKind, screenReader
 
         let writeChar ch =
             buffer.SetTextCell(textX + cursorX, textY + cursorY, foreground, paper, background, true, ch)
-            rasterizeCharToSharedPixels cursorX cursorY foreground background true ch
+            if channelNumber <= 1 || (channelNumber > 2 && borderSize = 0) then
+                rasterizeCharToSharedPixels cursorX cursorY foreground background true ch
             paneBuffer.SetTextCell(cursorX, cursorY, foreground, paper, background, true, ch)
             cursorX <- cursorX + 1
 
@@ -671,7 +706,8 @@ type private DefaultScreenChannel(id: ChannelId, kind: ChannelKind, screenReader
 
     let resetForMode (selectedMode: ScreenModeInfo) =
         mode <- selectedMode
-        window <- ScreenDefaults.defaultWindowForChannel selectedMode channelNumber
+        outerWindow <- ScreenDefaults.defaultWindowForChannel selectedMode channelNumber
+        window <- outerWindow
         scroll <- 0
         width <- None
         pan <- 0
@@ -683,14 +719,17 @@ type private DefaultScreenChannel(id: ChannelId, kind: ChannelKind, screenReader
         ink <- [ 7 ]
         paper <- ScreenDefaults.defaultPaperForChannel channelNumber
         strip <- [ paper ]
-        border <- 0
+        borderSize <- 0
+        borderColor <- None
         match config with
         | Some channelConfig ->
             match channelConfig.Window with
-            | Some(width, height, x, y) -> window <- width, height, x, y
+            | Some(width, height, x, y) ->
+                outerWindow <- width, height, x, y
+                window <- outerWindow
             | None -> ()
             match channelConfig.Border with
-            | Some configuredBorder -> border <- configuredBorder
+            | Some configuredBorder -> applyBorder configuredBorder None
             | None -> ()
         | None -> ()
         rebuildPaneBuffer false
@@ -698,101 +737,163 @@ type private DefaultScreenChannel(id: ChannelId, kind: ChannelKind, screenReader
     do
         resetForMode initialMode
 
+    let synchronized action = lock gate action
+
     interface IScreenChannel with
         member _.Id = id
         member _.Kind = kind
         member _.WriteText text =
-            writeText text
-            if mirrorToWriter then
-                writer text
-        member _.ReadText() = screenReader id
+            synchronized (fun () ->
+                writeText text
+                if mirrorToWriter then
+                    writer text)
+        member _.ReadText() = synchronized (fun () -> screenReader id)
         member _.IsEndOfFile() = false
         member _.Flush() = ()
         member _.Close() = ()
         member _.Clear() =
-            clearTextBuffers()
-            cursor <- 0, 0
-        member _.NewLine() = newline()
+            synchronized (fun () ->
+                clearTextBuffers()
+                cursor <- 0, 0)
+        member _.NewLine() = synchronized (fun () -> newline())
         member _.SetWindow(width, height, x, y) =
-            window <- width, height, x, y
-            cursor <- 0, 0
-            rebuildPaneBuffer false
-        member _.GetWindow() = window
-        member _.SetScroll(value) = scroll <- value
-        member _.GetScroll() = scroll
-        member _.SetWidth(value) = width <- Some value
-        member _.GetWidth() = width
-        member _.SetPan(value) = pan <- value
-        member _.GetPan() = pan
-        member _.SetRecolor(values) = recolor <- Some values
-        member _.GetRecolor() = recolor
-        member _.SetPalette(values) = palette <- Some values
-        member _.GetPalette() = palette
-        member _.SetCursor(x, y) = cursor <- clampCursorPosition (x, y)
-        member _.GetCursor() = cursor
+            synchronized (fun () ->
+                outerWindow <- width, height, x, y
+                applyBorder borderSize borderColor
+                cursor <- 0, 0
+                rebuildPaneBuffer false)
+        member _.GetWindow() = synchronized (fun () -> window)
+        member _.SetScroll(value) = synchronized (fun () -> scroll <- value)
+        member _.GetScroll() = synchronized (fun () -> scroll)
+        member _.SetWidth(value) = synchronized (fun () -> width <- Some value)
+        member _.GetWidth() = synchronized (fun () -> width)
+        member _.SetPan(value) = synchronized (fun () -> pan <- value)
+        member _.GetPan() = synchronized (fun () -> pan)
+        member _.SetRecolor(values) = synchronized (fun () -> recolor <- Some values)
+        member _.GetRecolor() = synchronized (fun () -> recolor)
+        member _.SetPalette(values) = synchronized (fun () -> palette <- Some values)
+        member _.GetPalette() = synchronized (fun () -> palette)
+        member _.SetCursor(x, y) = synchronized (fun () -> cursor <- clampCursorPosition (x, y))
+        member _.GetCursor() = synchronized (fun () -> cursor)
         member _.SetCharacterSize(width, height) =
-            characterSize <- width, height
-            rebuildPaneBuffer false
-        member _.GetCharacterSize() = characterSize
+            synchronized (fun () ->
+                characterSize <- width, height
+                rebuildPaneBuffer false)
+        member _.GetCharacterSize() = synchronized (fun () -> characterSize)
         member _.SetCharacterFonts(font1, font2) =
-            let currentFont1, currentFont2 = characterFonts
-            characterFonts <-
-                (if font1 = -1 then currentFont1 else font1),
-                (if font2 = -1 then currentFont2 else font2)
-        member _.GetCharacterFonts() = characterFonts
-        member _.SetInk(values: int list) = ink <- values
+            synchronized (fun () ->
+                let currentFont1, currentFont2 = characterFonts
+                characterFonts <-
+                    (if font1 = -1 then currentFont1 else font1),
+                    (if font2 = -1 then currentFont2 else font2))
+        member _.GetCharacterFonts() = synchronized (fun () -> characterFonts)
+        member _.SetInk(values: int list) = synchronized (fun () -> ink <- values)
         member _.SetPaper(value: int) =
-            paper <- value
-            strip <- [ value ]
+            synchronized (fun () ->
+                paper <- value
+                strip <- [ value ])
         member _.SetStrip(values: int list) =
-            strip <- if List.isEmpty values then [ paper ] else values
-        member _.SetBorder(value: int) = border <- value
+            synchronized (fun () ->
+                strip <- if List.isEmpty values then [ paper ] else values)
+        member _.SetBorder(size, color) =
+            synchronized (fun () ->
+                applyBorder size color
+                cursor <- 0, 0
+                rebuildPaneBuffer false)
     member this.ApplyMode(mode: ScreenModeInfo) =
-        resetForMode mode
+        synchronized (fun () -> resetForMode mode)
     member _.Snapshot() =
-        let width, height, x, y = window
-        let safeWidth = max 1 width
-        let safeHeight = max 1 height
-        let textSnapshot = paneBuffer.Snapshot().Panes.Head.Text
-        let pixelSnapshot =
-            Array2D.init safeHeight safeWidth (fun row col ->
-                let sourceY = y + row
-                let sourceX = x + col
-                if sourceY >= 0 && sourceY < buffer.Mode.Height && sourceX >= 0 && sourceX < buffer.Mode.Width then
-                    buffer.Pixels[sourceY, sourceX]
+        synchronized (fun () ->
+            let width, height, x, y = window
+            let safeWidth = max 1 width
+            let safeHeight = max 1 height
+            let paneSnapshot = paneBuffer.Snapshot().Panes.Head
+            let textSnapshot = paneSnapshot.Text
+            let textRows = Array2D.length1 textSnapshot
+            let textCols = Array2D.length2 textSnapshot
+            let hasLocalText =
+                seq {
+                    for row = 0 to textRows - 1 do
+                        for col = 0 to textCols - 1 do
+                            let cell = textSnapshot[row, col]
+                            yield cell.Character <> ' ' || (cell.HasBackground && cell.Strip <> paper)
+                }
+                |> Seq.exists (fun value -> value)
+            let hasLocalPixelContent =
+                seq {
+                    for row = 0 to Array2D.length1 paneSnapshot.Pixels - 1 do
+                        for col = 0 to Array2D.length2 paneSnapshot.Pixels - 1 do
+                            yield paneSnapshot.Pixels[row, col] <> paper
+                }
+                |> Seq.exists (fun value -> value)
+            let useSharedPixels =
+                channelNumber = 1
+                || (channelNumber > 2 && borderSize = 0)
+                || (channelNumber > 2 && not hasLocalText && not hasLocalPixelContent)
+            let useOverlayText = false
+            let pixelSnapshot =
+                if useSharedPixels then
+                    Array2D.init safeHeight safeWidth (fun row col ->
+                        let sourceY = y + row
+                        let sourceX = x + col
+                        if sourceY >= 0 && sourceY < buffer.Mode.Height && sourceX >= 0 && sourceX < buffer.Mode.Width then
+                            buffer.Pixels[sourceY, sourceX]
+                        else
+                            paper)
                 else
-                    paper)
-        let cellWidth, cellHeight = TextLayout.cellSize mode characterSize
-        let cellAdvance = TextLayout.visualAdvance cellWidth
-        let textRows = Array2D.length1 textSnapshot
-        let textCols = Array2D.length2 textSnapshot
+                    Array2D.init safeHeight safeWidth (fun row col ->
+                        if row < Array2D.length1 paneSnapshot.Pixels && col < Array2D.length2 paneSnapshot.Pixels then
+                            paneSnapshot.Pixels[row, col]
+                        else
+                            paper)
+            let cellWidth, cellHeight = TextLayout.cellSize mode characterSize
+            let cellAdvance = TextLayout.visualAdvance cellWidth
 
-        for row = 0 to textRows - 1 do
-            for col = 0 to textCols - 1 do
-                let cell = textSnapshot[row, col]
-                if cell.HasBackground then
-                    let startX = col * cellAdvance
-                    let startY = row * cellHeight
-                    for py = startY to min (safeHeight - 1) (startY + cellHeight - 1) do
-                        for px = startX to min (safeWidth - 1) (startX + cellWidth - 1) do
-                            pixelSnapshot[py, px] <- cell.Strip
-        let surfaceSnapshot = buffer.ComposeSurface(mode, characterSize, textSnapshot, pixelSnapshot)
+            if useOverlayText && useSharedPixels then
+                for row = 0 to textRows - 1 do
+                    for col = 0 to textCols - 1 do
+                        let cell = textSnapshot[row, col]
+                        if cell.HasBackground || cell.Character <> ' ' then
+                            let startX = col * cellAdvance
+                            let startY = row * cellHeight
+                            let scrubColor = if cell.HasBackground then cell.Strip else paper
+                            for py = startY to min (safeHeight - 1) (startY + cellHeight - 1) do
+                                for px = startX to min (safeWidth - 1) (startX + cellWidth - 1) do
+                                    pixelSnapshot[py, px] <- scrubColor
 
-        { ChannelId = Some channelNumber
-          Title = $"#{channelNumber}"
-          Kind = kind
-          Window = window
-          Cursor = cursor
-          CharacterSize = characterSize
-          Ink = ink |> List.tryHead |> Option.defaultValue 7
-          Paper = paper
-          Strip = strip |> List.tryHead |> Option.defaultValue paper
-          Border = border
-          Recolor = recolor
-          Palette = palette
-          Text = textSnapshot
-          Pixels = pixelSnapshot
-          Surface = surfaceSnapshot }
+            let surfaceTextSnapshot: ScreenTextCell[,] =
+                if useOverlayText then
+                    Array2D.init textRows textCols (fun row col -> textSnapshot[row, col])
+                elif useSharedPixels && (channelNumber = 1 || channelNumber > 2) then
+                    Array2D.init textRows textCols (fun _ _ ->
+                        { Character = ' '
+                          CodePoint = int ' '
+                          Ink = 7
+                          Paper = paper
+                          Strip = paper
+                          HasBackground = false } : ScreenTextCell)
+                else
+                    Array2D.init textRows textCols (fun row col -> textSnapshot[row, col])
+
+            let surfaceSnapshot = buffer.ComposeSurface(mode, characterSize, surfaceTextSnapshot, pixelSnapshot)
+
+            { ChannelId = Some channelNumber
+              Title = $"#{channelNumber}"
+              Kind = kind
+              Window = window
+              OuterWindow = outerWindow
+              Cursor = cursor
+              CharacterSize = characterSize
+              Ink = ink |> List.tryHead |> Option.defaultValue 7
+              Paper = paper
+              Strip = strip |> List.tryHead |> Option.defaultValue paper
+              BorderSize = borderSize
+              BorderColor = borderColor
+              Recolor = recolor
+              Palette = palette
+              Text = textSnapshot
+              Pixels = pixelSnapshot
+              Surface = surfaceSnapshot })
 
 type private DefaultFileChannel(id: ChannelId, path: string, mode: FileOpenMode) =
     let sharedStream, reader, writer =
@@ -841,7 +942,7 @@ type private DefaultFileChannel(id: ChannelId, path: string, mode: FileOpenMode)
                 | Some streamWriter -> streamWriter.Dispose()
                 | None -> ()
 
-type private DefaultChannelManager(defaultChannels: IChannel list, screenReader: ChannelId -> string option, writer: string -> unit, currentMode: unit -> ScreenModeInfo, buffer: ScreenBuffer) as this =
+type private DefaultChannelManager(defaultChannels: IChannel list, screenReader: ChannelId -> string option, writer: string -> unit, currentMode: unit -> ScreenModeInfo, buffer: ScreenBuffer, gate: obj) as this =
     let channels = Dictionary<ChannelId, IChannel>()
     let fixedChannels = HashSet<ChannelId>()
     let screenChannels = Dictionary<ChannelId, DefaultScreenChannel>()
@@ -861,14 +962,14 @@ type private DefaultChannelManager(defaultChannels: IChannel list, screenReader:
         if normalized.StartsWith("CON") then
             match ScreenDeviceStrings.tryParseScreenChannelConfig normalized with
             | Some config ->
-                let channel = DefaultScreenChannel(requestedId, ConsoleChannel, screenReader, writer, false, currentMode(), Some config, buffer)
+                let channel = DefaultScreenChannel(requestedId, ConsoleChannel, screenReader, writer, false, currentMode(), Some config, buffer, gate)
                 Result.Ok(channel :> IChannel)
             | None ->
                 Result.Error(InvalidHostArgument $"Console device string '{name}' is invalid.")
         elif normalized.StartsWith("SCR") then
             match ScreenDeviceStrings.tryParseScreenChannelConfig normalized with
             | Some config ->
-                let channel = DefaultScreenChannel(requestedId, ScreenChannel, screenReader, writer, false, currentMode(), Some config, buffer)
+                let channel = DefaultScreenChannel(requestedId, ScreenChannel, screenReader, writer, false, currentMode(), Some config, buffer, gate)
                 Result.Ok(channel :> IChannel)
             | None ->
                 Result.Error(InvalidHostArgument $"Screen device string '{name}' is invalid.")
@@ -896,63 +997,72 @@ type private DefaultChannelManager(defaultChannels: IChannel list, screenReader:
                 Result.Error(UnsupportedHostOperation $"Channel '{name}' is not supported by DefaultHost.")
 
     member _.TryGet(channelId: ChannelId) =
-        match channels.TryGetValue channelId with
-        | true, channel -> Some channel
-        | false, _ -> None
+        lock gate (fun () ->
+            match channels.TryGetValue channelId with
+            | true, channel -> Some channel
+            | false, _ -> None)
 
     member _.Register(channel: IChannel) =
-        channels[channel.Id] <- channel
-        match channel with
-        | :? DefaultScreenChannel as screenChannel -> screenChannels[channel.Id] <- screenChannel
-        | _ -> ()
-        Result.Ok()
+        lock gate (fun () ->
+            channels[channel.Id] <- channel
+            match channel with
+            | :? DefaultScreenChannel as screenChannel -> screenChannels[channel.Id] <- screenChannel
+            | _ -> ()
+            Result.Ok())
 
     member _.ApplyMode(mode: ScreenModeInfo) =
-        for pair in screenChannels do
-            pair.Value.ApplyMode(mode)
+        lock gate (fun () ->
+            for pair in screenChannels do
+                pair.Value.ApplyMode(mode))
 
     member _.ScreenPanes() =
-        screenChannels.Values
-        |> Seq.map (fun channel -> channel.Snapshot())
-        |> Seq.filter (fun pane -> pane.ChannelId <> Some 0)
-        |> Seq.sortBy (fun pane -> pane.ChannelId |> Option.defaultValue Int32.MaxValue)
-        |> Seq.toList
+        lock gate (fun () ->
+            screenChannels.Values
+            |> Seq.map (fun channel -> channel.Snapshot())
+            |> Seq.filter (fun pane -> pane.ChannelId <> Some 0)
+            |> Seq.sortBy (fun pane -> pane.ChannelId |> Option.defaultValue Int32.MaxValue)
+            |> Seq.toList)
 
     member _.OpenResolved(requestedId: ChannelId, name: string, fileModeOverride: FileOpenMode option) =
-        match channels.TryGetValue requestedId with
-        | true, _ -> Result.Error(InvalidHostArgument $"Channel #{requestedId} already exists.")
-        | false, _ ->
-            createNamedChannel requestedId name fileModeOverride
-            |> Result.bind this.Register
+        lock gate (fun () ->
+            match channels.TryGetValue requestedId with
+            | true, _ -> Result.Error(InvalidHostArgument $"Channel #{requestedId} already exists.")
+            | false, _ ->
+                createNamedChannel requestedId name fileModeOverride
+                |> Result.bind this.Register)
 
     interface IChannelManager with
         member _.Open(name: string) =
-            let mutable candidate = 3
-            while channels.ContainsKey(ChannelId candidate) do
-                candidate <- candidate + 1
-            let channelId = ChannelId candidate
-            this.OpenResolved(channelId, name, None)
-            |> Result.map (fun () -> channelId)
+            lock gate (fun () ->
+                let mutable candidate = 3
+                while channels.ContainsKey(ChannelId candidate) do
+                    candidate <- candidate + 1
+                let channelId = ChannelId candidate
+                createNamedChannel channelId name None
+                |> Result.bind this.Register
+                |> Result.map (fun () -> channelId))
 
         member _.OpenAs(requestedId: ChannelId, name: string) =
             this.OpenResolved(requestedId, name, None)
 
         member _.Get(channelId: ChannelId) =
-            match channels.TryGetValue channelId with
-            | true, channel -> Result.Ok channel
-            | false, _ -> Result.Error(ChannelNotFound channelId)
+            lock gate (fun () ->
+                match channels.TryGetValue channelId with
+                | true, channel -> Result.Ok channel
+                | false, _ -> Result.Error(ChannelNotFound channelId))
 
         member _.Close(channelId: ChannelId) =
-            match channels.TryGetValue channelId with
-            | true, channel ->
-                if fixedChannels.Contains(channelId) then
-                    Result.Error(InvalidHostArgument $"Channel #{channelId} is a default channel and cannot be closed.")
-                else
-                    channel.Close()
-                    channels.Remove(channelId) |> ignore
-                    screenChannels.Remove(channelId) |> ignore
-                    Result.Ok()
-            | false, _ -> Result.Error(ChannelNotFound channelId)
+            lock gate (fun () ->
+                match channels.TryGetValue channelId with
+                | true, channel ->
+                    if fixedChannels.Contains(channelId) then
+                        Result.Error(InvalidHostArgument $"Channel #{channelId} is a default channel and cannot be closed.")
+                    else
+                        channel.Close()
+                        channels.Remove(channelId) |> ignore
+                        screenChannels.Remove(channelId) |> ignore
+                        Result.Ok()
+                | false, _ -> Result.Error(ChannelNotFound channelId))
 
 type private DefaultScreenDevice(writer: string -> unit, buffer: ScreenBuffer) =
     let mutable window = 0, 0, 0, 0
@@ -1105,7 +1215,7 @@ type private DefaultScreenDevice(writer: string -> unit, buffer: ScreenBuffer) =
             strip <- [ value ]
         member _.SetStrip(values: int list) =
             strip <- if List.isEmpty values then [ paper ] else values
-        member _.SetBorder(_value: int) = ()
+        member _.SetBorder(_size: int, _color: int option) = ()
         member _.GetSupportedModes() = ScreenDefaults.supportedModes
         member _.GetMode() = mode
         member _.SetMode requestedMode =
@@ -1125,17 +1235,19 @@ type private DefaultScreenDevice(writer: string -> unit, buffer: ScreenBuffer) =
             Title = "#0"
             Kind = ConsoleChannel
             Window = window
+            OuterWindow = window
             Cursor = cursor
             CharacterSize = characterSize
             Ink = ink |> List.tryHead |> Option.defaultValue 7
             Paper = paper
             Strip = strip |> List.tryHead |> Option.defaultValue paper
-            Border = 0
+            BorderSize = 0
+            BorderColor = None
             Recolor = recolor
             Palette = palette
             Surface = surfaceSnapshot }
 
-type private DefaultGraphicsDevice(buffer: ScreenBuffer) =
+type private DefaultGraphicsDevice(buffer: ScreenBuffer, gate: obj) =
     let twoPi = Math.PI * 2.0
     let mutable cursor = 0.0, 0.0
     let mutable ink = [ 7 ]
@@ -1150,11 +1262,14 @@ type private DefaultGraphicsDevice(buffer: ScreenBuffer) =
     let mutable penDown = true
     let mutable heading = 0.0
     let mutable drawingBackgroundColor = 0
+    let synchronized action = lock gate action
 
     let scaleFactors () =
-        let sx, sy, _ = drawingScale
-        let factorX = if sx = 0.0 then 1.0 else sx / 100.0
-        let factorY = if sy = 0.0 then factorX else sy / 100.0
+        let _, height, _, _ = drawingWindow
+        let sy, _, _ = drawingScale
+        let verticalUnits = if sy = 0.0 then 100.0 else abs sy
+        let factorY = float height / max 1.0 verticalUnits
+        let factorX = factorY
         factorX, factorY
 
     let clampToWindow x y =
@@ -1167,14 +1282,18 @@ type private DefaultGraphicsDevice(buffer: ScreenBuffer) =
 
     let transformAbsolute x y =
         let factorX, factorY = scaleFactors ()
+        let height, graphicsOriginX, graphicsOriginY =
+            let _, h, _, _ = drawingWindow
+            let _, gx, gy = drawingScale
+            h, gx, gy
         let _, _, originX, originY = drawingWindow
-        let transformedX = float originX + float drawingPan + (x * factorX)
-        let transformedY = float originY + (y * factorY)
+        let transformedX = float originX + float drawingPan + ((x - graphicsOriginX) * factorX)
+        let transformedY = float originY + float (height - 1) - ((y - graphicsOriginY) * factorY)
         clampToWindow transformedX transformedY
 
     let transformDelta dx dy =
         let factorX, factorY = scaleFactors ()
-        dx * factorX, dy * factorY
+        dx * factorX, -dy * factorY
 
     let currentInk() =
         ink |> List.tryHead |> Option.defaultValue 7
@@ -1238,134 +1357,188 @@ type private DefaultGraphicsDevice(buffer: ScreenBuffer) =
     let sampleCircle centerX centerY radiusX radiusY shouldFill =
         sampleEllipse centerX centerY radiusX radiusY 0.0 0.0 360.0 true shouldFill
 
-    let arcEndPoint centerX centerY radiusX radiusY angleDegrees =
-        let radians = angleDegrees * Math.PI / 180.0
-        clampToWindow (centerX + (radiusX * Math.Cos(radians))) (centerY + (radiusY * Math.Sin(radians)))
+    let sampleArcByPoints startX startY endX endY angleRadians =
+        let deltaX = endX - startX
+        let deltaY = endY - startY
+        let chord = Math.Sqrt((deltaX * deltaX) + (deltaY * deltaY))
+
+        if chord < 0.001 || abs angleRadians < 0.001 then
+            drawLine startX startY endX endY
+        else
+            let halfAngle = angleRadians / 2.0
+            let sinHalf = Math.Sin halfAngle
+            let tanHalf = Math.Tan halfAngle
+
+            if abs sinHalf < 0.000001 || abs tanHalf < 0.000001 then
+                drawLine startX startY endX endY
+            else
+                let radius = chord / (2.0 * abs sinHalf)
+                let midpointX = (startX + endX) / 2.0
+                let midpointY = (startY + endY) / 2.0
+                let perpendicularX = -deltaY / chord
+                let perpendicularY = deltaX / chord
+                let offset = chord / (2.0 * tanHalf)
+                let centerX = midpointX + (perpendicularX * offset)
+                let centerY = midpointY + (perpendicularY * offset)
+                let startAngle = Math.Atan2(startY - centerY, startX - centerX)
+                let steps = max 24 (int (Math.Ceiling(radius * abs angleRadians / 3.0)))
+
+                [ for step = 0 to steps do
+                      let t = startAngle + (angleRadians * float step / float steps)
+                      yield clampToWindow (centerX + (radius * Math.Cos(t))) (centerY + (radius * Math.Sin(t))) ]
+                |> sampledCurve false false
 
     interface IGraphicsDevice with
         member _.SetDrawingContext(window, pan, scaleContext) =
-            drawingWindow <- window
-            drawingPan <- pan
-            drawingScale <- scaleContext
-            let _, _, originX, originY = window
-            drawingBackgroundColor <- buffer.GetPixel(originX, originY) &&& 0x00FFFFFF
+            synchronized (fun () ->
+                drawingWindow <- window
+                drawingPan <- pan
+                drawingScale <- scaleContext
+                let _, height, originX, originY = window
+                drawingBackgroundColor <- buffer.GetPixel(originX, originY + max 0 (height - 1)) &&& 0x00FFFFFF)
         member _.Plot(x, y) =
-            let tx, ty = transformAbsolute x y
-            cursor <- tx, ty
-            drawPixel tx ty
+            synchronized (fun () ->
+                let tx, ty = transformAbsolute x y
+                cursor <- tx, ty
+                drawPixel tx ty)
         member _.Point(x, y) =
-            let tx, ty = transformAbsolute x y
-            cursor <- tx, ty
-            drawPixel tx ty
+            synchronized (fun () ->
+                let tx, ty = transformAbsolute x y
+                cursor <- tx, ty
+                drawPixel tx ty)
         member _.PointRelative(dx, dy) =
-            let x, y = cursor
-            let tx, ty = transformDelta dx dy
-            cursor <- clampToWindow (x + tx) (y + ty)
-            let cx, cy = cursor
-            drawPixel cx cy
-        member _.Draw(x, y) =
-            let startX, startY = cursor
-            let tx, ty = transformAbsolute x y
-            drawLine startX startY tx ty
-            cursor <- tx, ty
-        member _.LineRelative(values) =
-            let pairs =
-                values
-                |> List.chunkBySize 2
-                |> List.choose (function
-                    | [ x; y ] -> Some(x, y)
-                    | _ -> None)
-
-            let mutable currentX, currentY = cursor
-            for dx, dy in pairs do
+            synchronized (fun () ->
+                let x, y = cursor
                 let tx, ty = transformDelta dx dy
-                let endX, endY = clampToWindow (currentX + tx) (currentY + ty)
-                drawLine currentX currentY endX endY
-                currentX <- endX
-                currentY <- endY
-            cursor <- currentX, currentY
-        member _.DLine(values) =
-            let coordinates =
-                values
-                |> List.chunkBySize 2
-                |> List.choose (function
-                    | [ x; y ] -> Some(x, y)
-                    | _ -> None)
+                cursor <- clampToWindow (x + tx) (y + ty)
+                let cx, cy = cursor
+                drawPixel cx cy)
+        member _.Draw(x, y) =
+            synchronized (fun () ->
+                let startX, startY = cursor
+                let tx, ty = transformAbsolute x y
+                drawLine startX startY tx ty
+                cursor <- tx, ty)
+        member _.LineRelative(values) =
+            synchronized (fun () ->
+                let pairs =
+                    values
+                    |> List.chunkBySize 2
+                    |> List.choose (function
+                        | [ x; y ] -> Some(x, y)
+                        | _ -> None)
 
-            let transformed = coordinates |> List.map (fun (x, y) -> transformAbsolute x y)
-            match transformed with
-            | [] -> ()
-            | [ x, y ] ->
-                cursor <- x, y
-                drawPixel x y
-            | _ ->
-                transformed
-                |> List.pairwise
-                |> List.iter (fun ((x1, y1), (x2, y2)) -> drawLine x1 y1 x2 y2)
-                cursor <- List.last transformed
+                let mutable currentX, currentY = cursor
+                for dx, dy in pairs do
+                    let tx, ty = transformDelta dx dy
+                    let endX, endY = clampToWindow (currentX + tx) (currentY + ty)
+                    drawLine currentX currentY endX endY
+                    currentX <- endX
+                    currentY <- endY
+                cursor <- currentX, currentY)
+        member _.DLine(values) =
+            synchronized (fun () ->
+                let coordinates =
+                    values
+                    |> List.chunkBySize 2
+                    |> List.choose (function
+                        | [ x; y ] -> Some(x, y)
+                        | _ -> None)
+
+                let transformed = coordinates |> List.map (fun (x, y) -> transformAbsolute x y)
+                match transformed with
+                | [] -> ()
+                | [ x, y ] ->
+                    cursor <- x, y
+                    drawPixel x y
+                | _ ->
+                    transformed
+                    |> List.pairwise
+                    |> List.iter (fun ((x1, y1), (x2, y2)) -> drawLine x1 y1 x2 y2)
+                    cursor <- List.last transformed)
         member _.Line(x1, y1, x2, y2) =
-            let tx1, ty1 = transformAbsolute x1 y1
-            let tx2, ty2 = transformAbsolute x2 y2
-            drawLine tx1 ty1 tx2 ty2
-            cursor <- tx2, ty2
+            synchronized (fun () ->
+                let tx1, ty1 = transformAbsolute x1 y1
+                let tx2, ty2 = transformAbsolute x2 y2
+                drawLine tx1 ty1 tx2 ty2
+                cursor <- tx2, ty2)
         member _.Circle(x, y, radius) =
-            let tx, ty = transformAbsolute x y
-            let radiusX, radiusY = scaledRadius radius
-            cursor <- tx, ty
-            sampleCircle tx ty radiusX radiusY true
+            synchronized (fun () ->
+                let tx, ty = transformAbsolute x y
+                let radiusX, radiusY = scaledRadius radius
+                cursor <- tx, ty
+                sampleCircle tx ty radiusX radiusY true)
         member _.CircleRelative(dx, dy, radius) =
-            let x, y = cursor
-            let tx, ty = transformDelta dx dy
-            let endX, endY = clampToWindow (x + tx) (y + ty)
-            cursor <- endX, endY
-            let radiusX, radiusY = scaledRadius radius
-            sampleCircle endX endY radiusX radiusY true
+            synchronized (fun () ->
+                let x, y = cursor
+                let tx, ty = transformDelta dx dy
+                let endX, endY = clampToWindow (x + tx) (y + ty)
+                cursor <- endX, endY
+                let radiusX, radiusY = scaledRadius radius
+                sampleCircle endX endY radiusX radiusY true)
         member _.Ellipse(x, y, radius, ratio, angle) =
-            let tx, ty = transformAbsolute x y
-            let radiusX, radiusY = scaledRadius radius
-            let ellipseRadiusY = max 1.0 (radiusY * max 0.05 (abs ratio))
-            cursor <- tx, ty
-            sampleEllipse tx ty radiusX ellipseRadiusY angle 0.0 360.0 true true
+            synchronized (fun () ->
+                let tx, ty = transformAbsolute x y
+                let radiusX, radiusY = scaledRadius radius
+                let ellipseRadiusY = max 1.0 (radiusY * max 0.05 (abs ratio))
+                cursor <- tx, ty
+                sampleEllipse tx ty radiusX ellipseRadiusY angle 0.0 360.0 true true)
         member _.EllipseRelative(dx, dy, radius, ratio, angle) =
-            let x, y = cursor
-            let tx, ty = transformDelta dx dy
-            let endX, endY = clampToWindow (x + tx) (y + ty)
-            cursor <- endX, endY
-            let radiusX, radiusY = scaledRadius radius
-            let ellipseRadiusY = max 1.0 (radiusY * max 0.05 (abs ratio))
-            sampleEllipse endX endY radiusX ellipseRadiusY angle 0.0 360.0 true true
-        member _.Arc(x, y, radius, startAngle, endAngle) =
-            let tx, ty = transformAbsolute x y
-            let radiusX, radiusY = scaledRadius radius
-            sampleEllipse tx ty radiusX radiusY 0.0 startAngle endAngle false false
-            cursor <- arcEndPoint tx ty radiusX radiusY endAngle
-        member _.ArcRelative(dx, dy, radius, startAngle, endAngle) =
-            let x, y = cursor
-            let tx, ty = transformDelta dx dy
-            let endX, endY = clampToWindow (x + tx) (y + ty)
-            let radiusX, radiusY = scaledRadius radius
-            sampleEllipse endX endY radiusX radiusY 0.0 startAngle endAngle false false
-            cursor <- arcEndPoint endX endY radiusX radiusY endAngle
+            synchronized (fun () ->
+                let x, y = cursor
+                let tx, ty = transformDelta dx dy
+                let endX, endY = clampToWindow (x + tx) (y + ty)
+                cursor <- endX, endY
+                let radiusX, radiusY = scaledRadius radius
+                let ellipseRadiusY = max 1.0 (radiusY * max 0.05 (abs ratio))
+                sampleEllipse endX endY radiusX ellipseRadiusY angle 0.0 360.0 true true)
+        member _.Arc(x1, y1, x2, y2, angle) =
+            synchronized (fun () ->
+                let startX, startY =
+                    if Double.IsNaN x1 || Double.IsNaN y1 then
+                        cursor
+                    else
+                        transformAbsolute x1 y1
+
+                let endX, endY = transformAbsolute x2 y2
+                sampleArcByPoints startX startY endX endY angle
+                cursor <- endX, endY)
+        member _.ArcRelative(dx1, dy1, dx2, dy2, angle) =
+            synchronized (fun () ->
+                let originX, originY = cursor
+                let startX, startY =
+                    if Double.IsNaN dx1 || Double.IsNaN dy1 then
+                        originX, originY
+                    else
+                        let tx1, ty1 = transformDelta dx1 dy1
+                        clampToWindow (originX + tx1) (originY + ty1)
+
+                let tx2, ty2 = transformDelta dx2 dy2
+                let endX, endY = clampToWindow (originX + tx2) (originY + ty2)
+                sampleArcByPoints startX startY endX endY angle
+                cursor <- endX, endY)
         member _.Block(width, height, x, y, color) =
-            let tx, ty = transformAbsolute x y
-            cursor <- tx, ty
-            let startX = int (Math.Round tx)
-            let startY = int (Math.Round ty)
-            for row = startY to startY + max 0 (int (Math.Round height)) - 1 do
-                for col = startX to startX + max 0 (int (Math.Round width)) - 1 do
-                    buffer.ApplyPixel(col, row, color, overMode, underMode, flashMode, drawingBackgroundColor)
-        member _.SetInk(values: int list) = ink <- values
-        member _.SetFill(value: int) = fillMode <- value
-        member _.SetScale(x, y, z) = scale <- x, y, z
-        member _.SetOver(value: int) = overMode <- value
-        member _.SetUnder(value: int) = underMode <- value
-        member _.SetFlash(value: int) = flashMode <- value
-        member _.SetPenDown(value: bool) = penDown <- value
-        member _.Turn(angle) = heading <- heading + angle
-        member _.TurnTo(angle) = heading <- angle
+            synchronized (fun () ->
+                let tx, ty = transformAbsolute x y
+                cursor <- tx, ty
+                let startX = int (Math.Round tx)
+                let startY = int (Math.Round ty)
+                for row = startY to startY + max 0 (int (Math.Round height)) - 1 do
+                    for col = startX to startX + max 0 (int (Math.Round width)) - 1 do
+                        buffer.ApplyPixel(col, row, color, overMode, underMode, flashMode, drawingBackgroundColor))
+        member _.SetInk(values: int list) = synchronized (fun () -> ink <- values)
+        member _.SetFill(value: int) = synchronized (fun () -> fillMode <- value)
+        member _.SetScale(x, y, z) = synchronized (fun () -> scale <- x, y, z)
+        member _.SetOver(value: int) = synchronized (fun () -> overMode <- value)
+        member _.SetUnder(value: int) = synchronized (fun () -> underMode <- value)
+        member _.SetFlash(value: int) = synchronized (fun () -> flashMode <- value)
+        member _.SetPenDown(value: bool) = synchronized (fun () -> penDown <- value)
+        member _.Turn(angle) = synchronized (fun () -> heading <- heading + angle)
+        member _.TurnTo(angle) = synchronized (fun () -> heading <- angle)
         member _.Clear() =
-            let width, height, x, y = drawingWindow
-            buffer.ClearWindow(width, height, x, y, 0)
+            synchronized (fun () ->
+                let width, height, x, y = drawingWindow
+                buffer.ClearWindow(width, height, x, y, 0))
 
 type private DefaultInputDevice(reader: unit -> string option, readKey: unit -> KeyInfo option, keyAvailable: unit -> bool, keyRowState: int -> int, flushInput: unit -> unit) =
     interface IInputDevice with
@@ -1405,17 +1578,18 @@ type private NullFileSystem() =
 type private DefaultRuntimeHost(options: DefaultHostOptions) =
     let mutable currentMode = ScreenDefaults.supportedModes[0]
     let screenBuffer = ScreenBuffer(currentMode)
+    let screenGate = obj ()
     let memory = Dictionary<int, byte>()
     let screenReader channelId = options.ReadScreenLine channelId
-    let channel0 = DefaultScreenChannel(ChannelId 0, ChannelKind.ConsoleChannel, screenReader, options.WriteLine, true, currentMode, None, screenBuffer)
-    let channel1 = DefaultScreenChannel(ChannelId 1, ChannelKind.ScreenChannel, screenReader, options.WriteLine, false, currentMode, None, screenBuffer)
-    let channel2 = DefaultScreenChannel(ChannelId 2, ChannelKind.ScreenChannel, screenReader, options.WriteLine, false, currentMode, None, screenBuffer)
+    let channel0 = DefaultScreenChannel(ChannelId 0, ChannelKind.ConsoleChannel, screenReader, options.WriteLine, true, currentMode, None, screenBuffer, screenGate)
+    let channel1 = DefaultScreenChannel(ChannelId 1, ChannelKind.ScreenChannel, screenReader, options.WriteLine, false, currentMode, None, screenBuffer, screenGate)
+    let channel2 = DefaultScreenChannel(ChannelId 2, ChannelKind.ScreenChannel, screenReader, options.WriteLine, false, currentMode, None, screenBuffer, screenGate)
     let channelManager =
         [ channel0 :> IChannel
           channel1 :> IChannel
           channel2 :> IChannel ]
-        |> fun defaults -> DefaultChannelManager(defaults, screenReader, options.WriteLine, (fun () -> currentMode), screenBuffer)
-    let graphics = DefaultGraphicsDevice(screenBuffer) :> IGraphicsDevice
+        |> fun defaults -> DefaultChannelManager(defaults, screenReader, options.WriteLine, (fun () -> currentMode), screenBuffer, screenGate)
+    let graphics = DefaultGraphicsDevice(screenBuffer, screenGate) :> IGraphicsDevice
     let input = DefaultInputDevice(options.ReadLine, options.ReadKey, options.KeyAvailable, options.KeyRowState, options.FlushInput) :> IInputDevice
     let sound = NullSoundDevice() :> ISoundDevice
     let tryReadByte address =
@@ -1519,8 +1693,9 @@ type private DefaultRuntimeHost(options: DefaultHostOptions) =
     member _.DisplaySurface =
         { new IDisplaySurface with
             member _.GetSnapshot() =
-                { Mode = currentMode
-                  Panes = channel0.Snapshot() :: channelManager.ScreenPanes() } }
+                lock screenGate (fun () ->
+                    { Mode = currentMode
+                      Panes = channel0.Snapshot() :: channelManager.ScreenPanes() }) }
 
     interface IRuntimeHost with
         member _.Channels = channelManager :> IChannelManager
@@ -1550,7 +1725,7 @@ type private DefaultRuntimeHost(options: DefaultHostOptions) =
                 member _.SetInk(values) = (channel1 :> IScreenChannel).SetInk(values)
                 member _.SetPaper(value) = (channel1 :> IScreenChannel).SetPaper(value)
                 member _.SetStrip(values) = (channel1 :> IScreenChannel).SetStrip(values)
-                member _.SetBorder(value) = (channel1 :> IScreenChannel).SetBorder(value)
+                member _.SetBorder(size, color) = (channel1 :> IScreenChannel).SetBorder(size, color)
                 member _.GetSupportedModes() = ScreenDefaults.supportedModes
                 member _.GetMode() = currentMode
                 member _.SetMode(requestedMode) =

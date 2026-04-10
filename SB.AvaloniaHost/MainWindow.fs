@@ -45,6 +45,7 @@ type MainWindow(display: IDisplaySurface, handleTextInput: string -> unit, handl
         this.Height <- 720.0
         this.MinWidth <- 720.0
         this.MinHeight <- 540.0
+        this.WindowState <- WindowState.Maximized
         this.Background <- Brushes.Black
         surface.AttachDisplaySurface(display)
         this.Focusable <- true
@@ -53,14 +54,16 @@ type MainWindow(display: IDisplaySurface, handleTextInput: string -> unit, handl
             let text = args.Text |> Option.ofObj |> Option.defaultValue String.Empty
             if not (String.IsNullOrEmpty text) then
                 handleTextInput text
+                surface.InvalidateVisual()
                 args.Handled <- true)
         this.KeyDown.Add(fun args ->
             match tryMapSpecialKey args with
             | Some keyInfo ->
                 if handleSpecialKey keyInfo then
+                    surface.InvalidateVisual()
                     args.Handled <- true
             | None -> ())
-        repaintTimer.Interval <- TimeSpan.FromMilliseconds(33.0)
+        repaintTimer.Interval <- TimeSpan.FromMilliseconds(16.0)
         repaintTimer.Tick.Add(fun _ -> surface.InvalidateVisual())
         repaintTimer.Start()
         this.Content <- surface

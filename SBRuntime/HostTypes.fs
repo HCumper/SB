@@ -82,7 +82,7 @@ type IScreenChannel =
     abstract SetInk: int list -> unit
     abstract SetPaper: int -> unit
     abstract SetStrip: int list -> unit
-    abstract SetBorder: int -> unit
+    abstract SetBorder: int * int option -> unit
 
 type IChannelManager =
     abstract Open: string -> Result<ChannelId, RuntimeHostError>
@@ -115,7 +115,7 @@ type IScreenDevice =
     abstract SetInk: int list -> unit
     abstract SetPaper: int -> unit
     abstract SetStrip: int list -> unit
-    abstract SetBorder: int -> unit
+    abstract SetBorder: int * int option -> unit
     abstract GetSupportedModes: unit -> ScreenModeInfo list
     abstract GetMode: unit -> ScreenModeInfo
     abstract SetMode: ScreenMode -> Result<unit, RuntimeHostError>
@@ -190,12 +190,14 @@ type ScreenPaneSnapshot = {
     Title: string
     Kind: ChannelKind
     Window: int * int * int * int
+    OuterWindow: int * int * int * int
     Cursor: int * int
     CharacterSize: int * int
     Ink: int
     Paper: int
     Strip: int
-    Border: int
+    BorderSize: int
+    BorderColor: int option
     Recolor: int list option
     Palette: int list option
     Text: ScreenTextCell[,]
