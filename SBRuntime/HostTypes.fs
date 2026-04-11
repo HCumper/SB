@@ -75,6 +75,8 @@ type IScreenChannel =
     abstract GetPalette: unit -> int list option
     abstract SetCursor: int * int -> unit
     abstract GetCursor: unit -> int * int
+    abstract SetCursorVisible: bool -> unit
+    abstract GetCursorVisible: unit -> bool
     abstract SetCharacterSize: int * int -> unit
     abstract GetCharacterSize: unit -> int * int
     abstract SetCharacterFonts: int * int -> unit
@@ -107,6 +109,8 @@ type IScreenDevice =
     abstract GetPalette: unit -> int list option
     abstract SetCursor: int * int -> unit
     abstract GetCursor: unit -> int * int
+    abstract SetCursorVisible: bool -> unit
+    abstract GetCursorVisible: unit -> bool
     abstract SetCharacterSize: int * int -> unit
     abstract GetCharacterSize: unit -> int * int
     abstract SetCharacterFonts: int * int -> unit
@@ -192,6 +196,7 @@ type ScreenPaneSnapshot = {
     Window: int * int * int * int
     OuterWindow: int * int * int * int
     Cursor: int * int
+    CursorVisible: bool
     CharacterSize: int * int
     Ink: int
     Paper: int

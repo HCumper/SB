@@ -25,20 +25,96 @@ module internal InteractiveInput =
     let private visualAdvance cellWidth =
         max 1 (cellWidth - max 4 ((2 * cellWidth) / 3))
 
+    let private cellAdvance (mode: ScreenModeInfo) (characterSize: int * int) =
+        let widthScale, _ = characterSize
+        let cellWidth = mode.BaseTextCellWidth * max 1 (widthScale + 1)
+        if mode.IsQlCompatible && characterSize = (0, 0) then
+            cellWidth
+        else
+            visualAdvance cellWidth
+
     let private textColumns (host: IRuntimeHost) (screenChannel: IScreenChannel) =
         let width, _, _, _ = screenChannel.GetWindow()
-        let widthScale, _ = screenChannel.GetCharacterSize()
-        let cellWidth = host.Screen.GetMode().BaseTextCellWidth * max 1 (widthScale + 1)
-        max 1 (width / visualAdvance cellWidth)
+        let characterSize = screenChannel.GetCharacterSize()
+        max 1 (width / cellAdvance (host.Screen.GetMode()) characterSize)
 
     type Controller(host: IRuntimeHost, enqueueKey: KeyInfo -> unit, enqueueLine: string -> unit) as this =
         let gate = obj ()
         let buffer = StringBuilder()
         let submitted = ResizeArray<ChannelId * string>()
+        let pressedRowBits = System.Collections.Generic.Dictionary<int, int>()
+        let transientRowBits = System.Collections.Generic.Dictionary<int, int>()
         let mutable activeChannelId: ChannelId option = None
         let mutable origin = 0, 0
         let mutable caretIndex = 0
         let mutable renderedLength = 0
+        let mutable gameplayPulseToggle = false
+        let mutable activeGameplayKeyCodes: int list = []
+
+        let tryGetKeyRowBit keyCode =
+            match keyCode with
+            | 28 -> Some(1, 0x01)   // cursor left
+            | 29 -> Some(1, 0x02)   // cursor right
+            | 30 -> Some(1, 0x04)   // cursor up
+            | 31 -> Some(1, 0x08)   // cursor down
+            | 27 -> Some(1, 0x10)   // escape
+            | 13 -> Some(1, 0x20)   // enter
+            | 32 -> Some(1, 0x40)   // space / fire
+            | _ -> None
+
+        let updateKeyRowState keyCode isPressed =
+            match tryGetKeyRowBit keyCode with
+            | Some(row, bit) ->
+                let existing =
+                    match pressedRowBits.TryGetValue row with
+                    | true, value -> value
+                    | false, _ -> 0
+                let nextValue =
+                    if isPressed then
+                        existing ||| bit
+                    else
+                        existing &&& (~~~bit)
+                if nextValue = 0 then
+                    pressedRowBits.Remove(row) |> ignore
+                else
+                    pressedRowBits[row] <- nextValue
+
+                let isTransient = keyCode = 13
+                if isTransient then
+                    let transientExisting =
+                        match transientRowBits.TryGetValue row with
+                        | true, value -> value
+                        | false, _ -> 0
+                    let transientNext =
+                        if isPressed then
+                            transientExisting ||| bit
+                        else
+                            transientExisting &&& (~~~bit)
+                    if transientNext = 0 then
+                        transientRowBits.Remove(row) |> ignore
+                    else
+                        transientRowBits[row] <- transientNext
+            | None -> ()
+
+        let beginGameplayKeyHold () =
+            match activeGameplayKeyCodes with
+            | _ :: _ -> ()
+            | [] ->
+                // Many games poll KEYROW and expect alternating row values
+                // rather than the same bit every frame.
+                let directionKeyCode =
+                    if gameplayPulseToggle then 28 else 29
+                gameplayPulseToggle <- not gameplayPulseToggle
+                activeGameplayKeyCodes <- [ directionKeyCode ]
+                updateKeyRowState directionKeyCode true
+
+        let endGameplayKeyHold () =
+            match activeGameplayKeyCodes with
+            | [] -> ()
+            | keyCodes ->
+                for keyCode in keyCodes do
+                    updateKeyRowState keyCode false
+                activeGameplayKeyCodes <- []
 
         let setCursorFromIndex (screenChannel: IScreenChannel) index =
             let originX, originY = origin
@@ -60,6 +136,9 @@ module internal InteractiveInput =
             setCursorFromIndex screenChannel caretIndex
 
         let finishInput () =
+            activeChannelId
+            |> Option.bind (tryGetScreenChannel host)
+            |> Option.iter (fun screenChannel -> screenChannel.SetCursorVisible(false))
             activeChannelId <- None
             buffer.Clear() |> ignore
             caretIndex <- 0
@@ -72,6 +151,7 @@ module internal InteractiveInput =
                     tryGetScreenChannel host channelId
                     |> Option.defaultWith (fun () -> failwith $"Screen channel {channelId} is not available.")
                 origin <- screenChannel.GetCursor()
+                screenChannel.SetCursorVisible(true)
                 buffer.Clear() |> ignore
                 caretIndex <- 0
                 renderedLength <- 0
@@ -82,6 +162,12 @@ module internal InteractiveInput =
 
         let queueKeyForRuntime (keyInfo: KeyInfo) =
             enqueueKey keyInfo
+
+        member _.PulseGameplayKey() =
+            lock gate (fun () -> beginGameplayKeyHold ())
+
+        member _.ReleaseGameplayKey() =
+            lock gate (fun () -> endGameplayKeyHold ())
 
         member _.TryReadDefaultLine() =
             this.TryReadLine(ChannelId 1)
@@ -111,6 +197,7 @@ module internal InteractiveInput =
                         caretIndex <- caretIndex + text.Length
                         redrawBuffer screenChannel
                     | None ->
+                        beginGameplayKeyHold ()
                         for ch in text do
                             queueKeyForRuntime {
                                 KeyCode = int ch
@@ -121,6 +208,7 @@ module internal InteractiveInput =
 
         member _.HandleSpecialKey(keyInfo: KeyInfo) =
             lock gate (fun () ->
+                updateKeyRowState keyInfo.KeyCode true
                 match activeChannelId |> Option.bind (tryGetScreenChannel host) with
                 | Some screenChannel ->
                     match keyInfo.KeyCode with
@@ -174,9 +262,35 @@ module internal InteractiveInput =
                     queueKeyForRuntime keyInfo
                     true)
 
+        member _.ReleaseSpecialKey(keyInfo: KeyInfo) =
+            lock gate (fun () ->
+                updateKeyRowState keyInfo.KeyCode false)
+
+        member _.GetKeyRow(row: int) =
+            lock gate (fun () ->
+                let value =
+                    match pressedRowBits.TryGetValue row with
+                    | true, current -> current
+                    | false, _ -> 0
+
+                match transientRowBits.TryGetValue row with
+                | true, transient when transient <> 0 ->
+                    let remaining = value &&& (~~~transient)
+                    if remaining = 0 then
+                        pressedRowBits.Remove(row) |> ignore
+                    else
+                        pressedRowBits[row] <- remaining
+                    transientRowBits.Remove(row) |> ignore
+                | _ -> ()
+
+                value)
+
         member _.FlushInput() =
             lock gate (fun () ->
                 submitted.Clear()
+                pressedRowBits.Clear()
+                transientRowBits.Clear()
+                activeGameplayKeyCodes <- []
                 Monitor.PulseAll(gate)
                 match activeChannelId |> Option.bind (tryGetScreenChannel host) with
                 | Some screenChannel ->
@@ -218,7 +332,11 @@ type AvaloniaRuntimeHost() =
                         | None -> ()
                 ReadKey = readKey
                 KeyAvailable = fun () -> not keyQueue.IsEmpty
-                KeyRowState = fun _ -> 0
+                KeyRowState =
+                    fun row ->
+                        match controllerOpt with
+                        | Some controller -> controller.GetKeyRow(row)
+                        | None -> 0
                 WriteLine =
                     fun line ->
                         if Dispatcher.UIThread.CheckAccess() then
@@ -266,7 +384,11 @@ type AvaloniaRuntimeHost() =
                         | None -> ()
                 ReadKey = readKey
                 KeyAvailable = fun () -> not keyQueue.IsEmpty
-                KeyRowState = fun _ -> 0
+                KeyRowState =
+                    fun row ->
+                        match controllerOpt with
+                        | Some controller -> controller.GetKeyRow(row)
+                        | None -> 0
                 WriteLine =
                     fun line ->
                         if Dispatcher.UIThread.CheckAccess() then
@@ -325,7 +447,7 @@ type AvaloniaHostService() =
                     sessionOpt <- Some session
                     HostAppState.CreateMainWindow <-
                         Some(fun () ->
-                            let window = MainWindow(session.Display, controller.HandleTextInput, controller.HandleSpecialKey)
+                            let window = MainWindow(session.Display, controller.HandleTextInput, controller.HandleSpecialKey, controller.PulseGameplayKey, controller.ReleaseGameplayKey, controller.ReleaseSpecialKey)
                             windowOpt <- Some window
                             window :> Window)
                     HostAppState.OnWindowReady <- Some(fun _ -> ready.Set())

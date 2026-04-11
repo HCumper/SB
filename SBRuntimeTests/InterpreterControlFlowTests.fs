@@ -89,6 +89,46 @@ let ``interpreter backward goto can iterate without growing the runtime stack`` 
     Assert.That(String.concat "|" output, Is.EqualTo("5000"))
 
 [<Test>]
+let ``interpreter not treats minus one qualification flag as false when negated`` () =
+    let ast =
+        Program(
+            pos,
+            [ Line(pos, Some 10, [ Assignment(pos, id "qualify", num "-1") ])
+              Line(
+                pos,
+                Some 20,
+                [ IfStmt(
+                    pos,
+                    mkUnaryExpr pos "NOT" (id "qualify"),
+                    LineBlock [ Line(pos, Some 25, [ ProcedureCall(pos, "PRINT", [ str "\"blocked\"" ]) ]) ],
+                    None) ])
+              Line(pos, Some 30, [ ProcedureCall(pos, "PRINT", [ str "\"ok\"" ]) ]) ])
+
+    let output = runProgram ast
+
+    Assert.That(String.concat "|" output, Is.EqualTo("ok"))
+
+[<Test>]
+let ``interpreter procedure call can shadow callable built in statement name`` () =
+    let ast =
+        Program(
+            pos,
+            [ Line(pos, Some 10, [ ProcedureCall(pos, "time", [ num "7" ]) ])
+              Line(
+                pos,
+                Some 900,
+                [ ProcedureDef(
+                    pos,
+                    "time",
+                    [ "type" ],
+                    [ Line(pos, Some 910, [ ProcedureCall(pos, "PRINT", [ id "type" ]) ]) ],
+                    None, None) ]) ])
+
+    let output = runProgram ast
+
+    Assert.That(String.concat "|" output, Is.EqualTo("7"))
+
+[<Test>]
 let ``interpreter gosub returns to following statement`` () =
     let ast =
         Program(

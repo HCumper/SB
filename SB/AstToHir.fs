@@ -327,6 +327,20 @@ let private canLowerDynamically ctx name =
     ctx.CurrentScope <> globalScope
     && not (isCallableBuiltIn name)
 
+let private lowersToBuiltInCall ctx name =
+    match tryResolveSymbol ctx.CurrentScope name ctx.State.SymTab with
+    | Some(_, BuiltInSym _) -> true
+    | _ -> false
+
+let private isEmptyIdentifier = function
+    | Identifier(_, _, "")
+    | PostfixName(_, _, "", None) -> true
+    | _ -> false
+
+let private makeBuiltInFunctionCall ctx pos name hirType args =
+    requireSymbolIdForName ctx ctx.CurrentScope name pos
+    |> map (fun symbolId -> CallFunc(symbolId, args |> List.map ValueArg, hirType, pos))
+
 let private shouldLowerDynamicStorage ctx expr name =
     match getRecordedResolvedSymbol ctx expr with
     | None -> canLowerDynamically ctx name
@@ -489,55 +503,99 @@ let rec private lowerExpr ctx expr =
     | PostfixName(_, pos, name, Some args) ->
         match getRecordedResolvedSymbol ctx expr with
         | _ when shouldLowerDynamicStorage ctx expr name ->
-            if args.Length = 1 then
-                zip (getRecordedExprType ctx expr) (lowerExpr ctx args.Head)
+            match args with
+            | [ SliceRange(_, _, lhs, rhs) ] ->
+                getRecordedExprType ctx expr
+                |> bind (fun hirType ->
+                    if hirType = HirType.String then
+                        let baseExpr = DynamicReadVar(normalizeIdentifier name, hirType, pos)
+                        lowerStringSliceFromBase ctx pos baseExpr lhs (if isEmptyIdentifier rhs then None else Some rhs)
+                    else
+                        lowerExpr ctx args.Head
+                        |> map (fun loweredIndex -> DynamicReadArrayElem(normalizeIdentifier name, [ loweredIndex ], hirType, pos)))
+            | [ singleArg ] ->
+                zip (getRecordedExprType ctx expr) (lowerExpr ctx singleArg)
                 |> map (fun (hirType, loweredIndex) ->
                     if hirType = HirType.String then
                         DynamicReadStringChar(normalizeIdentifier name, loweredIndex, hirType, pos)
                     else
                         DynamicReadArrayElem(normalizeIdentifier name, [ loweredIndex ], hirType, pos))
-            else
+            | _ ->
                 zip (getRecordedExprType ctx expr) (args |> List.map (lowerExpr ctx) |> collectResults)
                 |> map (fun (hirType, loweredIndexes) -> DynamicReadArrayElem(normalizeIdentifier name, loweredIndexes, hirType, pos))
         | _ ->
-            zip (getRecordedExprType ctx expr) (zip (requireSymbolIdForExpr ctx expr name pos) (args |> List.map (fun arg -> lowerExpr ctx arg |> map ValueArg) |> collectResults))
-            |> map (fun (hirType, (symbolId, loweredArgs)) ->
-                match getRecordedResolvedSymbol ctx expr with
-                | Some resolved when isCallableBuiltIn resolved.Name -> CallFunc(symbolId, loweredArgs, hirType, pos)
-                | Some resolved ->
-                    match Map.tryFind resolved.Scope ctx.State.SymTab with
-                    | Some scope ->
-                        match Map.tryFind resolved.Name scope.Symbols with
-                        | Some(ArraySym _) ->
+            match args with
+            | [ SliceRange(_, _, lhs, rhs) ] ->
+                zip (getRecordedExprType ctx expr) (requireSymbolIdForExpr ctx expr name pos)
+                |> bind (fun (hirType, symbolId) ->
+                    match getRecordedResolvedSymbol ctx expr with
+                    | Some resolved when isCallableBuiltIn resolved.Name ->
+                        args |> List.map (lowerExpr ctx) |> collectResults
+                        |> map (fun loweredArgs -> CallFunc(symbolId, loweredArgs |> List.map ValueArg, hirType, pos))
+                    | Some resolved ->
+                        match Map.tryFind resolved.Scope ctx.State.SymTab with
+                        | Some scope ->
+                            match Map.tryFind resolved.Name scope.Symbols with
+                            | Some(VariableSym _)
+                            | Some(ConstantSym _)
+                            | Some(ParameterSym _) when hirType = HirType.String ->
+                                let baseExpr = ReadVar(symbolId, hirType, pos)
+                                lowerStringSliceFromBase ctx pos baseExpr lhs (if isEmptyIdentifier rhs then None else Some rhs)
+                            | Some(ArraySym _) ->
+                                lowerExpr ctx args.Head
+                                |> map (fun loweredIndex -> ReadArrayElem(symbolId, [ loweredIndex ], hirType, pos))
+                            | Some(FunctionSym _)
+                            | Some(BuiltInSym _) ->
+                                args |> List.map (lowerExpr ctx) |> collectResults
+                                |> map (fun loweredArgs -> CallFunc(symbolId, loweredArgs |> List.map ValueArg, hirType, pos))
+                            | _ ->
+                                lowerExpr ctx args.Head
+                                |> map (fun loweredIndex -> ReadArrayElem(symbolId, [ loweredIndex ], hirType, pos))
+                        | None ->
+                            lowerExpr ctx args.Head
+                            |> map (fun loweredIndex -> ReadArrayElem(symbolId, [ loweredIndex ], hirType, pos))
+                    | _ ->
+                        lowerExpr ctx args.Head
+                        |> map (fun loweredIndex -> ReadArrayElem(symbolId, [ loweredIndex ], hirType, pos)))
+            | _ ->
+                zip (getRecordedExprType ctx expr) (zip (requireSymbolIdForExpr ctx expr name pos) (args |> List.map (fun arg -> lowerExpr ctx arg |> map ValueArg) |> collectResults))
+                |> map (fun (hirType, (symbolId, loweredArgs)) ->
+                    match getRecordedResolvedSymbol ctx expr with
+                    | Some resolved when isCallableBuiltIn resolved.Name -> CallFunc(symbolId, loweredArgs, hirType, pos)
+                    | Some resolved ->
+                        match Map.tryFind resolved.Scope ctx.State.SymTab with
+                        | Some scope ->
+                            match Map.tryFind resolved.Name scope.Symbols with
+                            | Some(ArraySym _) ->
+                                let loweredIndexes =
+                                    loweredArgs
+                                    |> List.choose (function | ValueArg arg -> Some arg | RefArg _ -> None)
+                                ReadArrayElem(symbolId, loweredIndexes, hirType, pos)
+                            | Some(VariableSym _)
+                            | Some(ConstantSym _)
+                            | Some(ParameterSym _) when isSingleStringIndexAccess ctx expr args ->
+                                let loweredIndex =
+                                    loweredArgs
+                                    |> List.choose (function | ValueArg arg -> Some arg | RefArg _ -> None)
+                                    |> List.head
+                                ReadStringChar(symbolId, loweredIndex, hirType, pos)
+                            | Some(FunctionSym _)
+                            | Some(BuiltInSym _) -> CallFunc(symbolId, loweredArgs, hirType, pos)
+                            | _ ->
+                                let loweredIndexes =
+                                    loweredArgs
+                                    |> List.choose (function | ValueArg arg -> Some arg | RefArg _ -> None)
+                                ReadArrayElem(symbolId, loweredIndexes, hirType, pos)
+                        | None ->
                             let loweredIndexes =
                                 loweredArgs
                                 |> List.choose (function | ValueArg arg -> Some arg | RefArg _ -> None)
                             ReadArrayElem(symbolId, loweredIndexes, hirType, pos)
-                        | Some(VariableSym _)
-                        | Some(ConstantSym _)
-                        | Some(ParameterSym _) when isSingleStringIndexAccess ctx expr args ->
-                            let loweredIndex =
-                                loweredArgs
-                                |> List.choose (function | ValueArg arg -> Some arg | RefArg _ -> None)
-                                |> List.head
-                            ReadStringChar(symbolId, loweredIndex, hirType, pos)
-                        | Some(FunctionSym _)
-                        | Some(BuiltInSym _) -> CallFunc(symbolId, loweredArgs, hirType, pos)
-                        | _ ->
-                            let loweredIndexes =
-                                loweredArgs
-                                |> List.choose (function | ValueArg arg -> Some arg | RefArg _ -> None)
-                            ReadArrayElem(symbolId, loweredIndexes, hirType, pos)
-                    | None ->
+                    | _ ->
                         let loweredIndexes =
                             loweredArgs
                             |> List.choose (function | ValueArg arg -> Some arg | RefArg _ -> None)
-                        ReadArrayElem(symbolId, loweredIndexes, hirType, pos)
-                | _ ->
-                    let loweredIndexes =
-                        loweredArgs
-                        |> List.choose (function | ValueArg arg -> Some arg | RefArg _ -> None)
-                    ReadArrayElem(symbolId, loweredIndexes, hirType, pos))
+                        ReadArrayElem(symbolId, loweredIndexes, hirType, pos))
     | SliceRange(_, pos, lhs, rhs) ->
         zip (getRecordedExprType ctx expr) (zip (lowerExpr ctx lhs) (lowerExpr ctx rhs))
         |> map (fun (hirType, (left, right)) -> Binary(HirBinaryOp.SliceRange, left, right, hirType, pos))
@@ -547,6 +605,34 @@ let rec private lowerExpr ctx expr =
     | UnaryExpr(_, pos, op, inner) ->
         zip (getRecordedExprType ctx expr) (lowerExpr ctx inner)
         |> map (fun (hirType, lowered) -> Unary(lowerUnaryOp op, lowered, hirType, pos))
+
+and private lowerStringSliceFromBase ctx pos baseExpr startExpr endExprOpt =
+    lowerExpr ctx startExpr
+    |> bind (fun loweredStart ->
+        let one = Literal(ConstInt 1, HirType.Int, pos)
+        match endExprOpt with
+        | Some endExpr ->
+            lowerExpr ctx endExpr
+            |> bind (fun loweredEnd ->
+                let count =
+                    Binary(
+                        HirBinaryOp.Add,
+                        Binary(HirBinaryOp.Subtract, loweredEnd, loweredStart, HirType.Int, pos),
+                        one,
+                        HirType.Int,
+                        pos)
+                makeBuiltInFunctionCall ctx pos "MID$" HirType.String [ baseExpr; loweredStart; count ])
+        | None ->
+            makeBuiltInFunctionCall ctx pos "LEN" HirType.Int [ baseExpr ]
+            |> bind (fun lenExpr ->
+                let count =
+                    Binary(
+                        HirBinaryOp.Add,
+                        Binary(HirBinaryOp.Subtract, lenExpr, loweredStart, HirType.Int, pos),
+                        one,
+                        HirType.Int,
+                        pos)
+                makeBuiltInFunctionCall ctx pos "RIGHT$" HirType.String [ baseExpr; count ]))
 
 let private lowerTarget ctx expr =
     match expr with
@@ -653,7 +739,7 @@ let rec private lowerStmt ctx stmt =
             lowerInputArgs ctx pos args
             |> map (fun (prompts, loweredTargets) -> [ Input(None, prompts, loweredTargets, pos) ])
         else
-            if isCallableBuiltIn name then
+            if lowersToBuiltInCall ctx name then
                 lowerExprList ctx (normalizeBuiltInArgs name args)
                 |> map (fun loweredArgs -> [ BuiltInCall(lowerBuiltInKind name, None, loweredArgs, pos) ])
             else
@@ -667,7 +753,7 @@ let rec private lowerStmt ctx stmt =
             if normalizeIdentifier name = "INPUT" then
                 lowerInputArgs ctx pos args
                 |> map (fun (prompts, loweredTargets) -> [ Input(Some(ExplicitChannel loweredChannel), prompts, loweredTargets, pos) ])
-            elif isCallableBuiltIn name then
+            elif lowersToBuiltInCall ctx name then
                 lowerExprList ctx (normalizeBuiltInArgs name args)
                 |> map (fun loweredArgs -> [ BuiltInCall(lowerBuiltInKind name, Some(ExplicitChannel loweredChannel), loweredArgs, pos) ])
             else
@@ -681,7 +767,7 @@ let rec private lowerStmt ctx stmt =
             if normalizeIdentifier name = "INPUT" then
                 lowerInputArgs ctx pos args
                 |> map (fun (prompts, loweredTargets) -> [ Input(Some(ImplicitChannel loweredChannel), prompts, loweredTargets, pos) ])
-            elif isCallableBuiltIn name then
+            elif lowersToBuiltInCall ctx name then
                 lowerExprList ctx (normalizeBuiltInArgs name args)
                 |> map (fun loweredArgs -> [ BuiltInCall(lowerBuiltInKind name, Some(ImplicitChannel loweredChannel), loweredArgs, pos) ])
             else

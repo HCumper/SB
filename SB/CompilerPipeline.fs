@@ -75,6 +75,9 @@ type RuntimeSettings = {
     Verbose: bool
     Backend: string
     RuntimeHost: string
+    ExecutionThrottleEnabled: bool
+    ExecutionThrottleTargetStatementsPerSecond: int
+    ExecutionThrottleMaxRunAheadMilliseconds: int
     SyntaxChecking: SyntaxCheckingMode
     AppName: string
     Logger: Core.Logger
@@ -139,6 +142,9 @@ let getSettings argv : RuntimeSettings =
     let verbosityLevel = configSettings.GetValue<bool>("AppSettings:Verbose")
     let backend = configSettings.GetValue<string>("AppSettings:Backend")
     let runtimeHost = configSettings.GetValue<string>("AppSettings:RuntimeHost")
+    let executionThrottleEnabled = configSettings.GetValue<bool>("AppSettings:ExecutionThrottle:Enabled")
+    let executionThrottleTargetStatementsPerSecond = configSettings.GetValue<int>("AppSettings:ExecutionThrottle:TargetStatementsPerSecond")
+    let executionThrottleMaxRunAheadMilliseconds = configSettings.GetValue<int>("AppSettings:ExecutionThrottle:MaxRunAheadMilliseconds")
     let syntaxChecking = parseSyntaxCheckingMode (configSettings.GetValue<string>("AppSettings:SyntaxChecking"))
     let logger = configureLogger configSettings
     let defaultBackend = if String.IsNullOrWhiteSpace backend then "interpret" else backend
@@ -156,6 +162,9 @@ let getSettings argv : RuntimeSettings =
               Verbose = verbosityLevel
               Backend = inferredBackend
               RuntimeHost = defaultRuntimeHost
+              ExecutionThrottleEnabled = executionThrottleEnabled
+              ExecutionThrottleTargetStatementsPerSecond = executionThrottleTargetStatementsPerSecond
+              ExecutionThrottleMaxRunAheadMilliseconds = executionThrottleMaxRunAheadMilliseconds
               SyntaxChecking = syntaxChecking
               AppName = appName
               Logger = logger }
@@ -165,6 +174,9 @@ let getSettings argv : RuntimeSettings =
               Verbose = verbosityLevel
               Backend = defaultBackend
               RuntimeHost = defaultRuntimeHost
+              ExecutionThrottleEnabled = executionThrottleEnabled
+              ExecutionThrottleTargetStatementsPerSecond = executionThrottleTargetStatementsPerSecond
+              ExecutionThrottleMaxRunAheadMilliseconds = executionThrottleMaxRunAheadMilliseconds
               SyntaxChecking = syntaxChecking
               AppName = appName
               Logger = logger }
@@ -174,6 +186,9 @@ let getSettings argv : RuntimeSettings =
           Verbose = Boolean.Parse(verbose)
           Backend = backendName
           RuntimeHost = runtimeHostName
+          ExecutionThrottleEnabled = executionThrottleEnabled
+          ExecutionThrottleTargetStatementsPerSecond = executionThrottleTargetStatementsPerSecond
+          ExecutionThrottleMaxRunAheadMilliseconds = executionThrottleMaxRunAheadMilliseconds
           SyntaxChecking = syntaxChecking
           AppName = appName
           Logger = logger }
@@ -183,6 +198,9 @@ let getSettings argv : RuntimeSettings =
           Verbose = Boolean.Parse(verbose)
           Backend = backendName
           RuntimeHost = defaultRuntimeHost
+          ExecutionThrottleEnabled = executionThrottleEnabled
+          ExecutionThrottleTargetStatementsPerSecond = executionThrottleTargetStatementsPerSecond
+          ExecutionThrottleMaxRunAheadMilliseconds = executionThrottleMaxRunAheadMilliseconds
           SyntaxChecking = syntaxChecking
           AppName = appName
           Logger = logger }
@@ -192,6 +210,9 @@ let getSettings argv : RuntimeSettings =
           Verbose = Boolean.Parse(verbose)
           Backend = defaultBackend
           RuntimeHost = defaultRuntimeHost
+          ExecutionThrottleEnabled = executionThrottleEnabled
+          ExecutionThrottleTargetStatementsPerSecond = executionThrottleTargetStatementsPerSecond
+          ExecutionThrottleMaxRunAheadMilliseconds = executionThrottleMaxRunAheadMilliseconds
           SyntaxChecking = syntaxChecking
           AppName = appName
           Logger = logger }
@@ -201,6 +222,9 @@ let getSettings argv : RuntimeSettings =
           Verbose = verbosityLevel
           Backend = "interpret"
           RuntimeHost = defaultRuntimeHost
+          ExecutionThrottleEnabled = executionThrottleEnabled
+          ExecutionThrottleTargetStatementsPerSecond = executionThrottleTargetStatementsPerSecond
+          ExecutionThrottleMaxRunAheadMilliseconds = executionThrottleMaxRunAheadMilliseconds
           SyntaxChecking = syntaxChecking
           AppName = appName
           Logger = logger }
@@ -210,6 +234,9 @@ let getSettings argv : RuntimeSettings =
           Verbose = verbosityLevel
           Backend = defaultBackend
           RuntimeHost = defaultRuntimeHost
+          ExecutionThrottleEnabled = executionThrottleEnabled
+          ExecutionThrottleTargetStatementsPerSecond = executionThrottleTargetStatementsPerSecond
+          ExecutionThrottleMaxRunAheadMilliseconds = executionThrottleMaxRunAheadMilliseconds
           SyntaxChecking = syntaxChecking
           AppName = appName
           Logger = logger }
@@ -803,6 +830,9 @@ let loadRuntimeProgram syntaxChecking verbose logger inputFileName : Result<Runt
           Verbose = verbose
           Backend = "interpret"
           RuntimeHost = "console"
+          ExecutionThrottleEnabled = false
+          ExecutionThrottleTargetStatementsPerSecond = 10000
+          ExecutionThrottleMaxRunAheadMilliseconds = 2
           SyntaxChecking = syntaxChecking
           AppName = "SB"
           Logger = logger }

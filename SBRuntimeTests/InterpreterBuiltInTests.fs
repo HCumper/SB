@@ -582,6 +582,16 @@ let ``interpreter time and string helper functions work`` () =
     Assert.That(String.concat "|" output, Is.EqualTo("11045 86399 **** bcd abZZef"))
 
 [<Test>]
+let ``interpreter string postfix slices support bounded and open ended ranges`` () =
+    let ast =
+        parseProgram
+            "10 ut$=\"2024 Jan 02 03:04:05\"\n20 PRINT ut$(19 TO)\n30 PRINT ut$(6 TO 8)\n"
+
+    let output = runProgram ast
+
+    Assert.That(String.concat "|" output, Is.EqualTo("05|Jan"))
+
+[<Test>]
 let ``runtime time and string helper built ins return expected values`` () =
     let evaluate name args =
         BuiltInFunctions.evaluate

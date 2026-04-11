@@ -112,6 +112,7 @@ type ScreenWindowState = {
     mutable Recolor: int list option
     mutable Palette: int list option
     mutable Cursor: int * int
+    mutable CursorVisible: bool
     mutable CharacterSize: int * int
     mutable CharacterFonts: int * int
     mutable ClearCount: int
@@ -193,6 +194,7 @@ let createScreenHost (inputs: string list) =
 
     let makeWindowState () =
         { Cursor = 0, 0
+          CursorVisible = false
           OuterWindow = 0, 0, 0, 0
           Window = 0, 0, 0, 0
           Scroll = 0
@@ -464,6 +466,14 @@ let createScreenHost (inputs: string list) =
                 match Map.tryFind channelId state.Windows with
                 | Some window -> window.Cursor
                 | None -> 0, 0
+            member _.SetCursorVisible(value) =
+                match Map.tryFind channelId state.Windows with
+                | Some window -> window.CursorVisible <- value
+                | None -> ()
+            member _.GetCursorVisible() =
+                match Map.tryFind channelId state.Windows with
+                | Some window -> window.CursorVisible
+                | None -> false
             member _.SetCharacterSize(width, height) =
                 match Map.tryFind channelId state.Windows with
                 | Some window -> window.CharacterSize <- width, height
@@ -578,6 +588,14 @@ let createScreenHost (inputs: string list) =
                 match Map.tryFind channelId state.Windows with
                 | Some window -> window.Cursor
                 | None -> 0, 0
+            member _.SetCursorVisible(value) =
+                match Map.tryFind channelId state.Windows with
+                | Some window -> window.CursorVisible <- value
+                | None -> ()
+            member _.GetCursorVisible() =
+                match Map.tryFind channelId state.Windows with
+                | Some window -> window.CursorVisible
+                | None -> false
             member _.SetCharacterSize(width, height) =
                 match Map.tryFind channelId state.Windows with
                 | Some window -> window.CharacterSize <- width, height
@@ -708,6 +726,14 @@ let createScreenHost (inputs: string list) =
                         match Map.tryFind 1 state.Windows with
                         | Some window -> window.Cursor
                         | None -> 0, 0
+                    member _.SetCursorVisible(value) =
+                        match Map.tryFind 1 state.Windows with
+                        | Some window -> window.CursorVisible <- value
+                        | None -> ()
+                    member _.GetCursorVisible() =
+                        match Map.tryFind 1 state.Windows with
+                        | Some window -> window.CursorVisible
+                        | None -> false
                     member _.SetCharacterSize(width, height) =
                         match Map.tryFind 1 state.Windows with
                         | Some window -> window.CharacterSize <- width, height

@@ -3,6 +3,8 @@ module Interpreter
 open System
 open System.Collections.Generic
 open System.Globalization
+open System.Diagnostics
+open System.Threading
 
 open HIR
 open SBRuntime
@@ -62,9 +64,15 @@ type RuntimeOptions = {
     Random: Random
     Clock: unit -> DateTime
     Sleeper: int -> unit
+    ExecutionThrottle: ExecutionThrottleSettings option
     InitialSourceProgram: SyntaxAst.Ast option
     LoadProgram: string -> Result<RuntimeLoadedProgram, string>
     MergeProgram: SyntaxAst.Ast * string -> Result<RuntimeLoadedProgram, string>
+}
+
+and ExecutionThrottleSettings = {
+    TargetStatementsPerSecond: int
+    MaxRunAheadMilliseconds: int
 }
 
 type ExecutionResult = {
@@ -101,6 +109,7 @@ let defaultRuntimeOptions =
       Random = Random()
       Clock = fun () -> DateTime.UtcNow
       Sleeper = fun milliseconds -> System.Threading.Thread.Sleep(milliseconds)
+      ExecutionThrottle = None
       InitialSourceProgram = None
       LoadProgram = fun path -> Result.Error $"Runtime program loading is not configured for '{path}'."
       MergeProgram = fun (_, path) -> Result.Error $"Runtime program merge is not configured for '{path}'." }
@@ -127,6 +136,7 @@ type private RuntimeState = {
     LastError: ErrorInfo option
     InErrorHandler: bool
     RandomSource: Random
+    ExecutionGovernor: (unit -> unit) option
     Options: RuntimeOptions
 }
 
@@ -528,6 +538,24 @@ let private screenModeFromNumber = function
     | 4 -> QlMode4
     | 8 -> QlMode8
     | value -> ExtendedMode value
+
+let private createExecutionGovernor settings sleeper =
+    let targetStatementsPerSecond = max 1 settings.TargetStatementsPerSecond
+    let maxRunAheadMilliseconds = max 0 settings.MaxRunAheadMilliseconds
+    let stopwatch = Stopwatch.StartNew()
+    let mutable executedStatements = 0L
+
+    fun () ->
+        executedStatements <- executedStatements + 1L
+        let expectedElapsedMilliseconds =
+            (float executedStatements * 1000.0) / float targetStatementsPerSecond
+        let actualElapsedMilliseconds = stopwatch.Elapsed.TotalMilliseconds
+        let runAheadMilliseconds = expectedElapsedMilliseconds - actualElapsedMilliseconds
+
+        if runAheadMilliseconds > float maxRunAheadMilliseconds then
+            let delay = int (Math.Ceiling(runAheadMilliseconds - float maxRunAheadMilliseconds))
+            if delay > 0 then
+                sleeper delay
 
 let private reinitializeProgramState state program sourceProgram =
     { state with
@@ -1596,7 +1624,36 @@ and private executeBuiltInCall state kind channel args targets pos =
                             |> List.head
                             |> asInt
                             |> max 0
-                        nextState.Options.Sleeper duration
+
+                        nextState.Options.Host.Input.Flush()
+
+                        let rec pause remaining =
+                            if remaining > 0 then
+                                if nextState.Options.Host.Input.KeyAvailable() then
+                                    nextState.Options.Host.Input.ReadKey() |> ignore
+                                else
+                                    let slice = min 20 remaining
+                                    nextState.Options.Sleeper slice
+                                    pause (remaining - slice)
+
+                        pause duration
+                        Continue, nextState)))
+        | "SLUG" ->
+            unsupportedChannel ()
+            |> Result.bind (fun _ ->
+                evalExprList state args
+                |> Result.bind (fun (values, nextState) ->
+                    requireArity 1 values.Length
+                    |> Result.map (fun () ->
+                        let count =
+                            values
+                            |> List.head
+                            |> asInt
+                            |> max 0
+
+                        for _ = 1 to count do
+                            Thread.SpinWait(1000)
+
                         Continue, nextState)))
         | "FLUSH" ->
             unsupportedChannel ()
@@ -2248,14 +2305,17 @@ and private executeBlock resolveLine state block pc gosubStack kContinue =
             match resolveLine lineNumber with
             | Some target ->
                 let targetPending = target nextState context.GosubStack
-                let wrappedContinue state gosubStack =
-                    targetPending.KContinue state gosubStack
-                    |> Result.map (fun (flow, state) ->
-                        match flow with
-                        | Continue -> TransferredContinue, state
-                        | _ -> flow, state)
+                if LanguagePrimitives.PhysicalEquality targetPending.Block context.Block then
+                    pending <- targetPending
+                else
+                    let wrappedContinue state gosubStack =
+                        targetPending.KContinue state gosubStack
+                        |> Result.map (fun (flow, state) ->
+                            match flow with
+                            | Continue -> TransferredContinue, state
+                            | _ -> flow, state)
 
-                pending <- { targetPending with KContinue = wrappedContinue }
+                    pending <- { targetPending with KContinue = wrappedContinue }
             | None ->
                 result <- Result.Ok(JumpToLine lineNumber, nextState)
                 finished <- true
@@ -2322,6 +2382,11 @@ and private executeBlockCore resolveLine state block pc gosubStack kContinue =
                 NextLineNumber = findNextLineNumber block pc state.NextLineNumber }
 
         let continueWithFlow (flow, nextState) =
+            match currentStmt, nextState.ExecutionGovernor with
+            | LineNumber _, _
+            | _, None -> ()
+            | _, Some governor -> governor ()
+
             match flow with
             | Continue ->
                 Transfer
@@ -2372,7 +2437,10 @@ and private buildLineTargets rootBlock =
                 | WhenError(handlerBlock, _) -> build handlerBlock continueAfter
                 | For(_, _, _, _, _, body, _)
                 | ForSequence(_, _, _, _, _, _, _, body, _)
-                | Repeat(_, _, body, _) -> build body continueAfter
+                | Repeat(_, _, body, _) ->
+                    // A GOTO into a loop body must still complete through the loop's
+                    // own control flow so falling off the end reiterates correctly.
+                    build body (fun state _ -> Result.Ok(Continue, state))
                 | _ -> []
 
             directTargets @ nestedTargets)
@@ -2422,6 +2490,10 @@ let rec private executeTopLevelProgram state startLine =
         | NextLoop _ -> runtimeError EscapedLoopControl None "Loop control escaped the top-level program.")
 
 let interpretProgramWithOptions options (program: HirProgram) =
+    let executionGovernor =
+        options.ExecutionThrottle
+        |> Option.map (fun settings -> createExecutionGovernor settings options.Sleeper)
+
     let initialState =
         { Program = program
           SourceProgram = options.InitialSourceProgram
@@ -2438,6 +2510,7 @@ let interpretProgramWithOptions options (program: HirProgram) =
           LastError = None
           InErrorHandler = false
           RandomSource = options.Random
+          ExecutionGovernor = executionGovernor
           Options = options }
         |> resetErrorProcessing
 

@@ -140,6 +140,15 @@ let private watchAvaloniaHostExit (handle: AvaloniaHostHandle) =
 
     fun () -> shuttingDown := true
 
+let private executionThrottleFromSettings settings =
+    if settings.ExecutionThrottleEnabled then
+        Some {
+            TargetStatementsPerSecond = settings.ExecutionThrottleTargetStatementsPerSecond
+            MaxRunAheadMilliseconds = settings.ExecutionThrottleMaxRunAheadMilliseconds
+        }
+    else
+        None
+
 [<EntryPoint>]
 let main argv =
     // The CLI currently stops after semantic analysis failure and only emits
@@ -192,6 +201,7 @@ let main argv =
                                 { defaultRuntimeOptions with
                                     Host = handle.Host
                                     Sleeper = fun milliseconds -> System.Threading.Thread.Sleep(milliseconds)
+                                    ExecutionThrottle = executionThrottleFromSettings settings
                                     InitialSourceProgram = Some ast
                                     LoadProgram = loadRuntimeProgram settings.SyntaxChecking settings.Verbose settings.Logger
                                     MergeProgram =
@@ -203,6 +213,7 @@ let main argv =
                                                 |> Result.map (fun hir -> { Ast = mergedAst; Hir = hir })) }
                             | None ->
                                 { defaultRuntimeOptions with
+                                    ExecutionThrottle = executionThrottleFromSettings settings
                                     InitialSourceProgram = Some ast
                                     LoadProgram = loadRuntimeProgram settings.SyntaxChecking settings.Verbose settings.Logger
                                     MergeProgram =

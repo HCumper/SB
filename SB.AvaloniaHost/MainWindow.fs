@@ -9,7 +9,7 @@ open Avalonia.Controls.ApplicationLifetimes
 open Avalonia.Threading
 open SBRuntime
 
-type MainWindow(display: IDisplaySurface, handleTextInput: string -> unit, handleSpecialKey: KeyInfo -> bool) as this =
+type MainWindow(display: IDisplaySurface, handleTextInput: string -> unit, handleSpecialKey: KeyInfo -> bool, pulseGameplayKey: unit -> unit, releaseGameplayKey: unit -> unit, releaseSpecialKey: KeyInfo -> unit) as this =
     inherit Window()
 
     let surface = RuntimeSurfaceControl()
@@ -62,7 +62,20 @@ type MainWindow(display: IDisplaySurface, handleTextInput: string -> unit, handl
                 if handleSpecialKey keyInfo then
                     surface.InvalidateVisual()
                     args.Handled <- true
-            | None -> ())
+            | None ->
+                pulseGameplayKey ()
+                surface.InvalidateVisual()
+                args.Handled <- true)
+        this.KeyUp.Add(fun args ->
+            match tryMapSpecialKey args with
+            | Some keyInfo ->
+                releaseSpecialKey keyInfo
+                surface.InvalidateVisual()
+                args.Handled <- true
+            | None ->
+                releaseGameplayKey ()
+                surface.InvalidateVisual()
+                args.Handled <- true)
         repaintTimer.Interval <- TimeSpan.FromMilliseconds(16.0)
         repaintTimer.Tick.Add(fun _ -> surface.InvalidateVisual())
         repaintTimer.Start()

@@ -97,16 +97,38 @@ module private TextLayout =
     let visualAdvance cellWidth =
         max 1 (cellWidth - max 4 ((2 * cellWidth) / 3))
 
+    let cellAdvance (mode: ScreenModeInfo) (characterSize: int * int) =
+        let cellWidth, _ = cellSize mode characterSize
+        if mode.IsQlCompatible && characterSize = (0, 0) then
+            cellWidth
+        else
+            visualAdvance cellWidth
+
     let visibleCellSize (mode: ScreenModeInfo) width height characterSize =
-        let cellWidth, cellHeight = cellSize mode characterSize
-        let advance = visualAdvance cellWidth
+        let _, cellHeight = cellSize mode characterSize
+        let advance = cellAdvance mode characterSize
         max 1 ((width + advance - 1) / advance),
         max 1 ((height + cellHeight - 1) / cellHeight)
 
     let textOrigin (mode: ScreenModeInfo) x y characterSize =
-        let cellWidth, cellHeight = cellSize mode characterSize
-        max 0 (x / visualAdvance cellWidth),
+        let _, cellHeight = cellSize mode characterSize
+        max 0 (x / cellAdvance mode characterSize),
         max 0 (y / cellHeight)
+
+module private CompositeColor =
+    let encode values fallback =
+        match values with
+        | [] -> fallback
+        | [ mainColor ] -> abs mainColor % 8
+        | [ mainColor; contrastColor ] ->
+            let main = abs mainColor % 8
+            let contrast = abs contrastColor % 8
+            main ||| ((main ^^^ contrast) <<< 3) ||| (3 <<< 6)
+        | mainColor :: contrastColor :: stipple :: _ ->
+            let main = abs mainColor % 8
+            let contrast = abs contrastColor % 8
+            let pattern = abs stipple % 4
+            main ||| ((main ^^^ contrast) <<< 3) ||| (pattern <<< 6)
 
 module private DevicePaths =
     let tryParseDirectoryBackedSpec (normalized: string) =
@@ -226,12 +248,8 @@ type private ScreenBuffer(mode: ScreenModeInfo, ?textWidth: int, ?textHeight: in
         let surfaceHeight = Array2D.length1 pixelSnapshot
         let surfaceWidth = Array2D.length2 pixelSnapshot
         let surface = Array2D.init surfaceHeight surfaceWidth (fun row col -> pixelSnapshot[row, col])
-        let cellWidth, cellHeight = TextLayout.cellSize targetMode characterSize
-        let cellAdvance =
-            if targetMode.IsQlCompatible && characterSize = (0, 0) then
-                cellWidth
-            else
-                TextLayout.visualAdvance cellWidth
+        let _, cellHeight = TextLayout.cellSize targetMode characterSize
+        let cellAdvance = TextLayout.cellAdvance targetMode characterSize
         let textRows = Array2D.length1 textSnapshot
         let textCols = Array2D.length2 textSnapshot
 
@@ -302,6 +320,7 @@ type private ScreenBuffer(mode: ScreenModeInfo, ?textWidth: int, ?textHeight: in
                 Window = 0, 0, 0, 0
                 OuterWindow = 0, 0, 0, 0
                 Cursor = 0, 0
+                CursorVisible = false
                 CharacterSize = 0, 0
                 Ink = 7
                 Paper = 0
@@ -562,6 +581,7 @@ type private DefaultScreenChannel(id: ChannelId, kind: ChannelKind, screenReader
     let mutable recolor: int list option = None
     let mutable palette = None
     let mutable cursor = 0, 0
+    let mutable cursorVisible = false
     let mutable characterSize = 0, 0
     let mutable characterFonts = 0, 0
     let mutable ink = [ 7 ]
@@ -583,8 +603,7 @@ type private DefaultScreenChannel(id: ChannelId, kind: ChannelKind, screenReader
         borderColor <- if borderSize = 0 then None else color
         let outerWidth, outerHeight, outerX, outerY = outerWindow
         let verticalInset = borderSize
-        let cellWidth, _ = TextLayout.cellSize mode characterSize
-        let cellAdvance = TextLayout.visualAdvance cellWidth
+        let cellAdvance = TextLayout.cellAdvance mode characterSize
         let rawHorizontalInset = sideBorderWidth borderSize
         let horizontalInset =
             if rawHorizontalInset <= 0 then 0
@@ -628,6 +647,57 @@ type private DefaultScreenChannel(id: ChannelId, kind: ChannelKind, screenReader
         paneBuffer.ClearWindow(width, height, 0, 0, paper)
         paneBuffer.ClearTextWindow(cols, rows, 0, 0, paper)
 
+    let shiftPixelWindow delta =
+        let width, height, x, y = window
+        let shiftPixels (pixels: int[,]) sourceX sourceY sourceWidth sourceHeight =
+            let snapshot = Array2D.copy pixels
+            let tryRepeatOffset () =
+                let topRow = sourceY
+                let bottomRow = sourceY + sourceHeight - 1
+                let litColumns =
+                    [ for col in 0 .. max 0 (sourceWidth - 1) do
+                        let absoluteCol = sourceX + col
+                        let topLit = snapshot[topRow, absoluteCol] <> paper
+                        let bottomLit = snapshot[bottomRow, absoluteCol] <> paper
+                        if topLit || bottomLit then
+                            yield col ]
+                    |> List.distinct
+
+                match List.rev litColumns with
+                | last :: previous :: _ ->
+                    let gap = last - previous
+                    if gap > 0 then Some gap else None
+                | _ -> None
+
+            let repeatOffset = tryRepeatOffset ()
+            for row = 0 to max 0 (sourceHeight - 1) do
+                for col = 0 to max 0 (sourceWidth - 1) do
+                    let fromCol = col - delta
+                    let targetRow = sourceY + row
+                    let targetCol = sourceX + col
+                    let sourceCol = sourceX + fromCol
+                    if fromCol >= 0 && fromCol < sourceWidth then
+                        pixels[targetRow, targetCol] <- snapshot[targetRow, sourceCol]
+                    else
+                        let repeatedSourceCol =
+                            match repeatOffset with
+                            | Some offset when delta < 0 ->
+                                let candidate = col - offset
+                                if candidate >= 0 && candidate < sourceWidth then Some(sourceX + candidate) else None
+                            | Some offset when delta > 0 ->
+                                let candidate = col + offset
+                                if candidate >= 0 && candidate < sourceWidth then Some(sourceX + candidate) else None
+                            | _ -> None
+
+                        pixels[targetRow, targetCol] <-
+                            match repeatedSourceCol with
+                            | Some candidate -> snapshot[targetRow, candidate]
+                            | None -> paper
+
+        if delta <> 0 && width > 0 && height > 0 then
+            shiftPixels buffer.Pixels x y width height
+            shiftPixels paneBuffer.Pixels 0 0 width height
+
     let newline() =
         let cols, rows = textMetrics()
         let textX, textY = textOrigin()
@@ -646,8 +716,8 @@ type private DefaultScreenChannel(id: ChannelId, kind: ChannelKind, screenReader
         let foreground = ink |> List.tryHead |> Option.defaultValue 7
         let background = strip |> List.tryHead |> Option.defaultValue paper
         let mutable cursorX, cursorY = clampCursorPosition cursor
-        let cellWidth, cellHeight = TextLayout.cellSize mode characterSize
-        let cellAdvance = TextLayout.visualAdvance cellWidth
+        let _, cellHeight = TextLayout.cellSize mode characterSize
+        let cellAdvance = TextLayout.cellAdvance mode characterSize
 
         let rasterizeCharToSharedPixels col row inkColor stripColor hasBackground ch =
             let originX = windowX + (col * cellAdvance)
@@ -714,6 +784,7 @@ type private DefaultScreenChannel(id: ChannelId, kind: ChannelKind, screenReader
         recolor <- None
         palette <- None
         cursor <- 0, 0
+        cursorVisible <- false
         characterSize <- ScreenDefaults.defaultCharacterSizeForMode selectedMode
         characterFonts <- 0, 0
         ink <- [ 7 ]
@@ -767,7 +838,13 @@ type private DefaultScreenChannel(id: ChannelId, kind: ChannelKind, screenReader
         member _.GetScroll() = synchronized (fun () -> scroll)
         member _.SetWidth(value) = synchronized (fun () -> width <- Some value)
         member _.GetWidth() = synchronized (fun () -> width)
-        member _.SetPan(value) = synchronized (fun () -> pan <- value)
+        member _.SetPan(value) =
+            synchronized (fun () ->
+                if channelNumber > 2 && borderSize = 0 then
+                    shiftPixelWindow value
+                    pan <- 0
+                else
+                    pan <- pan + value)
         member _.GetPan() = synchronized (fun () -> pan)
         member _.SetRecolor(values) = synchronized (fun () -> recolor <- Some values)
         member _.GetRecolor() = synchronized (fun () -> recolor)
@@ -775,9 +852,12 @@ type private DefaultScreenChannel(id: ChannelId, kind: ChannelKind, screenReader
         member _.GetPalette() = synchronized (fun () -> palette)
         member _.SetCursor(x, y) = synchronized (fun () -> cursor <- clampCursorPosition (x, y))
         member _.GetCursor() = synchronized (fun () -> cursor)
+        member _.SetCursorVisible(value) = synchronized (fun () -> cursorVisible <- value)
+        member _.GetCursorVisible() = synchronized (fun () -> cursorVisible)
         member _.SetCharacterSize(width, height) =
             synchronized (fun () ->
                 characterSize <- width, height
+                applyBorder borderSize borderColor
                 rebuildPaneBuffer false)
         member _.GetCharacterSize() = synchronized (fun () -> characterSize)
         member _.SetCharacterFonts(font1, font2) =
@@ -794,7 +874,7 @@ type private DefaultScreenChannel(id: ChannelId, kind: ChannelKind, screenReader
                 strip <- [ value ])
         member _.SetStrip(values: int list) =
             synchronized (fun () ->
-                strip <- if List.isEmpty values then [ paper ] else values)
+                strip <- [ CompositeColor.encode values paper ])
         member _.SetBorder(size, color) =
             synchronized (fun () ->
                 applyBorder size color
@@ -835,7 +915,7 @@ type private DefaultScreenChannel(id: ChannelId, kind: ChannelKind, screenReader
                 if useSharedPixels then
                     Array2D.init safeHeight safeWidth (fun row col ->
                         let sourceY = y + row
-                        let sourceX = x + col
+                        let sourceX = x + col - pan
                         if sourceY >= 0 && sourceY < buffer.Mode.Height && sourceX >= 0 && sourceX < buffer.Mode.Width then
                             buffer.Pixels[sourceY, sourceX]
                         else
@@ -847,7 +927,7 @@ type private DefaultScreenChannel(id: ChannelId, kind: ChannelKind, screenReader
                         else
                             paper)
             let cellWidth, cellHeight = TextLayout.cellSize mode characterSize
-            let cellAdvance = TextLayout.visualAdvance cellWidth
+            let cellAdvance = TextLayout.cellAdvance mode characterSize
 
             if useOverlayText && useSharedPixels then
                 for row = 0 to textRows - 1 do
@@ -883,6 +963,7 @@ type private DefaultScreenChannel(id: ChannelId, kind: ChannelKind, screenReader
               Window = window
               OuterWindow = outerWindow
               Cursor = cursor
+              CursorVisible = cursorVisible
               CharacterSize = characterSize
               Ink = ink |> List.tryHead |> Option.defaultValue 7
               Paper = paper
@@ -1026,7 +1107,19 @@ type private DefaultChannelManager(defaultChannels: IChannel list, screenReader:
     member _.OpenResolved(requestedId: ChannelId, name: string, fileModeOverride: FileOpenMode option) =
         lock gate (fun () ->
             match channels.TryGetValue requestedId with
-            | true, _ -> Result.Error(InvalidHostArgument $"Channel #{requestedId} already exists.")
+            | true, existingChannel ->
+                if fixedChannels.Contains(requestedId) then
+                    Result.Error(InvalidHostArgument $"Channel #{requestedId} already exists.")
+                else
+                    createNamedChannel requestedId name fileModeOverride
+                    |> Result.bind (fun replacement ->
+                        existingChannel.Close()
+                        channels[requestedId] <- replacement
+                        screenChannels.Remove(requestedId) |> ignore
+                        match replacement with
+                        | :? DefaultScreenChannel as screenChannel -> screenChannels[requestedId] <- screenChannel
+                        | _ -> ()
+                        Result.Ok())
             | false, _ ->
                 createNamedChannel requestedId name fileModeOverride
                 |> Result.bind this.Register)
@@ -1072,6 +1165,7 @@ type private DefaultScreenDevice(writer: string -> unit, buffer: ScreenBuffer) =
     let mutable recolor: int list option = None
     let mutable palette = None
     let mutable cursor = 0, 0
+    let mutable cursorVisible = false
     let mutable characterSize = 0, 0
     let mutable characterFonts = 0, 0
     let mutable ink = [ 7 ]
@@ -1164,6 +1258,7 @@ type private DefaultScreenDevice(writer: string -> unit, buffer: ScreenBuffer) =
         recolor <- None
         palette <- None
         cursor <- 0, 0
+        cursorVisible <- false
         characterSize <- ScreenDefaults.defaultCharacterSizeForMode selectedMode
         characterFonts <- 0, 0
         ink <- [ 7 ]
@@ -1196,6 +1291,8 @@ type private DefaultScreenDevice(writer: string -> unit, buffer: ScreenBuffer) =
         member _.GetPalette() = palette
         member _.SetCursor(x, y) = cursor <- clampCursorPosition (x, y)
         member _.GetCursor() = cursor
+        member _.SetCursorVisible(value) = cursorVisible <- value
+        member _.GetCursorVisible() = cursorVisible
         member _.SetCharacterSize(width, height) =
             characterSize <- width, height
             rebuildPaneBuffer false
@@ -1214,7 +1311,7 @@ type private DefaultScreenDevice(writer: string -> unit, buffer: ScreenBuffer) =
             paper <- value
             strip <- [ value ]
         member _.SetStrip(values: int list) =
-            strip <- if List.isEmpty values then [ paper ] else values
+            strip <- [ CompositeColor.encode values paper ]
         member _.SetBorder(_size: int, _color: int option) = ()
         member _.GetSupportedModes() = ScreenDefaults.supportedModes
         member _.GetMode() = mode
@@ -1237,6 +1334,7 @@ type private DefaultScreenDevice(writer: string -> unit, buffer: ScreenBuffer) =
             Window = window
             OuterWindow = window
             Cursor = cursor
+            CursorVisible = cursorVisible
             CharacterSize = characterSize
             Ink = ink |> List.tryHead |> Option.defaultValue 7
             Paper = paper
@@ -1266,7 +1364,7 @@ type private DefaultGraphicsDevice(buffer: ScreenBuffer, gate: obj) =
 
     let scaleFactors () =
         let _, height, _, _ = drawingWindow
-        let sy, _, _ = drawingScale
+        let _, sy, _ = drawingScale
         let verticalUnits = if sy = 0.0 then 100.0 else abs sy
         let factorY = float height / max 1.0 verticalUnits
         let factorX = factorY
@@ -1280,15 +1378,19 @@ type private DefaultGraphicsDevice(buffer: ScreenBuffer, gate: obj) =
         let clampedY = Math.Min(float maxY, Math.Max(float originY, y))
         clampedX, clampedY
 
-    let transformAbsolute x y =
+    let transformAbsoluteRaw x y =
         let factorX, factorY = scaleFactors ()
         let height, graphicsOriginX, graphicsOriginY =
             let _, h, _, _ = drawingWindow
             let _, gx, gy = drawingScale
             h, gx, gy
         let _, _, originX, originY = drawingWindow
-        let transformedX = float originX + float drawingPan + ((x - graphicsOriginX) * factorX)
+        let transformedX = float originX + ((x - graphicsOriginX) * factorX)
         let transformedY = float originY + float (height - 1) - ((y - graphicsOriginY) * factorY)
+        transformedX, transformedY
+
+    let transformAbsolute x y =
+        let transformedX, transformedY = transformAbsoluteRaw x y
         clampToWindow transformedX transformedY
 
     let transformDelta dx dy =
@@ -1458,9 +1560,27 @@ type private DefaultGraphicsDevice(buffer: ScreenBuffer, gate: obj) =
                     cursor <- List.last transformed)
         member _.Line(x1, y1, x2, y2) =
             synchronized (fun () ->
-                let tx1, ty1 = transformAbsolute x1 y1
-                let tx2, ty2 = transformAbsolute x2 y2
-                drawLine tx1 ty1 tx2 ty2
+                let rawX1, rawY1 = transformAbsoluteRaw x1 y1
+                let rawX2, rawY2 = transformAbsoluteRaw x2 y2
+                let tx1, ty1 = clampToWindow rawX1 rawY1
+                let tx2, ty2 = clampToWindow rawX2 rawY2
+                let _, sy, graphicsOriginY = drawingScale
+                let verticalUnits = if sy = 0.0 then 100.0 else abs sy
+                let graphicsTop = min graphicsOriginY (graphicsOriginY + verticalUnits)
+                let graphicsBottom = max graphicsOriginY (graphicsOriginY + verticalUnits)
+                let isFullScaleVerticalTick =
+                    Math.Abs(x1 - x2) < 0.0001
+                    && min y1 y2 <= graphicsTop + 0.0001
+                    && max y1 y2 >= graphicsBottom - 0.0001
+
+                if isFullScaleVerticalTick then
+                    let tickLength = max 2.0 (min 6.0 (snd (scaleFactors ()) * 0.18))
+                    let topY = min ty1 ty2
+                    let bottomY = max ty1 ty2
+                    drawLine tx1 topY tx1 (min bottomY (topY + tickLength))
+                    drawLine tx1 (max topY (bottomY - tickLength)) tx1 bottomY
+                else
+                    drawLine tx1 ty1 tx2 ty2
                 cursor <- tx2, ty2)
         member _.Circle(x, y, radius) =
             synchronized (fun () ->
@@ -1480,9 +1600,10 @@ type private DefaultGraphicsDevice(buffer: ScreenBuffer, gate: obj) =
             synchronized (fun () ->
                 let tx, ty = transformAbsolute x y
                 let radiusX, radiusY = scaledRadius radius
-                let ellipseRadiusY = max 1.0 (radiusY * max 0.05 (abs ratio))
+                let ratioScale = max 0.05 (abs ratio)
+                let ellipseRadiusX = max 1.0 (radiusX * ratioScale)
                 cursor <- tx, ty
-                sampleEllipse tx ty radiusX ellipseRadiusY angle 0.0 360.0 true true)
+                sampleEllipse tx ty ellipseRadiusX radiusY (-angle) 0.0 360.0 true true)
         member _.EllipseRelative(dx, dy, radius, ratio, angle) =
             synchronized (fun () ->
                 let x, y = cursor
@@ -1490,8 +1611,9 @@ type private DefaultGraphicsDevice(buffer: ScreenBuffer, gate: obj) =
                 let endX, endY = clampToWindow (x + tx) (y + ty)
                 cursor <- endX, endY
                 let radiusX, radiusY = scaledRadius radius
-                let ellipseRadiusY = max 1.0 (radiusY * max 0.05 (abs ratio))
-                sampleEllipse endX endY radiusX ellipseRadiusY angle 0.0 360.0 true true)
+                let ratioScale = max 0.05 (abs ratio)
+                let ellipseRadiusX = max 1.0 (radiusX * ratioScale)
+                sampleEllipse endX endY ellipseRadiusX radiusY (-angle) 0.0 360.0 true true)
         member _.Arc(x1, y1, x2, y2, angle) =
             synchronized (fun () ->
                 let startX, startY =
@@ -1501,7 +1623,7 @@ type private DefaultGraphicsDevice(buffer: ScreenBuffer, gate: obj) =
                         transformAbsolute x1 y1
 
                 let endX, endY = transformAbsolute x2 y2
-                sampleArcByPoints startX startY endX endY angle
+                sampleArcByPoints startX startY endX endY (-angle)
                 cursor <- endX, endY)
         member _.ArcRelative(dx1, dy1, dx2, dy2, angle) =
             synchronized (fun () ->
@@ -1515,7 +1637,7 @@ type private DefaultGraphicsDevice(buffer: ScreenBuffer, gate: obj) =
 
                 let tx2, ty2 = transformDelta dx2 dy2
                 let endX, endY = clampToWindow (originX + tx2) (originY + ty2)
-                sampleArcByPoints startX startY endX endY angle
+                sampleArcByPoints startX startY endX endY (-angle)
                 cursor <- endX, endY)
         member _.Block(width, height, x, y, color) =
             synchronized (fun () ->
@@ -1717,6 +1839,8 @@ type private DefaultRuntimeHost(options: DefaultHostOptions) =
                 member _.GetPalette() = (channel1 :> IScreenChannel).GetPalette()
                 member _.SetCursor(x, y) = (channel1 :> IScreenChannel).SetCursor(x, y)
                 member _.GetCursor() = (channel1 :> IScreenChannel).GetCursor()
+                member _.SetCursorVisible(value) = (channel1 :> IScreenChannel).SetCursorVisible(value)
+                member _.GetCursorVisible() = (channel1 :> IScreenChannel).GetCursorVisible()
                 member _.SetCharacterSize(width, height) = (channel1 :> IScreenChannel).SetCharacterSize(width, height)
                 member _.GetCharacterSize() = (channel1 :> IScreenChannel).GetCharacterSize()
                 member _.SetCharacterFonts(font1, font2) = (channel1 :> IScreenChannel).SetCharacterFonts(font1, font2)

@@ -60,7 +60,7 @@ let coreSuperBasicKeywords =
       "ON...GOSUB"; "ON...GOTO"; "OPEN"; "OPEN_IN"; "OPEN_NEW"; "OVER"
       "PAN"; "PAPER"; "PAUSE"; "PEEK"; "PEEK_W"; "PEEK_L"; "PENDOWN"; "PENUP"; "PI"; "POINT"; "POINT_R"; "POKE"; "POKE_W"; "POKE_L"; "PRINT"
       "RAD"; "RANDOMISE"; "READ"; "RECOL"; "REMark"; "RENUM"; "REPEAT"; "RESPR"; "RESTORE"; "RETRY"; "RETurn"; "RND"; "RUN"
-      "SAVE"; "SBYTES"; "SCALE"; "SCROLL"; "SDATE"; "SELect"; "SEXEC"; "SIN"; "SQRT"; "STOP"; "STRIP"
+      "SAVE"; "SBYTES"; "SCALE"; "SCROLL"; "SDATE"; "SELect"; "SEXEC"; "SIN"; "SLUG"; "SQRT"; "STOP"; "STRIP"
       "TAN"; "THEN"; "TURN"; "TURNTO"
       "UNDER"
       "WIDTH"; "WINDOW" ]
@@ -81,7 +81,7 @@ let private coreCallableBuiltInNames =
       "OPEN"; "OPEN_IN"; "OPEN_NEW"; "OVER"
       "PAN"; "PAPER"; "PAUSE"; "PEEK"; "PEEK_W"; "PEEK_L"; "PENDOWN"; "PENUP"; "PI"; "POINT"; "POINT_R"; "POKE"; "POKE_W"; "POKE_L"; "PRINT"
       "RAD"; "RANDOMISE"; "RECOL"; "RENUM"; "RESPR"; "RETRY"; "RND"; "RUN"
-      "SAVE"; "SBYTES"; "SCALE"; "SCROLL"; "SDATE"; "SEXEC"; "SIN"; "SQRT"; "STOP"; "STRIP"
+      "SAVE"; "SBYTES"; "SCALE"; "SCROLL"; "SDATE"; "SEXEC"; "SIN"; "SLUG"; "SQRT"; "STOP"; "STRIP"
       "TAN"; "TURN"; "TURNTO"; "UNDER"; "WIDTH"; "WINDOW"
       "GOSUB"; "GOTO"; "ON-GOSUB"; "ON-GOTO" ]
 
@@ -249,6 +249,7 @@ let private builtInSignatures =
       signature "S_FONT" (Some 2) (Some [ Numeric; Numeric ])
       signature "SGN" (Some 1) (Some [ Numeric ])
       signature "SIN" (Some 1) (Some [ Numeric ])
+      signature "SLUG" (Some 1) (Some [ Numeric ])
       signature "SQRT" (Some 1) (Some [ Numeric ])
       signature "STR$" (Some 1) (Some [ Numeric ])
       signature "TAN" (Some 1) (Some [ Numeric ])

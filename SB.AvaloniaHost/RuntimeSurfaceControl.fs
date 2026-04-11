@@ -355,7 +355,7 @@ type RuntimeSurfaceControl() as this =
                 let cellAdvance = float logicalAdvance * scale
 
                 let cursorX, cursorY = pane.Cursor
-                if cursorX >= 0 && cursorX < textCols && cursorY >= 0 && cursorY < textRows then
+                if pane.CursorVisible && cursorX >= 0 && cursorX < textCols && cursorY >= 0 && cursorY < textRows then
                     let cursorRect =
                         Rect(
                             viewportRect.X + (float cursorX * cellAdvance),
