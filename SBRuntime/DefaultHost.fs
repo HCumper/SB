@@ -244,6 +244,27 @@ type private ScreenBuffer(mode: ScreenModeInfo, ?textWidth: int, ?textHeight: in
     let mutable text = createText currentTextWidth currentTextHeight
     let mutable pixels = Array2D.create mode.Height mode.Width 0
 
+    let resolvePixelColor row col value =
+        let flash = value &&& flashBit
+        let baseValue = value &&& ~~~flashBit
+
+        if baseValue >= 0 && baseValue < 8 then
+            value
+        elif baseValue >= 8 then
+            let main = baseValue &&& 0x7
+            let contrast = main ^^^ ((baseValue >>> 3) &&& 0x7)
+            let pattern = (baseValue >>> 6) &&& 0x3
+            let useMain =
+                match pattern with
+                | 0 -> true
+                | 1 -> (row &&& 1) = 0
+                | 2 -> (col &&& 1) = 0
+                | _ -> ((row + col) &&& 1) = 0
+
+            (if useMain then main else contrast) ||| flash
+        else
+            value
+
     let composeSurface (targetMode: ScreenModeInfo) (characterSize: int * int) (textSnapshot: ScreenTextCell[,]) (pixelSnapshot: int[,]) =
         let surfaceHeight = Array2D.length1 pixelSnapshot
         let surfaceWidth = Array2D.length2 pixelSnapshot
@@ -309,7 +330,7 @@ type private ScreenBuffer(mode: ScreenModeInfo, ?textWidth: int, ?textHeight: in
                   HasBackground = cell.HasBackground })
 
         let pixelSnapshot =
-            Array2D.init currentMode.Height currentMode.Width (fun row col -> pixels[row, col])
+            Array2D.init currentMode.Height currentMode.Width (fun row col -> resolvePixelColor row col pixels[row, col])
         let surfaceSnapshot = composeSurface currentMode (0, 0) textSnapshot pixelSnapshot
 
         { Mode = currentMode
@@ -392,31 +413,39 @@ type private ScreenBuffer(mode: ScreenModeInfo, ?textWidth: int, ?textHeight: in
             pixels[y, x] <- color
     member _.GetPixel(x: int, y: int) =
         if x >= 0 && x < currentMode.Width && y >= 0 && y < currentMode.Height then
-            pixels[y, x]
+            resolvePixelColor y x pixels[y, x]
         else
             0
     member _.ApplyPixel(x: int, y: int, color: int, overMode: int, underMode: int, flashMode: int, backgroundColor: int) =
-        if x >= 0 && x < currentMode.Width && y >= 0 && y < currentMode.Height then
-            let existing = pixels[y, x]
-            let existingColor = existing &&& colorMask
-            let canDraw =
-                if underMode <> 0 then
-                    existingColor = backgroundColor
-                else
-                    true
-
-            if canDraw then
-                let encodedColor = color &&& colorMask
-                let finalColor =
-                    if overMode = -1 then
-                        existingColor ^^^ encodedColor
+        let applyOne targetX =
+            if targetX >= 0 && targetX < currentMode.Width && y >= 0 && y < currentMode.Height then
+                let existing = resolvePixelColor y targetX pixels[y, targetX]
+                let existingColor = existing &&& colorMask
+                let canDraw =
+                    if underMode <> 0 then
+                        existingColor = backgroundColor
                     else
-                        encodedColor
+                        true
 
-                let flash =
-                    ((existing &&& flashBit) <> 0 && overMode = -1) || flashMode <> 0
+                if canDraw then
+                    let encodedColor = (resolvePixelColor y targetX color) &&& colorMask
+                    let finalColor =
+                        if overMode = -1 then
+                            existingColor ^^^ encodedColor
+                        else
+                            color &&& colorMask
 
-                pixels[y, x] <- finalColor ||| (if flash then flashBit else 0)
+                    let flash =
+                        ((existing &&& flashBit) <> 0 && overMode = -1) || flashMode <> 0
+
+                    pixels[y, targetX] <- finalColor ||| (if flash then flashBit else 0)
+
+        if currentMode.Mode = QlMode8 then
+            let pairStart = max 0 (min (currentMode.Width - 2) (x &&& ~~~1))
+            applyOne pairStart
+            applyOne (pairStart + 1)
+        else
+            applyOne x
     member this.DrawLine(x1: int, y1: int, x2: int, y2: int, color: int) =
         this.DrawLineStyled(x1, y1, x2, y2, color, 0, 0, 0, 0)
     member this.DrawLineStyled(x1: int, y1: int, x2: int, y2: int, color: int, overMode: int, underMode: int, flashMode: int, backgroundColor: int) =
@@ -630,10 +659,11 @@ type private DefaultScreenChannel(id: ChannelId, kind: ChannelKind, screenReader
     let rebuildPaneBuffer preserveContents =
         let width, height, _, _ = window
         let cols, rows = textMetrics()
+        let background = strip |> List.tryHead |> Option.defaultValue paper
         let existingText =
             if preserveContents then Some(paneBuffer.Snapshot().Panes.Head.Text) else None
         let nextBuffer = ScreenBuffer(ScreenDefaults.paneMode mode width height, textWidth = cols, textHeight = rows)
-        nextBuffer.ClearWindow(width, height, 0, 0, paper)
+        nextBuffer.ClearWindow(width, height, 0, 0, background)
         existingText |> Option.iter nextBuffer.CopyTextFrom
         paneBuffer <- nextBuffer
         cursor <- clampCursorPosition cursor
@@ -642,9 +672,10 @@ type private DefaultScreenChannel(id: ChannelId, kind: ChannelKind, screenReader
         let width, height, x, y = window
         let cols, rows = textMetrics()
         let textX, textY = textOrigin()
-        buffer.ClearWindow(width, height, x, y, paper)
+        let background = strip |> List.tryHead |> Option.defaultValue paper
+        buffer.ClearWindow(width, height, x, y, background)
         buffer.ClearTextWindow(cols, rows, textX, textY, paper)
-        paneBuffer.ClearWindow(width, height, 0, 0, paper)
+        paneBuffer.ClearWindow(width, height, 0, 0, background)
         paneBuffer.ClearTextWindow(cols, rows, 0, 0, paper)
 
     let shiftPixelWindow delta =
@@ -818,7 +849,7 @@ type private DefaultScreenChannel(id: ChannelId, kind: ChannelKind, screenReader
                 writeText text
                 if mirrorToWriter then
                     writer text)
-        member _.ReadText() = synchronized (fun () -> screenReader id)
+        member _.ReadText() = screenReader id
         member _.IsEndOfFile() = false
         member _.Flush() = ()
         member _.Close() = ()
@@ -907,7 +938,8 @@ type private DefaultScreenChannel(id: ChannelId, kind: ChannelKind, screenReader
                 }
                 |> Seq.exists (fun value -> value)
             let useSharedPixels =
-                channelNumber = 1
+                channelNumber = 0
+                || channelNumber = 1
                 || (channelNumber > 2 && borderSize = 0)
                 || (channelNumber > 2 && not hasLocalText && not hasLocalPixelContent)
             let useOverlayText = false
@@ -917,7 +949,7 @@ type private DefaultScreenChannel(id: ChannelId, kind: ChannelKind, screenReader
                         let sourceY = y + row
                         let sourceX = x + col - pan
                         if sourceY >= 0 && sourceY < buffer.Mode.Height && sourceX >= 0 && sourceX < buffer.Mode.Width then
-                            buffer.Pixels[sourceY, sourceX]
+                            buffer.GetPixel(sourceX, sourceY)
                         else
                             paper)
                 else
@@ -1189,10 +1221,11 @@ type private DefaultScreenDevice(writer: string -> unit, buffer: ScreenBuffer) =
     let rebuildPaneBuffer preserveContents =
         let width, height, _, _ = window
         let cols, rows = textMetrics()
+        let background = strip |> List.tryHead |> Option.defaultValue paper
         let existingText =
             if preserveContents then Some(paneBuffer.Snapshot().Panes.Head.Text) else None
         let nextBuffer = ScreenBuffer(ScreenDefaults.paneMode mode width height, textWidth = cols, textHeight = rows)
-        nextBuffer.ClearWindow(width, height, 0, 0, paper)
+        nextBuffer.ClearWindow(width, height, 0, 0, background)
         existingText |> Option.iter nextBuffer.CopyTextFrom
         paneBuffer <- nextBuffer
         cursor <- clampCursorPosition cursor
@@ -1201,9 +1234,10 @@ type private DefaultScreenDevice(writer: string -> unit, buffer: ScreenBuffer) =
         let width, height, x, y = window
         let cols, rows = textMetrics()
         let textX, textY = textOrigin()
-        buffer.ClearWindow(width, height, x, y, paper)
+        let background = strip |> List.tryHead |> Option.defaultValue paper
+        buffer.ClearWindow(width, height, x, y, background)
         buffer.ClearTextWindow(cols, rows, textX, textY, paper)
-        paneBuffer.ClearWindow(width, height, 0, 0, paper)
+        paneBuffer.ClearWindow(width, height, 0, 0, background)
         paneBuffer.ClearTextWindow(cols, rows, 0, 0, paper)
 
     let newline() =
@@ -1398,7 +1432,7 @@ type private DefaultGraphicsDevice(buffer: ScreenBuffer, gate: obj) =
         dx * factorX, -dy * factorY
 
     let currentInk() =
-        ink |> List.tryHead |> Option.defaultValue 7
+        CompositeColor.encode ink 7
 
     let drawPixel (x: float) (y: float) =
         buffer.ApplyPixel(int (Math.Round x), int (Math.Round y), currentInk (), overMode, underMode, flashMode, drawingBackgroundColor)
@@ -1432,6 +1466,30 @@ type private DefaultGraphicsDevice(buffer: ScreenBuffer, gate: obj) =
                     |> List.map (fun (x: float, y: float) -> int (Math.Round x), int (Math.Round y))
                 buffer.FillPolygon(polygon, currentInk (), overMode, underMode, flashMode, drawingBackgroundColor)
 
+    let fillEllipse centerX centerY radiusX radiusY angleDegrees =
+        let normalizedRadiusX = max 1.0 (abs radiusX)
+        let normalizedRadiusY = max 1.0 (abs radiusY)
+        let rotation = angleDegrees * Math.PI / 180.0
+        let cosAngle = Math.Cos(rotation)
+        let sinAngle = Math.Sin(rotation)
+        let minX = int (Math.Floor(centerX - normalizedRadiusX - 1.0))
+        let maxX = int (Math.Ceiling(centerX + normalizedRadiusX + 1.0))
+        let minY = int (Math.Floor(centerY - normalizedRadiusY - 1.0))
+        let maxY = int (Math.Ceiling(centerY + normalizedRadiusY + 1.0))
+
+        for py = minY to maxY do
+            for px = minX to maxX do
+                let localX = float px - centerX
+                let localY = float py - centerY
+                let rotatedX = (localX * cosAngle) + (localY * sinAngle)
+                let rotatedY = (-localX * sinAngle) + (localY * cosAngle)
+                let norm =
+                    ((rotatedX * rotatedX) / (normalizedRadiusX * normalizedRadiusX))
+                    + ((rotatedY * rotatedY) / (normalizedRadiusY * normalizedRadiusY))
+
+                if norm <= 1.0 then
+                    buffer.ApplyPixel(px, py, currentInk (), overMode, underMode, flashMode, drawingBackgroundColor)
+
     let sampleEllipse centerX centerY radiusX radiusY angleDegrees startAngle endAngle closeShape shouldFill =
         let normalizedRadiusX = max 1.0 (abs radiusX)
         let normalizedRadiusY = max 1.0 (abs radiusY)
@@ -1455,6 +1513,9 @@ type private DefaultGraphicsDevice(buffer: ScreenBuffer, gate: obj) =
               let rotatedY = (localX * Math.Sin(rotation)) + (localY * Math.Cos(rotation))
               yield clampToWindow (centerX + rotatedX) (centerY + rotatedY) ]
         |> sampledCurve closeShape shouldFill
+
+        if shouldFill && fillMode <> 0 && closeShape && abs (span - twoPi) < 0.01 then
+            fillEllipse centerX centerY normalizedRadiusX normalizedRadiusY angleDegrees
 
     let sampleCircle centerX centerY radiusX radiusY shouldFill =
         sampleEllipse centerX centerY radiusX radiusY 0.0 0.0 360.0 true shouldFill
@@ -1579,6 +1640,17 @@ type private DefaultGraphicsDevice(buffer: ScreenBuffer, gate: obj) =
                     let bottomY = max ty1 ty2
                     drawLine tx1 topY tx1 (min bottomY (topY + tickLength))
                     drawLine tx1 (max topY (bottomY - tickLength)) tx1 bottomY
+                elif Math.Abs(x1 - x2) < 0.0001 then
+                    let minRawX = min rawX1 rawX2
+                    let maxRawX = max rawX1 rawX2
+                    let startCol = int (Math.Floor(minRawX - 0.5))
+                    let endCol = int (Math.Ceiling(maxRawX + 0.5))
+                    let topY = min ty1 ty2
+                    let bottomY = max ty1 ty2
+
+                    for col = startCol to endCol do
+                        let clampedCol, _ = clampToWindow (float col) topY
+                        drawLine clampedCol topY clampedCol bottomY
                 else
                     drawLine tx1 ty1 tx2 ty2
                 cursor <- tx2, ty2)
@@ -1641,12 +1713,16 @@ type private DefaultGraphicsDevice(buffer: ScreenBuffer, gate: obj) =
                 cursor <- endX, endY)
         member _.Block(width, height, x, y, color) =
             synchronized (fun () ->
-                let tx, ty = transformAbsolute x y
-                cursor <- tx, ty
-                let startX = int (Math.Round tx)
-                let startY = int (Math.Round ty)
-                for row = startY to startY + max 0 (int (Math.Round height)) - 1 do
-                    for col = startX to startX + max 0 (int (Math.Round width)) - 1 do
+                let windowWidth, windowHeight, originX, originY = drawingWindow
+                let rawStartX = originX + int (Math.Round x)
+                let rawStartY = originY + int (Math.Round y)
+                let startX = max originX rawStartX
+                let startY = max originY rawStartY
+                let endX = min (originX + max 0 windowWidth) (rawStartX + max 0 (int (Math.Round width)))
+                let endY = min (originY + max 0 windowHeight) (rawStartY + max 0 (int (Math.Round height)))
+                cursor <- float startX, float startY
+                for row = startY to endY - 1 do
+                    for col = startX to endX - 1 do
                         buffer.ApplyPixel(col, row, color, overMode, underMode, flashMode, drawingBackgroundColor))
         member _.SetInk(values: int list) = synchronized (fun () -> ink <- values)
         member _.SetFill(value: int) = synchronized (fun () -> fillMode <- value)
@@ -1702,6 +1778,11 @@ type private DefaultRuntimeHost(options: DefaultHostOptions) =
     let screenBuffer = ScreenBuffer(currentMode)
     let screenGate = obj ()
     let memory = Dictionary<int, byte>()
+    let qlScreenBaseAddress = 131072
+    let qlScreenRowBytes = 128
+    let qlScreenHeight = 256
+    let qlScreenSize = qlScreenRowBytes * qlScreenHeight
+    let qlMode8LogicalWidth = 256
     let screenReader channelId = options.ReadScreenLine channelId
     let channel0 = DefaultScreenChannel(ChannelId 0, ChannelKind.ConsoleChannel, screenReader, options.WriteLine, true, currentMode, None, screenBuffer, screenGate)
     let channel1 = DefaultScreenChannel(ChannelId 1, ChannelKind.ScreenChannel, screenReader, options.WriteLine, false, currentMode, None, screenBuffer, screenGate)
@@ -1714,24 +1795,123 @@ type private DefaultRuntimeHost(options: DefaultHostOptions) =
     let graphics = DefaultGraphicsDevice(screenBuffer, screenGate) :> IGraphicsDevice
     let input = DefaultInputDevice(options.ReadLine, options.ReadKey, options.KeyAvailable, options.KeyRowState, options.FlushInput) :> IInputDevice
     let sound = NullSoundDevice() :> ISoundDevice
+    let tryMapQlMode8Address address =
+        if currentMode.Mode = QlMode8 then
+            let offset = address - qlScreenBaseAddress
+            if offset >= 0 && offset < qlScreenSize then
+                let row = offset / qlScreenRowBytes
+                let byteInRow = offset % qlScreenRowBytes
+                let logicalX = (byteInRow / 2) * 4
+                Some(row, logicalX, byteInRow % 2 = 0)
+            else
+                None
+        else
+            None
+    let readMode8LogicalPixelSpec logicalX row =
+        let physicalX = logicalX * 2
+        let left = screenBuffer.GetPixel(physicalX, row)
+        let right =
+            if physicalX + 1 < currentMode.Width then
+                screenBuffer.GetPixel(physicalX + 1, row)
+            else
+                left
+
+        let leftColor = left &&& 0x7
+        let rightColor = right &&& 0x7
+        let flash =
+            if (left &&& 0x01000000) <> 0 || (right &&& 0x01000000) <> 0 then
+                0x01000000
+            else
+                0
+
+        (leftColor ||| rightColor) ||| flash
+    let writeMode8LogicalPixelColor logicalX row colorSpec =
+        if logicalX >= 0 && logicalX < qlMode8LogicalWidth && row >= 0 && row < qlScreenHeight then
+            let physicalX = logicalX * 2
+            screenBuffer.SetPixel(physicalX, row, colorSpec)
+            if physicalX + 1 < currentMode.Width then
+                screenBuffer.SetPixel(physicalX + 1, row, colorSpec)
+    let readMode8Byte address =
+        match tryMapQlMode8Address address with
+        | Some(row, logicalX, isGreenByte) ->
+            let mutable value = 0
+            for pixelIndex = 0 to 3 do
+                let colorSpec = readMode8LogicalPixelSpec (logicalX + pixelIndex) row
+                let color = colorSpec &&& 0x7
+                let flash = (colorSpec &&& 0x01000000) <> 0
+                if isGreenByte then
+                    if (color &&& 0x4) <> 0 then
+                        value <- value ||| (1 <<< (7 - (pixelIndex * 2)))
+                    if flash then
+                        value <- value ||| (1 <<< (6 - (pixelIndex * 2)))
+                else
+                    if (color &&& 0x2) <> 0 then
+                        value <- value ||| (1 <<< (7 - (pixelIndex * 2)))
+                    if (color &&& 0x1) <> 0 then
+                        value <- value ||| (1 <<< (6 - (pixelIndex * 2)))
+            byte value
+        | None -> 0uy
+    let writeMode8Byte address value =
+        match tryMapQlMode8Address address with
+        | Some(row, logicalX, isGreenByte) ->
+            let greenByte, rbByte =
+                if isGreenByte then
+                    int value, int (readMode8Byte (address + 1))
+                else
+                    int (readMode8Byte (address - 1)), int value
+
+            for pixelIndex = 0 to 3 do
+                let green =
+                    if (greenByte &&& (1 <<< (7 - (pixelIndex * 2)))) <> 0 then
+                        0x4
+                    else
+                        0
+                let flash =
+                    if (greenByte &&& (1 <<< (6 - (pixelIndex * 2)))) <> 0 then
+                        0x01000000
+                    else
+                        0
+                let red =
+                    if (rbByte &&& (1 <<< (7 - (pixelIndex * 2)))) <> 0 then
+                        0x2
+                    else
+                        0
+                let blue =
+                    if (rbByte &&& (1 <<< (6 - (pixelIndex * 2)))) <> 0 then
+                        0x1
+                    else
+                        0
+                writeMode8LogicalPixelColor (logicalX + pixelIndex) row (green ||| red ||| blue ||| flash)
+
+            Result.Ok()
+        | None ->
+            Result.Error(InvalidHostArgument $"Memory address {address} is not a mode 8 screen byte.")
     let tryReadByte address =
         if address < 0 then
             Result.Error(InvalidHostArgument $"Memory address {address} is invalid.")
         else
-            match memory.TryGetValue address with
-            | true, value -> Result.Ok value
-            | false, _ -> Result.Ok 0uy
+            match tryMapQlMode8Address address with
+            | Some _ ->
+                lock screenGate (fun () -> Result.Ok(readMode8Byte address))
+            | None ->
+                match memory.TryGetValue address with
+                | true, value -> Result.Ok value
+                | false, _ -> Result.Ok 0uy
     let writeByte address value =
         if address < 0 then
             Result.Error(InvalidHostArgument $"Memory address {address} is invalid.")
         else
-            memory[address] <- value
-            Result.Ok()
+            match tryMapQlMode8Address address with
+            | Some _ ->
+                lock screenGate (fun () -> writeMode8Byte address value)
+            | None ->
+                memory[address] <- value
+                Result.Ok()
     let peekWord address =
         tryReadByte address
         |> Result.bind (fun b0 ->
             tryReadByte (address + 1)
-            |> Result.map (fun b1 -> int b0 ||| (int b1 <<< 8)))
+            |> Result.map (fun b1 -> (int b0 <<< 8) ||| int b1))
     let peekLong address =
         tryReadByte address
         |> Result.bind (fun b0 ->
@@ -1740,15 +1920,15 @@ type private DefaultRuntimeHost(options: DefaultHostOptions) =
                 tryReadByte (address + 2)
                 |> Result.bind (fun b2 ->
                     tryReadByte (address + 3)
-                    |> Result.map (fun b3 -> int b0 ||| (int b1 <<< 8) ||| (int b2 <<< 16) ||| (int b3 <<< 24)))))
+                    |> Result.map (fun b3 -> (int b0 <<< 24) ||| (int b1 <<< 16) ||| (int b2 <<< 8) ||| int b3))))
     let pokeWord address value =
-        writeByte address (byte (value &&& 0xFF))
-        |> Result.bind (fun () -> writeByte (address + 1) (byte ((value >>> 8) &&& 0xFF)))
+        writeByte address (byte ((value >>> 8) &&& 0xFF))
+        |> Result.bind (fun () -> writeByte (address + 1) (byte (value &&& 0xFF)))
     let pokeLong address value =
-        writeByte address (byte (value &&& 0xFF))
-        |> Result.bind (fun () -> writeByte (address + 1) (byte ((value >>> 8) &&& 0xFF)))
-        |> Result.bind (fun () -> writeByte (address + 2) (byte ((value >>> 16) &&& 0xFF)))
-        |> Result.bind (fun () -> writeByte (address + 3) (byte ((value >>> 24) &&& 0xFF)))
+        writeByte address (byte ((value >>> 24) &&& 0xFF))
+        |> Result.bind (fun () -> writeByte (address + 1) (byte ((value >>> 16) &&& 0xFF)))
+        |> Result.bind (fun () -> writeByte (address + 2) (byte ((value >>> 8) &&& 0xFF)))
+        |> Result.bind (fun () -> writeByte (address + 3) (byte (value &&& 0xFF)))
     let files =
         { new IDeviceFileSystem with
             member _.OpenFile(_path, _mode) =

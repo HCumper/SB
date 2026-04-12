@@ -152,7 +152,7 @@ type RuntimeSurfaceControl() as this =
         }
         |> Seq.exists id
 
-    let drawPaneTextDirectly (context: DrawingContext) (modeInfo: ScreenModeInfo) recolor palette (pane: ScreenPaneSnapshot) (viewportRect: Rect) (scale: float) =
+    let drawPaneTextDirectly (fillPaneBackground: bool) (fillCellBackgrounds: bool) (context: DrawingContext) (modeInfo: ScreenModeInfo) recolor palette (pane: ScreenPaneSnapshot) (viewportRect: Rect) (scale: float) =
         let x = let _, _, px, _ = pane.Window in px
         let y = let _, _, _, py = pane.Window in py
         let charWidthScale, charHeightScale =
@@ -166,7 +166,8 @@ type RuntimeSurfaceControl() as this =
             else
                 max 1 (logicalCellWidth - max 4 ((2 * logicalCellWidth) / 3))
 
-        fillRectangleWithColorSpec context modeInfo.Mode recolor palette x y viewportRect pane.Paper
+        if fillPaneBackground then
+            fillRectangleWithColorSpec context modeInfo.Mode recolor palette x y viewportRect pane.Paper
 
         for row = 0 to Array2D.length1 pane.Text - 1 do
             for col = 0 to Array2D.length2 pane.Text - 1 do
@@ -174,7 +175,7 @@ type RuntimeSurfaceControl() as this =
                 let originLogicalX = col * logicalAdvance
                 let originLogicalY = row * logicalCellHeight
 
-                if cell.HasBackground then
+                if fillCellBackgrounds && cell.HasBackground then
                     let cellRect =
                         Rect(
                             viewportRect.X + (float originLogicalX * scale),
@@ -357,6 +358,8 @@ type RuntimeSurfaceControl() as this =
 
                 let paneSurfaceHeight = Array2D.length1 pane.Surface
                 let paneSurfaceWidth = Array2D.length2 pane.Surface
+                let panePixelsHeight = Array2D.length1 pane.Pixels
+                let panePixelsWidth = Array2D.length2 pane.Pixels
 
                 let drawPaneSurface = pane.Kind <> ConsoleChannel
 
@@ -383,10 +386,39 @@ type RuntimeSurfaceControl() as this =
 
                     Marshal.Copy(bytes, 0, framebuffer.Address, bytes.Length)
                     context.DrawImage(bitmap, Rect(0.0, 0.0, float paneSurfaceWidth, float paneSurfaceHeight), viewportRect)
-                elif pane.Kind = ConsoleChannel && paneHasLocalText pane then
-                    drawConsoleTextFallback context snapshot.Mode pane.Recolor pane.Palette pane viewportRect scale
-                elif paneHasLocalText pane then
-                    drawPaneTextDirectly context snapshot.Mode pane.Recolor pane.Palette pane viewportRect scale
+
+                if pane.Kind = ConsoleChannel && panePixelsHeight > 0 && panePixelsWidth > 0 then
+                    use bitmap =
+                        new WriteableBitmap(
+                            PixelSize(panePixelsWidth, panePixelsHeight),
+                            Vector(96.0, 96.0),
+                            PixelFormat.Bgra8888,
+                            AlphaFormat.Opaque)
+
+                    use framebuffer = bitmap.Lock()
+                    let bytes = Array.zeroCreate<byte> (framebuffer.RowBytes * panePixelsHeight)
+
+                    for py = 0 to panePixelsHeight - 1 do
+                        let rowOffset = py * framebuffer.RowBytes
+                        for px = 0 to panePixelsWidth - 1 do
+                            let color = pixelColorFor snapshot.Mode.Mode pane.Recolor pane.Palette (x + px) (y + py) pane.Pixels[py, px]
+                            let pixelOffset = rowOffset + (px * 4)
+                            bytes[pixelOffset] <- color.B
+                            bytes[pixelOffset + 1] <- color.G
+                            bytes[pixelOffset + 2] <- color.R
+                            bytes[pixelOffset + 3] <- color.A
+
+                    Marshal.Copy(bytes, 0, framebuffer.Address, bytes.Length)
+                    context.DrawImage(bitmap, Rect(0.0, 0.0, float panePixelsWidth, float panePixelsHeight), viewportRect)
+
+                let shouldOverlayText =
+                    paneHasLocalText pane
+                    && not (pane.Kind = ScreenChannel && pane.ChannelId = Some 1)
+
+                if shouldOverlayText then
+                    let fillTextBackground = not drawPaneSurface && pane.Kind <> ConsoleChannel
+                    let fillCellBackgrounds = pane.Kind <> ConsoleChannel
+                    drawPaneTextDirectly fillTextBackground fillCellBackgrounds context snapshot.Mode pane.Recolor pane.Palette pane viewportRect scale
 
                 let cellWidth = float logicalCellWidth * scale
                 let cellHeight = float logicalCellHeight * scale

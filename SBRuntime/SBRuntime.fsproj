@@ -11,6 +11,7 @@
     <Compile Include="RuntimeErrors.fs" />
     <Compile Include="RuntimeValues.fs" />
     <Compile Include="HostTypes.fs" />
+    <Compile Include="QlRandom.fs" />
     <Compile Include="ChannelDevices.fs" />
     <Compile Include="BuiltInFunctions.fs" />
     <Compile Include="BuiltInStatements.fs" />

@@ -106,7 +106,7 @@ let defaultRuntimeOptions =
             KeyRowState = fun _ -> 0
             WriteLine = Console.WriteLine
         }
-      Random = Random()
+      Random = QlRandom()
       Clock = fun () -> DateTime.UtcNow
       Sleeper = fun milliseconds -> System.Threading.Thread.Sleep(milliseconds)
       ExecutionThrottle = None
@@ -373,6 +373,9 @@ let private fromRuntimeBuiltInValue value =
     | Text s -> StringValue s
     | Uninitialized -> IntValue 0
 
+let private printContinueSentinel = "\uE000PRINT_CONTINUE\uE000"
+let private printCommaSentinel = "\uE000PRINT_COMMA\uE000"
+
 let private formatOutputValue value = asString value
 
 let private formatScreenOutputValue value =
@@ -393,6 +396,25 @@ let private formatScreenOutputValue value =
         |> List.tryPick tryFixed
         |> Option.defaultValue (f.ToString("G15", CultureInfo.InvariantCulture))
     | _ -> asString value
+
+let private formatScreenPrintValues values =
+    let buffer = Text.StringBuilder()
+    let mutable column = 0
+
+    let appendText (text: string) =
+        buffer.Append(text) |> ignore
+        column <- column + text.Length
+
+    for value in values do
+        match value with
+        | StringValue sentinel when sentinel = printCommaSentinel ->
+            let nextTabStop = ((column / 8) + 1) * 8
+            let spaces = max 1 (nextTabStop - column)
+            appendText (System.String(' ', spaces))
+        | _ ->
+            appendText (formatScreenOutputValue value)
+
+    buffer.ToString()
 
 let private lookupCell state symbolId =
     let rec find frames =
@@ -1111,19 +1133,23 @@ and private executeBuiltInCall state kind channel args targets pos =
         withEffectiveChannel state channel (defaultScreenChannelId state) pos (fun resolvedChannel stateAfterChannel ->
             evalExprList stateAfterChannel args
             |> Result.bind (fun (values, nextState) ->
+                let suppressNewline, printableValues =
+                    match List.rev values with
+                    | StringValue sentinel :: rest when sentinel = printContinueSentinel -> true, List.rev rest
+                    | _ -> false, values
                 let capturedLine =
-                    values
+                    printableValues
                     |> List.map toRuntimeBuiltInValue
                     |> BuiltInStatements.formatPrintLine
                 let renderedLine =
                     if isScreenLikeOutputChannel resolvedChannel nextState then
-                        values
-                        |> List.map formatScreenOutputValue
-                        |> String.concat ""
+                        formatScreenPrintValues printableValues
                     else
                         capturedLine
                 writeRenderedOutputToChannel resolvedChannel renderedLine capturedLine nextState pos
-                |> Result.bind (fun finalState -> advanceScreenLine resolvedChannel finalState pos)
+                |> Result.bind (fun finalState ->
+                    if suppressNewline then Result.Ok finalState
+                    else advanceScreenLine resolvedChannel finalState pos)
                 |> Result.map (fun finalState -> Continue, finalState)))
     | BuiltInKind.Input ->
         withEffectiveChannel state channel (defaultScreenChannelId state) pos (fun resolvedChannel stateAfterChannel ->
@@ -1388,9 +1414,9 @@ and private executeBuiltInCall state kind channel args targets pos =
                     match values with
                     | [] ->
                         let seed = int (nextState.Options.Clock().Subtract(DateTime.UnixEpoch).TotalSeconds)
-                        Result.Ok(Continue, { nextState with RandomSource = Random(seed) })
+                        Result.Ok(Continue, { nextState with RandomSource = QlRandom(seed) :> Random })
                     | [ seedValue ] ->
-                        Result.Ok(Continue, { nextState with RandomSource = Random(asInt seedValue) })
+                        Result.Ok(Continue, { nextState with RandomSource = QlRandom(asInt seedValue) :> Random })
                     | _ ->
                         runtimeError BuiltInArityMismatch (Some pos) $"Built-in statement '{name}' expects zero or one argument."))
         | "RUN" ->
@@ -1723,6 +1749,11 @@ and private executeBuiltInCall state kind channel args targets pos =
                 match numericArgs with
                 | first :: _ ->
                     executeChannelScreenOp resolvedChannel nextState pos (fun screenChannel -> screenChannel.SetPaper(first)) (fun screen -> screen.SetPaper(first))
+                    |> Result.bind (fun stateAfterPaper ->
+                        if numericArgs.Length > 1 then
+                            executeChannelScreenOp resolvedChannel stateAfterPaper pos (fun screenChannel -> screenChannel.SetStrip(numericArgs)) (fun screen -> screen.SetStrip(numericArgs))
+                        else
+                            Result.Ok stateAfterPaper)
                 | _ -> Result.Ok nextState)
         | "STRIP" ->
             executeScreenOp 1 true (fun resolvedChannel nextState numericArgs ->

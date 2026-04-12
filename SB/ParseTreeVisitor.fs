@@ -85,6 +85,8 @@ type ASTBuildingVisitor() =
     inherit SBBaseVisitor<VisitedNode list>()
 
     let mutable selectSelectorStack: Expr list = []
+    let printContinueSentinel = "\"\uE000PRINT_CONTINUE\uE000\""
+    let printCommaSentinel = "\"\uE000PRINT_COMMA\uE000\""
 
     let openBuiltInNames =
         set [ "OPEN"; "OPEN_IN"; "OPEN_NEW"; "APPEND" ]
@@ -240,6 +242,7 @@ type ASTBuildingVisitor() =
         let mutable groups : Expr list list = []
         let mutable currentGroup : Expr list = []
         let mutable endedWithExplicitBreak = false
+        let mutable suppressTrailingNewline = false
 
         for segment in tail.stmtSegment() do
             let separatorText =
@@ -257,16 +260,35 @@ type ASTBuildingVisitor() =
                 groups <- groups @ [ currentGroup ]
                 currentGroup <- []
                 endedWithExplicitBreak <- true
+                suppressTrailingNewline <- false
+            | Some "," ->
+                currentGroup <- currentGroup @ [ mkStringLiteral pos printCommaSentinel ]
             | _ -> ()
 
             match argOpt with
             | Some arg ->
                 currentGroup <- currentGroup @ [ arg ]
                 endedWithExplicitBreak <- false
+                suppressTrailingNewline <- false
             | None -> ()
+
+            match separatorText, argOpt with
+            | Some (";" | ","), None ->
+                suppressTrailingNewline <- true
+            | _ -> ()
 
         if (not endedWithExplicitBreak) || not (List.isEmpty currentGroup) then
             groups <- groups @ [ currentGroup ]
+
+        if suppressTrailingNewline && not groups.IsEmpty then
+            let lastIndex = groups.Length - 1
+            groups <-
+                groups
+                |> List.mapi (fun index group ->
+                    if index = lastIndex then
+                        group @ [ mkStringLiteral pos printContinueSentinel ]
+                    else
+                        group)
 
         groups
         |> List.map (fun args -> StmtNode(mkStmt args))

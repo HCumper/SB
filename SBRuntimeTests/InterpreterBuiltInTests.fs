@@ -895,6 +895,17 @@ let ``interpreter randomise reseeds rnd deterministically`` () =
 
     let output = runHirProgramWithOptions defaultRuntimeOptions hir
 
-    Assert.That(String.concat "|" output, Is.EqualTo("99 99"))
+    Assert.That(String.concat "|" output, Is.EqualTo("60 60"))
+
+[<Test>]
+let ``ql random matches expected seeded sequence`` () =
+    let rnd = QlRandom(123)
+
+    let values =
+        [ rnd.Next(1, 101)
+          rnd.Next(1, 101)
+          rnd.Next(1, 101) ]
+
+    Assert.That(String.concat "," (values |> List.map string), Is.EqualTo("60,76,34"))
 
 

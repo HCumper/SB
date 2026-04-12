@@ -82,6 +82,383 @@ let ``interpreter peek and poke built-ins use little endian virtual memory`` () 
     Assert.That(screenState.Memory[303], Is.EqualTo(0x12uy))
 
 [<Test>]
+let ``default host mode 8 peek reads live screen bytes from framebuffer`` () =
+    let host, _ =
+        DefaultHost.createWithDisplay {
+            ReadLine = fun () -> None
+            ReadScreenLine = fun _ -> None
+            FlushInput = fun () -> ()
+            ReadKey = fun () -> None
+            KeyAvailable = fun () -> false
+            KeyRowState = fun _ -> 0
+            WriteLine = ignore
+        }
+
+    match host.Screen.SetMode(QlMode8), host.Channels.Get(ChannelId 1) with
+    | Result.Ok (), Result.Ok (:? IScreenChannel as screenChannel) ->
+        screenChannel.SetPaper(5)
+        screenChannel.Clear()
+        match host.Memory.Peek8(131072), host.Memory.Peek8(131073), host.Memory.Peek16(131072) with
+        | Result.Ok lowByte, Result.Ok highByte, Result.Ok word ->
+            Assert.That(lowByte, Is.EqualTo(0xAA))
+            Assert.That(highByte, Is.EqualTo(0x55))
+            Assert.That(word, Is.EqualTo(0xAA55))
+        | lowResult, highResult, wordResult ->
+            Assert.Fail($"Expected screen memory reads to succeed, got {lowResult}, {highResult}, {wordResult}")
+    | Result.Error err, _ ->
+        Assert.Fail($"Expected mode 8 to succeed, got %A{err}")
+    | _, Result.Ok channel ->
+        Assert.Fail($"Expected channel #1 to be a screen channel, got {channel.Kind}")
+    | _, Result.Error err ->
+        Assert.Fail($"Expected channel #1 to exist, got %A{err}")
+
+[<Test>]
+let ``default host mode 8 poke paints decoded screen memory pixels`` () =
+    let host, display =
+        DefaultHost.createWithDisplay {
+            ReadLine = fun () -> None
+            ReadScreenLine = fun _ -> None
+            FlushInput = fun () -> ()
+            ReadKey = fun () -> None
+            KeyAvailable = fun () -> false
+            KeyRowState = fun _ -> 0
+            WriteLine = ignore
+        }
+
+    match host.Screen.SetMode(QlMode8), host.Channels.Get(ChannelId 1) with
+    | Result.Ok (), Result.Ok (:? IScreenChannel as screenChannel) ->
+        screenChannel.SetPaper(0)
+        screenChannel.Clear()
+
+        match host.Memory.Poke16(131072, 0x826C) with
+        | Result.Ok () ->
+            let pane = display.GetSnapshot().Panes |> List.find (fun item -> item.ChannelId = Some 1)
+            Assert.That(pane.Pixels[0, 0] &&& 0x00FFFFFF, Is.EqualTo(5))
+            Assert.That(pane.Pixels[0, 1] &&& 0x00FFFFFF, Is.EqualTo(5))
+            Assert.That(pane.Pixels[0, 2] &&& 0x00FFFFFF, Is.EqualTo(2))
+            Assert.That(pane.Pixels[0, 3] &&& 0x00FFFFFF, Is.EqualTo(2))
+            Assert.That(pane.Pixels[0, 4] &&& 0x00FFFFFF, Is.EqualTo(3))
+            Assert.That(pane.Pixels[0, 5] &&& 0x00FFFFFF, Is.EqualTo(3))
+            Assert.That(pane.Pixels[0, 6] &&& 0x00FFFFFF, Is.EqualTo(4))
+            Assert.That(pane.Pixels[0, 7] &&& 0x00FFFFFF, Is.EqualTo(4))
+        | Result.Error err ->
+            Assert.Fail($"Expected poke to succeed, got %A{err}")
+    | Result.Error err, _ ->
+        Assert.Fail($"Expected mode 8 to succeed, got %A{err}")
+    | _, Result.Ok channel ->
+        Assert.Fail($"Expected channel #1 to be a screen channel, got {channel.Kind}")
+    | _, Result.Error err ->
+        Assert.Fail($"Expected channel #1 to exist, got %A{err}")
+
+[<Test>]
+let ``default host mode 8 golfer ball mask preserves a visible pixel`` () =
+    let host, display =
+        DefaultHost.createWithDisplay {
+            ReadLine = fun () -> None
+            ReadScreenLine = fun _ -> None
+            FlushInput = fun () -> ()
+            ReadKey = fun () -> None
+            KeyAvailable = fun () -> false
+            KeyRowState = fun _ -> 0
+            WriteLine = ignore
+        }
+
+    match host.Screen.SetMode(QlMode8), host.Channels.Get(ChannelId 1) with
+    | Result.Ok (), Result.Ok (:? IScreenChannel as screenChannel) ->
+        screenChannel.SetPaper(4)
+        screenChannel.Clear()
+
+        // Match Golfer.ball for ballx = 19, bally = 129.
+        let add = 131072 + 128 * 129 + ((19 / 4) * 2)
+        let bit = (19 % 4) * 2
+        let mutable bitt = (255.0 - (Math.Pow(2.0, float (7 - bit)) * 1.875))
+        if bitt - Math.Floor(bitt) > 0.0 then
+            bitt <- bitt * 1.6
+
+        let mask = int bitt
+
+        match host.Memory.Poke16(add, 0xFFFF), host.Memory.Peek8(add), host.Memory.Peek8(add + 1) with
+        | Result.Ok (), Result.Ok lowByte, Result.Ok highByte ->
+            let newWord = ((mask &&& int lowByte) <<< 8) ||| (mask &&& int highByte)
+            match host.Memory.Poke16(add, newWord) with
+            | Result.Ok () ->
+                let pane = display.GetSnapshot().Panes |> List.find (fun item -> item.ChannelId = Some 1)
+                let litPixels =
+                    [ for row = 0 to Array2D.length1 pane.Pixels - 1 do
+                          for col = 0 to Array2D.length2 pane.Pixels - 1 do
+                              if (pane.Pixels[row, col] &&& 0x00FFFFFF) <> 4 then
+                                  yield row, col ]
+
+                Assert.That(litPixels.Length, Is.GreaterThan(0))
+            | Result.Error err ->
+                Assert.Fail($"Expected masked poke to succeed, got %A{err}")
+        | pokeResult, lowResult, highResult ->
+            Assert.Fail($"Expected golfer-style mask setup to succeed, got {pokeResult}, {lowResult}, {highResult}")
+    | Result.Error err, _ ->
+        Assert.Fail($"Expected mode 8 to succeed, got %A{err}")
+    | _, Result.Ok channel ->
+        Assert.Fail($"Expected channel #1 to be a screen channel, got {channel.Kind}")
+    | _, Result.Error err ->
+        Assert.Fail($"Expected channel #1 to exist, got %A{err}")
+
+[<Test>]
+let ``default host mode 8 getcol-style peek reconstructs green correctly`` () =
+    let host, _ =
+        DefaultHost.createWithDisplay {
+            ReadLine = fun () -> None
+            ReadScreenLine = fun _ -> None
+            FlushInput = fun () -> ()
+            ReadKey = fun () -> None
+            KeyAvailable = fun () -> false
+            KeyRowState = fun _ -> 0
+            WriteLine = ignore
+        }
+
+    match host.Screen.SetMode(QlMode8), host.Channels.Get(ChannelId 1) with
+    | Result.Ok (), Result.Ok (:? IScreenChannel as screenChannel) ->
+        screenChannel.SetPaper(0)
+        screenChannel.Clear()
+
+        // Paint logical pixel x=19, y=129 with QL colour 6 (green + red).
+        let address = 131072 + 128 * 129 + ((19 / 4) * 2)
+        let bit = (19 % 4) * 2
+        let greenMask = 1 <<< (7 - bit)
+        let rbBits = 1 <<< (7 - bit)
+
+        match host.Memory.Poke8(address, greenMask), host.Memory.Poke8(address + 1, rbBits), host.Memory.Peek8(address), host.Memory.Peek8(address + 1) with
+        | Result.Ok (), Result.Ok (), Result.Ok greenByte, Result.Ok rbByte ->
+            let bitt = 1 <<< (7 - bit)
+            let grn = if (greenByte &&& bitt) <> 0 then 4 else 0
+            let red = if (rbByte &&& bitt) <> 0 then 2 else 0
+            let blue = if (rbByte &&& (bitt >>> 1)) <> 0 then 1 else 0
+            let rb = red ||| blue
+            Assert.That(grn + rb, Is.EqualTo(6))
+        | pokeG, pokeRb, peekG, peekRb ->
+            Assert.Fail($"Expected getcol-style bytes to succeed, got {pokeG}, {pokeRb}, {peekG}, {peekRb}")
+    | Result.Error err, _ ->
+        Assert.Fail($"Expected mode 8 to succeed, got %A{err}")
+    | _, Result.Ok channel ->
+        Assert.Fail($"Expected channel #1 to be a screen channel, got {channel.Kind}")
+    | _, Result.Error err ->
+        Assert.Fail($"Expected channel #1 to exist, got %A{err}")
+
+[<Test>]
+let ``default host mode 8 getcol-style peek reconstructs water cyan correctly`` () =
+    let host, _ =
+        DefaultHost.createWithDisplay {
+            ReadLine = fun () -> None
+            ReadScreenLine = fun _ -> None
+            FlushInput = fun () -> ()
+            ReadKey = fun () -> None
+            KeyAvailable = fun () -> false
+            KeyRowState = fun _ -> 0
+            WriteLine = ignore
+        }
+
+    match host.Screen.SetMode(QlMode8), host.Channels.Get(ChannelId 1) with
+    | Result.Ok (), Result.Ok (:? IScreenChannel as screenChannel) ->
+        screenChannel.SetPaper(0)
+        screenChannel.Clear()
+
+        // QL colour 5 = green + blue.
+        let address = 131072 + 128 * 129 + ((19 / 4) * 2)
+        let bit = (19 % 4) * 2
+        let greenMask = 1 <<< (7 - bit)
+        let rbBits = 1 <<< (6 - bit)
+
+        match host.Memory.Poke8(address, greenMask), host.Memory.Poke8(address + 1, rbBits), host.Memory.Peek8(address), host.Memory.Peek8(address + 1) with
+        | Result.Ok (), Result.Ok (), Result.Ok greenByte, Result.Ok rbByte ->
+            let bitt = 1 <<< (7 - bit)
+            let grn = if (greenByte &&& bitt) <> 0 then 4 else 0
+            let red = if (rbByte &&& bitt) <> 0 then 2 else 0
+            let blue = if (rbByte &&& (bitt >>> 1)) <> 0 then 1 else 0
+            let rb = red ||| blue
+            Assert.That(grn + rb, Is.EqualTo(5))
+        | pokeG, pokeRb, peekG, peekRb ->
+            Assert.Fail($"Expected getcol-style water bytes to succeed, got {pokeG}, {pokeRb}, {peekG}, {peekRb}")
+    | Result.Error err, _ ->
+        Assert.Fail($"Expected mode 8 to succeed, got %A{err}")
+    | _, Result.Ok channel ->
+        Assert.Fail($"Expected channel #1 to be a screen channel, got {channel.Kind}")
+    | _, Result.Error err ->
+        Assert.Fail($"Expected channel #1 to exist, got %A{err}")
+
+[<Test>]
+let ``default host mode 8 clear uses composite strip background`` () =
+    let host, display =
+        DefaultHost.createWithDisplay {
+            ReadLine = fun () -> None
+            ReadScreenLine = fun _ -> None
+            FlushInput = fun () -> ()
+            ReadKey = fun () -> None
+            KeyAvailable = fun () -> false
+            KeyRowState = fun _ -> 0
+            WriteLine = ignore
+        }
+
+    match host.Screen.SetMode(QlMode8), host.Channels.Get(ChannelId 1) with
+    | Result.Ok (), Result.Ok (:? IScreenChannel as screenChannel) ->
+        screenChannel.SetPaper(7)
+        screenChannel.SetStrip([ 7; 4; 1 ])
+        screenChannel.Clear()
+
+        let pane = display.GetSnapshot().Panes |> List.find (fun item -> item.ChannelId = Some 1)
+        let colors =
+            seq {
+                for row in 0 .. Array2D.length1 pane.Pixels - 1 do
+                    for col in 0 .. Array2D.length2 pane.Pixels - 1 do
+                        yield pane.Pixels[row, col] &&& 0x00FFFFFF
+            }
+            |> Set.ofSeq
+
+        Assert.That(colors.Contains 7, Is.True)
+        Assert.That(colors.Contains 4, Is.True)
+    | Result.Error err, _ ->
+        Assert.Fail($"Expected mode 8 to succeed, got %A{err}")
+    | _, Result.Ok channel ->
+        Assert.Fail($"Expected channel #1 to be a screen channel, got {channel.Kind}")
+    | _, Result.Error err ->
+        Assert.Fail($"Expected channel #1 to exist, got %A{err}")
+
+[<Test>]
+let ``interpreter print trailing semicolons keep subsequent print on same screen line`` () =
+    let host, display =
+        DefaultHost.createWithDisplay {
+            ReadLine = fun () -> None
+            ReadScreenLine = fun _ -> None
+            FlushInput = fun () -> ()
+            ReadKey = fun () -> None
+            KeyAvailable = fun () -> false
+            KeyRowState = fun _ -> 0
+            WriteLine = ignore
+        }
+
+    let ast =
+        parseAstFromSource
+            "10 MODE 8: PAPER 0: CLS\n20 PRINT \"  Hole \";1;\n30 PRINT \"     Length \";300;\n40 PRINT \"     Par \";4\n"
+
+    let hir = lowerProgram ast
+
+    match interpretProgramWithOptions { defaultRuntimeOptions with Host = host } hir with
+    | Result.Ok _ ->
+        let pane = display.GetSnapshot().Panes |> List.find (fun item -> item.ChannelId = Some 1)
+        let rowText =
+            let cols = Array2D.length2 pane.Text
+            [| for col in 0 .. cols - 1 -> pane.Text[0, col].Character |] |> String
+
+        Assert.That(rowText, Does.Contain("Hole 1     Length 300     Par 4"))
+    | Result.Error err ->
+        Assert.Fail($"Expected interpretation to succeed, got %A{err}")
+
+[<Test>]
+let ``interpreter print commas tabulate screen output every eight columns`` () =
+    let host, display =
+        DefaultHost.createWithDisplay {
+            ReadLine = fun () -> None
+            ReadScreenLine = fun _ -> None
+            FlushInput = fun () -> ()
+            ReadKey = fun () -> None
+            KeyAvailable = fun () -> false
+            KeyRowState = fun _ -> 0
+            WriteLine = ignore
+        }
+
+    let ast = parseAstFromSource "10 PRINT ,,\"A\"\n"
+    let hir = lowerProgram ast
+
+    match interpretProgramWithOptions { defaultRuntimeOptions with Host = host } hir with
+    | Result.Ok _ ->
+        let pane = display.GetSnapshot().Panes |> List.find (fun item -> item.ChannelId = Some 1)
+        let rowText =
+            let cols = Array2D.length2 pane.Text
+            [| for col in 0 .. cols - 1 -> pane.Text[0, col].Character |] |> String
+
+        Assert.That(rowText.IndexOf('A'), Is.EqualTo(16))
+    | Result.Error err ->
+        Assert.Fail($"Expected interpretation to succeed, got %A{err}")
+
+[<Test>]
+let ``default host block uses window pixel coordinates`` () =
+    let host, display =
+        DefaultHost.createWithDisplay {
+            ReadLine = fun () -> None
+            ReadScreenLine = fun _ -> None
+            FlushInput = fun () -> ()
+            ReadKey = fun () -> None
+            KeyAvailable = fun () -> false
+            KeyRowState = fun _ -> 0
+            WriteLine = ignore
+        }
+
+    match host.Channels.Get(ChannelId 1) with
+    | Result.Ok (:? IScreenChannel as screenChannel) ->
+        screenChannel.SetWindow(200, 200, 0, 0)
+        screenChannel.SetPaper(0)
+        screenChannel.Clear()
+        host.Graphics.SetDrawingContext(screenChannel.GetWindow(), screenChannel.GetPan(), (100.0, 0.0, 0.0))
+        host.Graphics.Block(7.0, 4.0, 10.0, 0.0, 5)
+
+        let pane = display.GetSnapshot().Panes |> List.find (fun item -> item.ChannelId = Some 1)
+        let litPixels =
+            seq {
+                for row in 0 .. Array2D.length1 pane.Pixels - 1 do
+                    for col in 0 .. Array2D.length2 pane.Pixels - 1 do
+                        if (pane.Pixels[row, col] &&& 0x00FFFFFF) = 5 then
+                            yield row, col
+            }
+            |> Seq.toArray
+
+        let minRow = litPixels |> Array.minBy fst |> fst
+        let maxRow = litPixels |> Array.maxBy fst |> fst
+        let minCol = litPixels |> Array.minBy snd |> snd
+        let maxCol = litPixels |> Array.maxBy snd |> snd
+
+        Assert.That(minCol, Is.EqualTo(10))
+        Assert.That(minRow, Is.EqualTo(0))
+        Assert.That(maxCol - minCol + 1, Is.EqualTo(7))
+        Assert.That(maxRow - minRow + 1, Is.EqualTo(4))
+    | Result.Ok channel ->
+        Assert.Fail($"Expected screen channel, got {channel.Kind}")
+    | Result.Error err ->
+        Assert.Fail($"Expected channel lookup to succeed, got %A{err}")
+
+[<Test>]
+let ``default host console pane shows graphics drawn into channel zero window`` () =
+    let host, display =
+        DefaultHost.createWithDisplay {
+            ReadLine = fun () -> None
+            ReadScreenLine = fun _ -> None
+            FlushInput = fun () -> ()
+            ReadKey = fun () -> None
+            KeyAvailable = fun () -> false
+            KeyRowState = fun _ -> 0
+            WriteLine = ignore
+        }
+
+    match host.Channels.Get(ChannelId 0) with
+    | Result.Ok (:? IScreenChannel as channel0) ->
+        channel0.SetWindow(100, 20, 10, 10)
+        channel0.SetPaper(0)
+        channel0.Clear()
+        host.Graphics.SetDrawingContext(channel0.GetWindow(), channel0.GetPan(), (100.0, 0.0, 0.0))
+        host.Graphics.Block(80.0, 4.0, 0.0, 12.0, 2)
+
+        let pane = display.GetSnapshot().Panes |> List.find (fun item -> item.ChannelId = Some 0)
+        let hasBar =
+            seq {
+                for row in 12 .. 15 do
+                    for col in 0 .. Array2D.length2 pane.Pixels - 1 do
+                        yield pane.Pixels[row, col] &&& 0x00FFFFFF
+            }
+            |> Seq.exists (fun color -> color = 2)
+
+        Assert.That(hasBar, Is.True)
+    | Result.Ok channel ->
+        Assert.Fail($"Expected channel #0 to be a screen channel, got {channel.Kind}")
+    | Result.Error err ->
+        Assert.Fail($"Expected channel #0 lookup to succeed, got %A{err}")
+
+[<Test>]
 let ``interpreter peek invalid address reports bad parameter runtime error`` () =
     let host, _ = createScreenHost []
     let ast =
@@ -106,7 +483,7 @@ let ``default host supports peek and poke built-ins`` () =
                                                                  call "PEEK_W" [ num "200" ] ]) ]) ])
 
     let output = runProgram ast
-    Assert.That(String.concat "|" output, Is.EqualTo("52 18 4660"))
+    Assert.That(String.concat "|" output, Is.EqualTo("18 52 4660"))
 
 [<Test>]
 let ``interpreter runtime errors prefer BASIC line numbers in messages`` () =
@@ -3132,6 +3509,91 @@ let ``default host rasterizes dline circle ellipse and arc into pane pixels`` ()
         Assert.Fail($"Expected channel lookup to succeed, got %A{err}")
 
 [<Test>]
+let ``default host filled circles for trees cover 2d clusters rather than thin lines`` () =
+    let host, display =
+        DefaultHost.createWithDisplay {
+            ReadLine = fun () -> None
+            ReadScreenLine = fun _ -> None
+            FlushInput = fun () -> ()
+            ReadKey = fun () -> None
+            KeyAvailable = fun () -> false
+            KeyRowState = fun _ -> 0
+            WriteLine = ignore
+        }
+
+    match host.Channels.Get(ChannelId 1) with
+    | Result.Ok (:? IScreenChannel as screenChannel) ->
+        screenChannel.SetPaper(0)
+        screenChannel.Clear()
+        host.Graphics.SetDrawingContext(screenChannel.GetWindow(), screenChannel.GetPan(), (100.0, 0.0, 0.0))
+        host.Graphics.SetInk([ 3 ])
+        host.Graphics.SetFill(1)
+        host.Graphics.Circle(30.0, 70.0, 1.3)
+        host.Graphics.Circle(55.0, 45.0, 2.2)
+        host.Graphics.Circle(80.0, 60.0, 1.8)
+
+        let pane = display.GetSnapshot().Panes |> List.find (fun item -> item.ChannelId = Some 1)
+        let treePixels =
+            [ for row = 0 to Array2D.length1 pane.Pixels - 1 do
+                  for col = 0 to Array2D.length2 pane.Pixels - 1 do
+                      if (pane.Pixels[row, col] &&& 0x00FFFFFF) = 3 then
+                          yield row, col ]
+
+        let distinctRows = treePixels |> List.map fst |> List.distinct |> List.length
+        let distinctCols = treePixels |> List.map snd |> List.distinct |> List.length
+
+        Assert.That(treePixels.Length, Is.GreaterThan(20))
+        Assert.That(distinctRows, Is.GreaterThan(8))
+        Assert.That(distinctCols, Is.GreaterThan(8))
+    | Result.Ok channel ->
+        Assert.Fail($"Expected screen channel, got {channel.Kind}")
+    | Result.Error err ->
+        Assert.Fail($"Expected channel lookup to succeed, got %A{err}")
+
+[<Test>]
+let ``default host densely spaced vertical graphics lines fill adjacent pixel columns`` () =
+    let host, display =
+        DefaultHost.createWithDisplay {
+            ReadLine = fun () -> None
+            ReadScreenLine = fun _ -> None
+            FlushInput = fun () -> ()
+            ReadKey = fun () -> None
+            KeyAvailable = fun () -> false
+            KeyRowState = fun _ -> 0
+            WriteLine = ignore
+        }
+
+    match host.Channels.Get(ChannelId 1) with
+    | Result.Ok (:? IScreenChannel as screenChannel) ->
+        screenChannel.SetPaper(0)
+        screenChannel.Clear()
+        host.Graphics.SetDrawingContext(screenChannel.GetWindow(), screenChannel.GetPan(), (100.0, 0.0, 0.0))
+        host.Graphics.SetInk([ 4 ])
+
+        for index = 0 to 8 do
+            let x = float index * 0.7
+            host.Graphics.Line(x, 40.0, x, 20.0)
+
+        let pane = display.GetSnapshot().Panes |> List.find (fun item -> item.ChannelId = Some 1)
+        let row = 215 - int (Math.Round(40.0 * 2.0))
+        let litColumns =
+            [ for col = 0 to Array2D.length2 pane.Pixels - 1 do
+                  if (pane.Pixels[row, col] &&& 0x00FFFFFF) = 4 then
+                      yield col ]
+
+        Assert.That(litColumns.Length, Is.GreaterThanOrEqualTo(9))
+        Assert.That(litColumns, Does.Contain(0))
+        Assert.That(litColumns, Does.Contain(1))
+        Assert.That(litColumns, Does.Contain(2))
+        Assert.That(litColumns, Does.Contain(3))
+        Assert.That(litColumns, Does.Contain(4))
+        Assert.That(litColumns, Does.Contain(5))
+    | Result.Ok channel ->
+        Assert.Fail($"Expected screen channel, got {channel.Kind}")
+    | Result.Error err ->
+        Assert.Fail($"Expected channel lookup to succeed, got %A{err}")
+
+[<Test>]
 let ``default host graphics modes apply xor under and flash to pixels`` () =
     let host, display =
         DefaultHost.createWithDisplay {
@@ -3237,7 +3699,7 @@ let ``default host pane surface composes graphics and text in one raster`` () =
 
         let pane = display.GetSnapshot().Panes |> List.find (fun item -> item.ChannelId = Some 1)
         Assert.That(pane.Surface[15, 3] &&& 0x00FFFFFF, Is.EqualTo(4))
-        Assert.That(pane.Surface[0, 0] &&& 0x00FFFFFF, Is.EqualTo(246))
+        Assert.That(pane.Surface[0, 0] &&& 0x00FFFFFF, Is.EqualTo(6))
         let hasInk =
             seq {
                 for row in 0 .. Array2D.length1 pane.Surface - 1 do
