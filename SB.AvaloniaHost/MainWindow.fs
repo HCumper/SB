@@ -39,6 +39,45 @@ type MainWindow(display: IDisplaySurface, handleTextInput: string -> unit, handl
               Shift = args.KeyModifiers.HasFlag(KeyModifiers.Shift)
               Control = args.KeyModifiers.HasFlag(KeyModifiers.Control) })
 
+    let handlePrintableKey (args: KeyEventArgs) =
+        let text = args.KeySymbol |> Option.ofObj |> Option.defaultValue String.Empty
+        if not (String.IsNullOrEmpty text) && not (args.KeyModifiers.HasFlag(KeyModifiers.Control)) then
+            handleTextInput text
+            surface.InvalidateVisual()
+            args.Handled <- true
+            true
+        else
+            false
+
+    let handleKeyDown (args: KeyEventArgs) =
+        match tryMapSpecialKey args with
+        | Some keyInfo ->
+            if handleSpecialKey keyInfo then
+                surface.InvalidateVisual()
+                args.Handled <- true
+        | None ->
+            if not (handlePrintableKey args) then
+                pulseGameplayKey ()
+                surface.InvalidateVisual()
+
+    let handleKeyUp (args: KeyEventArgs) =
+        match tryMapSpecialKey args with
+        | Some keyInfo ->
+            releaseSpecialKey keyInfo
+            surface.InvalidateVisual()
+            args.Handled <- true
+        | None ->
+            releaseGameplayKey ()
+            surface.InvalidateVisual()
+            args.Handled <- true
+
+    let handleTextInputEvent (args: TextInputEventArgs) =
+        let text = args.Text |> Option.ofObj |> Option.defaultValue String.Empty
+        if not (String.IsNullOrEmpty text) then
+            handleTextInput text
+            surface.InvalidateVisual()
+            args.Handled <- true
+
     do
         this.Title <- "SB Runtime Host"
         this.Width <- 980.0
@@ -49,38 +88,29 @@ type MainWindow(display: IDisplaySurface, handleTextInput: string -> unit, handl
         this.Background <- Brushes.Black
         surface.AttachDisplaySurface(display)
         this.Focusable <- true
-        surface.Focusable <- false
-        this.TextInput.Add(fun args ->
-            let text = args.Text |> Option.ofObj |> Option.defaultValue String.Empty
-            if not (String.IsNullOrEmpty text) then
-                handleTextInput text
-                surface.InvalidateVisual()
-                args.Handled <- true)
-        this.KeyDown.Add(fun args ->
-            match tryMapSpecialKey args with
-            | Some keyInfo ->
-                if handleSpecialKey keyInfo then
-                    surface.InvalidateVisual()
-                    args.Handled <- true
-            | None ->
-                pulseGameplayKey ()
-                surface.InvalidateVisual()
-                args.Handled <- true)
-        this.KeyUp.Add(fun args ->
-            match tryMapSpecialKey args with
-            | Some keyInfo ->
-                releaseSpecialKey keyInfo
-                surface.InvalidateVisual()
-                args.Handled <- true
-            | None ->
-                releaseGameplayKey ()
-                surface.InvalidateVisual()
-                args.Handled <- true)
+        surface.Focusable <- true
+        this.TextInput.Add(handleTextInputEvent)
+        surface.TextInput.Add(handleTextInputEvent)
+        this.KeyDown.Add(handleKeyDown)
+        surface.KeyDown.Add(handleKeyDown)
+        this.KeyUp.Add(handleKeyUp)
+        surface.KeyUp.Add(handleKeyUp)
         repaintTimer.Interval <- TimeSpan.FromMilliseconds(16.0)
         repaintTimer.Tick.Add(fun _ -> surface.InvalidateVisual())
         repaintTimer.Start()
         this.Content <- surface
-        this.Opened.Add(fun _ -> this.Focus() |> ignore)
+        this.Opened.Add(fun _ ->
+            this.Focus() |> ignore
+            surface.Focus() |> ignore)
+        this.Activated.Add(fun _ ->
+            this.Focus() |> ignore
+            surface.Focus() |> ignore)
+        this.PointerPressed.Add(fun _ ->
+            this.Focus() |> ignore
+            surface.Focus() |> ignore)
+        surface.PointerPressed.Add(fun _ ->
+            this.Focus() |> ignore
+            surface.Focus() |> ignore)
         this.Closed.Add(fun _ ->
             match Application.Current with
             | null -> ()

@@ -6,6 +6,7 @@
 150 holes = 9:initialise:CLS:max = 100
 160 CLS#0:BORDER#0,2,4:course=0:CLS#0
 170 INPUT#0,\"Load Your Own High Scores ? (y/n) ";an$
+175 REMark PRINT "im here": SLUG 9999:STOP
 180 IF an$="Y" OR an$="y" THEN dataload
 190 CLS#0:PRINT#0;\"SPACE=PLAY : ANY KEY=TOPSCORES"
 200 pointer$=INKEY$(-1)

@@ -1,6 +1,7 @@
 namespace SBAvaloniaHost
 
 open System
+open System.Globalization
 open System.Runtime.InteropServices
 open Avalonia
 open Avalonia.Controls
@@ -206,6 +207,42 @@ type RuntimeSurfaceControl() as this =
                                         scale)
                                 context.FillRectangle(brush, pixelRect)
 
+    let drawConsoleTextFallback (context: DrawingContext) (modeInfo: ScreenModeInfo) recolor palette (pane: ScreenPaneSnapshot) (viewportRect: Rect) (scale: float) =
+        let x = let _, _, px, _ = pane.Window in px
+        let y = let _, _, _, py = pane.Window in py
+        let charWidthScale, charHeightScale =
+            let widthScale, heightScale = pane.CharacterSize
+            max 1 (widthScale + 1), max 1 (heightScale + 1)
+        let logicalCellWidth = modeInfo.BaseTextCellWidth * charWidthScale
+        let logicalCellHeight = modeInfo.BaseTextCellHeight * charHeightScale
+        let logicalAdvance =
+            if modeInfo.IsQlCompatible && pane.CharacterSize = (0, 0) then
+                logicalCellWidth
+            else
+                max 1 (logicalCellWidth - max 4 ((2 * logicalCellWidth) / 3))
+        let typeface = Typeface("Consolas")
+        let fontSize = max 8.0 (float logicalCellHeight * scale * 0.9)
+
+        for row = 0 to Array2D.length1 pane.Text - 1 do
+            for col = 0 to Array2D.length2 pane.Text - 1 do
+                let cell = pane.Text[row, col]
+                if cell.Character <> ' ' then
+                    let brush =
+                        SolidColorBrush(pixelColorFor modeInfo.Mode recolor palette (x + (col * logicalAdvance)) (y + (row * logicalCellHeight)) cell.Ink)
+                    let formatted =
+                        FormattedText(
+                            string cell.Character,
+                            CultureInfo.InvariantCulture,
+                            FlowDirection.LeftToRight,
+                            typeface,
+                            fontSize,
+                            brush)
+                    let drawPoint =
+                        Point(
+                            viewportRect.X + (float (col * logicalAdvance) * scale),
+                            viewportRect.Y + (float (row * logicalCellHeight) * scale) - 1.0)
+                    context.DrawText(formatted, drawPoint)
+
     let paneHasVisibleContent (pane: ScreenPaneSnapshot) =
         let hasText = paneHasLocalText pane
 
@@ -264,7 +301,6 @@ type RuntimeSurfaceControl() as this =
 
             let visiblePanes =
                 snapshot.Panes
-                |> List.filter (fun pane -> pane.ChannelId <> Some 0)
                 |> List.filter (fun pane ->
                     match pane.ChannelId with
                     | Some 2 -> paneHasVisibleContent pane
@@ -322,7 +358,7 @@ type RuntimeSurfaceControl() as this =
                 let paneSurfaceHeight = Array2D.length1 pane.Surface
                 let paneSurfaceWidth = Array2D.length2 pane.Surface
 
-                let drawPaneSurface = true
+                let drawPaneSurface = pane.Kind <> ConsoleChannel
 
                 if drawPaneSurface && paneSurfaceHeight > 0 && paneSurfaceWidth > 0 then
                     use bitmap =
@@ -347,6 +383,8 @@ type RuntimeSurfaceControl() as this =
 
                     Marshal.Copy(bytes, 0, framebuffer.Address, bytes.Length)
                     context.DrawImage(bitmap, Rect(0.0, 0.0, float paneSurfaceWidth, float paneSurfaceHeight), viewportRect)
+                elif pane.Kind = ConsoleChannel && paneHasLocalText pane then
+                    drawConsoleTextFallback context snapshot.Mode pane.Recolor pane.Palette pane viewportRect scale
                 elif paneHasLocalText pane then
                     drawPaneTextDirectly context snapshot.Mode pane.Recolor pane.Palette pane viewportRect scale
 
