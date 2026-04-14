@@ -114,6 +114,8 @@ let defaultRuntimeOptions =
       LoadProgram = fun path -> Result.Error $"Runtime program loading is not configured for '{path}'."
       MergeProgram = fun (_, path) -> Result.Error $"Runtime program merge is not configured for '{path}'." }
 
+let private qlEpoch = DateTime(1961, 1, 1, 0, 0, 0, DateTimeKind.Utc)
+
 type private Frame = {
     Cells: Map<SymbolId, Cell>
     ReturnType: HirType option
@@ -135,6 +137,7 @@ type private RuntimeState = {
     ActiveErrorHandler: HirBlock option
     LastError: ErrorInfo option
     InErrorHandler: bool
+    ClockOffsetSeconds: int64
     RandomSource: Random
     ExecutionGovernor: (unit -> unit) option
     Options: RuntimeOptions
@@ -591,6 +594,12 @@ let private reinitializeProgramState state program sourceProgram =
         NextLineNumber = None }
     |> resetErrorProcessing
 
+let private qlSecondsFromDateTime (value: DateTime) =
+    int64 (value.ToUniversalTime().Subtract(qlEpoch).TotalSeconds)
+
+let private effectiveClock state =
+    state.Options.Clock().ToUniversalTime().AddSeconds(float state.ClockOffsetSeconds)
+
 let private writeOutputToChannel channelId line state pos =
     match channelId with
     | None ->
@@ -949,7 +958,7 @@ and private evalBuiltInFunction state symbolId argExprs hirType pos =
             BuiltInFunctions.evaluate
                 name
                 (hirType = HIR.HirType.Float)
-                nextState.Options.Clock
+                (fun () -> effectiveClock nextState)
                 (fun () -> nextState.RandomSource)
                 nextState.Options.Host.Environment.GetVariable
                 nextState.Options.Host.Input.ReadKey
@@ -1638,7 +1647,45 @@ and private executeBuiltInCall state kind channel args targets pos =
                                      writeOutputToChannel resolvedChannel entry currentState pos
                                      |> Result.bind (fun stateAfterWrite -> advanceScreenLine resolvedChannel stateAfterWrite pos))))
                             |> Result.map (fun finalState -> Continue, finalState)))
-        | "PAUSE" ->
+        | "DELETE" ->
+            unsupportedChannel ()
+            |> Result.bind (fun _ ->
+                evalExprList state args
+                |> Result.bind (fun (values, nextState) ->
+                    match values with
+                    | [ pathValue ] ->
+                        match nextState.Options.Host.Files.Delete(asString pathValue) with
+                        | Result.Ok() -> Result.Ok(Continue, nextState)
+                        | Result.Error hostError -> runtimeError UnsupportedChannelExecution (Some pos) (hostErrorText hostError)
+                    | _ ->
+                        runtimeError BuiltInArityMismatch (Some pos) $"Built-in statement '{name}' expects one argument."))
+        | "COPY"
+        | "COPY_N" ->
+            unsupportedChannel ()
+            |> Result.bind (fun _ ->
+                evalExprList state args
+                |> Result.bind (fun (values, nextState) ->
+                    match values with
+                    | [ sourcePath; targetPath ] ->
+                        match nextState.Options.Host.Files.Copy(asString sourcePath, asString targetPath) with
+                        | Result.Ok() -> Result.Ok(Continue, nextState)
+                        | Result.Error hostError -> runtimeError UnsupportedChannelExecution (Some pos) (hostErrorText hostError)
+                    | _ ->
+                        runtimeError BuiltInArityMismatch (Some pos) $"Built-in statement '{name}' expects two arguments."))
+        | "MOVE" ->
+            unsupportedChannel ()
+            |> Result.bind (fun _ ->
+                evalExprList state args
+                |> Result.bind (fun (values, nextState) ->
+                    match values with
+                    | [ sourcePath; targetPath ] ->
+                        match nextState.Options.Host.Files.Move(asString sourcePath, asString targetPath) with
+                        | Result.Ok() -> Result.Ok(Continue, nextState)
+                        | Result.Error hostError -> runtimeError UnsupportedChannelExecution (Some pos) (hostErrorText hostError)
+                    | _ ->
+                        runtimeError BuiltInArityMismatch (Some pos) $"Built-in statement '{name}' expects two arguments."))
+        | "PAUSE"
+        | "WAIT" ->
             unsupportedChannel ()
             |> Result.bind (fun _ ->
                 evalExprList state args
@@ -1664,6 +1711,17 @@ and private executeBuiltInCall state kind channel args targets pos =
 
                         pause duration
                         Continue, nextState)))
+        | "SDATE" ->
+            unsupportedChannel ()
+            |> Result.bind (fun _ ->
+                evalExprList state args
+                |> Result.bind (fun (values, nextState) ->
+                    match values with
+                    | [ desiredDate ] ->
+                        let offset = int64 (asInt desiredDate) - qlSecondsFromDateTime (nextState.Options.Clock())
+                        Result.Ok(Continue, { nextState with ClockOffsetSeconds = offset })
+                    | _ ->
+                        runtimeError BuiltInArityMismatch (Some pos) $"Built-in statement '{name}' expects one argument."))
         | "SLUG" ->
             unsupportedChannel ()
             |> Result.bind (fun _ ->
@@ -2241,7 +2299,7 @@ and private executeStmt resolveLine gosubStack state stmt =
             evalExpr state expr
             |> Result.bind (fun (value, nextState) ->
                 let lineNumber = asInt value
-                match nextState.Program.RestorePoints |> List.tryFind (fun point -> point.LineNumber = lineNumber) with
+                match nextState.Program.RestorePoints |> List.tryFind (fun point -> point.LineNumber >= lineNumber) with
                 | Some point ->
                     let (DataSlotId slot) = point.Slot
                     Result.Ok(Continue, { nextState with DataPointer = slot })
@@ -2540,6 +2598,7 @@ let interpretProgramWithOptions options (program: HirProgram) =
           ActiveErrorHandler = None
           LastError = None
           InErrorHandler = false
+          ClockOffsetSeconds = 0L
           RandomSource = options.Random
           ExecutionGovernor = executionGovernor
           Options = options }

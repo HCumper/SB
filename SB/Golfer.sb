@@ -1,11 +1,11 @@
-﻿100 REMark Golfer
+100 REMark Golfer
 110 REMark intro
 120 MODE 8:CLS
 130 WINDOW 512,256,0,0:PAPER 0:CLS:WINDOW 448,200,32,16:WINDOW#0,448,40,32,216:PAPER#0,0:CLS#0:PAPER#2,0:BORDER#2,0:INK#0,7
 140 BORDER 0,0:SCALE 100,0,0:PRINT "Please Wait"
 150 holes = 9:initialise:CLS:max = 100
 160 CLS#0:BORDER#0,2,4:course=0:CLS#0
-165 GO TO 245
+166 course=1: GO TO 250  
 170 INPUT#0,\"Load Your Own High Scores ? (y/n) ";an$
 180 IF an$="Y" OR an$="y" THEN dataload
 190 CLS#0:PRINT#0;\"SPACE=PLAY : ANY KEY=TOPSCORES"
@@ -14,7 +14,6 @@
 220 pointer$=" ":CLS#0
 230 INPUT#0;"Number of course? (1-100)  ";course
 240 IF course >100 OR course<0 THEN GO TO 230
-245 course = 1
 250 RANDOMISE course
 260 DIM shoots(holes):DIM pars(holes)
 270 PAPER#0,0:CLS:sc1=0
@@ -122,7 +121,7 @@
 1290     PAUSE 9
 1300   END FOR n
 1310 END DEFine ball
-1320 :
+1320 : 
 1330 POKE_W add,color:POKE_W add+128,color1
 1340 PAUSE 10
 1350 POKE_W add,newcol:POKE_W add+128,newcol1
@@ -221,9 +220,8 @@
 2280   IF bm<=1 AND ABS(bally-holey)<=1 THEN
 2290     POKE_W add,color:POKE_W add+128,color1:finished=1:RETurn
 2300   END IF
-2305   IF c1=6 OR c2=6 OR c3=6 OR c4=6 THEN putt:IF hazard THEN hazard=0:PAUSE 100:CLS#0:RETurn
 2310   IF c1=6 AND c2=6 OR c1=6 AND c3=6 THEN bunker
-2320   IF c1=5 OR c2=5 OR c3=5 OR c4=5 THEN wet
+2320   IF c1=5 THEN wet
 2330   IF c1=7 AND c3=4 OR c1=4 AND c3=7 THEN rough
 2340   IF c1=4 AND c2=4 OR c1=4 AND c3=4 THEN RETurn
 2350   IF c1=3 OR c2=3 THEN branches
@@ -395,7 +393,7 @@
 4010 :
 4020 DEFine PROCedure initialise
 4030   DIM cse(100):DIM score(100):DIM name$(100,16)
-4040   RANDOMISE 20000:RESTORE 4090
+4040   RANDOMISE 20000:RESTORE 160
 4050   FOR f=1 TO 100
 4060     LET score(f)=RND(-9 TO -4):READ player$
 4070     IF (f/5)=INT(f/5) THEN RESTORE 4090

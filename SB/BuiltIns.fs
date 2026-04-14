@@ -148,8 +148,12 @@ let private fixedArityBuiltIns =
       "EXP", 1
       "FILL$", 2
       "GETENV$", 1
+      "COPY", 2
+      "COPY_N", 2
+      "DELETE", 1
       "BEEPING", 0
       "INT", 1
+      "INSTR", 2
       "KEYROW", 1
       "LEN", 1
       "LN", 1
@@ -159,14 +163,17 @@ let private fixedArityBuiltIns =
       "PEEK", 1
       "PEEK_W", 1
       "PEEK_L", 1
+      "MOVE", 2
       "RIGHT$", 2
       "RND", 1
       "ROUND", 1
+      "SDATE", 1
       "SGN", 1
       "SIN", 1
       "SQRT", 1
       "STR$", 1
       "TAN", 1
+      "WAIT", 1
       "VAL", 1 ]
     |> List.map (fun (name, arity) -> normalizeIdentifier name, arity)
     |> Map.ofList
@@ -225,11 +232,16 @@ let private builtInSignatures =
       signature "EXP" (Some 1) (Some [ Numeric ])
       signature "FILL$" (Some 2) (Some [ String; Numeric ])
       signature "FLUSH" (Some 0) (Some [])
+      signature "COPY" (Some 2) (Some [ String; String ])
+      signature "COPY_N" (Some 2) (Some [ String; String ])
+      signature "DELETE" (Some 1) (Some [ String ])
       signature "GETENV$" (Some 1) (Some [ String ])
       signature "BEEPING" (Some 0) (Some [])
+      signature "MOVE" (Some 2) (Some [ String; String ])
       signature "INKEY" None None
       signature "INKEY$" None None
       signature "INPUT" None None
+      signature "INSTR" (Some 2) (Some [ String; String ])
       signature "INT" (Some 1) (Some [ Numeric ])
       signature "KEYROW" (Some 1) (Some [ Numeric ])
       signature "LEN" (Some 1) (Some [ String ])
@@ -246,6 +258,7 @@ let private builtInSignatures =
       signature "RND" (Some 1) (Some [ Numeric ])
       signature "RIGHT$" (Some 2) (Some [ String; Numeric ])
       signature "ROUND" (Some 1) (Some [ Numeric ])
+      signature "SDATE" (Some 1) (Some [ Numeric ])
       signature "S_FONT" (Some 2) (Some [ Numeric; Numeric ])
       signature "SGN" (Some 1) (Some [ Numeric ])
       signature "SIN" (Some 1) (Some [ Numeric ])
@@ -254,6 +267,7 @@ let private builtInSignatures =
       signature "STR$" (Some 1) (Some [ Numeric ])
       signature "TAN" (Some 1) (Some [ Numeric ])
       signature "TIME" None None
+      signature "WAIT" (Some 1) (Some [ Numeric ])
       signature "VAL" (Some 1) (Some [ String ]) ]
     |> Map.ofList
 

@@ -106,6 +106,13 @@ let ``interpreter instr returns one based position and zero when not found`` () 
     Assert.That(String.concat "|" output, Is.EqualTo("3 0"))
 
 [<Test>]
+let ``runtime instr callable built in returns one based position`` () =
+    match BuiltInFunctions.evaluate "INSTR" true (fun () -> DateTime.UnixEpoch) (fun () -> Random(1234)) (fun _ -> None) (fun () -> None) ignore (fun _ -> 0) (fun _ -> false) false [ RuntimeValues.ofString "na"; RuntimeValues.ofString "banana" ] with
+    | Result.Ok(Numeric(IntNumber number)) -> Assert.That(number, Is.EqualTo(3))
+    | Result.Ok other -> Assert.Fail($"Expected INSTR to return int, got %A{other}")
+    | Result.Error err -> Assert.Fail($"Expected INSTR to succeed, got %A{err}")
+
+[<Test>]
 let ``interpreter left and right clamp lengths to string bounds`` () =
     let ast =
         Program(
@@ -626,6 +633,60 @@ let ``runtime time and string helper built ins return expected values`` () =
     match evaluate "REPL$" [ RuntimeValues.ofString "abcdef"; RuntimeValues.ofString "ZZ"; RuntimeValues.ofInt 3; RuntimeValues.ofInt 2 ] with
     | Result.Ok(Text text) -> Assert.That(text, Is.EqualTo("abZZef"))
     | other -> Assert.Fail($"Expected REPL$ to return text, got %A{other}")
+
+[<Test>]
+let ``interpreter sdate adjusts date family and time built ins`` () =
+    let ast =
+        Program(
+            pos,
+            [ Line(pos, Some 10, [ ProcedureCall(pos, "SDATE", [ num "1988161445" ]) ])
+              Line(pos, Some 20, [ Assignment(pos, id "d", call "DATE" []) ])
+              Line(pos, Some 30, [ Assignment(pos, id "d$", call "DATE$" []) ])
+              Line(pos, Some 40, [ Assignment(pos, id "weekday$", call "DAY$" []) ])
+              Line(pos, Some 50, [ Assignment(pos, id "t", call "TIME" []) ])
+              Line(pos, Some 60, [ ProcedureCall(pos, "PRINT", [ id "d"; id "d$"; id "weekday$"; id "t" ]) ]) ])
+
+    let outputs = ResizeArray<string>()
+    let options =
+        { defaultRuntimeOptions with
+            Host =
+                DefaultHost.create {
+                    ReadLine = fun () -> None
+                    ReadScreenLine = fun _ -> None
+                    FlushInput = fun () -> ()
+                    ReadKey = fun () -> None
+                    KeyAvailable = fun () -> false
+                    KeyRowState = fun _ -> 0
+                    WriteLine = fun line -> outputs.Add(line)
+                }
+            Clock = fun () -> DateTime.UnixEpoch }
+
+    let hir = lowerProgram ast
+    let output = runHirProgramWithOptions options hir
+
+    Assert.That(String.concat "|" output, Is.EqualTo("1988161445 2024 Jan 02 03:04:05 Tuesday 11045"))
+
+[<Test>]
+let ``interpreter wait uses runtime sleeper like pause`` () =
+    let waits = ResizeArray<int>()
+    let hir =
+        makeProgram
+            Map.empty
+            []
+            [ H.BuiltInCall(H.NamedBuiltIn "WAIT", None, [ H.Literal(H.ConstInt 50, H.HirType.Int, pos) ], pos)
+              H.BuiltInCall(H.NamedBuiltIn "WAIT", None, [ H.Literal(H.ConstInt -3, H.HirType.Int, pos) ], pos) ]
+
+    let result =
+        interpretProgramWithOptions
+            { defaultRuntimeOptions with
+                Sleeper = fun milliseconds -> waits.Add(milliseconds) }
+            hir
+
+    match result with
+    | Result.Ok _ ->
+        Assert.That(waits |> Seq.toList, Is.EqualTo(box [ 20; 20; 10 ]))
+    | Result.Error err ->
+        Assert.Fail($"Expected interpretation to succeed, got %A{err}")
 
 [<Test>]
 let ``interpreter built in function arity mismatch reports coded runtime error`` () =

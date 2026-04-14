@@ -1,0 +1,788 @@
+1 REMark track_boot
+3 MODE 8
+10 hiscore=0
+20 f_level
+40 draw_main_screen
+50 draw_power
+60 initialise
+69 :
+90 REPeat game
+100 event_1 : screen
+110 IF NOT qualify THEN end_routine : GO TO 20
+120 event_2 : screen
+130 IF NOT qualify THEN end_routine : GO TO 20
+140 event_3 : screen
+150 IF NOT qualify THEN end_routine : GO TO 20
+160 event_4 : screen
+170 IF NOT qualify THEN end_routine : GO TO 20
+180 event_5 : screen
+190 IF NOT qualify THEN end_routine : GO TO 20
+200 next_level
+210 IF NOT qualify THEN end_routine : GO TO 20
+215 LET level=level+.5
+220 END REPeat game
+699 :
+700 DEFine PROCedure hi_scores
+705 LOCal i
+707 hi(event,0)=distance
+708 hi$(event,0)=a$
+710 IF hi(event,0)>hi(event,1) THEN 
+720 wr=wr+1
+730 FOR i=3 TO 1 STEP -1
+740 hi(event,i)=hi(event,i-1)
+750 hi$(event,i)=hi$(event,i-1)
+760 END FOR i
+762 RETurn 
+764 END IF 
+766 IF hi(event,0)>hi(event,2) THEN 
+770 hi(event,3)=hi(event,2) : hi$(event,3)=hi$(event,2)
+772 hi(event,2)=hi(event,0) : hi$(event,2)=hi$(event,0)
+774 wr=wr+1
+776 RETurn 
+778 END IF 
+780 IF hi(event,0)>hi(event,3) THEN 
+782 wr=wr+1
+784 hi(event,3)=hi(event,0) : hi$(event,3)=hi$(event,0)
+786 RETurn 
+788 END IF 
+790 END DEFine 
+799 :
+800 DEFine PROCedure reset
+810 STRIP #3,7,0
+820 AT #3,1,8 : PRINT #3,"           "
+830 INK #3,2 : STRIP #3,7
+840 AT #3,1,36 : PRINT #3,"00 "
+850 END DEFine 
+899 :
+900 DEFine PROCedure time (type)
+910 SELect ON type
+920 ON type=0 : ft=DATE : RETurn 
+930 ON type=1 : ut=DATE-ft : ut$=DATE$(ut)
+940 END SELect 
+942 CSIZE 2,0
+945 INK 5 : STRIP 2 : AT 8,35 : PRINT ut$(19 TO);".00"
+950 END DEFine 
+999 :
+1000 DEFine PROCedure event_1
+1005 event=1 : CLS #7 : draw_shot : reset
+1006 pos=2 : qual=0
+1007 INK #4,7 : FOR i=2 TO 4 : AT #4,i,14 : PRINT #4,"00.00" : END FOR i
+1009 REPeat shot
+1010 PAPER 0 : INK 5
+1011 foul=0
+1015 CSIZE 2,1
+1020 x=8 : y=3 : power=8
+1025 AT x,y : PRINT CHR$(128)
+1030 INK 0,7 : FILL 1 : CIRCLE 12,32,.75 : FILL 0
+1040 CSIZE 2,0 : INK 2 : PAPER 4 : AT 10,3 : PRINT "YOUR GO:"
+1045 FOR i=100 TO 10 STEP -1 : BEP 300,i : END FOR i
+1052 BEP 1000,5
+1055 AT 10,3 : PRINT "            " : AT #3,1,power : STRIP #3,0: PRINT #3,"    "
+1056 n=0
+1060 FOR shot_loop=1 TO 60
+1070 key1=KEYROW(1)
+1072 IF key1<>0 THEN BEP 200,100
+1073 IF key1>=64 AND key1<100 THEN EXIT shot_loop
+1075 IF key1<>0 AND key1<>key2 AND power<23.5 THEN LET n=n+1
+1076 IF n=INT(level) THEN power=power+1 : n=0
+1080 IF power>8 AND (key1=0 OR key1=key2)THEN power=power-.2
+1090 AT #3,1,power : STRIP #3,0 : PRINT #3," " : STRIP #3,7,0 : AT #3,1,power+1 : PRINT #3," "
+1095 FOR i=1 TO 120 : END FOR i
+1100 key2=key1
+1120 END FOR shot_loop
+1130 IF shot_loop=60 THEN foul=1
+1140 IF NOT foul THEN throw : GO TO 1200
+1150 INK 2 : STRIP 1 : FLASH 1
+1160 AT 14,2 : PRINT "FOUL"
+1170 FLASH 0
+1175 AT #4,pos,14 : PRINT #4,"-----"
+1180 FOR i=1 TO 1000 : END FOR i
+1195 distance=0
+1200 pos=pos+1
+1210 score=score+INT(distance*10)
+1215 INK #4,2
+1230 IF score>9 AND score<100 THEN AT #4,0,10 : PRINT #4,score
+1240 IF score>99 AND score<1000 THEN AT #4,0,9 : PRINT #4,score
+1245 IF score>999 AND score<10000 THEN AT #4,0,8 : PRINT #4,score
+1246 IF score>9999 THEN AT #4,0,7 : PRINT #4,score
+1250 IF NOT foul THEN INK 2 : FILL 1 : CIRCLE x,y,.8 : FILL 0
+1270 draw_shot
+1280 reset
+1282 INK 4
+1283 FOR i=1 TO 1500 : END FOR i
+1285 AT 11,1 : PRINT "                          "
+1286 AT 13,1 : PRINT "                         "
+1288 STRIP 4 : AT 14,2 : PRINT "         "
+1290 hi_scores
+1291 print_hi_scores
+1292 power=8
+1293 IF pos=5 THEN EXIT shot
+1295 END REPeat shot
+1296 qualify=qual
+1297 END DEFine 
+1299 :
+1300 DEFine PROCedure throw
+1305 CSIZE 2,1 : STRIP 0 : INK 5
+1310 AT x,y : PRINT " " : AT x,y+1 : PRINT CHR$(129)
+1320 REMark BEEP 1000,5
+1325 angle=10 : STRIP #3,7 : INK #3,2
+1326 AT #3,1,36 : PRINT #3,angle
+1330 REPeat key
+1340 IF KEYROW(1)=0 OR angle>80 THEN EXIT key
+1350 angle=angle+2
+1360 AT #3,1,36 : PRINT #3,angle
+1370 END REPeat key
+1375 x=22 : y=37 : INK 0,7
+1376 FILL 1 : CIRCLE x,y,1 : FILL 0
+1377 IF angle<50 THEN a=(angle/10.5)
+1378 IF angle>49 THEN a=(1/angle)*200
+1379 b=angle/40
+1380 n=0
+1384 i=0
+1385 REPeat launch
+1386 i=i+1
+1390 x1=x : y1=y
+1400 IF i>power*.7 AND NOT n THEN a=a-(a/3) : b=-(b*2) : n=1
+1410 x=x+a : y=y+b
+1420 FILL 1 : INK 4 : CIRCLE x1,y1,1 : FILL 0
+1430 FILL 1 : INK 0,7 : CIRCLE x,y,1 : FILL 0
+1440 IF y<=30 THEN EXIT launch
+1450 END REPeat launch
+1460 draw_shot
+1470 FILL 1 : INK 0,7 : CIRCLE x,y,1 : FILL 0
+1475 di=11
+1480 FOR i=26 TO x
+1490 di=di+1
+1510 END FOR i
+1520 distance=((di/35)*7)+(INT(RND(0 TO 20))/100)
+1530 CSIZE 2,0 : INK 2
+1540 AT 11,1 : PRINT "YOUR THROW WAS "; distance;"m"
+1550 IF distance>=15.28 AND NOT qual THEN INK 0 : AT 13,1 : PRINT "YOU HAVE QUALIFIED" : qual=1
+1560 IF distance>=10 THEN AT #4,pos,14 : PRINT #4,distance : ELSE AT #4,pos,15 : PRINT #4,distance
+1570 END DEFine 
+1999 :
+2000 DEFine PROCedure event_2
+2005 event=2
+2010 pos=2 : level2=1 : lim=.2
+2015 CLS #7
+2020 INK #4,7 : FOR i=2 TO 4 : AT #4,i,14 : PRINT #4,"00.00" : END FOR i
+2021 IF INT(level)=3 THEN level2=2
+2022 IF INT(level)=2 THEN lim=1
+2025 qual=0
+2027 REPeat sprint_loop
+2030 draw_sprint
+2035 time(0) : time(1) : INK 0 : AT 8,30 : PRINT "TIME:"
+2040 foul=0 : tot=1 : gm=1 : fin=290 : power=8
+2045 reset
+2050 CSIZE 2,1 : INK 5 : STRIP 2 : AT 8,14 : PRINT CHR$(130)
+2055 co=14
+2060 n=0 : key1=0 : key2=0 : char=130 : total=380
+2065 CSIZE 2,0 : INK 2 : PAPER 4 : AT 10,3 : PRINT "GET READY..."
+2070 le=RND(900 TO 1400)
+2075 FOR i=1 TO le : END FOR i
+2080 BEP 1000,1 : AT 12,3 : PRINT "GO!"
+2083 time(0)
+2085 PAUSE 40000
+2086 AT #3,1,power : STRIP #3,0 : PRINT #3," "
+2090 AT 10,3 : PRINT "                " : AT 12,3 : PRINT "              "
+2100 REPeat sprint_1
+2105 IF char=131 THEN time (1)
+2110 CSIZE 2,1 : STRIP 2 : INK 5
+2120 key1=KEYROW(1)
+2125 BEP 300,100
+2130 IF key1<>0 AND key1<>key2 AND power<23.5 THEN n=n+1
+2135 IF n=level2 THEN power=power+1 : n=0
+2140 IF power>8 AND (key1=0 OR key1=key2) THEN power=power-lim
+2145 AT #3,1,power : STRIP #3,0 : PRINT #3," " : STRIP #3,7,0 : AT #3,1,power+1 : PRINT #3," "
+2150 key2=key1
+2155 total=total-power
+2160 IF char=130 THEN char=131 : ELSE char=130
+2162 IF co>=30 THEN co=0 : INK #6,7 : POINT #6,732,0 : POINT #6,732,100
+2165 IF NOT gm THEN AT 8,14 : PRINT " " : PAN #6,-power : AT 8,14 : PRINT CHR$(char)
+2170 IF gm THEN AT 8,14 : PRINT " " : PAN #6,-25 : AT 8,14 : PRINT CHR$(char)
+2175 co=co+power
+2180 IF total<100 AND tot THEN LINE #6,730,100 TO 680,0 : tot=0
+2182 IF total<100 THEN fin=fin-power
+2183 IF fin<=0 THEN EXIT sprint_1
+2185 gm=0
+2190 END REPeat sprint_1
+2195 tme=ut$(19 TO )+(INT(RND(1 TO 98))/100)
+2200 CSIZE 2,0 : STRIP 2 : INK 5
+2205 IF tme<10 THEN AT 8,35 : PRINT "0";tme : ELSE AT 8,35 : PRINT tme
+2210 BEP 1000,1
+2215 IF tme<10 THEN AT #4,pos,14 : PRINT #4,"0";tme : ELSE AT #4,pos,14 : PRINT #4,tme
+2220 pos=pos+1
+2225 IF NOT qual AND tme<12.65 THEN qual=1 : INK 0 : STRIP 4 : AT 13,1 : PRINT "YOU HAVE QUALIFIED"
+2230 score=score+INT((30-tme)*15)
+2232 INK #4,2
+2235 IF score>9 AND score<100 THEN AT #4,0,10 : PRINT #4,score
+2240 IF score>99 AND score<1000 THEN AT #4,0,9 : PRINT #4,score
+2245 IF score>999 AND score<10000 THEN AT #4,0,8 : PRINT #4,score
+2246 IF score>9999 THEN AT #4,0,7 : PRINT #4,score
+2250 hi_scores_2
+2255 print_hi_scores
+2260 FOR i=1 TO 1500 : END FOR i
+2265 AT 13,1 : STRIP 4 : PRINT "                   "
+2270 IF pos=5 THEN EXIT sprint_loop
+2275 END REPeat sprint_loop
+2280 qualify=qual
+2285 END DEFine 
+2999 :
+3000 DEFine PROCedure event_3
+3005 event=3 : pos=2 : CLS #7
+3010 INK #4,7 : FOR i=2 TO 4 : AT #4,i,14 : PRINT #4,"00.00" : END FOR i
+3015 qual=0
+3020 REPeat jav_loop
+3025 draw_jav
+3030 foul=0 : power=8 : reset : dist=0 : me=0
+3035 key1=0 : key2=0 : char=132 : n=0 : co=0
+3040 CSIZE 2,1 : STRIP 2 : INK 5 : AT 9,8 : PRINT CHR$(132)
+3045 INK 7 : LINE 25,26 TO 35,26
+3050 CSIZE 2,0 : INK 2 : PAPER 4 : AT 10,3 : PRINT "YOUR GO:"
+3055 FOR i=100 TO 10 STEP -1 : BEP 300,i : END FOR i
+3056 PAUSE 40000
+3060 BEP 1000,5
+3065 AT 10,3 : PRINT "            " : AT #3,1,power : STRIP #3,0 : PRINT #3,"   "
+3067 CSIZE 2,1
+3070 FOR i=1 TO 34
+3075 key1=KEYROW(1)
+3080 BEP 300,100
+3083 IF key1>=64 AND key1<100 THEN EXIT i
+3085 IF key1<>0 AND key1<>key2 AND power<23.5 THEN n=n+1
+3090 IF n=INT(level) THEN power=power+1 : n=0
+3095 IF power>8 AND (key1=0 OR key1=key2) THEN power=power-.2
+3100 AT #3,1,power : STRIP #3,0 : PRINT #3," " : STRIP #3,7,0 : AT #3,1,power+1 : PRINT #3," "
+3105 key2=key1
+3110 IF char=133 THEN char=132 : ELSE char=133
+3115 INK 2 : STRIP 2
+3120 LINE 25,26 TO 35,26 : AT 9,8 : PRINT " " : PAN #8,-10 : INK 5 : AT 9,8 : PRINT CHR$(char) : INK 7 : LINE 25,26 TO 35,26
+3124 co=co+1
+3125 IF co=10 THEN INK 2 : CSIZE 2,0 : STRIP 1 : AT 19,37 : PRINT me+10
+3126 IF co=10 THEN LINE #8,1451,100 TO 1371,0 : co=0 : me=me+10
+3127 CSIZE 2,1 : INK 5 : STRIP 2
+3180 END FOR i
+3185 IF i=34 THEN foul=1
+3186 dist=-((33-i)) : power=power*1.14
+3190 IF NOT foul THEN throw_jav : GO TO 3200
+3191 CSIZE 2,0
+3192 distance=0
+3193 STRIP 1 : INK 2 : FLASH 1 : AT 14,2 : PRINT "FOUL" : FLASH 0
+3194 FOR i=1 TO 1000 : END FOR i
+3195 INK #4,7 : AT #4,pos,14 : PRINT #4,"-----"
+3200 pos=pos+1
+3205 INK #4,2
+3210 IF score>9 AND score<100 THEN AT #4,0,10 : PRINT #4,score
+3215 IF score>99 AND score<1000 THEN AT #4,0,9 : PRINT #4,score
+3220 IF score>999 AND score<10000 THEN AT #4,0,8 : PRINT #4,score
+3221 IF score>9999 THEN AT #4,0,7 : PRINT #4,score
+3225 hi_scores
+3230 PRINT _hi_scores
+3235 FOR i=1 TO 1500 : END FOR i
+3236 STRIP 4
+3240 AT 11,1 : PRINT "                      " : AT 13,1 : PRINT "                      "
+3241 AT 14,2 : PRINT "      "
+3245 IF pos=5 THEN EXIT jav_loop
+3250 END REPeat jav_loop
+3255 qualify=qual
+3260 END DEFine 
+3299 :
+3300 DEFine PROCedure throw_jav
+3305 BEP 1000,5
+3310 angle=10 : STRIP #3,7 : INK #3,2
+3315 AT #3,1,36 : PRINT #3,angle
+3320 REPeat key_jav
+3325 IF KEYROW(1)=0 OR angle>80 THEN EXIT key_jav
+3330 angle=angle+3
+3335 AT #3,1,36 : PRINT #3,angle
+3340 END REPeat key_jav
+3342 BEP 1000,5
+3345 x=25 : y=28
+3350 h=angle/60 : a=angle/12 : b=SQRT(100-(a*a)) : hh=1 : a1=a : ha=0
+3355 INK 2 : LINE 25,26 TO 35,26 : INK 7 : LINE x,y TO x+b,y+a
+3356 IF angle>50 THEN power=power-(angle/10)
+3357 i=1
+3358 IF angle<30 THEN power=power-1
+3360 REPeat mve_jav
+3362 y1=y
+3370 PAN #8,-10
+3373 co=co+1 : dist=dist+1
+3374 IF co=10 AND me<90 THEN INK 2 : CSIZE 2,0 : STRIP 1 : AT 19,37 : PRINT me+10
+3375 IF co=10 THEN LINE #8,1451,100 TO 1371,0 : co=0 : me=me+10
+3380 IF (y+h)+a<64 AND NOT ha THEN y=y+h
+3384 IF y+a<28 THEN EXIT mve_jav
+3385 INK 4 : LINE x,y1 TO x+b,y1+a1 : INK 7 : LINE x,y TO x+b,y+a
+3386 a1=a
+3390 IF i>(power*3)*.7 AND hh THEN hh=0 : h=-h : a=-a : ha=0
+3396 IF i>(power*3)*.5 AND hh THEN ha=1
+3397 i=i+1
+3399 END REPeat mve_jav
+3402 PAN #8,-29
+3405 INK 4 : LINE x,y1 TO x+b,y1+a1 : INK 7 : LINE x,y+a TO x+b,y+(a+a)
+3410 CSIZE 2,1 : INK 2 : STRIP 4
+3412 distance=dist+(INT(RND(1 TO 98))/100)
+3413 CSIZE 2,0
+3414 IF distance<1 THEN distance=0 : dist=distance
+3415 AT 11,1 : PRINT "YOUR THROW WAS ";distance;"m"
+3420 IF distance>70.23 AND NOT qual THEN INK 0 : AT 13,1  : PRINT "YOU HAVE QUALIFIED" : qual=1
+3425 score=score+(dist*3)
+3430 IF distance<10 THEN INK #4,7 : AT #4,pos,14 : PRINT #4,"0";distance : ELSE INK #4,7 : AT #4,pos,14 : PRINT #4,distance
+3440 END DEFine 
+3999 :
+4000 DEFine PROCedure event_4
+4005 event=4 : pos=2 : CLS #7 : qual=0
+4010 INK #4,7 : FOR i=2 TO 4 : AT #4,i,14, : PRINT #4,"00.00" : END FOR i
+4015 REPeat lo_sprint_loop
+4020 draw_lsprint
+4025 time (0) : time (1) : INK 0 : AT 8,30 : PRINT "TIME:"
+4030 foul=0 : tot=1 : gm=1 : fin=290 : power=8 : limit=23.5
+4035 reset
+4040 CSIZE 2,1 : INK 5 : STRIP 2 : AT 8,14 : PRINT CHR$(130)
+4045 co=14 : n=0 : key1=0 : key2=0 : char=130 : total=740 : pow_to=0
+4050 CSIZE 2,0 : INK 2 : PAPER 4 : AT 10,3 : PRINT "GET READY..."
+4055 le=RND(1000 TO 1600)
+4060 FOR i=1 TO le : END FOR i
+4065 BEP 1000,1 : AT 12,3 : PRINT "GO!"
+4070 time (0)
+4075 PAUSE 40000
+4080 AT #3,1,power : STRIP #3,0 : PRINT #3,"   "
+4085 AT 10,3 : PRINT "                      " : AT 12,3 : PRINT "        "
+4090 REPeat lo_sprint_1
+4095 IF char=130 THEN time (1)
+4100 CSIZE 2,1 : STRIP 2 : INK 5
+4105 key1=KEYROW(1)
+4110 BEP 300,100
+4115 IF key1<>0 AND key1<>key2 AND power<limit THEN n=n+1
+4117 IF power<limit AND n=INT(level) THEN power=power+1
+4120 IF n=INT(level) THEN n=0 : pow_to=pow_to+power
+4122 IF power>=limit AND power>8 THEN power=power-1
+4125 IF power>8 AND (key1=0 OR key1=key2) AND power<limit THEN power=power-.1666667
+4130 AT #3,1,power : STRIP #3,0 : PRINT #3," " : STRIP #3,7,0 : AT #3,1,power+1 : PRINT #3," "
+4135 key2=key1 : IF total>25 THEN total=total-(power*.95)
+4140 IF char=130 THEN char=131 : ELSE char=130
+4143 IF pow_to>240 AND limit>10 THEN limit=INT(limit-(total/40)) : pow_to=0
+4145 IF co>=30 THEN co=0 : INK #6,7 : POINT #6,732,100 : POINT #6,732,0
+4146 CSIZE 2,1 : STRIP 2 : INK 5
+4150 IF NOT gm THEN AT 8,14 : PRINT " " : PAN #6,-power : AT 8,14 : PRINT CHR$(char)
+4155 IF gm THEN AT 8,14 : PRINT " " : PAN #6,-25 : AT 8,14 : PRINT CHR$(char)
+4160 co=co+power
+4165 IF total<100 AND tot THEN LINE #6,730,100 TO 680,0 : tot=0
+4170 IF total<100 THEN fin=fin-power
+4175 IF fin<=0 THEN EXIT lo_sprint_1
+4180 gm=0
+4185 END REPeat lo_sprint_1
+4195 tme=ut$(19 TO )+(INT(RND(1 TO 98))/100)
+4200 CSIZE 2,0 : STRIP 2 : INK 5
+4205 AT 8,35 : PRINT tme
+4210 BEP 1000,1
+4215 AT #4,pos,14 : PRINT #4,tme
+4220 pos=pos+1
+4225 IF NOT qual AND tme<21.54 THEN qual=1 : INK 0 : STRIP 4 : AT 13,1 : PRINT "YOU HAVE QUALIFIED"
+4230 score=score+INT((40-tme)*15)
+4232 INK #4,2
+4235 IF score>9 AND score<100 THEN AT #4,0,10 : PRINT #4,score
+4240 IF score>99 AND score<1000 THEN AT #4,0,9 : PRINT #4,score
+4245 IF score>999 AND score<10000 THEN AT #4,0,8 : PRINT #4,score
+4246 IF score>9999 THEN AT #4,0,7 : PRINT #4,score
+4250 hi_scores_2
+4255 print_hi_scores
+4260 FOR i=1 TO 1500 : END FOR i
+4265 AT 13,1 : STRIP 4 : PRINT "                      "
+4270 IF pos=5 THEN EXIT lo_sprint_loop
+4275 END REPeat lo_sprint_loop
+4280 qualify=qual
+4285 END DEFine 
+4999 :
+5000 DEFine PROCedure event_5
+5005 event=5 : pos=2 : qual=0 : lim=.2
+5010 INK #4,7 : FOR i=2 TO 4 : AT #4,i,14 : PRINT #4,"00.00" : END FOR i
+5011 IF INT(level)=2 THEN lim=.5
+5012 IF INT(level)=3 THEN lim=1
+5015 REPeat long_jump
+5020 draw_jump
+5025 foul=0 : power=8 : n=0 : key1=0 : key2=0 : char=130 : x=7 : y=2
+5030 reset
+5035 PAPER 2 : INK 1 : CSIZE 2,1 : AT 7,2 : PRINT CHR$(130)
+5040 CSIZE 2,0 : INK 2 : PAPER 4 : AT 10,3 : PRINT "YOUR GO:"
+5045 FOR i=100 TO 10 STEP -1 : BEP 300,i : END FOR i
+5046 PAUSE 40000
+5050 BEP 1000,5
+5055 AT 10,3 : PRINT "        " : AT #3,1,power : STRIP #3,0 : PRINT #3," "
+5056 CSIZE 2,1 : PAPER 2 : INK 1
+5060 REPeat jump_1
+5065 key1=KEYROW(1)
+5070 BEP 300,100
+5075 IF key1<>0 AND key1<>key2 AND power<23.5 THEN n=n+1
+5080 IF n=1 THEN power=power+1 : n=0
+5085 IF power>8 AND (key1=0 OR key1=key2) THEN power=power-lim
+5086 IF key1>=64 AND key1<100 THEN EXIT jump_1
+5090 AT #3,1,power : STRIP #3,0 : PRINT #3," " : STRIP #3,7,0 : AT #3,1,power+1 : PRINT #3," "
+5095 key2=key1
+5100 y=y+1
+5105 IF char=130 THEN char=131 : ELSE char=130
+5110 AT x,y-1 : PRINT " " : AT x,y : PRINT CHR$(char)
+5125 IF key1=64 THEN EXIT jump_1
+5130 FOR i=1 TO 90 : END FOR i
+5135 IF y>=31 THEN foul=1 : EXIT jump_1
+5150 END REPeat jump_1
+5152 IF y>=31 THEN foul=1
+5155 IF NOT foul THEN leap : GO TO 5200
+5160 INK 2 : STRIP 1 : FLASH 1 : CSIZE 2,0
+5165 AT 14,2 : PRINT "FOUL"
+5170 FLASH 0
+5175 AT #4,pos,14 : PRINT #4,"-----"
+5180 FOR i=1 TO 1000 : END FOR i
+5185 distance=0
+5200 pos=pos+1
+5205 hi_scores
+5210 print_hi_scores
+5215 FOR i=1 TO 2000 : END FOR i
+5220 IF pos=5 THEN EXIT long_jump
+5225 END REPeat long_jump
+5230 qualify=qual
+5240 END DEFine 
+5299 :
+5300 DEFine PROCedure leap
+5310 angle=10 : STRIP #3,7 : INK #3,2
+5315 AT #3,1,36 : PRINT #3,angle
+5320 REPeat angle_jump
+5325 IF KEYROW(1)=0 OR angle>80 THEN EXIT angle_jump
+5330 angle=angle+3
+5335 AT #3,1,36 : PRINT #3,angle
+5340 END REPeat angle_jump
+5345 BEP 300,5
+5346 IF angle>=50 THEN decr=(4.2/angle)*10 : ELSE decr=(angle/55)
+5350 dist=(power*4)*decr
+5352 distance=-((30-y)*.5)
+5355 INK 1
+5356 ne=4
+5360 AT x,y : PRINT " " : PAN #8,-10 : STRIP ne : AT x-1,y : PRINT CHR$(134)
+5365 x=x-1
+5366 FOR i=1 TO 150 : END FOR i
+5370 AT x,y : PRINT " " : PAN #8,-10 : STRIP ne : AT x-1,y : PRINT CHR$(134)
+5375 x=x-1
+5376 INK #8,2
+5380 FOR i=1 TO (dist/5)
+5385 FOR j=1 TO 60 : END FOR j
+5390 PAN #8,-10
+5395 distance=distance+.5
+5400 END FOR i
+5410 IF distance>=1 THEN ne=6 : ELSE ne=2
+5420 AT x,y : PRINT " " : PAN #8,-15 : CSIZE 2,0 : AT (x*2)+1,y : CSIZE 2,1 : PRINT CHR$(134)
+5430 FOR i=1 TO 150 : END FOR i
+5435 CSIZE 2,0 : AT (x*2)+1,y : CSIZE 2,1 : PRINT " " : STRIP ne : PAN #8,-20 : AT x+2,y : PRINT CHR$(134)
+5436 dist1=distance
+5438 IF distance<=0 THEN distance=0
+5440 IF distance>0 THEN distance=distance+(INT(RND(1 TO 49))/100)
+5445 CSIZE 2,0 : STRIP 4 : INK 2
+5446 AT 11,1 : PRINT "YOUR JUMP WAS ";distance;"m"
+5450 IF distance<10 THEN AT #4,pos,14 : PRINT #4,"0";distance : ELSE AT #4,pos,14 : PRINT #4,distance
+5455 BEP 1000,1
+5460 IF NOT qual AND distance>7.26 THEN qual=1 : INK 0 : STRIP 4 : AT 13,1 : PRINT "YOU HAVE QUALIFIED"
+5465 score=score+INT((distance*10)*4)
+5470 INK #4,2
+5475 IF score>9 AND score<100 THEN AT #4,0,10 : PRINT #4,2
+5480 IF score>99 AND score<1000 THEN AT #4,0,9 : PRINT #4,score
+5485 IF score>999 AND score<10000 THEN AT #4,0,8 : PRINT #4,score
+5486 IF score>9999 THEN AT #4,0,7 : PRINT #4,score
+5490 END DEFine 
+9999 :
+10000 DEFine PROCedure draw_shot
+10005 INK 0
+10010 FILL 1 : CIRCLE 15,30,6,1.8,0 :FILL 0
+10015 INK 6
+10020 ARC 50,35 TO 50,25,-1.5
+10030 ARC 85,43 TO 85,17,-1.5
+10035 ARC 120,46 TO 120,14,-1.5
+10040 INK 7
+10045 CSIZE 2,0
+10050 STRIP 1
+10060 AT 21,13 : PRINT "7m"
+10065 AT 21,23 : PRINT "15m"
+10070 AT 21,33 : PRINT "22m"
+10080 print_hi_scores
+10092 STRIP 4 : INK 0 : AT 8,1 : PRINT "QUALIFYING DISTANCE = 15.28m"
+10095 END DEFine 
+11000 DEFine PROCedure draw_sprint
+11010 INK #4,2
+11020 AT #4,0,24 : PRINT #4,"2"
+11025 INK #4,6
+11030 AT #4,6,9 : PRINT #4,"100m     "
+11040 INK #3,2 : STRIP #3,7
+11050 AT #3,1,1 : PRINT #3,"SPEED:"
+11060 print_hi_scores
+11070 OPEN #6,scr_492x50a10x152
+11080 PAPER #6,2
+11090 CLS #6
+11100 INK #6,7
+11110 LINE #6,253,0 TO 303,100
+11120 FOR i=1 TO 730 STEP 52
+11130 POINT #6,i,0 : POINT #6,i,100
+11140 END FOR i
+11145 CSIZE 2,0
+11150 INK 0 : AT 8,1 : STRIP 4 : PRINT "QUALIFYING TIME=12.65s"
+11200 END DEFine 
+11999 :
+12000 DEFine PROCedure draw_jav
+12005 OPEN #8,scr_492x25a10x183
+12010 PAPER #8,2 : INK #8,7 : CLS#8
+12020 print_hi_scores
+12030 INK #4,2 : AT #4,0,24 : PRINT #4,"3"
+12035 INK #4,6 : AT #4,6,9 : PRINT #4,"JAVELIN  "
+12036 CSIZE 2,0
+12040 INK 0 : STRIP 4 : AT 8,1 : PRINT "QUALIFYING DISTANCE = 70.23m"
+12050 FILL #8,1 : LINE #8,1410,100 TO 1330,0 : LINE #8,1450,100 TO 1370,0 : FILL #8,0
+12060 PAPER #8,1 : INK #8,1
+12065 FILL #8,1 : LINE #8,1451,100 TO 1371,0 : LINE #8,1520,100 TO 1520,0 : FILL #8,0
+12066 INK #8,6
+12070 END DEFine 
+12999 :
+13000 DEFine PROCedure draw_lsprint
+13010 INK #4,2
+13020 AT #4,0,24 : PRINT #4,"4"
+13025 INK #4,6
+13030 AT #4,6,9 : PRINT #4,"200m      "
+13040 INK #3,2 : STRIP #3,7
+13060 print_hi_scores
+13070 PAPER #6,2 : CLS #6 : INK #6,7
+13080 LINE #6,253,0 TO 303,100
+13090 FOR i=1 TO 730 STEP 52
+13100 POINT #6,i,0 : POINT #6,i,100
+13110 END FOR i
+13120 CSIZE 2,0
+13130 INK 0 : AT 8,1 : STRIP 4 : PRINT "QUALIFYING TIME = 21.45s"
+13140 END DEFine 
+13999 :
+14000 DEFine PROCedure draw_jump
+14005 CLS #7 : CSIZE 2,0
+14010 INK #4,2 : AT #4,0,24 : PRINT #4,"5"
+14020 INK #4,6 : AT #4,6,9 : PRINT #4,"LONG JUMP"
+14030 INK #3,2 : STRIP #3,7 : print_hi_scores
+14040 INK 0 : AT 8,1 : STRIP 4 : PRINT "QUALIFYING DISTANCE = 7.26m"
+14050 WINDOW #8,492,25,10,145
+14060 PAPER #8,2 : CLS #8 : INK #8,7 : FILL #8,1 : LINE #8,1351,100 TO 1271,0 : LINE #8,1400,100 TO 1320,0 : FILL #8,0
+14070 WINDOW #8,492,50,10,133
+14080 PAPER #8,6 : INK #8,6
+14090 FILL #8,1 : LINE #8,725,100 TO 660,0 : LINE #8,780,100 TO 780,0 : FILL #8,0
+14100 PAN #8,-40
+14110 END DEFine 
+18999 :
+19000 DEFine PROCedure hi_scores_2
+19010 LOCal i
+19015 hi(event,0)=tme
+19020 hi$(event,0)=a$
+19025 IF hi(event,0)<hi(event,1) THEN 
+19030 wr=wr+1
+19035 FOR i=3 TO 1 STEP -1
+19040 hi(event,i)=hi(event,i-1)
+19045 hi$(event,i)=hi$(event,i-1)
+19050 END FOR i
+19055 RETurn 
+19060 END IF 
+19065 IF hi(event,0)<hi(event,2) THEN 
+19070 hi(event,3)=hi(event,2) : hi$(event,3)=hi$(event,2)
+19075 hi(event,2)=hi(event,0) : hi$(event,2)=hi$(event,0)
+19080 wr=wr+1
+19085 RETurn 
+19090 END IF 
+19095 IF hi(event,0)<hi(event,3) THEN 
+19096 wr=wr+1
+19097 hi(event,3)=hi(event,0) : hi$(event,3)=hi$(event,0)
+19098 RETurn 
+19099 END IF 
+19100 END DEFine 
+19999 :
+20000 DEFine PROCedure draw_main_screen
+20010 WINDOW 512,256,0,0
+20020 PAPER 4
+20030 SCALE 100,0,0
+20040 BORDER 5,1
+20050 CLS
+20060 OPEN #3,scr_511x30a2x226
+20070 PAPER #3,7
+20080 BORDER #3,1,3
+20090 CLS #3
+20100 OPEN #4,scr_492x78a10x5
+20110 PAPER #4,0
+20120 BORDER #4,1,7
+20130 CLS #4
+20140 INK #4,2
+20145 CSIZE #4,2,0
+20150 AT #4,0,0 : PRINT #4,"SCORE: 00000    EVENT 01    LEVEL 0";level
+20160 INK #4,5
+20180 LINE #4,235,88 TO 2235,24
+20190 LINE #4,0,24 TO 480,24
+20200 INK #4,7
+20210 AT #4,2,2 : PRINT #4,"FIRST"
+20220 AT #4,3,1 : PRINT #4,"SECOND:"
+20230 AT #4,4,2 : PRINT #4,"THIRD:"
+20270 INK #4,3
+20280 AT #4,1,24 : PRINT #4,"WORLD RECORDS"
+20290 INK #4,7
+20300 AT #4,2,21 : PRINT #4,"1st"
+20310 AT #4,3,21 : PRINT #4,"2nd"
+20320 AT #4,4,21 : PRINT #4,"3rd"
+20460 INK #4,6
+20470 AT #4,6,0 : PRINT #4,"  EVENT: SHOT PUTT   WORLD RECORDS: 00"
+20480 INK #3,2
+20490 AT #3,1,1 : PRINT #3,"POWER:"
+20500 AT #3,1,29 : PRINT #3,"ANGLE:" : STRIP 5 : AT #3,1,36 : PRINT #3,"00 "
+20510 END DEFine 
+20599 :
+20600 DEFine PROCedure draw_power
+20605 RESTORE 30000
+20610 FOR i=8 TO 24 STEP 3
+20611 READ col
+20615 STRIP #3,col
+20620 AT #3,0,i : PRINT #3,"    "
+20630 STRIP #3,7,0 : AT #3,1,i : PRINT #3,"    "
+20660 END FOR i
+20670 END DEFine 
+20999 :
+21000 DEFine PROCedure initialise
+21005 RANDOMISE
+21010 key1=0 : key2=0
+21015 OPEN #7,scr_492x142a10x84 : PAPER #7,4
+21020 power=8
+21030 score=0
+21040 DIM hi(5,4)
+21050 DIM hi$(5,3,3)
+21060 hi(1,1)=23.82
+21070 hi(1,2)=22.15
+21080 hi(1,3)=21.45
+21085 FOR i=1 TO 5
+21090 hi$(i,1)="AAA"
+21100 hi$(i,2)="BBB"
+21110 hi$(i,3)="CCC"
+21115 END FOR i
+21120 event=1 : events=0
+21130 wr=0
+21140 hi(2,1)=9.25
+21150 hi(2,2)=10.51
+21160 hi(2,3)=11.34
+21170 hi(3,1)=96.91
+21180 hi(3,2)=94.56
+21190 hi(3,3)=90.56
+21200 hi(4,1)=19.23
+21210 hi(4,2)=19.86
+21220 hi(4,3)=20.35
+21230 hi(5,1)=8.92
+21240 hi(5,2)=8.76
+21250 hi(5,3)=8.24
+21260 round=1
+21270 DIM ql(3)
+21280 ql(1)=4000
+21285 ql(2)=3500
+21290 ql(3)=2500
+21900 END DEFine 
+21999 :
+22000 DEFine PROCedure print_hi_scores
+22005 INK #4,6
+22010 IF wr<10 THEN AT #4,6,38 : PRINT #4,wr
+22020 IF wr>9 THEN AT #4,6,37 : PRINT #4,wr
+22030 INK #4,7
+22040 FOR i=1 TO 3
+22045 IF hi(event,i)<10 THEN 
+22050 AT #4,i+1,27 : PRINT #4,"0";hi(event,i)
+22055 ELSE 
+22057 AT #4,i+1,27 : PRINT #4,hi(event,i)
+22058 END IF 
+22060 AT #4,i+1,37 : PRINT #4,hi$(event,i)
+22070 END FOR i
+22080 END DEFine 
+22099 :
+22100 DEFine PROCedure screen
+22105 CLS #7
+22110 CSIZE 3,1 : INK 1,2 : STRIP 4
+22115 AT 6,8 : PRINT "END OF EVENT ";event
+22135 FOR i=1 TO 2000 : END FOR i
+22150 BEP 200,5
+22155 events=events+1
+22160 END DEFine 
+22162 DEFine PROCedure BEP(a,b)
+22165 REMark beep a,b
+22168 END DEFine 
+22199 :
+23000 DEFine PROCedure f_level
+23010 WINDOW 512,256,0,0
+23020 PAPER 4
+23030 STRIP 1 : INK 6
+23040 CSIZE 2,1
+23050 BORDER 5,5
+23060 CLS
+23065 AT 0,7 : PRINT "TRACK and FIELD"
+23070 INK 0 : CSIZE 2,0 : STRIP 2
+23080 AT 3,10 : PRINT "for the emulated crap computer"
+23100 INK 1 : STRIP 4
+23120 AT 12,2 : PRINT "1/Simple"
+23130 AT 14,2 : PRINT "2/Medium"
+23140 AT 16,2 : PRINT "3/Difficult"
+23145 INK 0
+23150 AT 10,0 : INPUT "WHICH LEVEL DO YOU WANT TO PLAY ON? ";level
+23155 BEP 500,5
+23160 IF level<1 OR level>3 THEN GO TO 23150
+23165 level1=level
+23170 OPEN #5,scr_512x180a0x75
+23180 PAPER #5,4
+23190 BORDER #5,4,5
+23200 CLS #5
+23210 INK 1
+23220 AT 12,8 : PRINT "(HAS TO BE 3 CHARACTERS)" : AT 15,2 : PRINT "eg. INITIALS: ADD"
+23230 INK 0
+23240 AT 10,7 : INPUT "ENTER YOUR IDENTIFYING CODE:";a$
+23245 BEP 500,5
+23250 IF LEN(a$)<>3 THEN GO TO 23240
+23260 END DEFine 
+23999 :
+24000 DEFine PROCedure end_routine
+24005 BORDER : BORDER 5,1
+24010 PAPER 4 : CLS
+24020 CSIZE 2,0 : INK 1,2 : STRIP 4
+24030 AT 1,7 : PRINT "YOU HAVE FAILED TO QUALIFY "\\"          FOR THE NEXT EVENT"
+24040 INK 2
+24050 AT 7,1 : PRINT "YOU SCORED ";score;" POINTS"
+24060 AT 9,6 : PRINT "AND ACCUMULATED ";wr;" WORLD RECORDS"
+24070 AT 11,20 : PRINT "ON LEVEL ";level1
+24080 INK 0
+24090 AT 13,1 : PRINT "YOU ALSO COMPLETED ";events;" EVENTS"
+24095 IF score>hiscore THEN hiscore=score
+24096 AT 15,9 : INK 2,0 : PRINT "THE HI-SCORE IS ";hiscore
+24100 INK 1
+24105 FOR i=1 TO 2000 : END FOR i
+24110 AT 19,6 : PRINT "PRESS ANY KEY TO PLAY AGAIN"
+24120 PAUSE 40000
+24130 BEP 300,10
+24140 END DEFine 
+24999 :
+25000 DEFine PROCedure next_level
+25005 reset
+25010 CLS #7 : CSIZE 3,1 : INK 1,2 : STRIP 4
+25020 AT 5,10 : PRINT "WELL DONE"
+25025 INK 2 : CSIZE 2,0
+25030 AT 14,4 : PRINT "YOU HAVE COMPLETED ALL THE EVENTS"\\"             IN ROUND ";round
+25040 round=round+1
+25050 IF (score/(round-1))<ql(level1) THEN qualify=0 : ELSE qualify=1
+25060 INK 0
+25070 IF qualify THEN FLASH 1 : AT 18,2 : PRINT "YOU HAVE QUALIFIED FOR THE NEXT ROUND" : FLASH 0
+25080 FOR i=1 TO 3000 : END FOR i
+25085 CLS #7
+25090 END DEFine 
+29999 :
+30000 DATA 5,1,6,4,3,2
+31999 :
+32005 start=RESPR(100)
+32010 a0=65537
+32020 a2=start+6
+32030 RESTORE 32100
+32040 FOR i=0 TO 70 : READ byte : POKE start+i,byte
+32050 CALL start,0,0,255,37,0,0,0,a0,0,a2
+32060 GO TO 7
+32099 :
+32100 DATA 32,4,78,67,78,117
+32110 DATA 128,7
+32120 DATA 96,112,24,92,124,12,20,36,76
+32130 DATA 100,104,112,112,96,96,80,72,108
+32140 DATA 24,24,48,52,60,48,56,40,76
+32150 DATA 24,24,48,48,48,48,16,16,48
+32160 DATA 88,88,112,52,60,48,56,40,76
+32170 DATA 88,88,112,48,48,48,16,16,48
+32180 DATA 0,48,48,96,120,96,124,0,0

@@ -131,6 +131,9 @@ module private CompositeColor =
             main ||| ((main ^^^ contrast) <<< 3) ||| (pattern <<< 6)
 
 module private DevicePaths =
+    let private unsupportedFileDevices =
+        [ "CON"; "SCR"; "NUL"; "PRT" ]
+
     let tryParseDirectoryBackedSpec (normalized: string) =
         let knownPrefixes = [ "RAM"; "FLP"; "WIN"; "MDV" ]
         knownPrefixes
@@ -155,6 +158,30 @@ module private DevicePaths =
                 let root = Path.Combine(Directory.GetCurrentDirectory(), "RuntimeDevices", device.ToLowerInvariant())
                 Directory.CreateDirectory(root) |> ignore
                 Path.Combine(root, leafName)))
+
+    let resolveFilePath (pathSpec: string) =
+        let trimmed = pathSpec.Trim()
+
+        if String.IsNullOrWhiteSpace trimmed then
+            Result.Error(InvalidHostArgument "File path cannot be empty.")
+        elif Path.IsPathRooted(trimmed) then
+            try
+                Result.Ok(Path.GetFullPath(trimmed))
+            with
+            | ex -> Result.Error(DeviceOpenFailed ex.Message)
+        else
+            let normalized = trimmed.ToUpperInvariant()
+
+            if unsupportedFileDevices |> List.exists normalized.StartsWith then
+                Result.Error(InvalidHostArgument $"Device path '{pathSpec}' does not refer to a file-backed device.")
+            else
+                match tryResolveDirectoryBackedPath normalized with
+                | Some resolvedPath -> Result.Ok resolvedPath
+                | None ->
+                    try
+                        Result.Ok(Path.GetFullPath(trimmed))
+                    with
+                    | ex -> Result.Error(DeviceOpenFailed ex.Message)
 
     let private listEntries (directoryPath: string) =
         Directory.EnumerateFileSystemEntries(directoryPath)
@@ -247,6 +274,11 @@ type private ScreenBuffer(mode: ScreenModeInfo, ?textWidth: int, ?textHeight: in
     let resolvePixelColor row col value =
         let flash = value &&& flashBit
         let baseValue = value &&& ~~~flashBit
+        let logicalCol =
+            if currentMode.Mode = QlMode8 then
+                col / 2
+            else
+                col
 
         if baseValue >= 0 && baseValue < 8 then
             value
@@ -258,8 +290,8 @@ type private ScreenBuffer(mode: ScreenModeInfo, ?textWidth: int, ?textHeight: in
                 match pattern with
                 | 0 -> true
                 | 1 -> (row &&& 1) = 0
-                | 2 -> (col &&& 1) = 0
-                | _ -> ((row + col) &&& 1) = 0
+                | 2 -> (logicalCol &&& 1) = 0
+                | _ -> ((row + logicalCol) &&& 1) = 0
 
             (if useMain then main else contrast) ||| flash
         else
@@ -1397,9 +1429,9 @@ type private DefaultGraphicsDevice(buffer: ScreenBuffer, gate: obj) =
     let synchronized action = lock gate action
 
     let scaleFactors () =
+        let verticalScaleUnits, _, _ = drawingScale
+        let verticalUnits = if verticalScaleUnits = 0.0 then 100.0 else abs verticalScaleUnits
         let _, height, _, _ = drawingWindow
-        let _, sy, _ = drawingScale
-        let verticalUnits = if sy = 0.0 then 100.0 else abs sy
         let factorY = float height / max 1.0 verticalUnits
         let factorX = factorY
         factorX, factorY
@@ -1625,8 +1657,8 @@ type private DefaultGraphicsDevice(buffer: ScreenBuffer, gate: obj) =
                 let rawX2, rawY2 = transformAbsoluteRaw x2 y2
                 let tx1, ty1 = clampToWindow rawX1 rawY1
                 let tx2, ty2 = clampToWindow rawX2 rawY2
-                let _, sy, graphicsOriginY = drawingScale
-                let verticalUnits = if sy = 0.0 then 100.0 else abs sy
+                let verticalScaleUnits, _, graphicsOriginY = drawingScale
+                let verticalUnits = if verticalScaleUnits = 0.0 then 100.0 else abs verticalScaleUnits
                 let graphicsTop = min graphicsOriginY (graphicsOriginY + verticalUnits)
                 let graphicsBottom = max graphicsOriginY (graphicsOriginY + verticalUnits)
                 let isFullScaleVerticalTick =
@@ -1770,6 +1802,10 @@ type private NullFileSystem() =
         member _.ListDirectory(_pathSpec) =
             Result.Error(UnsupportedHostOperation "Directory listing is not implemented in DefaultHost.")
         member _.Exists(_path) = false
+        member _.Copy(_sourcePath, _targetPath) =
+            Result.Error(UnsupportedHostOperation "File copy is not implemented in DefaultHost.")
+        member _.Move(_sourcePath, _targetPath) =
+            Result.Error(UnsupportedHostOperation "File move is not implemented in DefaultHost.")
         member _.Delete(_path) =
             Result.Error(UnsupportedHostOperation "File deletion is not implemented in DefaultHost.")
 
@@ -1952,13 +1988,46 @@ type private DefaultRuntimeHost(options: DefaultHostOptions) =
                         | ex -> Result.Error(DeviceOpenFailed ex.Message)
             member _.ListDirectory(pathSpec) =
                 DevicePaths.listDirectoryEntries pathSpec
-            member _.Exists(path) = File.Exists(path)
+            member _.Exists(path) =
+                match DevicePaths.resolveFilePath path with
+                | Result.Ok resolvedPath -> File.Exists(resolvedPath)
+                | Result.Error _ -> false
+            member _.Copy(sourcePath, targetPath) =
+                DevicePaths.resolveFilePath sourcePath
+                |> Result.bind (fun resolvedSource ->
+                    DevicePaths.resolveFilePath targetPath
+                    |> Result.bind (fun resolvedTarget ->
+                        try
+                            let targetDirectory = Path.GetDirectoryName(resolvedTarget)
+                            if not (String.IsNullOrWhiteSpace targetDirectory) then
+                                Directory.CreateDirectory(targetDirectory) |> ignore
+                            File.Copy(resolvedSource, resolvedTarget, true)
+                            Result.Ok()
+                        with
+                        | ex -> Result.Error(DeviceOpenFailed ex.Message)))
+            member _.Move(sourcePath, targetPath) =
+                DevicePaths.resolveFilePath sourcePath
+                |> Result.bind (fun resolvedSource ->
+                    DevicePaths.resolveFilePath targetPath
+                    |> Result.bind (fun resolvedTarget ->
+                        try
+                            let targetDirectory = Path.GetDirectoryName(resolvedTarget)
+                            if not (String.IsNullOrWhiteSpace targetDirectory) then
+                                Directory.CreateDirectory(targetDirectory) |> ignore
+                            if File.Exists(resolvedTarget) then
+                                File.Delete(resolvedTarget)
+                            File.Move(resolvedSource, resolvedTarget)
+                            Result.Ok()
+                        with
+                        | ex -> Result.Error(DeviceOpenFailed ex.Message)))
             member _.Delete(path) =
-                try
-                    File.Delete(path)
-                    Result.Ok()
-                with
-                | ex -> Result.Error(DeviceOpenFailed ex.Message) }
+                DevicePaths.resolveFilePath path
+                |> Result.bind (fun resolvedPath ->
+                    try
+                        File.Delete(resolvedPath)
+                        Result.Ok()
+                    with
+                    | ex -> Result.Error(DeviceOpenFailed ex.Message)) }
     let environment =
         { new IEnvironmentProvider with
             member _.GetVariable(name) =

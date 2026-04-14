@@ -12,12 +12,17 @@
         <Compile Include="InterpreterScopeTests.fs" />
         <Compile Include="InterpreterControlFlowTests.fs" />
         <Compile Include="InterpreterRuntimeHostTests.fs" />
+        <Compile Include="HostInputContract.fs" />
+        <Compile Include="DefaultHostInputContractTests.fs" />
+        <Compile Include="AvaloniaControllerTests.fs" />
+        <Compile Include="AvaloniaHostIntegrationTests.fs" />
         <Compile Include="InterpreterFixtureTests.fs" />
     </ItemGroup>
 
     <ItemGroup>
       <ProjectReference Include="..\SB\SB.fsproj" />
       <ProjectReference Include="..\SBRuntime\SBRuntime.fsproj" />
+      <ProjectReference Include="..\SB.AvaloniaHost\SB.AvaloniaHost.fsproj" />
     </ItemGroup>
 
     <ItemGroup>

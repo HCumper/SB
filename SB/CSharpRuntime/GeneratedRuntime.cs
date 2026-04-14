@@ -855,11 +855,17 @@ public static class GeneratedRuntime
 
     public static void RestoreToLine(int line)
     {
-        if (!__restorePoints.TryGetValue(line, out var slot))
+        var restoreTarget = __restorePoints
+            .Where(entry => entry.Key >= line)
+            .OrderBy(entry => entry.Key)
+            .Select(entry => (int?)entry.Value)
+            .FirstOrDefault();
+
+        if (!restoreTarget.HasValue)
         {
             throw new InvalidOperationException($"RESTORE line {line} does not exist.");
         }
 
-        __dataPointer = slot;
+        __dataPointer = restoreTarget.Value;
     }
 }

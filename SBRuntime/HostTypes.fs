@@ -167,6 +167,8 @@ type IDeviceFileSystem =
     abstract OpenFileAs: ChannelId * string * FileOpenMode -> Result<unit, RuntimeHostError>
     abstract ListDirectory: string option -> Result<string list, RuntimeHostError>
     abstract Exists: string -> bool
+    abstract Copy: string * string -> Result<unit, RuntimeHostError>
+    abstract Move: string * string -> Result<unit, RuntimeHostError>
     abstract Delete: string -> Result<unit, RuntimeHostError>
 
 type IEnvironmentProvider =

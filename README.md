@@ -1,6 +1,8 @@
 # SB
 
-An F# SuperBASIC / Structured SuperBASIC toolchain targeting `.NET 10`.
+An F# SuperBASIC / Structured SuperBASIC toolchain targeting modern `.NET 10`.
+
+`SB` is a language implementation for contemporary platforms, not a Sinclair QL emulator. Its goal is to make SuperBASIC usable on modern hardware and operating systems while preserving the language model where practical. Hardware-specific, machine-code, shell/editor, and other environment features whose meaning depends on QL firmware or direct machine emulation are out of scope.
 
 ## Command line
 
@@ -88,7 +90,7 @@ The active codebase currently supports:
 - alternate plain C generation from lowered HIR
 - published `.NET` executable generation from lowered HIR
 
-The project is not yet a full SuperBASIC runtime. It can run a meaningful subset of programs, but many built-ins and host-specific behaviors are still incomplete.
+The project already supports a meaningful subset of SuperBASIC on a modern host, but it is still incomplete as a runtime and toolchain. Many built-ins, host integrations, and semantic edge cases are still being filled in.
 
 ## Solution layout
 
@@ -185,7 +187,7 @@ Important files in `SB/`:
 
 ## Status
 
-Implemented well enough to be useful:
+Implemented well enough to be useful on a modern host:
 
 - symbol and scope analysis
 - many expression rules
@@ -195,13 +197,18 @@ Implemented well enough to be useful:
 - HIR lowering for the core statement/expression set
 - interpreter support for a subset of function and statement built-ins
 
-Still incomplete:
+Still incomplete within the project's chosen scope:
 
 - broad built-in coverage
 - full channel/device/file semantics
 - code generation parity for by-reference procedure semantics
 - graphics, sound, and environment-specific runtime behavior
-- faithful Sinclair QL compatibility
+
+Deliberately out of scope:
+
+- Sinclair QL hardware or OS emulation
+- machine-code execution and raw low-level machine support
+- shell/editor-style interactive environment commands whose meaning depends on a full QL session model
 
 ## Build
 

@@ -50,6 +50,8 @@ module internal InteractiveInput =
         let mutable renderedLength = 0
         let mutable gameplayPulseToggle = false
         let mutable activeGameplayKeyCodes: int list = []
+        let textInputActivationPollMilliseconds = 10
+        let textInputActivationPollAttempts = 10
 
         let tryGetKeyRowBit keyCode =
             match keyCode with
@@ -155,6 +157,7 @@ module internal InteractiveInput =
                 buffer.Clear() |> ignore
                 caretIndex <- 0
                 renderedLength <- 0
+                Monitor.PulseAll(gate)
                 screenChannel
             else
                 tryGetScreenChannel host channelId
@@ -191,20 +194,26 @@ module internal InteractiveInput =
         member _.HandleTextInput(text: string) =
             if not (String.IsNullOrEmpty text) then
                 lock gate (fun () ->
-                    match activeChannelId |> Option.bind (tryGetScreenChannel host) with
-                    | Some screenChannel ->
-                        buffer.Insert(caretIndex, text) |> ignore
-                        caretIndex <- caretIndex + text.Length
-                        redrawBuffer screenChannel
-                    | None ->
-                        beginGameplayKeyHold ()
-                        for ch in text do
-                            queueKeyForRuntime {
-                                KeyCode = int ch
-                                Character = Some ch
-                                Shift = false
-                                Control = false
-                            })
+                    let rec tryHandleTextInput attemptsRemaining =
+                        match activeChannelId |> Option.bind (tryGetScreenChannel host) with
+                        | Some screenChannel ->
+                            buffer.Insert(caretIndex, text) |> ignore
+                            caretIndex <- caretIndex + text.Length
+                            redrawBuffer screenChannel
+                        | None when attemptsRemaining > 0 ->
+                            Monitor.Wait(gate, textInputActivationPollMilliseconds) |> ignore
+                            tryHandleTextInput (attemptsRemaining - 1)
+                        | None ->
+                            beginGameplayKeyHold ()
+                            for ch in text do
+                                queueKeyForRuntime {
+                                    KeyCode = int ch
+                                    Character = Some ch
+                                    Shift = false
+                                    Control = false
+                                }
+
+                    tryHandleTextInput textInputActivationPollAttempts)
 
         member _.HandleSpecialKey(keyInfo: KeyInfo) =
             lock gate (fun () ->

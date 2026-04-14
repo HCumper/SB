@@ -202,6 +202,41 @@ let ``default host mode 8 golfer ball mask preserves a visible pixel`` () =
         Assert.Fail($"Expected channel #1 to exist, got %A{err}")
 
 [<Test>]
+let ``default host mode 8 composite colours stay consistent across a logical pixel pair`` () =
+    let host, display =
+        DefaultHost.createWithDisplay {
+            ReadLine = fun () -> None
+            ReadScreenLine = fun _ -> None
+            FlushInput = fun () -> ()
+            ReadKey = fun () -> None
+            KeyAvailable = fun () -> false
+            KeyRowState = fun _ -> 0
+            WriteLine = ignore
+        }
+
+    match host.Screen.SetMode(QlMode8), host.Channels.Get(ChannelId 1) with
+    | Result.Ok (), Result.Ok (:? IScreenChannel as screenChannel) ->
+        screenChannel.SetPaper(0)
+        screenChannel.Clear()
+        host.Graphics.SetDrawingContext(screenChannel.GetWindow(), screenChannel.GetPan(), (100.0, 0.0, 0.0))
+
+        // Composite colour encoded from INK 6,4,3.
+        host.Graphics.Block(1.0, 1.0, 38.0, 129.0, 214)
+
+        let pane = display.GetSnapshot().Panes |> List.find (fun item -> item.ChannelId = Some 1)
+        let left = pane.Pixels[129, 38] &&& 0x00FFFFFF
+        let right = pane.Pixels[129, 39] &&& 0x00FFFFFF
+
+        Assert.That(left, Is.EqualTo(6))
+        Assert.That(right, Is.EqualTo(6))
+    | Result.Error err, _ ->
+        Assert.Fail($"Expected mode 8 to succeed, got %A{err}")
+    | _, Result.Ok channel ->
+        Assert.Fail($"Expected channel #1 to be a screen channel, got {channel.Kind}")
+    | _, Result.Error err ->
+        Assert.Fail($"Expected channel #1 to exist, got %A{err}")
+
+[<Test>]
 let ``default host mode 8 getcol-style peek reconstructs green correctly`` () =
     let host, _ =
         DefaultHost.createWithDisplay {
@@ -453,6 +488,50 @@ let ``default host console pane shows graphics drawn into channel zero window`` 
             |> Seq.exists (fun color -> color = 2)
 
         Assert.That(hasBar, Is.True)
+    | Result.Ok channel ->
+        Assert.Fail($"Expected channel #0 to be a screen channel, got {channel.Kind}")
+    | Result.Error err ->
+        Assert.Fail($"Expected channel #0 lookup to succeed, got %A{err}")
+
+[<Test>]
+let ``default host console pane line spans overlay width under default scale`` () =
+    let host, display =
+        DefaultHost.createWithDisplay {
+            ReadLine = fun () -> None
+            ReadScreenLine = fun _ -> None
+            FlushInput = fun () -> ()
+            ReadKey = fun () -> None
+            KeyAvailable = fun () -> false
+            KeyRowState = fun _ -> 0
+            WriteLine = ignore
+        }
+
+    match host.Channels.Get(ChannelId 0) with
+    | Result.Ok (:? IScreenChannel as channel0) ->
+        channel0.SetWindow(448, 40, 32, 216)
+        channel0.SetPaper(4)
+        channel0.Clear()
+        host.Graphics.SetDrawingContext(channel0.GetWindow(), channel0.GetPan(), (100.0, 0.0, 0.0))
+        host.Graphics.SetInk([ 2 ])
+        host.Graphics.Line(60.0, 72.0, 62.0, 10.0)
+
+        let pane = display.GetSnapshot().Panes |> List.find (fun item -> item.ChannelId = Some 0)
+        let coloredColumns =
+            [ for col in 0 .. Array2D.length2 pane.Pixels - 1 do
+                  let hasInk =
+                      seq {
+                          for row in 0 .. Array2D.length1 pane.Pixels - 1 do
+                              yield pane.Pixels[row, col] &&& 0x00FFFFFF
+                      }
+                      |> Seq.exists (fun color -> color = 2)
+                  if hasInk then
+                      yield col ]
+
+        match coloredColumns with
+        | [] -> Assert.Fail("Expected overlay line to paint visible pixels.")
+        | columns ->
+            let span = (List.last columns) - (List.head columns)
+            Assert.That(span, Is.GreaterThan(0))
     | Result.Ok channel ->
         Assert.Fail($"Expected channel #0 to be a screen channel, got {channel.Kind}")
     | Result.Error err ->
@@ -742,6 +821,21 @@ let ``interpreter reads data and restores by line`` () =
     let output = runProgram ast
 
     Assert.That(String.concat "|" output, Is.EqualTo("1 2 1"))
+
+[<Test>]
+let ``interpreter restore to non data line uses next data line`` () =
+    let ast =
+        Program(
+            pos,
+            [ Line(pos, Some 100, [ ProcedureCall(pos, "PRINT", [ str "\"skip\"" ]) ])
+              Line(pos, Some 4090, [ DataStmt(pos, [ str "\"N.Faldo   \""; str "\"T.Watson  \"" ]) ])
+              Line(pos, Some 4100, [ RestoreStmt(pos, Some(num "160")) ])
+              Line(pos, Some 4110, [ ReadStmt(pos, [ id "name$" ]) ])
+              Line(pos, Some 4120, [ ProcedureCall(pos, "PRINT", [ id "name$" ]) ]) ])
+
+    let output = runProgram ast
+
+    Assert.That(String.concat "|" output, Is.EqualTo("skip|N.Faldo   "))
 
 [<Test>]
 let ``interpreter reads hex data literals as signed 32 bit integers`` () =
@@ -1861,6 +1955,53 @@ let ``interpreter append adds to existing file channels`` () =
             File.Delete(tempPath)
 
 [<Test>]
+let ``interpreter copy copy_n move and delete manage file paths`` () =
+    let sourcePath = Path.Combine(Path.GetTempPath(), $"sb-runtime-copy-src-{Guid.NewGuid():N}.txt")
+    let copyPath = Path.Combine(Path.GetTempPath(), $"sb-runtime-copy-dst-{Guid.NewGuid():N}.txt")
+    let secondCopyPath = Path.Combine(Path.GetTempPath(), $"sb-runtime-copy-dst2-{Guid.NewGuid():N}.txt")
+    let movedPath = Path.Combine(Path.GetTempPath(), $"sb-runtime-copy-moved-{Guid.NewGuid():N}.txt")
+    let ast =
+        Program(
+            pos,
+            [ Line(pos, Some 10, [ ProcedureCall(pos, "COPY", [ str $"\"{sourcePath}\""; str $"\"{copyPath}\"" ]) ])
+              Line(pos, Some 20, [ ProcedureCall(pos, "COPY_N", [ str $"\"{sourcePath}\""; str $"\"{secondCopyPath}\"" ]) ])
+              Line(pos, Some 30, [ ProcedureCall(pos, "MOVE", [ str $"\"{secondCopyPath}\""; str $"\"{movedPath}\"" ]) ])
+              Line(pos, Some 40, [ ProcedureCall(pos, "DELETE", [ str $"\"{copyPath}\"" ]) ]) ])
+
+    let options =
+        { defaultRuntimeOptions with
+            Host =
+                DefaultHost.create {
+                    ReadLine = fun () -> None
+                    ReadScreenLine = fun _ -> None
+                    FlushInput = fun () -> ()
+                    ReadKey = fun () -> None
+                    KeyAvailable = fun () -> false
+                    KeyRowState = fun _ -> 0
+                    WriteLine = ignore
+                } }
+
+    try
+        File.WriteAllText(sourcePath, "alpha")
+
+        let hir = lowerProgram ast
+        let result = interpretProgramWithOptions options hir
+
+        match result with
+        | Result.Ok _ ->
+            Assert.That(File.Exists(sourcePath), Is.True)
+            Assert.That(File.Exists(copyPath), Is.False)
+            Assert.That(File.Exists(secondCopyPath), Is.False)
+            Assert.That(File.Exists(movedPath), Is.True)
+            Assert.That(File.ReadAllText(movedPath), Is.EqualTo("alpha"))
+        | Result.Error err ->
+            Assert.Fail($"Expected interpretation to succeed, got %A{err}")
+    finally
+        for path in [ sourcePath; copyPath; secondCopyPath; movedPath ] do
+            if File.Exists(path) then
+                File.Delete(path)
+
+[<Test>]
 let ``interpreter open_new and open_in support directory backed devices`` () =
     let deviceRoot = Path.Combine(Environment.CurrentDirectory, "RuntimeDevices", "ram1")
     let devicePath = Path.Combine(deviceRoot, "demo_io")
@@ -1905,6 +2046,51 @@ let ``interpreter open_new and open_in support directory backed devices`` () =
     finally
         if File.Exists(devicePath) then
             File.Delete(devicePath)
+
+[<Test>]
+let ``interpreter file management built ins support directory backed devices`` () =
+    let deviceRoot = Path.Combine(Environment.CurrentDirectory, "RuntimeDevices", "ram1")
+    let sourcePath = Path.Combine(deviceRoot, "copy_source")
+    let copyPath = Path.Combine(deviceRoot, "copy_temp")
+    let movedPath = Path.Combine(deviceRoot, "copy_final")
+    let ast =
+        Program(
+            pos,
+            [ Line(pos, Some 10, [ ProcedureCall(pos, "COPY", [ str "\"ram1_copy_source\""; str "\"ram1_copy_temp\"" ]) ])
+              Line(pos, Some 20, [ ProcedureCall(pos, "MOVE", [ str "\"ram1_copy_temp\""; str "\"ram1_copy_final\"" ]) ])
+              Line(pos, Some 30, [ ProcedureCall(pos, "DELETE", [ str "\"ram1_copy_final\"" ]) ]) ])
+
+    let options =
+        { defaultRuntimeOptions with
+            Host =
+                DefaultHost.create {
+                    ReadLine = fun () -> None
+                    ReadScreenLine = fun _ -> None
+                    FlushInput = fun () -> ()
+                    ReadKey = fun () -> None
+                    KeyAvailable = fun () -> false
+                    KeyRowState = fun _ -> 0
+                    WriteLine = ignore
+                } }
+
+    try
+        Directory.CreateDirectory(deviceRoot) |> ignore
+        File.WriteAllText(sourcePath, "device-alpha")
+
+        let hir = lowerProgram ast
+        let result = interpretProgramWithOptions options hir
+
+        match result with
+        | Result.Ok _ ->
+            Assert.That(File.Exists(sourcePath), Is.True)
+            Assert.That(File.Exists(copyPath), Is.False)
+            Assert.That(File.Exists(movedPath), Is.False)
+        | Result.Error err ->
+            Assert.Fail($"Expected interpretation to succeed, got %A{err}")
+    finally
+        for path in [ sourcePath; copyPath; movedPath ] do
+            if File.Exists(path) then
+                File.Delete(path)
 
 [<Test>]
 let ``interpreter append supports directory backed devices`` () =

@@ -380,7 +380,7 @@ let ``golfer fixture semantic output records string inkey result and select diag
         |> List.tryFind (fun fact ->
             fact.Kind = ExpressionResult
             && fact.Name = "INKEY$(...)"
-            && fact.Position.EditorLineNo = 11
+            && fact.Position.EditorLineNo = 12
             && fact.EvaluatedType = Some SBType.String)
 
     let scoreSymbol = analyzed.SymTab[globalScope].Symbols[normalizeIdentifier "score"]

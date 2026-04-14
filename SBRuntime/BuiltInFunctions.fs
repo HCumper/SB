@@ -162,6 +162,12 @@ module BuiltInFunctions =
                 let row = RuntimeValues.toInt value
                 if row < 0 || row > 7 then RuntimeValues.ofInt 0
                 else RuntimeValues.ofInt (keyRowState row))
+        | "INSTR" ->
+            twoArgs (fun needle haystack ->
+                let needleText = RuntimeValues.toText needle
+                let haystackText = RuntimeValues.toText haystack
+                let index = haystackText.IndexOf(needleText, StringComparison.Ordinal)
+                RuntimeValues.ofInt(if index >= 0 then index + 1 else 0))
         | "LEN" ->
             oneArg (fun value ->
                 RuntimeValues.ofInt (RuntimeValues.toText value).Length)

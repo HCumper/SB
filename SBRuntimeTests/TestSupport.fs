@@ -920,6 +920,8 @@ let createScreenHost (inputs: string list) =
                     member _.OpenFileAs(_channelId, _path, _mode) = Result.Error(UnsupportedHostOperation "Files not implemented in test host.")
                     member _.ListDirectory(_pathSpec) = Result.Error(UnsupportedHostOperation "Directory listing not implemented in test host.")
                     member _.Exists(_path) = false
+                    member _.Copy(_sourcePath, _targetPath) = Result.Error(UnsupportedHostOperation "Files not implemented in test host.")
+                    member _.Move(_sourcePath, _targetPath) = Result.Error(UnsupportedHostOperation "Files not implemented in test host.")
                     member _.Delete(_path) = Result.Error(UnsupportedHostOperation "Files not implemented in test host.") }
             member _.Environment =
                 { new IEnvironmentProvider with
