@@ -257,6 +257,39 @@ let runQueuedSequentialPromptScenario (channelId: int) =
 
     assertCompleted worker getResult "First|Second|ONE:TWO" $"after scripted sequential channel #{channelId} prompt submissions"
 
+let runQueuedPromptSubmissionScenario (channelId: int) (promptText: string) (submittedText: string) =
+    let harness = createScriptedDisplayHarness ()
+    let ast = parseAstFromSource $"10 INPUT#{channelId},\"{promptText}\",a$\n20 PRINT a$\n"
+    let worker, getResult = runProgramAsync harness.Host ast
+
+    Assert.That(waitForPaneTextInDisplay harness.Display channelId promptText 3000, Is.True, $"Timed out waiting for scripted channel #{channelId} prompt.")
+
+    harness.EnqueueScreenLine channelId submittedText
+
+    assertCompleted worker getResult $"{promptText}|{submittedText}" $"after scripted prompt submission on channel #{channelId}"
+
+let runQueuedImplicitPromptSubmissionScenario (promptText: string) (submittedText: string) =
+    let harness = createScriptedDisplayHarness ()
+    let ast = parseAstFromSource $"10 INPUT \"{promptText}\",a$\n20 PRINT a$\n"
+    let worker, getResult = runProgramAsync harness.Host ast
+
+    Assert.That(waitForPaneTextInDisplay harness.Display 1 promptText 3000, Is.True, "Timed out waiting for scripted implicit prompt on channel #1.")
+
+    harness.EnqueueScreenLine 1 submittedText
+
+    assertCompleted worker getResult $"{promptText}|{submittedText}" "after scripted implicit prompt submission"
+
+let runQueuedPromptSubmissionPrequeuedScenario (channelId: int) (promptText: string) (submittedText: string) =
+    let harness = createScriptedDisplayHarness ()
+    harness.EnqueueScreenLine channelId submittedText
+
+    let ast = parseAstFromSource $"10 INPUT#{channelId},\"{promptText}\",a$\n20 PRINT a$\n"
+    let worker, getResult = runProgramAsync harness.Host ast
+
+    Assert.That(waitForPaneTextInDisplay harness.Display channelId promptText 3000, Is.True, $"Timed out waiting for scripted prequeued channel #{channelId} prompt.")
+
+    assertCompleted worker getResult $"{promptText}|{submittedText}" $"after scripted prequeued prompt submission on channel #{channelId}"
+
 let runQueuedFlushScenario (channelId: int) =
     let harness = createScriptedDisplayHarness ()
     let ast = parseAstFromSource $"10 INPUT#{channelId},\"Prompt\",a$\n20 PRINT a$\n"
@@ -271,6 +304,54 @@ let runQueuedFlushScenario (channelId: int) =
 
     harness.EnqueueScreenLine channelId "FRESH"
     assertCompleted worker getResult "Prompt|FRESH" $"after scripted flush/retry on channel #{channelId}"
+
+let runQueuedBuiltInFlushScenario () =
+    let harness = createScriptedDisplayHarness ()
+    let ast = parseAstFromSource "10 FLUSH\n20 INPUT \"WHICH LEVEL?\",level\n30 PRINT level\n"
+    let worker, getResult = runProgramAsync harness.Host ast
+
+    Assert.That(waitForPaneTextInDisplay harness.Display 1 "WHICH LEVEL?" 3000, Is.True, "Timed out waiting for scripted prompt after FLUSH.")
+
+    harness.EnqueueScreenLine 1 ""
+    harness.Host.Input.Flush()
+    harness.EnqueueScreenLine 1 "2"
+
+    assertCompleted worker getResult "WHICH LEVEL?|2" "after scripted FLUSH followed by prompt input"
+
+let runQueuedExplicitScreenChannelScenario () =
+    let harness = createScriptedDisplayHarness ()
+    let ast = parseAstFromSource "10 INPUT#1,\"LEVEL?\",level\n20 PRINT level\n"
+    let worker, getResult = runProgramAsync harness.Host ast
+
+    Assert.That(waitForPaneTextInDisplay harness.Display 1 "LEVEL?" 3000, Is.True, "Timed out waiting for scripted explicit screen-channel prompt.")
+
+    harness.EnqueueScreenLine 1 "7"
+
+    assertCompleted worker getResult "LEVEL?|7" "after scripted explicit screen-channel input"
+
+let runQueuedPositionedPromptScenario () =
+    let harness = createScriptedDisplayHarness ()
+    let ast = parseAstFromSource "10 AT#0,3,5:INPUT#0,\"Angle\",a$\n20 PRINT a$\n"
+    let worker, getResult = runProgramAsync harness.Host ast
+
+    Assert.That(waitForPaneTextInDisplay harness.Display 0 "Angle" 3000, Is.True, "Timed out waiting for scripted positioned channel #0 prompt.")
+
+    let pane = tryFindPaneInDisplay harness.Display 0 |> Option.get
+    Assert.That(pane.Cursor, Is.EqualTo((10, 3)), "Scripted default host prompt did not end at the expected positioned cursor.")
+
+    harness.EnqueueScreenLine 0 "XY"
+    assertCompleted worker getResult "Angle|XY" "after scripted positioned prompt submission"
+
+let runQueuedRepeatedPromptIterations (channelId: int) (iterations: int) =
+    for iteration in 1 .. iterations do
+        let harness = createScriptedDisplayHarness ()
+        let ast = parseAstFromSource $"10 INPUT#{channelId},\"Prompt\",a$\n20 PRINT a$\n"
+        let worker, getResult = runProgramAsync harness.Host ast
+
+        Assert.That(waitForPaneTextInDisplay harness.Display channelId "Prompt" 3000, Is.True, $"Timed out waiting for scripted channel #{channelId} prompt on iteration {iteration}.")
+
+        harness.EnqueueScreenLine channelId "ABC"
+        assertCompleted worker getResult "Prompt|ABC" $"after scripted repeated prompt submission on channel #{channelId} iteration {iteration}"
 
 let beginReadLine harness channelId =
     let mutable result: string option option = None

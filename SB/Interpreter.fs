@@ -732,6 +732,23 @@ let private currentGraphicsScale channelId state =
         |> Option.defaultValue state.DefaultGraphicsScale
     | None -> state.DefaultGraphicsScale
 
+let private textCellSize (mode: ScreenModeInfo) (characterSize: int * int) =
+    let widthScale, heightScale = characterSize
+    mode.BaseTextCellWidth * max 1 (widthScale + 1),
+    mode.BaseTextCellHeight * max 1 (heightScale + 1)
+
+let private textCellAdvance (mode: ScreenModeInfo) (characterSize: int * int) =
+    let cellWidth, _ = textCellSize mode characterSize
+    if mode.IsQlCompatible && characterSize = (0, 0) then
+        cellWidth
+    else
+        max 1 (cellWidth - max 4 ((2 * cellWidth) / 3))
+
+let private pixelCursorToTextCursor (mode: ScreenModeInfo) (characterSize: int * int) x y =
+    let advance = textCellAdvance mode characterSize
+    let _, cellHeight = textCellSize mode characterSize
+    max 0 (x / advance), max 0 (y / cellHeight)
+
 let private currentDrawingWindow channelId state pos =
     match channelId with
     | None -> Result.Ok(state.Options.Host.Screen.GetWindow(), state.Options.Host.Screen.GetPan())
@@ -1198,6 +1215,14 @@ and private executeBuiltInCall state kind channel args targets pos =
                             | WriteArrayElem(_, _, HIR.HirType.Float, _)
                             | DynamicWriteVar(_, HIR.HirType.Float, _)
                             | DynamicWriteArrayElem(_, _, HIR.HirType.Float, _) -> BuiltInInputType.InputFloat
+                            | WriteVar(_, HIR.HirType.Void, _)
+                            | WriteArrayElem(_, _, HIR.HirType.Void, _)
+                            | DynamicWriteVar(_, HIR.HirType.Void, _)
+                            | DynamicWriteArrayElem(_, _, HIR.HirType.Void, _) ->
+                                // Unsuffixed numeric INPUT targets can still reach HIR as Void
+                                // when semantic typing remains unresolved; SuperBASIC defaults these
+                                // to real-valued input rather than truncating to integer.
+                                BuiltInInputType.InputFloat
                             | _ -> BuiltInInputType.InputInt
                         writeTarget currentState target (BuiltInStatements.parseInputValue expectedType raw |> fromRuntimeBuiltInValue)
 
@@ -1779,7 +1804,23 @@ and private executeBuiltInCall state kind channel args targets pos =
             executeScreenOp 2 false (fun resolvedChannel nextState numericArgs ->
                 match numericArgs with
                 | [ x; y ] ->
-                    executeChannelScreenOp resolvedChannel nextState pos (fun screenChannel -> screenChannel.SetCursor(x, y)) (fun screen -> screen.SetCursor(x, y))
+                    let mode = nextState.Options.Host.Screen.GetMode()
+                    match resolvedChannel with
+                    | None ->
+                        let cursorX, cursorY = pixelCursorToTextCursor mode (nextState.Options.Host.Screen.GetCharacterSize()) x y
+                        nextState.Options.Host.Screen.SetCursor(cursorX, cursorY)
+                        Result.Ok nextState
+                    | Some resolvedChannelId ->
+                        match nextState.Options.Host.Channels.Get resolvedChannelId with
+                        | Result.Ok (:? IScreenChannel as screenChannel) ->
+                            let cursorX, cursorY = pixelCursorToTextCursor mode (screenChannel.GetCharacterSize()) x y
+                            screenChannel.SetCursor(cursorX, cursorY)
+                            Result.Ok nextState
+                        | Result.Ok _ ->
+                            let (ChannelId id) = resolvedChannelId
+                            runtimeError UnsupportedChannelExecution (Some pos) $"Channel #{id} is not a screen channel."
+                        | Result.Error hostError ->
+                            runtimeError UnsupportedChannelExecution (Some pos) (hostErrorText hostError)
                 | _ -> Result.Ok nextState)
         | "CSIZE" ->
             executeScreenOp 2 false (fun resolvedChannel nextState numericArgs ->

@@ -769,66 +769,16 @@ let ``interpreter beep and beeping use host sound state`` () =
     Assert.That(screenState.Beeps[0], Is.EqualTo((1000, 10)))
 
 [<Test>]
-let ``interpreter flush clears pending input before input reads`` () =
-    let levelId = H.SymbolId 0
-    let levelStorage = makeStorage levelId 0 "LEVEL" H.HirType.Int H.GlobalStorage
-    let outputs = ResizeArray<string>()
-    let pendingLines = Collections.Generic.Queue<string>([ ""; "2" ])
+let ``interpreter input preserves decimal values for unsuffixed numeric targets`` () =
+    let ast =
+        Program(
+            pos,
+            [ Line(pos, Some 10, [ ProcedureCall(pos, "INPUT", [ str "\"ANGLE?\""; id "angle" ]) ])
+              Line(pos, Some 20, [ ProcedureCall(pos, "PRINT", [ id "angle" ]) ]) ])
 
-    let host =
-        DefaultHost.create {
-            ReadLine = fun () -> if pendingLines.Count > 0 then Some(pendingLines.Dequeue()) else None
-            ReadScreenLine = fun _ -> if pendingLines.Count > 0 then Some(pendingLines.Dequeue()) else None
-            FlushInput =
-                fun () ->
-                    if pendingLines.Count > 0 then
-                        pendingLines.Dequeue() |> ignore
-            ReadKey = fun () -> None
-            KeyAvailable = fun () -> false
-            KeyRowState = fun _ -> 0
-            WriteLine = fun line -> outputs.Add(line)
-        }
+    let output = runProgramWithInput [ "10.5" ] ast
 
-    let hir =
-        makeProgram
-            (Map.ofList [ levelId, "LEVEL" ])
-            [ levelStorage ]
-            [ H.BuiltInCall(H.NamedBuiltIn "FLUSH", None, [], pos);
-              H.HirStmt.Input(None, [ H.Literal(H.ConstString "WHICH LEVEL?", H.HirType.String, pos) ], [ H.WriteVar(levelId, H.HirType.Int, pos) ], pos);
-              H.BuiltInCall(H.Print, None, [ H.ReadVar(levelId, H.HirType.Int, pos) ], pos) ]
-
-    let output = runHirProgramWithOptions { defaultRuntimeOptions with Host = host } hir
-
-    Assert.That(String.concat "|" output, Is.EqualTo("WHICH LEVEL?|2"))
-
-[<Test>]
-let ``interpreter explicit screen channel input reads from screen channel queue`` () =
-    let levelId = H.SymbolId 0
-    let levelStorage = makeStorage levelId 0 "LEVEL" H.HirType.Int H.GlobalStorage
-    let outputs = ResizeArray<string>()
-    let pendingLines = Collections.Generic.Queue<string>([ "7" ])
-
-    let baseHost =
-        DefaultHost.create {
-            ReadLine = fun () -> None
-            ReadScreenLine = fun _ -> if pendingLines.Count > 0 then Some(pendingLines.Dequeue()) else None
-            FlushInput = fun () -> ()
-            ReadKey = fun () -> None
-            KeyAvailable = fun () -> false
-            KeyRowState = fun _ -> 0
-            WriteLine = fun line -> outputs.Add(line)
-        }
-
-    let hir =
-        makeProgram
-            (Map.ofList [ levelId, "LEVEL" ])
-            [ levelStorage ]
-            [ H.HirStmt.Input(Some(H.ExplicitChannel(H.Literal(H.ConstInt 1, H.HirType.Int, pos))), [ H.Literal(H.ConstString "LEVEL?", H.HirType.String, pos) ], [ H.WriteVar(levelId, H.HirType.Int, pos) ], pos)
-              H.BuiltInCall(H.Print, None, [ H.ReadVar(levelId, H.HirType.Int, pos) ], pos) ]
-
-    let output = runHirProgramWithOptions { defaultRuntimeOptions with Host = baseHost } hir
-
-    Assert.That(String.concat "|" output, Is.EqualTo("LEVEL?|7"))
+    Assert.That(String.concat "|" output, Is.EqualTo("ANGLE?|10.5"))
 
 [<Test>]
 let ``interpreter rnd unsupported arguments reports coded runtime error`` () =

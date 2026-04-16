@@ -630,7 +630,7 @@ Comment      : 'REMark' ~[\r\n]* ;
 
 // ---------- Identifiers ----------
 // Must appear after ALL keyword rules so keywords take lexer precedence
-ID           : [A-Za-z_] [0-9A-Za-z_]* [%$]? ;
+ID           : [A-Z_] [0-9A-Z_]* [%$]? ;
 
 // ---------- Literals ----------
 Integer      : DIGIT+ ;
@@ -639,8 +639,8 @@ HexInteger   : '$' HEXDIGIT+ ;
 
 // No leading minus — unaryExpr handles negation
 // DIGIT* allows forms like .5
-Real         : DIGIT* Point DIGIT+ ([Ee] [+\-]? DIGIT+)?
-             | DIGIT+ [Ee] [+\-]? DIGIT+
+Real         : DIGIT* Point DIGIT+ ([E] [+\-]? DIGIT+)?
+             | DIGIT+ [E] [+\-]? DIGIT+
              ;
 
 String       : '"' ~["\r\n]* '"'
@@ -648,6 +648,6 @@ String       : '"' ~["\r\n]* '"'
              ;
 
 // ---------- Fragments ----------
-fragment LETTER : [A-Za-z] ;
+fragment LETTER : [A-Z] ;
 fragment DIGIT  : [0-9] ;
-fragment HEXDIGIT : [0-9A-Fa-f] ;
+fragment HEXDIGIT : [0-9A-F] ;

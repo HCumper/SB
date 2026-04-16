@@ -1164,7 +1164,6 @@ type private DefaultChannelManager(defaultChannels: IChannel list, screenReader:
         lock gate (fun () ->
             screenChannels.Values
             |> Seq.map (fun channel -> channel.Snapshot())
-            |> Seq.filter (fun pane -> pane.ChannelId <> Some 0)
             |> Seq.sortBy (fun pane -> pane.ChannelId |> Option.defaultValue Int32.MaxValue)
             |> Seq.toList)
 
@@ -1433,7 +1432,11 @@ type private DefaultGraphicsDevice(buffer: ScreenBuffer, gate: obj) =
         let verticalUnits = if verticalScaleUnits = 0.0 then 100.0 else abs verticalScaleUnits
         let _, height, _, _ = drawingWindow
         let factorY = float height / max 1.0 verticalUnits
-        let factorX = factorY
+        let factorX =
+            if buffer.Mode.IsQlCompatible then
+                factorY * (4.0 / 3.0)
+            else
+                factorY
         factorX, factorY
 
     let clampToWindow x y =
@@ -2066,7 +2069,7 @@ type private DefaultRuntimeHost(options: DefaultHostOptions) =
             member _.GetSnapshot() =
                 lock screenGate (fun () ->
                     { Mode = currentMode
-                      Panes = channel0.Snapshot() :: channelManager.ScreenPanes() }) }
+                      Panes = channelManager.ScreenPanes() }) }
 
     interface IRuntimeHost with
         member _.Channels = channelManager :> IChannelManager

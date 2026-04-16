@@ -1,7 +1,7 @@
 100 REMark Golfer
 110 REMark intro
 120 MODE 8:CLS
-130 WINDOW 512,256,0,0:PAPER 0:CLS:WINDOW 448,200,32,16:WINDOW#0,448,40,32,216:PAPER#0,0:CLS#0:PAPER#2,0:BORDER#2,0:INK#0,7
+130 WINDOW 512,256,0,0:PAPER 0:CLS:WINDOW 512,200,32,16:WINDOW#0,512,40,32,216:PAPER#0,0:CLS#0:PAPER#2,0:BORDER#2,0:INK#0,7
 140 BORDER 0,0:SCALE 100,0,0:PRINT "Please Wait"
 150 holes = 9:initialise:CLS:max = 100
 160 CLS#0:BORDER#0,2,4:course=0:CLS#0
@@ -173,7 +173,7 @@
 1810   INK 2:LINE 150+zx,e-c/2+c/5+xz TO 152+zx,e-c/2+c/6+xz
 1820   LINE 152+zx,e-c/2+c/6+xz TO 150+zx,e-c/2+c/6+xz
 1830   holex=150+zx:holey=e-c/2+xz
-1840   holex=INT((holex/166*448+33)/2)
+1840   holex=INT(holex+16.5)
 1850   holey=INT((100-holey)*2+16.5)
 1860   BLOCK c/2.5,c/2.5,blockx-3,blocky,7
 1870   ballx=19:bally=129+INT(c/4)
@@ -217,7 +217,7 @@
 2250 :
 2260 DEFine PROCedure test
 2270   hazard=0:bm=ABS(ballx-holex)
-2280   IF bm<=1 AND ABS(bally-holey)<=1 THEN
+2280   IF bm<=2 AND ABS(bally-holey)<=2 THEN
 2290     POKE_W add,color:POKE_W add+128,color1:finished=1:RETurn
 2300   END IF
 2310   IF c1=6 AND c2=6 OR c1=6 AND c3=6 THEN bunker
@@ -264,6 +264,7 @@
 2720     PRINT#0;"You are ";dist;" yards from the hole"
 2730     PAUSE 100:BLOCK#0,440,4,0,32,4
 2740     OVER#0,-1
+2745     SCALE#0,36,0,0
 2750     angle= ATAN(ABS(holex-ballx)/ABS(bally-holey+1E-5))
 2760     IF holey>bally THEN
 2770       IF holex<=ballx THEN
@@ -276,25 +277,26 @@
 2840         angle=2*PI-angle
 2850       END IF
 2860     END IF
-2870     putx=31:puty=24
-2880     CURSOR#0,putx,puty:PRINT#0, "o"
+2870     putx=20:puty=20
 2890     FOR ang1=0 TO 60 STEP 2
 2900       FOR  plot=0 TO 1
-2910         LINE#0,60,72 TO 62-62*SIN(RAD(ang1)),72-62*COS(RAD(ang1))
+2910         x2=putx-28*SIN(RAD(ang1)):y2=puty-28*COS(RAD(ang1))
+2915         LINE#0,putx,puty TO x2,y2
 2920       END FOR plot
 2930       IF INKEY$=" " THEN GO TO 2960
 2940     END FOR ang1
 2950     IF INKEY$(10)<>" " THEN GO TO 2890
 2960     FOR a=ang1 TO 0 STEP -2
 2970       FOR plot=0 TO 1
-2980         LINE#0,60,72 TO 62-62*SIN(RAD(a)),72-62+COS(RAD(a))
+2980         x2=putx-28*SIN(RAD(a)):y2=puty-28*COS(RAD(a))
+2985         LINE#0,putx,puty TO x2,y2
 2990       END FOR plot
-3000     END FOR a:CURSOR#0,putx,puty:PRINT#0;"o"
+3000     END FOR a
 3010     power=ang1/7:shoot:test:shots=shots+1
 3020     PAUSE 1+49*NOT finished
 3030     IF finished THEN EXIT putting
 3040   END REPeat putting
-3050   OVER#0,0
+3050   SCALE#0,100,0,0:OVER#0,0
 3060 END DEFine putt
 3070 :
 3080 DEFine PROCedure branches

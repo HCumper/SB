@@ -124,6 +124,61 @@ let ``generateCFromHir emits arrays routine calls and builtin function calls`` (
     Assert.That(generated, Does.Not.Contain("_P_(("))
 
 [<Test>]
+let ``generateCFromHir expands ranged rnd into two builtin arguments`` () =
+    let rndSymbol = SymbolId 0
+    let valueSymbol = SymbolId 1
+
+    let program =
+        { SymbolNames = [ rndSymbol, "RND"; valueSymbol, "VALUE" ] |> Map.ofList
+          Globals = [ storage valueSymbol "VALUE" HirType.Int GlobalStorage ]
+          Routines = []
+          DataEntries = []
+          RestorePoints = []
+          Main =
+            [ Assign(
+                WriteVar(valueSymbol, HirType.Int, pos),
+                CallFunc(
+                    rndSymbol,
+                    [ ValueArg(Binary(SliceRange, literalInt 2, literalInt 4, HirType.Int, pos)) ],
+                    HirType.Int,
+                    pos),
+                pos) ] }
+
+    let generated = generateCFromHir "rnd_range_program" program
+
+    Assert.That(generated, Does.Contain("invoke_builtin_function(\"RND\", 2, make_int(2), make_int(4))"))
+
+[<Test>]
+let ``generateCFromHir registers declared array dimensions for dimn support`` () =
+    let arraySymbol = SymbolId 0
+    let dimnSymbol = SymbolId 1
+    let resultSymbol = SymbolId 2
+
+    let program =
+        { SymbolNames = [ arraySymbol, "A"; dimnSymbol, "DIMN"; resultSymbol, "RESULT" ] |> Map.ofList
+          Globals =
+            [ { storage arraySymbol "A" (HirType.Array HirType.Int) GlobalStorage with Dimensions = Some [ 10; 17 ] }
+              storage resultSymbol "RESULT" HirType.Int GlobalStorage ]
+          Routines = []
+          DataEntries = []
+          RestorePoints = []
+          Main =
+            [ Assign(
+                WriteVar(resultSymbol, HirType.Int, pos),
+                CallFunc(
+                    dimnSymbol,
+                    [ ValueArg(ReadVar(arraySymbol, HirType.Array HirType.Int, pos))
+                      ValueArg(literalInt 2) ],
+                    HirType.Int,
+                    pos),
+                pos) ] }
+
+    let generated = generateCFromHir "dimn_program" program
+
+    Assert.That(generated, Does.Contain("register_array_dimensions(&v0_A, 2, 10, 17);"))
+    Assert.That(generated, Does.Contain("invoke_builtin_function(\"DIMN\", 2, (&v0_A)->value, make_int(2))"))
+
+[<Test>]
 let ``generateCFromHir includes expanded runtime support for memory channels and built-ins`` () =
     let memorySymbol = SymbolId 0
 
@@ -210,6 +265,30 @@ let ``generateCFromHir emits dynamic scope lookups and by reference parameter bi
     Assert.That(generated, Does.Contain("r1_BUMP(make_value_arg(make_int(5)))"))
 
 [<Test>]
+let ``generateCFromHir emits sequence for dispatch`` () =
+    let counterSymbol = SymbolId 0
+
+    let program =
+        { SymbolNames = [ counterSymbol, "COUNTER" ] |> Map.ofList
+          Globals = [ storage counterSymbol "COUNTER" HirType.Int GlobalStorage ]
+          Routines = []
+          DataEntries = []
+          RestorePoints = []
+          Main =
+            [ ForSequence(LoopId 0, counterSymbol, [ literalInt 1; literalInt 2 ], literalInt 5, literalInt 6, [ literalInt 9 ], literalInt 1, [ Next(LoopId 0, pos) ], pos) ] }
+
+    let generated = generateCFromHir "sequence_loop_program" program
+
+    Assert.That(generated, Does.Contain("Value loop_0_prefix_values[] = { make_int(1), make_int(2) };"))
+    Assert.That(generated, Does.Contain("int loop_0_phase = 0;"))
+    Assert.That(generated, Does.Contain("loop_0_dispatch: ;"))
+    Assert.That(generated, Does.Contain("(&v0_COUNTER)->value = loop_0_prefix_values[loop_0_prefix_index++];"))
+    Assert.That(generated, Does.Contain("(&v0_COUNTER)->value = make_int(loop_0_range_index);"))
+    Assert.That(generated, Does.Contain("Value loop_0_suffix_values[] = { make_int(9) };"))
+    Assert.That(generated, Does.Contain("goto loop_0_body;"))
+    Assert.That(generated, Does.Not.Contain("Sequence FOR loops are not supported by the generated C backend yet."))
+
+[<Test>]
 let ``generateCFromHir emits when error handler dispatch when needed`` () =
     let valueSymbol = SymbolId 0
 
@@ -235,3 +314,55 @@ let ``generateCFromHir emits when error handler dispatch when needed`` () =
     Assert.That(generated, Does.Contain("__error_action = 2;"))
     Assert.That(generated, Does.Contain("goto __when_error_resume;"))
     Assert.That(generated, Does.Contain("switch (__active_when_error)"))
+
+[<Test>]
+let ``generateCFromHir emits dynamic goto and gosub line dispatch`` () =
+    let targetSymbol = SymbolId 0
+
+    let program =
+        { SymbolNames = [ targetSymbol, "TARGET" ] |> Map.ofList
+          Globals = [ storage targetSymbol "TARGET" HirType.Int GlobalStorage ]
+          Routines = []
+          DataEntries = []
+          RestorePoints = []
+          Main =
+            [ LineNumber(10, pos)
+              Assign(WriteVar(targetSymbol, HirType.Int, pos), literalInt 20, pos)
+              Goto(ReadVar(targetSymbol, HirType.Int, pos), pos)
+              LineNumber(20, pos)
+              Gosub(ReadVar(targetSymbol, HirType.Int, pos), pos)
+              Return(None, pos) ] }
+
+    let generated = generateCFromHir "dynamic_line_program" program
+
+    Assert.That(generated, Does.Contain("switch (as_int((&v0_TARGET)->value))"))
+    Assert.That(generated, Does.Contain("case 10: goto line_10;"))
+    Assert.That(generated, Does.Contain("case 20: goto line_20;"))
+    Assert.That(generated, Does.Contain("sb_raise_error(-21, \"ERR_BL\", \"Bad line of Basic\");"))
+    Assert.That(generated, Does.Not.Contain("Dynamic GOTO is not supported by the generated C backend yet."))
+    Assert.That(generated, Does.Not.Contain("Dynamic GOSUB is not supported by the generated C backend yet."))
+
+[<Test>]
+let ``generateCFromHir emits dynamic on goto and on gosub target dispatch`` () =
+    let selectorSymbol = SymbolId 0
+    let targetSymbol = SymbolId 1
+
+    let program =
+        { SymbolNames = [ selectorSymbol, "SEL"; targetSymbol, "TARGET" ] |> Map.ofList
+          Globals =
+            [ storage selectorSymbol "SEL" HirType.Int GlobalStorage
+              storage targetSymbol "TARGET" HirType.Int GlobalStorage ]
+          Routines = []
+          DataEntries = []
+          RestorePoints = []
+          Main =
+            [ LineNumber(10, pos)
+              OnGoto(ReadVar(selectorSymbol, HirType.Int, pos), [ ReadVar(targetSymbol, HirType.Int, pos); literalInt 10 ], pos)
+              OnGosub(ReadVar(selectorSymbol, HirType.Int, pos), [ ReadVar(targetSymbol, HirType.Int, pos); literalInt 10 ], pos)
+              Return(None, pos) ] }
+
+    let generated = generateCFromHir "dynamic_on_line_program" program
+
+    Assert.That(generated, Does.Contain("case 1:"))
+    Assert.That(generated, Does.Contain("switch (as_int((&v1_TARGET)->value))"))
+    Assert.That(generated, Does.Not.Contain("Dynamic GOSUB is not supported by the generated C backend yet."))

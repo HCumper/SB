@@ -25,6 +25,9 @@ let private indent level = String.replicate (level * 4) " "
 let private appendLine (builder: StringBuilder) level (text: string) =
     builder.Append(indent level).Append(text).AppendLine() |> ignore
 
+let private appendBlankLine (builder: StringBuilder) =
+    builder.AppendLine() |> ignore
+
 let private sanitizeIdentifier (value: string) =
     let normalized =
         value
@@ -75,7 +78,10 @@ let rec private collectReferencedLineNumbers (block: HirBlock) =
             collectReferencedLineNumbers body
         | Goto(target, _) ->
             tryGetConstInt target |> Option.map Set.singleton |> Option.defaultValue Set.empty
-        | OnGoto(_, targets, _) ->
+        | Gosub(target, _) ->
+            tryGetConstInt target |> Option.map Set.singleton |> Option.defaultValue Set.empty
+        | OnGoto(_, targets, _)
+        | OnGosub(_, targets, _) ->
             targets
             |> List.choose tryGetConstInt
             |> Set.ofList
@@ -128,6 +134,21 @@ let rec private blockHasLineControlFlow (block: HirBlock) =
         | Repeat(_, _, body, _) -> blockHasLineControlFlow body
         | _ -> false)
 
+let rec private blockHasDynamicLineControlFlow (block: HirBlock) =
+    block
+    |> List.exists (function
+        | Goto(target, _) -> tryGetConstInt target |> Option.isNone
+        | Gosub(target, _) -> tryGetConstInt target |> Option.isNone
+        | OnGoto(_, targets, _)
+        | OnGosub(_, targets, _) -> targets |> List.exists (tryGetConstInt >> Option.isNone)
+        | If(_, thenBlock, elseBlock, _) ->
+            blockHasDynamicLineControlFlow thenBlock
+            || (elseBlock |> Option.exists blockHasDynamicLineControlFlow)
+        | For(_, _, _, _, _, body, _)
+        | ForSequence(_, _, _, _, _, _, _, body, _)
+        | Repeat(_, _, body, _) -> blockHasDynamicLineControlFlow body
+        | _ -> false)
+
 let rec private blockHasWhenError (block: HirBlock) =
     block
     |> List.exists (function
@@ -141,9 +162,14 @@ let rec private blockHasWhenError (block: HirBlock) =
         | _ -> false)
 
 let private buildContext programName (program: HirProgram) =
+    let programHasWhenError =
+        blockHasWhenError program.Main
+        || (program.Routines |> List.exists (fun routine -> blockHasWhenError routine.Body))
+
     let programHasLineControlFlow =
         blockHasLineControlFlow program.Main
         || (program.Routines |> List.exists (fun routine -> blockHasLineControlFlow routine.Body))
+        || programHasWhenError
 
     let globals =
         program.Globals
@@ -174,16 +200,25 @@ let private buildContext programName (program: HirProgram) =
             collectDeclaredLineNumbers program.Main
             |> Set.union (program.Routines |> List.map (fun routine -> collectDeclaredLineNumbers routine.Body) |> List.fold Set.union Set.empty)
 
+        let dynamicLineTargetsPresent =
+            blockHasDynamicLineControlFlow program.Main
+            || (program.Routines |> List.exists (fun routine -> blockHasDynamicLineControlFlow routine.Body))
+
         let whenErrorLines =
-            if blockHasWhenError program.Main || (program.Routines |> List.exists (fun routine -> blockHasWhenError routine.Body)) then
+            if programHasWhenError then
                 declaredLines
             else
                 Set.empty
+
+        let dynamicDispatchLines =
+            if dynamicLineTargetsPresent then declaredLines
+            else Set.empty
 
         restoreLines
         |> Set.union (collectReferencedLineNumbers program.Main)
         |> Set.union routineLines
         |> Set.union whenErrorLines
+        |> Set.union dynamicDispatchLines
 
     { ProgramName = if String.IsNullOrWhiteSpace programName then "generated_program" else sanitizeIdentifier programName
       SymbolNames = program.SymbolNames
@@ -257,26 +292,34 @@ let rec private emitTargetCellRef ctx = function
     | WriteArrayElem(symbolId, indexes, _, _) ->
         emitCall "get_array_cell" ([ storageCellRef ctx symbolId; string indexes.Length ] @ (indexes |> List.map (emitExpr ctx)))
     | WriteStringChar(_, _, _, _) ->
-        "unsupported_dynamic_write(\"string char\")"
+        failwith "String character targets cannot be lowered to Cell* references in the C backend."
     | DynamicWriteVar(name, _, _) -> emitCall "lookup_dynamic_cell" [ $"\"{escapeCString name}\"" ]
     | DynamicWriteArrayElem(name, indexes, _, _) ->
         emitCall "get_array_cell" ([ emitCall "lookup_dynamic_cell" [ $"\"{escapeCString name}\"" ]; string indexes.Length ] @ (indexes |> List.map (emitExpr ctx)))
     | DynamicWriteStringChar(_, _, _, _) ->
-        "unsupported_dynamic_write(\"dynamic string char\")"
+        failwith "Dynamic string character targets cannot be lowered to Cell* references in the C backend."
 
 and private emitRoutineCallArg ctx = function
     | ValueArg expr -> emitCall "make_value_arg" [ emitExpr ctx expr ]
     | RefArg(WriteStringChar(_, _, _, _))
     | RefArg(DynamicWriteStringChar(_, _, _, _)) ->
-        "make_value_arg(unsupported_dynamic_write(\"String character targets cannot be passed by reference in the generated C backend yet.\"))"
+        "make_invalid_ref_arg(\"String character targets cannot be used as by-reference storage locations.\")"
     | RefArg target -> emitCall "make_ref_arg" [ emitTargetCellRef ctx target ]
 
 and private emitBuiltInCallArg ctx = function
     | ValueArg expr -> emitExpr ctx expr
     | RefArg(WriteStringChar(_, _, _, _))
     | RefArg(DynamicWriteStringChar(_, _, _, _)) ->
-        "unsupported_dynamic_write(\"String character reference arguments are not supported by built-in calls in the generated C backend yet.\")"
+        "invalid_reference_actual_value(\"String character targets cannot be used as by-reference storage locations.\")"
     | RefArg target -> cellValueExpr (emitTargetCellRef ctx target)
+
+and private emitBuiltInFunctionArgs ctx symbolId args =
+    let normalizedName = (builtInName ctx symbolId).Trim().ToUpperInvariant()
+    match normalizedName, args with
+    | "RND", [ ValueArg(Binary(SliceRange, lhs, rhs, _, _)) ] ->
+        [ emitExpr ctx lhs; emitExpr ctx rhs ]
+    | _ ->
+        args |> List.map (emitBuiltInCallArg ctx)
 
 and private emitExpr ctx = function
     | Literal(ConstInt value, _, _) -> $"make_int({value})"
@@ -332,11 +375,11 @@ and private emitExpr ctx = function
             if Set.contains symbolId ctx.RoutineSymbols then
                 args |> List.map (emitRoutineCallArg ctx)
             else
-                args |> List.map (emitBuiltInCallArg ctx)
+                emitBuiltInFunctionArgs ctx symbolId args
         if Set.contains symbolId ctx.RoutineSymbols then
             emitCall (routineName ctx symbolId) renderedArgs
         else
-            emitCall "invoke_builtin_function" ([ $"\"{escapeCString (builtInName ctx symbolId)}\""; string args.Length ] @ renderedArgs)
+            emitCall "invoke_builtin_function" ([ $"\"{escapeCString (builtInName ctx symbolId)}\""; string renderedArgs.Length ] @ renderedArgs)
 
 let private emitTargetWrite ctx target valueExpr =
     match target with
@@ -411,6 +454,75 @@ and private emitFor ctx builder level gosubReturnStart gosubReturnCount activeHa
     appendLine builder (level + 1) $"loop_{id}_exit: ;"
     appendLine builder level "}"
 
+and private emitForSequence ctx builder level gosubReturnStart gosubReturnCount activeHandlerVar hasWhenError currentLine inheritedNextLine loopId symbolId prefixExprs startExpr endExpr suffixExprs stepExpr body =
+    let (LoopId id) = loopId
+    let prefixValues = prefixExprs |> List.map (emitExpr ctx) |> String.concat ", "
+    let suffixValues = suffixExprs |> List.map (emitExpr ctx) |> String.concat ", "
+    let counter = storageName ctx symbolId
+    let prefixValuesName = $"loop_{id}_prefix_values"
+    let prefixCountName = $"loop_{id}_prefix_count"
+    let prefixIndexName = $"loop_{id}_prefix_index"
+    let rangeIndexName = $"loop_{id}_range_index"
+    let rangeEndName = $"loop_{id}_range_end"
+    let rangeStepName = $"loop_{id}_range_step"
+    let suffixValuesName = $"loop_{id}_suffix_values"
+    let suffixCountName = $"loop_{id}_suffix_count"
+    let suffixIndexName = $"loop_{id}_suffix_index"
+    let phaseName = $"loop_{id}_phase"
+    appendLine builder level "{"
+    if not prefixExprs.IsEmpty then
+        appendLine builder (level + 1) $"Value {prefixValuesName}[] = {{ {prefixValues} }};"
+    else
+        appendLine builder (level + 1) $"Value {prefixValuesName}[1];"
+    appendLine builder (level + 1) $"int {prefixCountName} = {prefixExprs.Length};"
+    appendLine builder (level + 1) $"int {prefixIndexName} = 0;"
+    appendLine builder (level + 1) $"int {rangeStepName} = as_int({emitExpr ctx stepExpr});"
+    appendLine builder (level + 1) $"int {rangeEndName} = as_int({emitExpr ctx endExpr});"
+    appendLine builder (level + 1) $"int {rangeIndexName} = as_int({emitExpr ctx startExpr});"
+    if not suffixExprs.IsEmpty then
+        appendLine builder (level + 1) $"Value {suffixValuesName}[] = {{ {suffixValues} }};"
+    else
+        appendLine builder (level + 1) $"Value {suffixValuesName}[1];"
+    appendLine builder (level + 1) $"int {suffixCountName} = {suffixExprs.Length};"
+    appendLine builder (level + 1) $"int {suffixIndexName} = 0;"
+    appendLine builder (level + 1) $"int {phaseName} = 0;"
+    appendLine builder (level + 1) $"loop_{id}_dispatch: ;"
+    appendLine builder (level + 1) $"if ({phaseName} == 0)"
+    appendLine builder (level + 1) "{"
+    appendLine builder (level + 2) $"if ({prefixIndexName} < {prefixCountName})"
+    appendLine builder (level + 2) "{"
+    appendLine builder (level + 3) $"{cellValueExpr (storageCellRef ctx symbolId)} = {prefixValuesName}[{prefixIndexName}++];"
+    appendLine builder (level + 3) $"goto loop_{id}_body;"
+    appendLine builder (level + 2) "}"
+    appendLine builder (level + 2) $"{phaseName} = 1;"
+    appendLine builder (level + 1) "}"
+    appendLine builder (level + 1) $"if ({phaseName} == 1)"
+    appendLine builder (level + 1) "{"
+    appendLine builder (level + 2) $"if (({rangeStepName} >= 0) ? ({rangeIndexName} <= {rangeEndName}) : ({rangeIndexName} >= {rangeEndName}))"
+    appendLine builder (level + 2) "{"
+    appendLine builder (level + 3) $"{cellValueExpr (storageCellRef ctx symbolId)} = make_int({rangeIndexName});"
+    appendLine builder (level + 3) $"{rangeIndexName} += {rangeStepName};"
+    appendLine builder (level + 3) $"goto loop_{id}_body;"
+    appendLine builder (level + 2) "}"
+    appendLine builder (level + 2) $"{phaseName} = 2;"
+    appendLine builder (level + 1) "}"
+    appendLine builder (level + 1) $"if ({phaseName} == 2)"
+    appendLine builder (level + 1) "{"
+    appendLine builder (level + 2) $"if ({suffixIndexName} < {suffixCountName})"
+    appendLine builder (level + 2) "{"
+    appendLine builder (level + 3) $"{cellValueExpr (storageCellRef ctx symbolId)} = {suffixValuesName}[{suffixIndexName}++];"
+    appendLine builder (level + 3) $"goto loop_{id}_body;"
+    appendLine builder (level + 2) "}"
+    appendLine builder (level + 2) $"goto loop_{id}_exit;"
+    appendLine builder (level + 1) "}"
+    appendLine builder (level + 1) $"goto loop_{id}_exit;"
+    appendLine builder (level + 1) $"loop_{id}_body: ;"
+    emitBlock ctx builder (level + 1) gosubReturnStart gosubReturnCount activeHandlerVar hasWhenError currentLine inheritedNextLine body
+    appendLine builder (level + 1) $"loop_{id}_next: ;"
+    appendLine builder (level + 1) $"goto loop_{id}_dispatch;"
+    appendLine builder (level + 1) $"loop_{id}_exit: ;"
+    appendLine builder level "}"
+
 and private emitRepeat ctx builder level gosubReturnStart gosubReturnCount activeHandlerVar hasWhenError currentLine inheritedNextLine loopId body =
     let (LoopId id) = loopId
     appendLine builder level "while (1)"
@@ -420,37 +532,48 @@ and private emitRepeat ctx builder level gosubReturnStart gosubReturnCount activ
     appendLine builder level "}"
     appendLine builder level $"loop_{id}_exit: ;"
 
+and private emitLineJumpDispatch ctx builder level targetExpr =
+    appendLine builder level $"switch (as_int({targetExpr}))"
+    appendLine builder level "{"
+    ctx.ReferencedLineNumbers
+    |> Set.iter (fun line -> appendLine builder (level + 1) $"case {line}: goto line_{line};")
+    appendLine builder (level + 1) "default: sb_raise_error(-21, \"ERR_BL\", \"Bad line of Basic\");"
+    appendLine builder level "}"
+
 and private emitOnGotoLike keyword ctx builder level selector targets =
     appendLine builder level $"switch (as_int({emitExpr ctx selector}))"
     appendLine builder level "{"
     targets
     |> List.iteri (fun index target ->
         match tryGetConstInt target with
-        | Some line when keyword = "GOTO" ->
+        | Some line ->
             appendLine builder (level + 1) $"case {index + 1}: goto line_{line};"
-        | Some _ ->
-            appendLine builder (level + 1) $"case {index + 1}: runtime_not_supported(\"{keyword} is not supported by the generated C backend yet.\"); break;"
         | None ->
-            appendLine builder (level + 1) $"case {index + 1}: runtime_not_supported(\"Dynamic {keyword} is not supported by the generated C backend yet.\"); break;")
+            appendLine builder (level + 1) $"case {index + 1}:"
+            emitLineJumpDispatch ctx builder (level + 2) (emitExpr ctx target)
+            appendLine builder (level + 2) "break;")
     appendLine builder (level + 1) "default: break;"
     appendLine builder level "}"
 
 and private emitOnGosub ctx builder level selector targets =
+    let returnId = nextGosubReturnId ctx
     appendLine builder level $"switch (as_int({emitExpr ctx selector}))"
     appendLine builder level "{"
     targets
     |> List.iteri (fun index target ->
         match tryGetConstInt target with
         | Some line ->
-            let returnId = nextGosubReturnId ctx
             appendLine builder (level + 1) $"case {index + 1}:"
             appendLine builder (level + 2) $"__gosub_stack[__gosub_top++] = {returnId};"
             appendLine builder (level + 2) $"goto line_{line};"
-            appendLine builder (level + 2) $"__gosub_return_{returnId}: ;"
         | None ->
-            appendLine builder (level + 1) $"case {index + 1}: runtime_not_supported(\"Dynamic GOSUB is not supported by the generated C backend yet.\"); break;")
+            appendLine builder (level + 1) $"case {index + 1}:"
+            appendLine builder (level + 2) $"__gosub_stack[__gosub_top++] = {returnId};"
+            emitLineJumpDispatch ctx builder (level + 2) (emitExpr ctx target)
+            appendLine builder (level + 2) "break;")
     appendLine builder (level + 1) "default: break;"
     appendLine builder level "}"
+    appendLine builder level $"__gosub_return_{returnId}: ;"
 
 and private emitBareReturnDispatch builder level gosubReturnStart gosubReturnCount =
     if gosubReturnCount > 0 then
@@ -540,8 +663,8 @@ and private emitStmtCore ctx builder level gosubReturnStart gosubReturnCount act
         emitIf ctx builder level gosubReturnStart gosubReturnCount activeHandlerVar hasWhenError currentLine nextLine condition thenBlock elseBlock
     | For(loopId, symbolId, startExpr, endExpr, stepExpr, body, _) ->
         emitFor ctx builder level gosubReturnStart gosubReturnCount activeHandlerVar hasWhenError currentLine nextLine loopId symbolId startExpr endExpr stepExpr body
-    | ForSequence(_, _, _, _, _, _, _, _, _) ->
-        appendLine builder level "runtime_not_supported(\"Sequence FOR loops are not supported by the generated C backend yet.\");"
+    | ForSequence(loopId, symbolId, prefixExprs, startExpr, endExpr, suffixExprs, stepExpr, body, _) ->
+        emitForSequence ctx builder level gosubReturnStart gosubReturnCount activeHandlerVar hasWhenError currentLine nextLine loopId symbolId prefixExprs startExpr endExpr suffixExprs stepExpr body
     | Repeat(loopId, _, body, _) ->
         emitRepeat ctx builder level gosubReturnStart gosubReturnCount activeHandlerVar hasWhenError currentLine nextLine loopId body
     | Exit(loopId, _) ->
@@ -553,7 +676,7 @@ and private emitStmtCore ctx builder level gosubReturnStart gosubReturnCount act
     | Goto(target, _) ->
         match tryGetConstInt target with
         | Some line -> appendLine builder level $"goto line_{line};"
-        | None -> appendLine builder level "runtime_not_supported(\"Dynamic GOTO is not supported by the generated C backend yet.\");"
+        | None -> emitLineJumpDispatch ctx builder level (emitExpr ctx target)
     | OnGoto(selector, targets, _) ->
         emitOnGotoLike "GOTO" ctx builder level selector targets
     | Gosub(target, _) ->
@@ -564,7 +687,10 @@ and private emitStmtCore ctx builder level gosubReturnStart gosubReturnCount act
             appendLine builder level $"goto line_{line};"
             appendLine builder level $"__gosub_return_{returnId}: ;"
         | None ->
-            appendLine builder level "runtime_not_supported(\"Dynamic GOSUB is not supported by the generated C backend yet.\");"
+            let returnId = nextGosubReturnId ctx
+            appendLine builder level $"__gosub_stack[__gosub_top++] = {returnId};"
+            emitLineJumpDispatch ctx builder level (emitExpr ctx target)
+            appendLine builder level $"__gosub_return_{returnId}: ;"
     | OnGosub(selector, targets, _) ->
         emitOnGosub ctx builder level selector targets
     | Return(value, _) ->
@@ -573,7 +699,6 @@ and private emitStmtCore ctx builder level gosubReturnStart gosubReturnCount act
             appendLine builder level $"__result = {emitExpr ctx expr};"
             appendLine builder level "goto sb_exit;"
         | None ->
-            appendLine builder level "__result = make_null();"
             emitBareReturnDispatch builder level gosubReturnStart gosubReturnCount
     | LineNumber(value, _) ->
         if ctx.ProgramHasLineControlFlow && Set.contains value ctx.ReferencedLineNumbers then
@@ -598,7 +723,8 @@ and private emitStmtCore ctx builder level gosubReturnStart gosubReturnCount act
         appendLine builder level $"/* {escapeCString text} */"
 
 and private emitStmt ctx builder level gosubReturnStart gosubReturnCount activeHandlerVar hasWhenError stmtId currentLine nextLine nextStmtIdOpt stmt =
-    appendLine builder level $"stmt_{stmtId}: ;"
+    if hasWhenError then
+        appendLine builder level $"stmt_{stmtId}: ;"
     match stmt with
     | LineNumber _
     | WhenError _ ->
@@ -628,6 +754,16 @@ and private emitStmt ctx builder level gosubReturnStart gosubReturnCount activeH
 let private emitStorageDeclarations (ctx: EmitterContext) (builder: StringBuilder) level (storages: HirStorage list) =
     storages |> List.iter (fun storage -> appendLine builder level $"static Cell {storageName ctx storage.Symbol};")
 
+let private emitArrayDimensionRegistration ctx builder level (storage: HirStorage) =
+    match storage.Type, storage.Dimensions with
+    | Array _, Some dimensions when not dimensions.IsEmpty ->
+        let args =
+            dimensions
+            |> List.map string
+            |> String.concat ", "
+        appendLine builder level $"register_array_dimensions({storageCellRef ctx storage.Symbol}, {dimensions.Length}, {args});"
+    | _ -> ()
+
 let private emitStatementResumeDispatch builder level startStmtId endStmtId targetVar =
     appendLine builder level $"switch ({targetVar})"
     appendLine builder level "{"
@@ -656,6 +792,7 @@ let private emitRoutine (ctx: EmitterContext) (builder: StringBuilder) (routine:
         match routine.Parameters with
         | [] -> "void"
         | items -> items |> List.map (fun parameter -> $"ParamBinding {storageName ctx parameter.Storage.Symbol}_arg") |> String.concat ", "
+    appendLine builder 0 $"/* Routine: {routine.Name} */"
     appendLine builder 0 $"static Value {routineName ctx routine.Symbol}({parameters})"
     appendLine builder 0 "{"
     appendLine builder 1 "Value __result = make_null();"
@@ -670,6 +807,10 @@ let private emitRoutine (ctx: EmitterContext) (builder: StringBuilder) (routine:
             | Array _ -> "make_cell(make_array())"
             | _ -> "make_cell(make_null())"
         appendLine builder 1 $"Cell {storageName ctx storage.Symbol} = {initial};")
+    routine.Parameters
+    |> List.iter (fun parameter -> emitArrayDimensionRegistration ctx builder 1 parameter.Storage)
+    routine.Locals
+    |> List.iter (emitArrayDimensionRegistration ctx builder 1)
     let allBindings =
         (routine.Parameters |> List.map _.Storage) @ routine.Locals
     if not allBindings.IsEmpty then
@@ -690,15 +831,20 @@ let private emitRoutine (ctx: EmitterContext) (builder: StringBuilder) (routine:
         appendLine builder 1 "int __error_retry_stmt = -1;"
         appendLine builder 1 "int __error_continue_stmt = -1;"
     if not allBindings.IsEmpty then
+        appendBlankLine builder
         allBindings
         |> List.iteri (fun index storage ->
             appendLine builder 1 $"__frame_bindings[{index}].name = \"{escapeCString storage.Name}\";"
             appendLine builder 1 $"__frame_bindings[{index}].cell = {storageCellRef ctx storage.Symbol};")
         appendLine builder 1 $"push_dynamic_frame(__frame_bindings, {allBindings.Length});"
+    if not routine.Body.IsEmpty then
+        appendBlankLine builder
     emitBlock ctx builder 1 gosubReturnStart gosubReturnCount "__active_when_error" hasWhenError None None routine.Body
     let stmtEndId = !ctx.NextStatementId - 1
     let whenErrorEndId = !ctx.NextWhenErrorId - 1
     if hasWhenError then
+        appendBlankLine builder
+        appendLine builder 1 "/* WHEN ERROR resume dispatch */"
         appendLine builder 1 "__when_error_dispatch: ;"
         appendLine builder 1 "switch (__active_when_error)"
         appendLine builder 1 "{"
@@ -725,12 +871,13 @@ let private emitRoutine (ctx: EmitterContext) (builder: StringBuilder) (routine:
         appendLine builder 2 "case 3: goto sb_exit;"
         appendLine builder 2 "default: runtime_not_supported(\"WHEN ERROR handler must exit with RETRY, CONTINUE, or STOP.\");"
         appendLine builder 1 "}"
+    appendBlankLine builder
     appendLine builder 0 "sb_exit:"
     if not allBindings.IsEmpty then
         appendLine builder 1 "pop_dynamic_frame();"
     appendLine builder 1 "return __result;"
     appendLine builder 0 "}"
-    appendLine builder 0 ""
+    appendBlankLine builder
 
 let private emitDataLayout builder (program: HirProgram) =
     let renderEntry entry =
@@ -752,6 +899,7 @@ let private emitDataLayout builder (program: HirProgram) =
         |> String.concat ", "
 
     let dataItems = String.concat ", " (program.DataEntries |> List.map renderEntry)
+    appendLine builder 0 "/* DATA and INPUT runtime state */"
     appendLine builder 0 $"DataValue sb_data[] = {{ {dataItems} }};"
     appendLine builder 0 $"int sb_data_count = {program.DataEntries.Length};"
     appendLine builder 0 $"RestorePoint sb_restore_points[] = {{ {restorePoints} }};"
@@ -760,7 +908,7 @@ let private emitDataLayout builder (program: HirProgram) =
     appendLine builder 0 "char sb_input_buffer[4096];"
     appendLine builder 0 "char* sb_input_parts[256];"
     appendLine builder 0 "int sb_input_part_count = 0;"
-    appendLine builder 0 ""
+    appendBlankLine builder
 
 let cRuntimeHeaderFileName = "sbruntime_c.h"
 let cRuntimeSourceFileName = "sbruntime_c.c"
@@ -770,17 +918,20 @@ let generateCFromHir programName (program: HirProgram) =
     let builder = StringBuilder()
 
     builder.AppendLine($"#include \"{cRuntimeHeaderFileName}\"") |> ignore
-    builder.AppendLine() |> ignore
+    appendBlankLine builder
     emitDataLayout builder program
-    emitStorageDeclarations ctx builder 0 program.Globals
     if not (List.isEmpty program.Globals) then
-        appendLine builder 0 ""
-    program.Routines |> List.iter (emitRoutinePrototype ctx builder 0)
+        appendLine builder 0 "/* Global storage */"
+        emitStorageDeclarations ctx builder 0 program.Globals
+        appendBlankLine builder
     if not (List.isEmpty program.Routines) then
-        appendLine builder 0 ""
+        appendLine builder 0 "/* Routine prototypes */"
+        program.Routines |> List.iter (emitRoutinePrototype ctx builder 0)
+        appendBlankLine builder
     appendLine builder 0 "int main(void);"
-    appendLine builder 0 ""
+    appendBlankLine builder
     program.Routines |> List.iter (emitRoutine ctx builder)
+    appendLine builder 0 "/* Program entry point */"
     appendLine builder 0 "int main(void)"
     appendLine builder 0 "{"
     let mainGosubReturnCount = countGosubSitesInBlock program.Main
@@ -798,6 +949,7 @@ let generateCFromHir programName (program: HirProgram) =
         appendLine builder 1 "int __error_target_line = 0;"
         appendLine builder 1 "int __error_retry_stmt = -1;"
         appendLine builder 1 "int __error_continue_stmt = -1;"
+    appendBlankLine builder
     appendLine builder 1 "sb_runtime_init();"
     program.Globals
     |> List.iter (fun storage ->
@@ -806,11 +958,16 @@ let generateCFromHir programName (program: HirProgram) =
             | Array _ -> "make_cell(make_array())"
             | _ -> "make_cell(make_null())"
         appendLine builder 1 $"{storageName ctx storage.Symbol} = {initial};"
+        emitArrayDimensionRegistration ctx builder 1 storage
         appendLine builder 1 $"register_global(\"{escapeCString storage.Name}\", &{storageName ctx storage.Symbol});")
+    if not program.Globals.IsEmpty then
+        appendBlankLine builder
     emitBlock ctx builder 1 mainGosubReturnStart mainGosubReturnCount "__active_when_error" mainHasWhenError None None program.Main
     let mainStmtEndId = !ctx.NextStatementId - 1
     let mainWhenErrorEndId = !ctx.NextWhenErrorId - 1
     if mainHasWhenError then
+        appendBlankLine builder
+        appendLine builder 1 "/* WHEN ERROR resume dispatch */"
         appendLine builder 1 "__when_error_dispatch: ;"
         appendLine builder 1 "switch (__active_when_error)"
         appendLine builder 1 "{"
@@ -837,6 +994,7 @@ let generateCFromHir programName (program: HirProgram) =
         appendLine builder 2 "case 3: goto sb_exit;"
         appendLine builder 2 "default: runtime_not_supported(\"WHEN ERROR handler must exit with RETRY, CONTINUE, or STOP.\");"
         appendLine builder 1 "}"
+    appendBlankLine builder
     appendLine builder 0 "sb_exit:"
     appendLine builder 1 "return 0;"
     appendLine builder 0 "}"
