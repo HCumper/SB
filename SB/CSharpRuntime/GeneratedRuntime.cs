@@ -98,6 +98,7 @@ public static class GeneratedRuntime
     private static readonly Dictionary<int, StreamWriter> __channelWriters = new Dictionary<int, StreamWriter>();
     private static readonly List<Dictionary<string, Cell>> __dynamicFrames = new List<Dictionary<string, Cell>>();
     private static readonly Dictionary<string, Cell> __globalCells = new Dictionary<string, Cell>(StringComparer.OrdinalIgnoreCase);
+    private static readonly Dictionary<Cell, int[]> __arrayDimensions = new Dictionary<Cell, int[]>();
     private static Random __random = new Random();
     private static int __screenMode = 4;
     private static bool __beeping;
@@ -107,6 +108,10 @@ public static class GeneratedRuntime
     private static int? __lastErrorLine;
     private static int? __lastRetryLine;
     private static int? __lastContinueLine;
+    private static readonly Dictionary<int, (int Left, int Top)> __screenWindowOrigins = new Dictionary<int, (int Left, int Top)>();
+    private static readonly Dictionary<int, (int X, int Y)> __screenCursors = new Dictionary<int, (int X, int Y)>();
+    private static readonly Dictionary<int, (int X, int Y)> __graphicsCursors = new Dictionary<int, (int X, int Y)>();
+    private static readonly Dictionary<int, HashSet<string>> __graphicsPixels = new Dictionary<int, HashSet<string>>();
     private static object?[] __data = Array.Empty<object?>();
     private static Dictionary<int, int> __restorePoints = new Dictionary<int, int>();
     private static int __dataPointer;
@@ -138,6 +143,10 @@ public static class GeneratedRuntime
         __lastErrorLine = null;
         __lastRetryLine = null;
         __lastContinueLine = null;
+        __screenWindowOrigins.Clear();
+        __screenCursors.Clear();
+        __graphicsCursors.Clear();
+        __graphicsPixels.Clear();
         __data = data ?? Array.Empty<object?>();
         __restorePoints = restorePoints ?? new Dictionary<int, int>();
         __dataPointer = 0;
@@ -242,6 +251,80 @@ public static class GeneratedRuntime
         __globalCells[name] = cell;
     }
 
+    public static void RegisterArrayDimensions(Cell cell, params int[] dimensions)
+    {
+        __arrayDimensions[cell] = dimensions.ToArray();
+    }
+
+    public static int[] GetArrayDimensions(Cell cell)
+    {
+        return __arrayDimensions.TryGetValue(cell, out var dimensions)
+            ? dimensions
+            : Array.Empty<int>();
+    }
+
+    public static string GraphicsPointKey(int x, int y) => $"{x},{y}";
+
+    public static HashSet<string> EnsureGraphicsPixels(int channelId)
+    {
+        EnsureScreenState(channelId);
+        if (!__graphicsPixels.TryGetValue(channelId, out var pixels))
+        {
+            pixels = new HashSet<string>(StringComparer.Ordinal);
+            __graphicsPixels[channelId] = pixels;
+        }
+
+        return pixels;
+    }
+
+    public static (int X, int Y) GetGraphicsCursor(int channelId)
+    {
+        EnsureScreenState(channelId);
+        return __graphicsCursors[channelId];
+    }
+
+    public static void SetGraphicsCursor(int channelId, int x, int y)
+    {
+        EnsureScreenState(channelId);
+        __graphicsCursors[channelId] = (x, y);
+    }
+
+    public static void ClearGraphicsState(int channelId)
+    {
+        EnsureScreenState(channelId);
+        __graphicsPixels[channelId].Clear();
+        __graphicsCursors[channelId] = (0, 0);
+    }
+
+    public static void PlotPoint(int channelId, int x, int y)
+    {
+        EnsureGraphicsPixels(channelId).Add(GraphicsPointKey(x, y));
+    }
+
+    public static int HasPoint(int channelId, int x, int y)
+    {
+        return EnsureGraphicsPixels(channelId).Contains(GraphicsPointKey(x, y)) ? 1 : 0;
+    }
+
+    public static void DrawLineSegment(int channelId, int startX, int startY, int endX, int endY)
+    {
+        var deltaX = endX - startX;
+        var deltaY = endY - startY;
+        var steps = Math.Max(Math.Abs(deltaX), Math.Abs(deltaY));
+        if (steps == 0)
+        {
+            PlotPoint(channelId, startX, startY);
+            return;
+        }
+
+        for (var step = 0; step <= steps; step++)
+        {
+            var x = (int)Math.Round(startX + (deltaX * (step / (double)steps)));
+            var y = (int)Math.Round(startY + (deltaY * (step / (double)steps)));
+            PlotPoint(channelId, x, y);
+        }
+    }
+
     public static Cell LookupDynamicCell(string name)
     {
         for (var index = __dynamicFrames.Count - 1; index >= 0; index--)
@@ -307,6 +390,83 @@ public static class GeneratedRuntime
         return text[oneBasedIndex - 1].ToString();
     }
 
+    public static Cell InvalidReferenceActualCell(string message) => throw new InvalidOperationException(message);
+    public static object? InvalidReferenceActualValue(string message) => throw new InvalidOperationException(message);
+
+    private static bool IsGraphicsBuiltInName(string name)
+    {
+        switch (name.ToUpperInvariant())
+        {
+            case "CLEAR":
+            case "WIDTH":
+            case "PAN":
+            case "PALETTE":
+            case "PLOT":
+            case "POINT":
+            case "POINT_R":
+            case "DRAW":
+            case "DLINE":
+            case "LINE_R":
+            case "CIRCLE_R":
+            case "ELLIPSE_R":
+            case "ARC_R":
+            case "FILL":
+            case "PENDOWN":
+            case "PENUP":
+            case "TURN":
+            case "TURNTO":
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private static Exception UnsupportedBuiltInFunctionException(string name)
+    {
+        if (IsGraphicsBuiltInName(name))
+        {
+            return new NotSupportedException($"Graphics built-in function '{name}' is not supported by the generated C# backend yet.");
+        }
+
+        return new NotSupportedException($"Built-in function '{name}' is not supported by the generated C# backend yet.");
+    }
+
+    private static Exception UnsupportedBuiltInStatementException(string name)
+    {
+        switch (name.ToUpperInvariant())
+        {
+            case "RUN":
+            case "LOAD":
+            case "LRUN":
+            case "MERGE":
+            case "MRUN":
+            case "SAVE":
+            case "NEW":
+                return new NotSupportedException("Program-management built-ins are not meaningful in generated C# programs.");
+            case "SEXEC":
+            case "SBYTES":
+            case "CALL":
+            case "MOVE":
+            case "RESPR":
+            case "LOADMEM":
+            case "SAVEMEM":
+            case "SYSVAR":
+                return new NotSupportedException("Built-in statement depends on host-specific behavior that is not supported by the generated C# backend.");
+        }
+
+        if (name.StartsWith("TURBO", StringComparison.OrdinalIgnoreCase))
+        {
+            return new NotSupportedException($"Turbo toolkit built-in statement '{name}' is not supported by the generated C# backend yet.");
+        }
+
+        if (IsGraphicsBuiltInName(name))
+        {
+            return new NotSupportedException($"Graphics built-in statement '{name}' is not supported by the generated C# backend yet.");
+        }
+
+        return new NotSupportedException($"Built-in statement '{name}' is not supported by the generated C# backend yet.");
+    }
+
     public static void SetStringCharValue(Cell target, object? index, object? replacement)
     {
         var text = AsString(target.Value);
@@ -362,6 +522,106 @@ public static class GeneratedRuntime
 
     public static int NormalizeChannelId(object? channel, int defaultChannel) => channel is null ? defaultChannel : AsInt(channel);
 
+    public static bool IsConsoleBackedChannel(int channelId) =>
+        !__channelReaders.ContainsKey(channelId) && !__channelWriters.ContainsKey(channelId);
+
+    public static void EnsureScreenState(int channelId)
+    {
+        if (!__screenWindowOrigins.ContainsKey(channelId))
+        {
+            __screenWindowOrigins[channelId] = (0, 0);
+        }
+
+        if (!__screenCursors.ContainsKey(channelId))
+        {
+            __screenCursors[channelId] = (0, 0);
+        }
+
+        if (!__graphicsCursors.ContainsKey(channelId))
+        {
+            __graphicsCursors[channelId] = (0, 0);
+        }
+
+        if (!__graphicsPixels.ContainsKey(channelId))
+        {
+            __graphicsPixels[channelId] = new HashSet<string>(StringComparer.Ordinal);
+        }
+    }
+
+    public static void SetScreenCursor(int channelId, int x, int y)
+    {
+        EnsureScreenState(channelId);
+        __screenCursors[channelId] = (Math.Max(0, x), Math.Max(0, y));
+    }
+
+    public static void SetWindowOrigin(int channelId, int x, int y)
+    {
+        EnsureScreenState(channelId);
+        __screenWindowOrigins[channelId] = (Math.Max(0, x), Math.Max(0, y));
+        __screenCursors[channelId] = (0, 0);
+    }
+
+    public static void PositionConsoleCursor(int channelId)
+    {
+        if (!IsConsoleBackedChannel(channelId))
+        {
+            return;
+        }
+
+        try
+        {
+            if (Console.IsOutputRedirected)
+            {
+                return;
+            }
+
+            EnsureScreenState(channelId);
+            var origin = __screenWindowOrigins[channelId];
+            var cursor = __screenCursors[channelId];
+            var left = Math.Max(0, origin.Left + cursor.X);
+            var top = Math.Max(0, origin.Top + cursor.Y);
+            if (Console.BufferWidth > 0)
+            {
+                left = Math.Min(left, Console.BufferWidth - 1);
+            }
+
+            if (Console.BufferHeight > 0)
+            {
+                top = Math.Min(top, Console.BufferHeight - 1);
+            }
+
+            Console.SetCursorPosition(left, top);
+        }
+        catch
+        {
+        }
+    }
+
+    public static void CaptureConsoleCursor(int channelId)
+    {
+        if (!IsConsoleBackedChannel(channelId))
+        {
+            return;
+        }
+
+        try
+        {
+            if (Console.IsOutputRedirected)
+            {
+                return;
+            }
+
+            EnsureScreenState(channelId);
+            var origin = __screenWindowOrigins[channelId];
+            var left = Console.CursorLeft;
+            var top = Console.CursorTop;
+            __screenCursors[channelId] = (Math.Max(0, left - origin.Left), Math.Max(0, top - origin.Top));
+        }
+        catch
+        {
+        }
+    }
+
     public static TextWriter ResolveWriter(object? channel)
     {
         var channelId = NormalizeChannelId(channel, 1);
@@ -386,16 +646,22 @@ public static class GeneratedRuntime
 
     public static void WriteLineToChannel(object? channel, string line)
     {
+        var channelId = NormalizeChannelId(channel, 1);
+        PositionConsoleCursor(channelId);
         var writer = ResolveWriter(channel);
         writer.WriteLine(line);
         writer.Flush();
+        CaptureConsoleCursor(channelId);
     }
 
     public static void WriteToChannel(object? channel, string text)
     {
+        var channelId = NormalizeChannelId(channel, 1);
+        PositionConsoleCursor(channelId);
         var writer = ResolveWriter(channel);
         writer.Write(text);
         writer.Flush();
+        CaptureConsoleCursor(channelId);
     }
 
     public static string? ReadLineFromChannel(object? channel)
@@ -415,6 +681,53 @@ public static class GeneratedRuntime
         {
             writer.Dispose();
             __channelWriters.Remove(channelId);
+        }
+    }
+
+    public static void CopyFilePath(object? sourceValue, object? targetValue)
+    {
+        var sourcePath = ResolvePath(sourceValue);
+        var targetPath = ResolvePath(targetValue);
+        File.Copy(sourcePath, targetPath, overwrite: true);
+    }
+
+    public static Stream ResolveChannelStream(object? channel)
+    {
+        var channelId = NormalizeChannelId(channel, 3);
+        if (__channelReaders.TryGetValue(channelId, out var reader))
+        {
+            return reader.BaseStream;
+        }
+
+        if (__channelWriters.TryGetValue(channelId, out var writer))
+        {
+            writer.Flush();
+            return writer.BaseStream;
+        }
+
+        throw new InvalidOperationException("Channel is not open.");
+    }
+
+    public static void SetChannelTarget(object? channel, object? sourceChannelValue)
+    {
+        var logicalChannelId = NormalizeChannelId(channel, 1);
+        var sourceChannelId = AsInt(sourceChannelValue);
+
+        CloseChannel(logicalChannelId);
+
+        if (__channelReaders.TryGetValue(sourceChannelId, out var reader))
+        {
+            __channelReaders[logicalChannelId] = reader;
+        }
+
+        if (__channelWriters.TryGetValue(sourceChannelId, out var writer))
+        {
+            __channelWriters[logicalChannelId] = writer;
+        }
+
+        if (!__channelReaders.ContainsKey(logicalChannelId) && !__channelWriters.ContainsKey(logicalChannelId))
+        {
+            throw new InvalidOperationException("SET_CHANNEL failed in generated C# backend.");
         }
     }
 
@@ -497,6 +810,22 @@ public static class GeneratedRuntime
 
     public static ConsoleKeyInfo? TryReadConsoleKey()
     {
+        if (Console.IsInputRedirected)
+        {
+            try
+            {
+                var next = Console.In.Peek();
+                if (next >= 0)
+                {
+                    var ch = (char)Console.In.Read();
+                    return new ConsoleKeyInfo(ch, 0, false, false, false);
+                }
+            }
+            catch
+            {
+            }
+        }
+
         try
         {
             if (Console.KeyAvailable)
@@ -576,6 +905,20 @@ public static class GeneratedRuntime
             case "ERR_RO":
             case "ERR_BL":
                 return string.Equals(__lastErrorName, name.ToUpperInvariant(), StringComparison.Ordinal) ? 1 : 0;
+            case "BEEPING": return __beeping ? 1 : 0;
+            case "DIMN":
+            {
+                if (args.ElementAtOrDefault(0) is not Cell arrayCell)
+                {
+                    return 0;
+                }
+
+                var requestedDimension = AsInt(args.ElementAtOrDefault(1));
+                var dimensions = GetArrayDimensions(arrayCell);
+                return requestedDimension >= 1 && requestedDimension <= dimensions.Length
+                    ? dimensions[requestedDimension - 1]
+                    : 0;
+            }
             case "FILL$": return string.Concat(Enumerable.Repeat(AsString(args.ElementAtOrDefault(0)), Math.Max(0, AsInt(args.ElementAtOrDefault(1)))));
             case "GETENV$": return Environment.GetEnvironmentVariable(AsString(args.ElementAtOrDefault(0))) ?? string.Empty;
             case "INKEY":
@@ -590,6 +933,7 @@ public static class GeneratedRuntime
             }
             case "INT": return (int)Math.Floor(AsDouble(args.ElementAtOrDefault(0)));
             case "KEYROW": return 0;
+            case "INSTR": return AsString(args.ElementAtOrDefault(0)).IndexOf(AsString(args.ElementAtOrDefault(1)), StringComparison.Ordinal) + 1;
             case "LEN": return AsString(args.ElementAtOrDefault(0)).Length;
             case "LEFT$":
             {
@@ -612,6 +956,21 @@ public static class GeneratedRuntime
             case "PEEK_W": return PeekMemory(AsInt(args.ElementAtOrDefault(0)), 2);
             case "PEEK_L": return PeekMemory(AsInt(args.ElementAtOrDefault(0)), 4);
             case "PI": return Math.PI;
+            case "POINT":
+            {
+                var channelId = args.Length >= 3 ? NormalizeChannelId(args.ElementAtOrDefault(0), 1) : 1;
+                var x = args.Length >= 3 ? AsInt(args.ElementAtOrDefault(1)) : AsInt(args.ElementAtOrDefault(0));
+                var y = args.Length >= 3 ? AsInt(args.ElementAtOrDefault(2)) : AsInt(args.ElementAtOrDefault(1));
+                return HasPoint(channelId, x, y);
+            }
+            case "POINT_R":
+            {
+                var channelId = args.Length >= 3 ? NormalizeChannelId(args.ElementAtOrDefault(0), 1) : 1;
+                var cursor = GetGraphicsCursor(channelId);
+                var deltaX = args.Length >= 3 ? AsInt(args.ElementAtOrDefault(1)) : AsInt(args.ElementAtOrDefault(0));
+                var deltaY = args.Length >= 3 ? AsInt(args.ElementAtOrDefault(2)) : AsInt(args.ElementAtOrDefault(1));
+                return HasPoint(channelId, cursor.X + deltaX, cursor.Y + deltaY);
+            }
             case "RAD": return AsDouble(args.ElementAtOrDefault(0)) * Math.PI / 180.0;
             case "RIGHT$":
             {
@@ -661,7 +1020,7 @@ public static class GeneratedRuntime
                 return adjusted < 0 ? adjusted + 86400 : adjusted;
             }
             case "VAL": return AsDouble(args.ElementAtOrDefault(0));
-            default: throw new NotSupportedException($"Built-in function '{name}' is not supported by the generated C# backend yet.");
+            default: throw UnsupportedBuiltInFunctionException(name);
         }
     }
 
@@ -733,6 +1092,40 @@ public static class GeneratedRuntime
             case "CLOSE":
                 CloseChannel(NormalizeChannelId(channel, 3));
                 break;
+            case "DELETE":
+                File.Delete(ResolvePath(args.ElementAtOrDefault(0)));
+                break;
+            case "COPY":
+            case "COPY_N":
+                CopyFilePath(args.ElementAtOrDefault(0), args.ElementAtOrDefault(1));
+                break;
+            case "RENAME":
+            {
+                var sourcePath = ResolvePath(args.ElementAtOrDefault(0));
+                var targetPath = ResolvePath(args.ElementAtOrDefault(1));
+                File.Move(sourcePath, targetPath, overwrite: true);
+                break;
+            }
+            case "TRUNCATE":
+            {
+                var stream = ResolveChannelStream(channel);
+                stream.SetLength(stream.Position);
+                break;
+            }
+            case "SET_POSITION":
+            {
+                var stream = ResolveChannelStream(channel);
+                stream.Seek(AsInt(args.ElementAtOrDefault(0)), SeekOrigin.Begin);
+                if (__channelReaders.TryGetValue(NormalizeChannelId(channel, 3), out var reader))
+                {
+                    reader.DiscardBufferedData();
+                }
+
+                break;
+            }
+            case "SET_CHANNEL":
+                SetChannelTarget(channel, args.ElementAtOrDefault(0) ?? channel ?? 1);
+                break;
             case "DIR":
             {
                 var path = args.Length == 0 ? Directory.GetCurrentDirectory() : ResolvePath(args.ElementAtOrDefault(0));
@@ -759,17 +1152,107 @@ public static class GeneratedRuntime
 
                 break;
             case "CLS":
+                ClearGraphicsState(NormalizeChannelId(channel, 1));
+                SetScreenCursor(NormalizeChannelId(channel, 1), 0, 0);
                 try { Console.Clear(); } catch { }
                 break;
             case "WINDOW":
+            {
+                if (args.Length >= 4)
+                {
+                    var channelId = NormalizeChannelId(channel, 1);
+                    SetWindowOrigin(channelId, Math.Max(0, AsInt(args.ElementAtOrDefault(2)) / 8), Math.Max(0, AsInt(args.ElementAtOrDefault(3)) / 10));
+                    PositionConsoleCursor(channelId);
+                }
+
+                break;
+            }
             case "AT":
+            {
+                if (args.Length >= 2)
+                {
+                    var channelId = NormalizeChannelId(channel, 1);
+                    SetScreenCursor(channelId, AsInt(args.ElementAtOrDefault(1)), AsInt(args.ElementAtOrDefault(0)));
+                    PositionConsoleCursor(channelId);
+                }
+
+                break;
+            }
             case "CURSOR":
+            {
+                if (args.Length >= 2)
+                {
+                    var channelId = NormalizeChannelId(channel, 1);
+                    SetScreenCursor(channelId, AsInt(args.ElementAtOrDefault(0)), AsInt(args.ElementAtOrDefault(1)));
+                    PositionConsoleCursor(channelId);
+                }
+
+                break;
+            }
+            case "PLOT":
+            {
+                if (args.Length >= 2)
+                {
+                    var channelId = NormalizeChannelId(channel, 1);
+                    var x = AsInt(args.ElementAtOrDefault(0));
+                    var y = AsInt(args.ElementAtOrDefault(1));
+                    PlotPoint(channelId, x, y);
+                    SetGraphicsCursor(channelId, x, y);
+                }
+
+                break;
+            }
+            case "DRAW":
+            case "DLINE":
+            {
+                if (args.Length >= 2)
+                {
+                    var channelId = NormalizeChannelId(channel, 1);
+                    var start = GetGraphicsCursor(channelId);
+                    var endX = start.X + AsInt(args.ElementAtOrDefault(0));
+                    var endY = start.Y + AsInt(args.ElementAtOrDefault(1));
+                    DrawLineSegment(channelId, start.X, start.Y, endX, endY);
+                    SetGraphicsCursor(channelId, endX, endY);
+                }
+
+                break;
+            }
+            case "LINE":
+            {
+                if (args.Length >= 4)
+                {
+                    var channelId = NormalizeChannelId(channel, 1);
+                    var startX = AsInt(args.ElementAtOrDefault(0));
+                    var startY = AsInt(args.ElementAtOrDefault(1));
+                    var endX = AsInt(args.ElementAtOrDefault(2));
+                    var endY = AsInt(args.ElementAtOrDefault(3));
+                    DrawLineSegment(channelId, startX, startY, endX, endY);
+                    SetGraphicsCursor(channelId, endX, endY);
+                }
+
+                break;
+            }
+            case "LINE_R":
+            {
+                if (args.Length >= 4)
+                {
+                    var channelId = NormalizeChannelId(channel, 1);
+                    var origin = GetGraphicsCursor(channelId);
+                    var startX = origin.X + AsInt(args.ElementAtOrDefault(0));
+                    var startY = origin.Y + AsInt(args.ElementAtOrDefault(1));
+                    var endX = origin.X + AsInt(args.ElementAtOrDefault(2));
+                    var endY = origin.Y + AsInt(args.ElementAtOrDefault(3));
+                    DrawLineSegment(channelId, startX, startY, endX, endY);
+                    SetGraphicsCursor(channelId, endX, endY);
+                }
+
+                break;
+            }
             case "CSIZE":
             case "CHAR_USE":
             case "S_FONT":
             case "INK":
             case "PAPER":
-            case "STRIP":
             case "BORDER":
             case "CLEAR":
             case "SCROLL":
@@ -777,13 +1260,8 @@ public static class GeneratedRuntime
             case "PAN":
             case "RECOL":
             case "PALETTE":
-            case "PLOT":
             case "POINT":
             case "POINT_R":
-            case "DRAW":
-            case "DLINE":
-            case "LINE":
-            case "LINE_R":
             case "CIRCLE":
             case "CIRCLE_R":
             case "ELLIPSE":
@@ -800,16 +1278,11 @@ public static class GeneratedRuntime
             case "PENUP":
             case "TURN":
             case "TURNTO":
-                break;
+                throw UnsupportedBuiltInStatementException(name);
             case "STOP":
                 throw new OperationCanceledException("STOP encountered.");
             default:
-                if (name.StartsWith("TURBO", StringComparison.OrdinalIgnoreCase))
-                {
-                    return;
-                }
-
-                throw new NotSupportedException($"Built-in statement '{name}' is not supported by the generated C# backend yet.");
+                throw UnsupportedBuiltInStatementException(name);
         }
     }
 

@@ -18,6 +18,7 @@
         <Compile Include="SemanticAnalyzerTests.fs" />
         <Compile Include="ProgramFixtureTests.fs" />
         <Compile Include="GeneratedCExecutionTests.fs" />
+        <Compile Include="GeneratedCSharpExecutionTests.fs" />
         <Compile Include="PipelineSourceTests.fs" />
     </ItemGroup>
 

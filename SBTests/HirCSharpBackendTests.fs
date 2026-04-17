@@ -1,5 +1,6 @@
 module SBTests.HirCSharpBackendTests
 
+open System
 open NUnit.Framework
 
 open Types
@@ -250,3 +251,124 @@ let ``generateCSharpFromHir emits gosub dispatch and when error runtime hooks`` 
     Assert.That(generated, Does.Contain("case 1:"))
     Assert.That(generated, Does.Contain("__dispatchLine = 100;"))
     Assert.That(generated, Does.Contain("switch (__gosubStack.Pop())"))
+
+[<Test>]
+let ``generateCSharpFromHir emits dynamic line control flow without not supported fallbacks`` () =
+    let targetSymbol = SymbolId 0
+    let selectorSymbol = SymbolId 1
+
+    let program =
+        { SymbolNames = [ targetSymbol, "TARGET"; selectorSymbol, "SEL" ] |> Map.ofList
+          Globals =
+            [ storage targetSymbol "TARGET" HirType.Int GlobalStorage
+              storage selectorSymbol "SEL" HirType.Int GlobalStorage ]
+          Routines = []
+          DataEntries = []
+          RestorePoints = []
+          Main =
+            [ LineNumber(10, pos)
+              Assign(WriteVar(targetSymbol, HirType.Int, pos), literalInt 20, pos)
+              Assign(WriteVar(selectorSymbol, HirType.Int, pos), literalInt 1, pos)
+              Goto(ReadVar(targetSymbol, HirType.Int, pos), pos)
+              Gosub(ReadVar(targetSymbol, HirType.Int, pos), pos)
+              OnGoto(ReadVar(selectorSymbol, HirType.Int, pos), [ ReadVar(targetSymbol, HirType.Int, pos) ], pos)
+              OnGosub(ReadVar(selectorSymbol, HirType.Int, pos), [ ReadVar(targetSymbol, HirType.Int, pos) ], pos)
+              LineNumber(20, pos)
+              Return(None, pos) ] }
+
+    let generated = generateCSharpFromHir "DynamicLineProgram" program
+
+    Assert.That(generated, Does.Contain("__dispatchLine = AsInt(v0_TARGET.Value);"))
+    Assert.That(generated, Does.Contain("__gosubStack.Push(0);"))
+    Assert.That(generated, Does.Contain("__gosubStack.Push(1);"))
+    Assert.That(generated, Does.Contain("switch (AsInt(v1_SEL.Value))"))
+    Assert.That(generated, Does.Contain("case 1:"))
+    Assert.That(generated, Does.Not.Contain("Dynamic GOTO is not supported by the generated backend yet."))
+    Assert.That(generated, Does.Not.Contain("Dynamic GOSUB is not supported by the generated backend yet."))
+    Assert.That(generated, Does.Not.Contain("GOTO is not supported by the generated backend yet."))
+
+[<Test>]
+let ``generateCSharpFromHir treats string character by reference actuals as invalid parameters`` () =
+    let textSymbol = SymbolId 0
+    let routineSymbol = SymbolId 1
+    let parameterSymbol = SymbolId 2
+    let leftBuiltin = SymbolId 3
+
+    let program =
+        { SymbolNames =
+            [ textSymbol, "TEXT$"
+              routineSymbol, "PROC"
+              parameterSymbol, "P$"
+              leftBuiltin, "LEFT$" ]
+            |> Map.ofList
+          Globals = [ storage textSymbol "TEXT$" HirType.String GlobalStorage ]
+          Routines =
+            [ { Name = "PROC"
+                Symbol = routineSymbol
+                Parameters = [ parameter parameterSymbol "P$" HirType.String (RoutineParameterStorage "PROC") FlexibleBinding ]
+                Locals = []
+                Body = [ Return(None, pos) ]
+                ReturnType = None
+                EndLineNumber = None
+                Position = pos } ]
+          DataEntries = []
+          RestorePoints = []
+          Main =
+            [ ProcCall(routineSymbol, None, [ RefArg(WriteStringChar(textSymbol, literalInt 1, HirType.String, pos)) ], pos)
+              BuiltInCall(NamedBuiltIn "PRINT", None, [ CallFunc(leftBuiltin, [ RefArg(WriteStringChar(textSymbol, literalInt 1, HirType.String, pos)); ValueArg(literalInt 1) ], HirType.String, pos) ], pos) ] }
+
+    let generated = generateCSharpFromHir "InvalidRefProgram" program
+
+    Assert.That(generated, Does.Contain("InvalidReferenceActualCell(\"String character targets cannot be used as by-reference storage locations.\")"))
+    Assert.That(generated, Does.Contain("InvalidReferenceActualValue(\"String character targets cannot be used as by-reference storage locations.\")"))
+    Assert.That(generated, Does.Not.Contain("String character targets cannot be passed by reference in the generated C# backend yet."))
+    Assert.That(generated, Does.Not.Contain("String character reference arguments are not supported by built-in calls in the generated C# backend yet."))
+
+[<Test>]
+let ``generateCSharpFromHir rejects nested numbered lines in main when line control flow is present`` () =
+    let targetSymbol = SymbolId 0
+
+    let program =
+        { SymbolNames = [ targetSymbol, "TARGET" ] |> Map.ofList
+          Globals = [ storage targetSymbol "TARGET" HirType.Int GlobalStorage ]
+          Routines = []
+          DataEntries = []
+          RestorePoints = []
+          Main =
+            [ Assign(WriteVar(targetSymbol, HirType.Int, pos), literalInt 100, pos)
+              Goto(ReadVar(targetSymbol, HirType.Int, pos), pos)
+              If(literalInt 1, [ LineNumber(100, pos) ], None, pos) ] }
+
+    let ex =
+        Assert.Throws<InvalidOperationException>(fun () -> generateCSharpFromHir "NestedMainLineProgram" program |> ignore)
+
+    Assert.That(ex.Message, Does.Contain("main program body"))
+    Assert.That(ex.Message, Does.Contain("Nested line numbers: 100"))
+
+[<Test>]
+let ``generateCSharpFromHir rejects nested numbered lines in routines when line control flow is present`` () =
+    let routineSymbol = SymbolId 0
+
+    let program =
+        { SymbolNames = [ routineSymbol, "PROC" ] |> Map.ofList
+          Globals = []
+          Routines =
+            [ { Name = "PROC"
+                Symbol = routineSymbol
+                Parameters = []
+                Locals = []
+                Body =
+                    [ Goto(literalInt 200, pos)
+                      Repeat(LoopId 0, AnonymousLoop, [ LineNumber(200, pos) ], pos) ]
+                ReturnType = None
+                EndLineNumber = None
+                Position = pos } ]
+          DataEntries = []
+          RestorePoints = []
+          Main = [] }
+
+    let ex =
+        Assert.Throws<InvalidOperationException>(fun () -> generateCSharpFromHir "NestedRoutineLineProgram" program |> ignore)
+
+    Assert.That(ex.Message, Does.Contain("routine 'PROC'"))
+    Assert.That(ex.Message, Does.Contain("Nested line numbers: 200"))

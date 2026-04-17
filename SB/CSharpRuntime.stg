@@ -89,6 +89,7 @@ private static readonly Dictionary<int, StreamReader> __channelReaders = new Dic
 private static readonly Dictionary<int, StreamWriter> __channelWriters = new Dictionary<int, StreamWriter>();
 private static readonly List<Dictionary<string, Cell>> __dynamicFrames = new List<Dictionary<string, Cell>>();
 private static readonly Dictionary<string, Cell> __globalCells = new Dictionary<string, Cell>(StringComparer.OrdinalIgnoreCase);
+private static readonly Dictionary<Cell, int[]> __arrayDimensions = new Dictionary<Cell, int[]>();
 private static Random __random = new Random();
 private static int __screenMode = 4;
 private static bool __beeping;
@@ -100,6 +101,8 @@ private static int? __lastRetryLine;
 private static int? __lastContinueLine;
 private static readonly Dictionary<int, (int Left, int Top)> __screenWindowOrigins = new Dictionary<int, (int Left, int Top)>();
 private static readonly Dictionary<int, (int X, int Y)> __screenCursors = new Dictionary<int, (int X, int Y)>();
+private static readonly Dictionary<int, (int X, int Y)> __graphicsCursors = new Dictionary<int, (int X, int Y)>();
+private static readonly Dictionary<int, HashSet<string>> __graphicsPixels = new Dictionary<int, HashSet<string>>();
 
 private static int AsInt(object? value)
 {
@@ -199,6 +202,80 @@ private static void RegisterGlobal(string name, Cell cell)
     __globalCells[name] = cell;
 }
 
+private static void RegisterArrayDimensions(Cell cell, params int[] dimensions)
+{
+    __arrayDimensions[cell] = dimensions.ToArray();
+}
+
+private static int[] GetArrayDimensions(Cell cell)
+{
+    return __arrayDimensions.TryGetValue(cell, out var dimensions)
+        ? dimensions
+        : Array.Empty<int>();
+}
+
+private static string GraphicsPointKey(int x, int y) => $"{x},{y}";
+
+private static HashSet<string> EnsureGraphicsPixels(int channelId)
+{
+    EnsureScreenState(channelId);
+    if (!__graphicsPixels.TryGetValue(channelId, out var pixels))
+    {
+        pixels = new HashSet<string>(StringComparer.Ordinal);
+        __graphicsPixels[channelId] = pixels;
+    }
+
+    return pixels;
+}
+
+private static (int X, int Y) GetGraphicsCursor(int channelId)
+{
+    EnsureScreenState(channelId);
+    return __graphicsCursors[channelId];
+}
+
+private static void SetGraphicsCursor(int channelId, int x, int y)
+{
+    EnsureScreenState(channelId);
+    __graphicsCursors[channelId] = (x, y);
+}
+
+private static void ClearGraphicsState(int channelId)
+{
+    EnsureScreenState(channelId);
+    __graphicsPixels[channelId].Clear();
+    __graphicsCursors[channelId] = (0, 0);
+}
+
+private static void PlotPoint(int channelId, int x, int y)
+{
+    EnsureGraphicsPixels(channelId).Add(GraphicsPointKey(x, y));
+}
+
+private static int HasPoint(int channelId, int x, int y)
+{
+    return EnsureGraphicsPixels(channelId).Contains(GraphicsPointKey(x, y)) ? 1 : 0;
+}
+
+private static void DrawLineSegment(int channelId, int startX, int startY, int endX, int endY)
+{
+    var deltaX = endX - startX;
+    var deltaY = endY - startY;
+    var steps = Math.Max(Math.Abs(deltaX), Math.Abs(deltaY));
+    if (steps == 0)
+    {
+        PlotPoint(channelId, startX, startY);
+        return;
+    }
+
+    for (var step = 0; step <= steps; step++)
+    {
+        var x = (int)Math.Round(startX + (deltaX * (step / (double)steps)));
+        var y = (int)Math.Round(startY + (deltaY * (step / (double)steps)));
+        PlotPoint(channelId, x, y);
+    }
+}
+
 private static Cell LookupDynamicCell(string name)
 {
     for (var index = __dynamicFrames.Count - 1; index >= 0; index--)
@@ -262,6 +339,83 @@ private static object? GetStringCharValue(object? source, object? index)
     }
 
     return text[oneBasedIndex - 1].ToString();
+}
+
+public static Cell InvalidReferenceActualCell(string message) => throw new InvalidOperationException(message);
+public static object? InvalidReferenceActualValue(string message) => throw new InvalidOperationException(message);
+
+private static bool IsGraphicsBuiltInName(string name)
+{
+    switch (name.ToUpperInvariant())
+    {
+        case "CLEAR":
+        case "WIDTH":
+        case "PAN":
+        case "PALETTE":
+        case "PLOT":
+        case "POINT":
+        case "POINT_R":
+        case "DRAW":
+        case "DLINE":
+        case "LINE_R":
+        case "CIRCLE_R":
+        case "ELLIPSE_R":
+        case "ARC_R":
+        case "FILL":
+        case "PENDOWN":
+        case "PENUP":
+        case "TURN":
+        case "TURNTO":
+            return true;
+        default:
+            return false;
+    }
+}
+
+private static Exception UnsupportedBuiltInFunctionException(string name)
+{
+    if (IsGraphicsBuiltInName(name))
+    {
+        return new NotSupportedException($"Graphics built-in function '{name}' is not supported by the generated C# backend yet.");
+    }
+
+    return new NotSupportedException($"Built-in function '{name}' is not supported by the generated C# backend yet.");
+}
+
+private static Exception UnsupportedBuiltInStatementException(string name)
+{
+    switch (name.ToUpperInvariant())
+    {
+        case "RUN":
+        case "LOAD":
+        case "LRUN":
+        case "MERGE":
+        case "MRUN":
+        case "SAVE":
+        case "NEW":
+            return new NotSupportedException("Program-management built-ins are not meaningful in generated C# programs.");
+        case "SEXEC":
+        case "SBYTES":
+        case "CALL":
+        case "MOVE":
+        case "RESPR":
+        case "LOADMEM":
+        case "SAVEMEM":
+        case "SYSVAR":
+            return new NotSupportedException("Built-in statement depends on host-specific behavior that is not supported by the generated C# backend.");
+    }
+
+    if (name.StartsWith("TURBO", StringComparison.OrdinalIgnoreCase))
+    {
+        return new NotSupportedException($"Turbo toolkit built-in statement '{name}' is not supported by the generated C# backend yet.");
+    }
+
+    if (IsGraphicsBuiltInName(name))
+    {
+        return new NotSupportedException($"Graphics built-in statement '{name}' is not supported by the generated C# backend yet.");
+    }
+
+    return new NotSupportedException($"Built-in statement '{name}' is not supported by the generated C# backend yet.");
 }
 
 private static void SetStringCharValue(Cell target, object? index, object? replacement)
@@ -332,6 +486,16 @@ private static void EnsureScreenState(int channelId)
     if (!__screenCursors.ContainsKey(channelId))
     {
         __screenCursors[channelId] = (0, 0);
+    }
+
+    if (!__graphicsCursors.ContainsKey(channelId))
+    {
+        __graphicsCursors[channelId] = (0, 0);
+    }
+
+    if (!__graphicsPixels.ContainsKey(channelId))
+    {
+        __graphicsPixels[channelId] = new HashSet<string>(StringComparer.Ordinal);
     }
 }
 
@@ -468,6 +632,53 @@ private static void CloseChannel(int channelId)
     }
 }
 
+private static void CopyFilePath(object? sourceValue, object? targetValue)
+{
+    var sourcePath = ResolvePath(sourceValue);
+    var targetPath = ResolvePath(targetValue);
+    File.Copy(sourcePath, targetPath, overwrite: true);
+}
+
+private static Stream ResolveChannelStream(object? channel)
+{
+    var channelId = NormalizeChannelId(channel, 3);
+    if (__channelReaders.TryGetValue(channelId, out var reader))
+    {
+        return reader.BaseStream;
+    }
+
+    if (__channelWriters.TryGetValue(channelId, out var writer))
+    {
+        writer.Flush();
+        return writer.BaseStream;
+    }
+
+    throw new InvalidOperationException("Channel is not open.");
+}
+
+private static void SetChannelTarget(object? channel, object? sourceChannelValue)
+{
+    var logicalChannelId = NormalizeChannelId(channel, 1);
+    var sourceChannelId = AsInt(sourceChannelValue);
+
+    CloseChannel(logicalChannelId);
+
+    if (__channelReaders.TryGetValue(sourceChannelId, out var reader))
+    {
+        __channelReaders[logicalChannelId] = reader;
+    }
+
+    if (__channelWriters.TryGetValue(sourceChannelId, out var writer))
+    {
+        __channelWriters[logicalChannelId] = writer;
+    }
+
+    if (!__channelReaders.ContainsKey(logicalChannelId) && !__channelWriters.ContainsKey(logicalChannelId))
+    {
+        throw new InvalidOperationException("SET_CHANNEL failed in generated C# backend.");
+    }
+}
+
 private static string ResolvePath(object? value)
 {
     var raw = AsString(value).Trim();
@@ -547,6 +758,22 @@ private static bool IsEndOfFile(int channelId)
 
 private static ConsoleKeyInfo? TryReadConsoleKey()
 {
+    if (Console.IsInputRedirected)
+    {
+        try
+        {
+            var next = Console.In.Peek();
+            if (next >= 0)
+            {
+                var ch = (char)Console.In.Read();
+                return new ConsoleKeyInfo(ch, 0, false, false, false);
+            }
+        }
+        catch
+        {
+        }
+    }
+
     try
     {
         if (Console.KeyAvailable)
@@ -626,6 +853,20 @@ private static object? InvokeBuiltInFunction(string name, params object?[] args)
         case "ERR_RO":
         case "ERR_BL":
             return string.Equals(__lastErrorName, name.ToUpperInvariant(), StringComparison.Ordinal) ? 1 : 0;
+        case "BEEPING": return __beeping ? 1 : 0;
+        case "DIMN":
+        {
+            if (args.ElementAtOrDefault(0) is not Cell arrayCell)
+            {
+                return 0;
+            }
+
+            var requestedDimension = AsInt(args.ElementAtOrDefault(1));
+            var dimensions = GetArrayDimensions(arrayCell);
+            return requestedDimension >= 1 && requestedDimension <= dimensions.Length
+                ? dimensions[requestedDimension - 1]
+                : 0;
+        }
         case "FILL$": return string.Concat(Enumerable.Repeat(AsString(args.ElementAtOrDefault(0)), Math.Max(0, AsInt(args.ElementAtOrDefault(1)))));
         case "GETENV$": return Environment.GetEnvironmentVariable(AsString(args.ElementAtOrDefault(0))) ?? string.Empty;
         case "INKEY":
@@ -639,8 +880,9 @@ private static object? InvokeBuiltInFunction(string name, params object?[] args)
             return key.HasValue ? (key.Value.KeyChar == '\0' ? "\0" : key.Value.KeyChar.ToString()) : "\0";
         }
         case "INT": return (int)Math.Floor(AsDouble(args.ElementAtOrDefault(0)));
-        case "KEYROW": return 0;
-        case "LEN": return AsString(args.ElementAtOrDefault(0)).Length;
+            case "KEYROW": return 0;
+            case "INSTR": return AsString(args.ElementAtOrDefault(0)).IndexOf(AsString(args.ElementAtOrDefault(1)), StringComparison.Ordinal) + 1;
+            case "LEN": return AsString(args.ElementAtOrDefault(0)).Length;
         case "LEFT$":
         {
             var source = AsString(args.ElementAtOrDefault(0));
@@ -658,11 +900,26 @@ private static object? InvokeBuiltInFunction(string name, params object?[] args)
             var count = Math.Max(0, Math.Min(source.Length - start, AsInt(args.ElementAtOrDefault(2))));
             return source.Substring(start, count);
         }
-        case "PEEK": return PeekMemory(AsInt(args.ElementAtOrDefault(0)), 1);
-        case "PEEK_W": return PeekMemory(AsInt(args.ElementAtOrDefault(0)), 2);
-        case "PEEK_L": return PeekMemory(AsInt(args.ElementAtOrDefault(0)), 4);
-        case "PI": return Math.PI;
-        case "RAD": return AsDouble(args.ElementAtOrDefault(0)) * Math.PI / 180.0;
+            case "PEEK": return PeekMemory(AsInt(args.ElementAtOrDefault(0)), 1);
+            case "PEEK_W": return PeekMemory(AsInt(args.ElementAtOrDefault(0)), 2);
+            case "PEEK_L": return PeekMemory(AsInt(args.ElementAtOrDefault(0)), 4);
+            case "PI": return Math.PI;
+        case "POINT":
+        {
+            var channelId = args.Length >= 3 ? NormalizeChannelId(args.ElementAtOrDefault(0), 1) : 1;
+            var x = args.Length >= 3 ? AsInt(args.ElementAtOrDefault(1)) : AsInt(args.ElementAtOrDefault(0));
+            var y = args.Length >= 3 ? AsInt(args.ElementAtOrDefault(2)) : AsInt(args.ElementAtOrDefault(1));
+            return HasPoint(channelId, x, y);
+        }
+        case "POINT_R":
+        {
+            var channelId = args.Length >= 3 ? NormalizeChannelId(args.ElementAtOrDefault(0), 1) : 1;
+            var cursor = GetGraphicsCursor(channelId);
+            var deltaX = args.Length >= 3 ? AsInt(args.ElementAtOrDefault(1)) : AsInt(args.ElementAtOrDefault(0));
+            var deltaY = args.Length >= 3 ? AsInt(args.ElementAtOrDefault(2)) : AsInt(args.ElementAtOrDefault(1));
+            return HasPoint(channelId, cursor.X + deltaX, cursor.Y + deltaY);
+        }
+            case "RAD": return AsDouble(args.ElementAtOrDefault(0)) * Math.PI / 180.0;
         case "RIGHT$":
         {
             var source = AsString(args.ElementAtOrDefault(0));
@@ -710,7 +967,7 @@ private static object? InvokeBuiltInFunction(string name, params object?[] args)
             return adjusted < 0 ? adjusted + 86400 : adjusted;
         }
         case "VAL": return AsDouble(args.ElementAtOrDefault(0));
-        default: throw new NotSupportedException($"Built-in function '{name}' is not supported by the generated C# backend yet.");
+        default: throw UnsupportedBuiltInFunctionException(name);
     }
 }
 
@@ -781,6 +1038,39 @@ private static void ExecuteBuiltInStatement(string name, object? channel, params
         case "CLOSE":
             CloseChannel(NormalizeChannelId(channel, 3));
             break;
+        case "DELETE":
+            File.Delete(ResolvePath(args.ElementAtOrDefault(0)));
+            break;
+        case "COPY":
+        case "COPY_N":
+            CopyFilePath(args.ElementAtOrDefault(0), args.ElementAtOrDefault(1));
+            break;
+        case "RENAME":
+        {
+            var sourcePath = ResolvePath(args.ElementAtOrDefault(0));
+            var targetPath = ResolvePath(args.ElementAtOrDefault(1));
+            File.Move(sourcePath, targetPath, overwrite: true);
+            break;
+        }
+        case "TRUNCATE":
+        {
+            var stream = ResolveChannelStream(channel);
+            stream.SetLength(stream.Position);
+            break;
+        }
+        case "SET_POSITION":
+        {
+            var stream = ResolveChannelStream(channel);
+            stream.Seek(AsInt(args.ElementAtOrDefault(0)), SeekOrigin.Begin);
+            if (__channelReaders.TryGetValue(NormalizeChannelId(channel, 3), out var reader))
+            {
+                reader.DiscardBufferedData();
+            }
+            break;
+        }
+        case "SET_CHANNEL":
+            SetChannelTarget(channel, args.ElementAtOrDefault(0) ?? channel ?? 1);
+            break;
         case "DIR":
         {
             var path = args.Length == 0 ? Directory.GetCurrentDirectory() : ResolvePath(args.ElementAtOrDefault(0));
@@ -805,6 +1095,7 @@ private static void ExecuteBuiltInStatement(string name, object? channel, params
             }
             break;
         case "CLS":
+            ClearGraphicsState(NormalizeChannelId(channel, 1));
             SetScreenCursor(NormalizeChannelId(channel, 1), 0, 0);
             try { Console.Clear(); } catch { }
             break;
@@ -838,6 +1129,61 @@ private static void ExecuteBuiltInStatement(string name, object? channel, params
             }
             break;
         }
+        case "PLOT":
+        {
+            if (args.Length >= 2)
+            {
+                var channelId = NormalizeChannelId(channel, 1);
+                var x = AsInt(args.ElementAtOrDefault(0));
+                var y = AsInt(args.ElementAtOrDefault(1));
+                PlotPoint(channelId, x, y);
+                SetGraphicsCursor(channelId, x, y);
+            }
+            break;
+        }
+        case "DRAW":
+        case "DLINE":
+        {
+            if (args.Length >= 2)
+            {
+                var channelId = NormalizeChannelId(channel, 1);
+                var start = GetGraphicsCursor(channelId);
+                var endX = start.X + AsInt(args.ElementAtOrDefault(0));
+                var endY = start.Y + AsInt(args.ElementAtOrDefault(1));
+                DrawLineSegment(channelId, start.X, start.Y, endX, endY);
+                SetGraphicsCursor(channelId, endX, endY);
+            }
+            break;
+        }
+        case "LINE":
+        {
+            if (args.Length >= 4)
+            {
+                var channelId = NormalizeChannelId(channel, 1);
+                var startX = AsInt(args.ElementAtOrDefault(0));
+                var startY = AsInt(args.ElementAtOrDefault(1));
+                var endX = AsInt(args.ElementAtOrDefault(2));
+                var endY = AsInt(args.ElementAtOrDefault(3));
+                DrawLineSegment(channelId, startX, startY, endX, endY);
+                SetGraphicsCursor(channelId, endX, endY);
+            }
+            break;
+        }
+        case "LINE_R":
+        {
+            if (args.Length >= 4)
+            {
+                var channelId = NormalizeChannelId(channel, 1);
+                var origin = GetGraphicsCursor(channelId);
+                var startX = origin.X + AsInt(args.ElementAtOrDefault(0));
+                var startY = origin.Y + AsInt(args.ElementAtOrDefault(1));
+                var endX = origin.X + AsInt(args.ElementAtOrDefault(2));
+                var endY = origin.Y + AsInt(args.ElementAtOrDefault(3));
+                DrawLineSegment(channelId, startX, startY, endX, endY);
+                SetGraphicsCursor(channelId, endX, endY);
+            }
+            break;
+        }
         case "CSIZE":
         case "CHAR_USE":
         case "S_FONT":
@@ -850,13 +1196,8 @@ private static void ExecuteBuiltInStatement(string name, object? channel, params
         case "PAN":
         case "RECOL":
         case "PALETTE":
-        case "PLOT":
         case "POINT":
         case "POINT_R":
-        case "DRAW":
-        case "DLINE":
-        case "LINE":
-        case "LINE_R":
         case "CIRCLE":
         case "CIRCLE_R":
         case "ELLIPSE":
@@ -873,15 +1214,11 @@ private static void ExecuteBuiltInStatement(string name, object? channel, params
         case "PENUP":
         case "TURN":
         case "TURNTO":
-            break;
+            throw UnsupportedBuiltInStatementException(name);
         case "STOP":
             throw new OperationCanceledException("STOP encountered.");
         default:
-            if (name.StartsWith("TURBO", StringComparison.OrdinalIgnoreCase))
-            {
-                return;
-            }
-            throw new NotSupportedException($"Built-in statement '{name}' is not supported by the generated C# backend yet.");
+            throw UnsupportedBuiltInStatementException(name);
     }
 }
 

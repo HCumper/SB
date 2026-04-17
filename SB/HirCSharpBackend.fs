@@ -100,12 +100,13 @@ let rec private blockHasWhenError (block: HirBlock) =
         | _ -> false)
 
 let private buildContext className (program: HirProgram) =
-    let programHasLineControlFlow =
-        blockHasLineControlFlow program.Main
-        || (program.Routines |> List.exists (fun routine -> blockHasLineControlFlow routine.Body))
     let programHasWhenError =
         blockHasWhenError program.Main
         || (program.Routines |> List.exists (fun routine -> blockHasWhenError routine.Body))
+    let programHasLineControlFlow =
+        blockHasLineControlFlow program.Main
+        || (program.Routines |> List.exists (fun routine -> blockHasLineControlFlow routine.Body))
+        || programHasWhenError
 
     let globals =
         program.Globals
@@ -172,12 +173,12 @@ let rec private emitTargetRead ctx = function
     | WriteArrayElem(symbolId, indexes, _, _) ->
         emitInvocation "GetArrayCell" (storageName ctx symbolId :: (indexes |> List.map (emitExpr ctx)))
     | WriteStringChar(_, _, _, _) ->
-        "throw new NotSupportedException(\"String character targets cannot be passed by reference in the generated C# backend yet.\")"
+        "InvalidReferenceActualCell(\"String character targets cannot be used as by-reference storage locations.\")"
     | DynamicWriteVar(name, _, _) -> emitInvocation "LookupDynamicCell" [ $"\"{name}\"" ]
     | DynamicWriteArrayElem(name, indexes, _, _) ->
         emitInvocation "GetArrayCell" (emitInvocation "LookupDynamicCell" [ $"\"{name}\"" ] :: (indexes |> List.map (emitExpr ctx)))
     | DynamicWriteStringChar(_, _, _, _) ->
-        "throw new NotSupportedException(\"Dynamic string character targets cannot be passed by reference in the generated C# backend yet.\")"
+        "InvalidReferenceActualCell(\"String character targets cannot be used as by-reference storage locations.\")"
 
 and private emitRoutineCallArg ctx = function
     | ValueArg expr -> $"new Cell({emitExpr ctx expr})"
@@ -187,8 +188,16 @@ and private emitBuiltInCallArg ctx = function
     | ValueArg expr -> emitExpr ctx expr
     | RefArg(WriteStringChar(_, _, _, _))
     | RefArg(DynamicWriteStringChar(_, _, _, _)) ->
-        "throw new NotSupportedException(\"String character reference arguments are not supported by built-in calls in the generated C# backend yet.\")"
+        "InvalidReferenceActualValue(\"String character targets cannot be used as by-reference storage locations.\")"
     | RefArg target -> $"{emitTargetRead ctx target}.Value"
+
+and private emitBuiltInFunctionArgs ctx symbolId args =
+    let normalizedName = (builtInName ctx symbolId).Trim().ToUpperInvariant()
+    match normalizedName, args with
+    | "DIMN", [ ValueArg(ReadVar(arraySymbol, HirType.Array _, _)); ValueArg dimensionExpr ] ->
+        [ storageName ctx arraySymbol; emitExpr ctx dimensionExpr ]
+    | _ ->
+        args |> List.map (emitBuiltInCallArg ctx)
 
 and private emitExpr ctx = function
     | Literal(ConstInt value, _, _) -> string value
@@ -243,7 +252,7 @@ and private emitExpr ctx = function
             if Set.contains symbolId ctx.RoutineSymbols then
                 args |> List.map (emitRoutineCallArg ctx)
             else
-                args |> List.map (emitBuiltInCallArg ctx)
+                emitBuiltInFunctionArgs ctx symbolId args
         if Set.contains symbolId ctx.RoutineSymbols then
             emitInvocation (routineName ctx symbolId) argsText
         else
@@ -316,6 +325,28 @@ let rec private collectLineNumbersInBlock (block: HirBlock) =
         | Repeat(_, _, body, _) -> collectLineNumbersInBlock body
         | _ -> [])
     |> List.distinct
+
+let rec private collectNestedLineNumbersInBlock depth (block: HirBlock) =
+    block
+    |> List.collect (function
+        | LineNumber(value, _) when depth > 0 -> [ value ]
+        | LineNumber _ -> []
+        | If(_, thenBlock, elseBlock, _) ->
+            collectNestedLineNumbersInBlock (depth + 1) thenBlock
+            @ (elseBlock |> Option.map (collectNestedLineNumbersInBlock (depth + 1)) |> Option.defaultValue [])
+        | WhenError(handlerBlock, _) -> collectNestedLineNumbersInBlock (depth + 1) handlerBlock
+        | For(_, _, _, _, _, body, _)
+        | ForSequence(_, _, _, _, _, _, _, body, _)
+        | Repeat(_, _, body, _) -> collectNestedLineNumbersInBlock (depth + 1) body
+        | _ -> [])
+    |> List.distinct
+
+let private validateNestedLineNumberTargets scopeName hasLineControlFlow block =
+    if hasLineControlFlow then
+        let nestedLineNumbers = collectNestedLineNumbersInBlock 0 block
+        if not nestedLineNumbers.IsEmpty then
+            let lineList = nestedLineNumbers |> List.map string |> String.concat ", "
+            invalidOp $"The generated C# backend cannot emit numbered line targets inside nested structured blocks in {scopeName}. Move these line numbers to top-level statement scope or use the interpreter backend instead. Nested line numbers: {lineList}."
 
 let private findNextLineNumber block pc inheritedNextLine =
     block
@@ -509,10 +540,12 @@ and private emitOnGotoLike keyword ctx builder level selector targets =
         | Some line when keyword = "GOTO" ->
             appendLine builder (level + 1) $"case {index + 1}:"
             emitDispatchToLine builder (level + 2) (string line)
-        | Some _ ->
-            appendLine builder (level + 1) $"case {index + 1}: throw new NotSupportedException(\"{keyword} is not supported by the generated backend yet.\");"
+        | Some line ->
+            appendLine builder (level + 1) $"case {index + 1}:"
+            emitDispatchToLine builder (level + 2) (string line)
         | None ->
-            appendLine builder (level + 1) $"case {index + 1}: throw new NotSupportedException(\"Dynamic {keyword} is not supported by the generated backend yet.\");")
+            appendLine builder (level + 1) $"case {index + 1}:"
+            emitDispatchToLine builder (level + 2) $"AsInt({emitExpr ctx target})")
     appendLine builder (level + 1) "default: break;"
     appendLine builder level "}"
 
@@ -528,7 +561,9 @@ and private emitOnGosub ctx builder level selector targets =
             appendLine builder (level + 2) $"__gosubStack.Push({returnId});"
             emitDispatchToLine builder (level + 2) (string line)
         | None ->
-            appendLine builder (level + 1) $"case {index + 1}: throw new NotSupportedException(\"Dynamic GOSUB is not supported by the generated backend yet.\");")
+            appendLine builder (level + 1) $"case {index + 1}:"
+            appendLine builder (level + 2) $"__gosubStack.Push({returnId});"
+            emitDispatchToLine builder (level + 2) $"AsInt({emitExpr ctx target})")
     appendLine builder (level + 1) "default: break;"
     appendLine builder level "}"
     appendLine builder level $"__gosub_return_{returnId}: ;"
@@ -619,7 +654,7 @@ and private emitStmtCore ctx builder level currentLine nextLine continueLabelOpt
     | Goto(target, _) ->
         match tryGetConstInt target with
         | Some line -> emitDispatchToLine builder level (string line)
-        | None -> appendLine builder level "throw new NotSupportedException(\"Dynamic GOTO is not supported by the generated backend yet.\");"
+        | None -> emitDispatchToLine builder level $"AsInt({emitExpr ctx target})"
     | OnGoto(selector, targets, _) ->
         emitOnGotoLike "GOTO" ctx builder level selector targets
     | Gosub(target, _) ->
@@ -630,7 +665,10 @@ and private emitStmtCore ctx builder level currentLine nextLine continueLabelOpt
             emitDispatchToLine builder level (string line)
             appendLine builder level $"__gosub_return_{returnId}: ;"
         | None ->
-            appendLine builder level "throw new NotSupportedException(\"Dynamic GOSUB is not supported by the generated backend yet.\");"
+            let returnId = nextGosubReturnId ctx
+            appendLine builder level $"__gosubStack.Push({returnId});"
+            emitDispatchToLine builder level $"AsInt({emitExpr ctx target})"
+            appendLine builder level $"__gosub_return_{returnId}: ;"
     | OnGosub(selector, targets, _) ->
         emitOnGosub ctx builder level selector targets
     | Return(value, _) ->
@@ -712,11 +750,19 @@ let private emitGlobalRegistration (ctx: EmitterContext) (builder: StringBuilder
     |> List.iter (fun storage ->
         appendLine builder level $"RegisterGlobal(\"{escapeStringLiteral (storageSourceName ctx storage.Symbol)}\", {storageName ctx storage.Symbol});")
 
+let private emitArrayDimensionRegistration (ctx: EmitterContext) (builder: StringBuilder) level (storage: HirStorage) =
+    match storage.Type, storage.Dimensions with
+    | Array _, Some dimensions when not dimensions.IsEmpty ->
+        let args = dimensions |> List.map string |> String.concat ", "
+        appendLine builder level $"RegisterArrayDimensions({storageName ctx storage.Symbol}, {args});"
+    | _ -> ()
+
 let private emitRoutine ctx builder (routine: HirRoutine) =
     let gosubReturnCount = countGosubSitesInBlock routine.Body
     let lineNumbers = collectLineNumbersInBlock routine.Body
-    let hasLineControlFlow = blockHasLineControlFlow routine.Body
     let hasWhenError = blockHasWhenError routine.Body
+    let hasLineControlFlow = blockHasLineControlFlow routine.Body || hasWhenError
+    validateNestedLineNumberTargets $"routine '{routine.Name}'" hasLineControlFlow routine.Body
     let parameterText =
         routine.Parameters
         |> List.map (fun parameter -> $"Cell {storageName ctx parameter.Storage.Symbol}")
@@ -747,6 +793,10 @@ let private emitRoutine ctx builder (routine: HirRoutine) =
         match storage.Type with
         | Array _ -> appendLine builder 2 $"{storageName ctx storage.Symbol}.Value = new Dictionary<string, Cell>(StringComparer.OrdinalIgnoreCase);"
         | _ -> appendLine builder 2 $"{storageName ctx storage.Symbol}.Value = null;")
+    routine.Parameters
+    |> List.iter (fun parameter -> emitArrayDimensionRegistration ctx builder 2 parameter.Storage)
+    routine.Locals
+    |> List.iter (emitArrayDimensionRegistration ctx builder 2)
     emitBlock ctx builder 2 None None None "return null;" gosubReturnCount lineNumbers hasWhenError routine.Body
     appendLine builder 2 "return null;"
     appendLine builder 1 "}"
@@ -774,8 +824,9 @@ let generateCSharpFromHir className (program: HirProgram) =
     let ctx = buildContext className program
     let mainGosubReturnCount = countGosubSitesInBlock program.Main
     let mainLineNumbers = collectLineNumbersInBlock program.Main
-    let mainHasLineControlFlow = blockHasLineControlFlow program.Main
     let mainHasWhenError = blockHasWhenError program.Main
+    let mainHasLineControlFlow = blockHasLineControlFlow program.Main || mainHasWhenError
+    validateNestedLineNumberTargets "the main program body" mainHasLineControlFlow program.Main
     let builder = StringBuilder()
 
     appendLine builder 0 "using System;"
@@ -802,6 +853,8 @@ let generateCSharpFromHir className (program: HirProgram) =
         match storage.Type with
         | Array _ -> appendLine builder 2 $"{storageName ctx storage.Symbol}.Value = new Dictionary<string, Cell>(StringComparer.OrdinalIgnoreCase);"
         | _ -> appendLine builder 2 $"{storageName ctx storage.Symbol}.Value = null;")
+    program.Globals
+    |> List.iter (emitArrayDimensionRegistration ctx builder 2)
     appendLine builder 2 "void __run()"
     appendLine builder 2 "{"
     if mainGosubReturnCount > 0 then
