@@ -15,6 +15,7 @@
     <Compile Include="ChannelDevices.fs" />
     <Compile Include="BuiltInFunctions.fs" />
     <Compile Include="BuiltInStatements.fs" />
+    <Compile Include="ManagedBuiltInBridge.fs" />
     <Compile Include="RuntimeState.fs" />
     <Compile Include="DefaultHost.fs" />
   </ItemGroup>

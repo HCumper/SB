@@ -10,4 +10,8 @@
     <Compile Include="..\SB\CSharpRuntime\GeneratedRuntime.cs" Link="GeneratedRuntime.cs" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\SBRuntime\SBRuntime.fsproj" />
+  </ItemGroup>
+
 </Project>

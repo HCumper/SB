@@ -103,6 +103,7 @@ private static readonly Dictionary<int, (int Left, int Top)> __screenWindowOrigi
 private static readonly Dictionary<int, (int X, int Y)> __screenCursors = new Dictionary<int, (int X, int Y)>();
 private static readonly Dictionary<int, (int X, int Y)> __graphicsCursors = new Dictionary<int, (int X, int Y)>();
 private static readonly Dictionary<int, HashSet<string>> __graphicsPixels = new Dictionary<int, HashSet<string>>();
+private static readonly Dictionary<int, int> __screenPaperColors = new Dictionary<int, int>();
 
 private static int AsInt(object? value)
 {
@@ -274,6 +275,12 @@ private static void DrawLineSegment(int channelId, int startX, int startY, int e
         var y = (int)Math.Round(startY + (deltaY * (step / (double)steps)));
         PlotPoint(channelId, x, y);
     }
+}
+
+private static void SetPaperColor(int channelId, int value)
+{
+    EnsureScreenState(channelId);
+    __screenPaperColors[channelId] = value;
 }
 
 private static Cell LookupDynamicCell(string name)
@@ -496,6 +503,11 @@ private static void EnsureScreenState(int channelId)
     if (!__graphicsPixels.ContainsKey(channelId))
     {
         __graphicsPixels[channelId] = new HashSet<string>(StringComparer.Ordinal);
+    }
+
+    if (!__screenPaperColors.ContainsKey(channelId))
+    {
+        __screenPaperColors[channelId] = 0;
     }
 }
 
@@ -1184,11 +1196,18 @@ private static void ExecuteBuiltInStatement(string name, object? channel, params
             }
             break;
         }
+        case "PAPER":
+        {
+            if (args.Length >= 1)
+            {
+                SetPaperColor(NormalizeChannelId(channel, 1), AsInt(args.ElementAtOrDefault(0)));
+            }
+            break;
+        }
         case "CSIZE":
         case "CHAR_USE":
         case "S_FONT":
         case "INK":
-        case "PAPER":
         case "BORDER":
         case "CLEAR":
         case "SCROLL":

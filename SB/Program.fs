@@ -39,11 +39,23 @@ let private copyBundledCSharpRuntime (outputFileName: string) =
     let runtimeDirectory = Path.Combine(AppContext.BaseDirectory, "CSharpRuntime")
     let sourcePath = Path.Combine(runtimeDirectory, HirCSharpBackend.cSharpRuntimeFileName)
     let targetPath = Path.Combine(outputDirectory, HirCSharpBackend.cSharpRuntimeFileName)
+    let sbruntimeSourcePath = Path.Combine(AppContext.BaseDirectory, "SBRuntime.dll")
+    let sbruntimeTargetPath = Path.Combine(outputDirectory, "SBRuntime.dll")
+    let fsharpCoreSourcePath = typeof<Microsoft.FSharp.Core.Unit>.Assembly.Location
+    let fsharpCoreTargetPath = Path.Combine(outputDirectory, "FSharp.Core.dll")
 
     if not (File.Exists(sourcePath)) then
         failwith $"Bundled C# runtime source not found: {sourcePath}"
 
+    if not (File.Exists(sbruntimeSourcePath)) then
+        failwith $"Bundled SBRuntime assembly not found: {sbruntimeSourcePath}"
+
+    if not (File.Exists(fsharpCoreSourcePath)) then
+        failwith $"Bundled FSharp.Core assembly not found: {fsharpCoreSourcePath}"
+
     File.Copy(sourcePath, targetPath, true)
+    File.Copy(sbruntimeSourcePath, sbruntimeTargetPath, true)
+    File.Copy(fsharpCoreSourcePath, fsharpCoreTargetPath, true)
     targetPath
 
 // Program is the thin CLI shell over the compiler pipeline.

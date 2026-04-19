@@ -325,7 +325,7 @@ let ``generateCSharpFromHir treats string character by reference actuals as inva
     Assert.That(generated, Does.Not.Contain("String character reference arguments are not supported by built-in calls in the generated C# backend yet."))
 
 [<Test>]
-let ``generateCSharpFromHir rejects nested numbered lines in main when line control flow is present`` () =
+let ``generateCSharpFromHir emits loop jump tracking for nested numbered lines in main when line control flow is present`` () =
     let targetSymbol = SymbolId 0
 
     let program =
@@ -339,14 +339,14 @@ let ``generateCSharpFromHir rejects nested numbered lines in main when line cont
               Goto(ReadVar(targetSymbol, HirType.Int, pos), pos)
               If(literalInt 1, [ LineNumber(100, pos) ], None, pos) ] }
 
-    let ex =
-        Assert.Throws<InvalidOperationException>(fun () -> generateCSharpFromHir "NestedMainLineProgram" program |> ignore)
+    let generated = generateCSharpFromHir "NestedMainLineProgram" program
 
-    Assert.That(ex.Message, Does.Contain("main program body"))
-    Assert.That(ex.Message, Does.Contain("Nested line numbers: 100"))
+    Assert.That(generated, Does.Not.Contain("#warning Main contains numbered line targets inside structured scopes."))
+    Assert.That(generated, Does.Contain("if (!IsTrue(1)) goto __if_end_"))
+    Assert.That(generated, Does.Contain("line_100: ;"))
 
 [<Test>]
-let ``generateCSharpFromHir rejects nested numbered lines in routines when line control flow is present`` () =
+let ``generateCSharpFromHir emits loop jump tracking for nested numbered lines in routines when line control flow is present`` () =
     let routineSymbol = SymbolId 0
 
     let program =
@@ -367,8 +367,32 @@ let ``generateCSharpFromHir rejects nested numbered lines in routines when line 
           RestorePoints = []
           Main = [] }
 
-    let ex =
-        Assert.Throws<InvalidOperationException>(fun () -> generateCSharpFromHir "NestedRoutineLineProgram" program |> ignore)
+    let generated = generateCSharpFromHir "NestedRoutineLineProgram" program
 
-    Assert.That(ex.Message, Does.Contain("routine 'PROC'"))
-    Assert.That(ex.Message, Does.Contain("Nested line numbers: 200"))
+    Assert.That(generated, Does.Not.Contain("#warning Routine 'PROC' contains numbered line targets inside structured scopes."))
+    Assert.That(generated, Does.Contain("int? __jumpedLoopId = null;"))
+    Assert.That(generated, Does.Contain("case 200: __jumpedLoopId = 0; goto line_200;"))
+    Assert.That(generated, Does.Contain("if (__jumpedLoopId == 0)"))
+    Assert.That(generated, Does.Contain("__loop0Body: ;"))
+    Assert.That(generated, Does.Contain("__loop0Next: ;"))
+    Assert.That(generated, Does.Contain("__loop0Exit: ;"))
+
+[<Test>]
+let ``generateCSharpFromHir still avoids extra jump state for programs without line control flow`` () =
+    let valueSymbol = SymbolId 0
+
+    let program =
+        { SymbolNames = [ valueSymbol, "VALUE" ] |> Map.ofList
+          Globals = [ storage valueSymbol "VALUE" HirType.Int GlobalStorage ]
+          Routines = []
+          DataEntries = []
+          RestorePoints = []
+          Main =
+            [ Assign(WriteVar(valueSymbol, HirType.Int, pos), literalInt 1, pos)
+              Repeat(LoopId 0, AnonymousLoop, [ Exit(LoopId 0, pos) ], pos) ] }
+
+    let generated = generateCSharpFromHir "NoJumpProgram" program
+
+    Assert.That(generated, Does.Not.Contain("#warning Main contains numbered line targets inside structured scopes."))
+    Assert.That(generated, Does.Not.Contain("__loop0Initialized"))
+    Assert.That(generated, Does.Not.Contain("__dispatchLine"))

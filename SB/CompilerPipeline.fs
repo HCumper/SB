@@ -677,6 +677,8 @@ let generateDotNetExeFromLoweredHir appName outputPath hirProgram =
     let projectPath = Path.Combine(tempDirectory, $"{assemblyName}.csproj")
     let sourcePath = Path.Combine(tempDirectory, "Program.cs")
     let runtimePath = Path.Combine(tempDirectory, HirCSharpBackend.cSharpRuntimeFileName)
+    let sbruntimeAssemblyPath = Path.Combine(AppContext.BaseDirectory, "SBRuntime.dll")
+    let fsharpCoreAssemblyPath = typeof<Microsoft.FSharp.Core.Unit>.Assembly.Location
     let runtimeIdentifier = RuntimeInformation.RuntimeIdentifier
 
     let projectText =
@@ -694,6 +696,16 @@ let generateDotNetExeFromLoweredHir appName outputPath hirProgram =
     <DebugSymbols>false</DebugSymbols>
     <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
   </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="SBRuntime">
+      <HintPath>{sbruntimeAssemblyPath}</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="FSharp.Core">
+      <HintPath>{fsharpCoreAssemblyPath}</HintPath>
+      <Private>true</Private>
+    </Reference>
+  </ItemGroup>
 </Project>
 """
 
