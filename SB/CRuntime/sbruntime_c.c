@@ -405,6 +405,17 @@ const char* as_string(Value value)
     }
 }
 
+Value coerce_assignment_value(ValueType target_type, Value value)
+{
+    switch (target_type)
+    {
+        case TYPE_INT: return make_int(as_int(value));
+        case TYPE_FLOAT: return make_float(as_double(value));
+        case TYPE_STRING: return make_string(as_string(value));
+        default: return value;
+    }
+}
+
 int is_true(Value value)
 {
     if (value.type == TYPE_STRING) return value.string_value && value.string_value[0] != '\0';

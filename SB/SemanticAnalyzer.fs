@@ -563,7 +563,7 @@ and private resolveStmt (mode: SymbolAddMode) (node: Stmt) : State<ProcessingSta
             let updatedLhsType = inferWritableTargetType stateAfterUpdate lhs
             let finalState =
                 let compatibilityCheckedState =
-                    if areTypesCompatible lhsType rhsType || areTypesCompatible updatedLhsType rhsType then
+                    if areAssignmentTypesCompatible lhsType rhsType rhsValue || areAssignmentTypesCompatible updatedLhsType rhsType rhsValue then
                         stateWithRecordedTypes
                     else
                         let pos = posOfExpr lhs

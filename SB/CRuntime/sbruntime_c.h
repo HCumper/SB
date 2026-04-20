@@ -64,6 +64,7 @@ Cell* lookup_dynamic_cell(const char* name);
 int as_int(Value value);
 double as_double(Value value);
 const char* as_string(Value value);
+Value coerce_assignment_value(ValueType target_type, Value value);
 int is_true(Value value);
 Value negate_value(Value value);
 Value bitwise_not_value(Value value);

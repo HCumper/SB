@@ -280,6 +280,26 @@ let private typeTag = function
     | HirType.Void -> "TYPE_NULL"
     | HirType.Array _ -> "TYPE_ARRAY"
 
+let private targetType = function
+    | WriteVar(_, hirType, _)
+    | WriteArrayElem(_, _, hirType, _)
+    | WriteStringChar(_, _, hirType, _)
+    | DynamicWriteVar(_, hirType, _)
+    | DynamicWriteArrayElem(_, _, hirType, _)
+    | DynamicWriteStringChar(_, _, hirType, _) -> hirType
+
+let private exprType = function
+    | Literal(_, hirType, _)
+    | ReadVar(_, hirType, _)
+    | ReadArrayElem(_, _, hirType, _)
+    | ReadStringChar(_, _, hirType, _)
+    | DynamicReadVar(_, hirType, _)
+    | DynamicReadArrayElem(_, _, hirType, _)
+    | DynamicReadStringChar(_, _, hirType, _)
+    | Unary(_, _, hirType, _)
+    | Binary(_, _, _, hirType, _)
+    | CallFunc(_, _, hirType, _) -> hirType
+
 let private emitCall targetName args =
     match args with
     | [] -> $"{targetName}()"
@@ -381,20 +401,28 @@ and private emitExpr ctx = function
         else
             emitCall "invoke_builtin_function" ([ $"\"{escapeCString (builtInName ctx symbolId)}\""; string renderedArgs.Length ] @ renderedArgs)
 
-let private emitTargetWrite ctx target valueExpr =
+let private emitTargetWriteValue ctx target sourceType valueExpr =
+    let coercedValueExpr =
+        if targetType target = sourceType then
+            valueExpr
+        else
+            emitCall "coerce_assignment_value" [ typeTag (targetType target); valueExpr ]
     match target with
-    | WriteVar(symbolId, _, _) -> $"{cellValueExpr (storageCellRef ctx symbolId)} = {valueExpr};"
+    | WriteVar(symbolId, _, _) -> $"{cellValueExpr (storageCellRef ctx symbolId)} = {coercedValueExpr};"
     | WriteArrayElem(symbolId, indexes, _, _) ->
-        emitCall "set_array_value" ([ storageCellRef ctx symbolId; valueExpr; string indexes.Length ] @ (indexes |> List.map (emitExpr ctx))) + ";"
+        emitCall "set_array_value" ([ storageCellRef ctx symbolId; coercedValueExpr; string indexes.Length ] @ (indexes |> List.map (emitExpr ctx))) + ";"
     | WriteStringChar(symbolId, index, _, _) ->
-        emitCall "set_string_char_value" [ storageCellRef ctx symbolId; $"as_int({emitExpr ctx index})"; valueExpr ] + ";"
+        emitCall "set_string_char_value" [ storageCellRef ctx symbolId; $"as_int({emitExpr ctx index})"; coercedValueExpr ] + ";"
     | DynamicWriteVar(name, _, _) ->
         let cellExpr = emitCall "lookup_dynamic_cell" [ $"\"{escapeCString name}\"" ]
-        $"{cellValueExpr cellExpr} = {valueExpr};"
+        $"{cellValueExpr cellExpr} = {coercedValueExpr};"
     | DynamicWriteArrayElem(name, indexes, _, _) ->
-        emitCall "set_array_value" ([ emitCall "lookup_dynamic_cell" [ $"\"{escapeCString name}\"" ]; valueExpr; string indexes.Length ] @ (indexes |> List.map (emitExpr ctx))) + ";"
+        emitCall "set_array_value" ([ emitCall "lookup_dynamic_cell" [ $"\"{escapeCString name}\"" ]; coercedValueExpr; string indexes.Length ] @ (indexes |> List.map (emitExpr ctx))) + ";"
     | DynamicWriteStringChar(name, index, _, _) ->
-        emitCall "set_string_char_value" [ emitCall "lookup_dynamic_cell" [ $"\"{escapeCString name}\"" ]; $"as_int({emitExpr ctx index})"; valueExpr ] + ";"
+        emitCall "set_string_char_value" [ emitCall "lookup_dynamic_cell" [ $"\"{escapeCString name}\"" ]; $"as_int({emitExpr ctx index})"; coercedValueExpr ] + ";"
+
+let private emitTargetWrite ctx target value =
+    emitTargetWriteValue ctx target (exprType value) (emitExpr ctx value)
 
 let rec private findNextLineNumber block index inheritedNextLine =
     block
@@ -592,7 +620,7 @@ and private emitBareReturnDispatch builder level gosubReturnStart gosubReturnCou
 and private emitStmtCore ctx builder level gosubReturnStart gosubReturnCount activeHandlerVar hasWhenError stmtId currentLine nextLine nextStmtIdOpt stmt =
     match stmt with
     | Assign(target, value, _) ->
-        appendLine builder level (emitTargetWrite ctx target (emitExpr ctx value))
+        appendLine builder level (emitTargetWrite ctx target value)
     | ProcCall(symbolId, _, args, _) ->
         appendLine builder level (emitCall (routineName ctx symbolId) (args |> List.map (emitRoutineCallArg ctx)) + ";")
     | BuiltInCall(NamedBuiltIn "RETRY", _, _, _) when not hasWhenError ->
@@ -647,7 +675,7 @@ and private emitStmtCore ctx builder level gosubReturnStart gosubReturnCount act
                 | DynamicWriteVar(_, typ, _)
                 | DynamicWriteArrayElem(_, _, typ, _)
                 | DynamicWriteStringChar(_, _, typ, _) -> $"read_input_value({index}, {typeTag typ})"
-            appendLine builder level (emitTargetWrite ctx target valueExpr))
+            appendLine builder level (emitTargetWriteValue ctx target (targetType target) valueExpr))
     | WhenError(body, _) ->
         let handlerId = nextWhenErrorId ctx
         appendLine builder level $"{activeHandlerVar} = {handlerId};"
@@ -718,7 +746,7 @@ and private emitStmtCore ctx builder level gosubReturnStart gosubReturnCount act
                 | DynamicWriteVar(_, typ, _)
                 | DynamicWriteArrayElem(_, _, typ, _)
                 | DynamicWriteStringChar(_, _, typ, _) -> $"read_data_value({typeTag typ})"
-            appendLine builder level (emitTargetWrite ctx target valueExpr))
+            appendLine builder level (emitTargetWriteValue ctx target (targetType target) valueExpr))
     | Remark(text, _) ->
         appendLine builder level $"/* {escapeCString text} */"
 

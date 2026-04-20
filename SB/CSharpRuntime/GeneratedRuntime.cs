@@ -230,6 +230,14 @@ public static class GeneratedRuntime
         _ => Convert.ToString(value, CultureInfo.InvariantCulture) ?? string.Empty
     };
 
+    public static object? CoerceAssignmentValue(string targetType, object? value) => targetType switch
+    {
+        "int" => AsInt(value),
+        "float" => AsDouble(value),
+        "string" => AsString(value),
+        _ => value
+    };
+
     public static bool IsTrue(object? value)
     {
         return value switch

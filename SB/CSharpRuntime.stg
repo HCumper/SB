@@ -143,6 +143,14 @@ private static string AsString(object? value) => value switch
     _ => Convert.ToString(value, CultureInfo.InvariantCulture) ?? string.Empty
 };
 
+private static object? CoerceAssignmentValue(string targetType, object? value) => targetType switch
+{
+    "int" => AsInt(value),
+    "float" => AsDouble(value),
+    "string" => AsString(value),
+    _ => value
+};
+
 private static bool IsTrue(object? value)
 {
     return value switch

@@ -29,6 +29,38 @@ let private parameter symbol name hirType storageClass binding =
       Binding = binding }
 
 [<Test>]
+let ``generateCSharpFromHir coerces string assignment into real target`` () =
+    let valueSymbol = SymbolId 0
+
+    let program: HirProgram =
+        { SymbolNames = [ valueSymbol, "VALUE" ] |> Map.ofList
+          Globals = [ storage valueSymbol "VALUE" HirType.Float GlobalStorage ]
+          Routines = []
+          DataEntries = []
+          RestorePoints = []
+          Main = [ Assign(WriteVar(valueSymbol, HirType.Float, pos), literalString "3.25", pos) ] }
+
+    let generated = generateCSharpFromHir "CoercionProgram" program
+
+    Assert.That(generated, Does.Contain("v0_VALUE.Value = CoerceAssignmentValue(\"float\", \"3.25\");"))
+
+[<Test>]
+let ``generateCSharpFromHir coerces numeric assignment into string target`` () =
+    let valueSymbol = SymbolId 0
+
+    let program: HirProgram =
+        { SymbolNames = [ valueSymbol, "VALUE$" ] |> Map.ofList
+          Globals = [ storage valueSymbol "VALUE$" HirType.String GlobalStorage ]
+          Routines = []
+          DataEntries = []
+          RestorePoints = []
+          Main = [ Assign(WriteVar(valueSymbol, HirType.String, pos), literalInt 3, pos) ] }
+
+    let generated = generateCSharpFromHir "StringCoercionProgram" program
+
+    Assert.That(generated, Does.Contain("v0_VALUE_.Value = CoerceAssignmentValue(\"string\", 3);"))
+
+[<Test>]
 let ``generateCSharpFromHir emits globals routines data and structured control flow`` () =
     let globalSymbol = SymbolId 0
     let routineSymbol = SymbolId 1

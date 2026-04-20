@@ -36,6 +36,31 @@ let ``interpreter evaluates arithmetic and print`` () =
     Assert.That(String.concat "|" output, Is.EqualTo("3"))
 
 [<Test>]
+let ``interpreter coerces string assignment into typed real target`` () =
+    let ast =
+        Program(
+            pos,
+            [ Line(pos, Some 10, [ Assignment(pos, id "total", num "0.5") ])
+              Line(pos, Some 20, [ Assignment(pos, id "total", str "\"3.25\"") ])
+              Line(pos, Some 30, [ ProcedureCall(pos, "PRINT", [ binary "+" (id "total") (num "1") ]) ]) ])
+
+    let output = runProgram ast
+
+    Assert.That(String.concat "|" output, Is.EqualTo("4.25"))
+
+[<Test>]
+let ``interpreter coerces numeric assignment into typed string target`` () =
+    let ast =
+        Program(
+            pos,
+            [ Line(pos, Some 10, [ Assignment(pos, id "name$", binary "+" (num "1") (num "2")) ])
+              Line(pos, Some 20, [ ProcedureCall(pos, "PRINT", [ id "name$" ]) ]) ])
+
+    let output = runProgram ast
+
+    Assert.That(String.concat "|" output, Is.EqualTo("3"))
+
+[<Test>]
 let ``interpreter print backslash separator starts a new line and single quoted strings are not printed with quotes`` () =
     let ast =
         parseProgram "10 PRINT 'The object'\\'continues'\n"

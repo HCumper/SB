@@ -243,6 +243,18 @@ let private tryCoerceValueText targetType valueText =
             | _ -> None
     | _ -> Some valueText
 
+let areAssignmentTypesCompatible expected actual valueText =
+    if areTypesCompatible expected actual then
+        true
+    else
+        match expected, actual with
+        | SBType.String, source when isNumericType source -> true
+        | target, SBType.String when isNumericType target ->
+            match valueText with
+            | Some value -> tryCoerceValueText target value |> Option.isSome
+            | None -> true
+        | _ -> false
+
 let rec tryEvaluateConstantExpr (state: ProcessingState) expr =
     // Constant evaluation is deliberately conservative: it only folds expressions
     // that can be evaluated from literals or currently constant-valued symbols.

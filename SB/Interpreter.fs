@@ -348,6 +348,22 @@ let private makeNumericValue hirType number =
     | HIR.HirType.Float -> FloatValue number
     | _ -> IntValue (int (Math.Round(number)))
 
+let private targetType target =
+    match target with
+    | WriteVar(_, hirType, _)
+    | WriteArrayElem(_, _, hirType, _)
+    | WriteStringChar(_, _, hirType, _)
+    | DynamicWriteVar(_, hirType, _)
+    | DynamicWriteArrayElem(_, _, hirType, _)
+    | DynamicWriteStringChar(_, _, hirType, _) -> hirType
+
+let private coerceAssignmentValue hirType value =
+    match hirType with
+    | HIR.HirType.Int -> IntValue(asInt value)
+    | HIR.HirType.Float -> FloatValue(normalizeNumber value)
+    | HIR.HirType.String -> StringValue(asString value)
+    | _ -> value
+
 let private encodeCompositeColorSpec values =
     match values with
     | [] -> None
@@ -1074,25 +1090,26 @@ and private resolveTargetCell state target =
         runtimeError InvalidReferenceActual (Some pos) "String character targets cannot be used as by-reference storage locations."
 
 and private writeTarget state target value =
+    let coercedValue = coerceAssignmentValue (targetType target) value
     match target with
     | WriteStringChar(symbolId, index, _, pos) ->
         requireCell state symbolId pos
         |> Result.bind (fun cell ->
             evalExpr state index
             |> Result.map (fun (indexValue, nextState) ->
-                cell.Value <- writeStringCharValue cell.Value indexValue value
+                cell.Value <- writeStringCharValue cell.Value indexValue coercedValue
                 nextState))
     | DynamicWriteStringChar(name, index, _, pos) ->
         requireDynamicCell state name pos
         |> Result.bind (fun cell ->
             evalExpr state index
             |> Result.map (fun (indexValue, nextState) ->
-                cell.Value <- writeStringCharValue cell.Value indexValue value
+                cell.Value <- writeStringCharValue cell.Value indexValue coercedValue
                 nextState))
     | _ ->
         resolveTargetCell state target
         |> Result.map (fun (cell, nextState) ->
-            cell.Value <- value
+            cell.Value <- coercedValue
             nextState)
 
 and private callRoutine state (routine: HirRoutine) args pos =

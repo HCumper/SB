@@ -28,6 +28,38 @@ let private parameter symbol name hirType storageClass binding =
       Binding = binding }
 
 [<Test>]
+let ``generateCFromHir coerces string assignment into real target`` () =
+    let valueSymbol = SymbolId 0
+
+    let program: HirProgram =
+        { SymbolNames = [ valueSymbol, "VALUE" ] |> Map.ofList
+          Globals = [ storage valueSymbol "VALUE" HirType.Float GlobalStorage ]
+          Routines = []
+          DataEntries = []
+          RestorePoints = []
+          Main = [ Assign(WriteVar(valueSymbol, HirType.Float, pos), literalString "3.25", pos) ] }
+
+    let generated = generateCFromHir "coercion_program" program
+
+    Assert.That(generated, Does.Contain("(&v0_VALUE)->value = coerce_assignment_value(TYPE_FLOAT, make_string(\"3.25\"));"))
+
+[<Test>]
+let ``generateCFromHir coerces numeric assignment into string target`` () =
+    let valueSymbol = SymbolId 0
+
+    let program: HirProgram =
+        { SymbolNames = [ valueSymbol, "VALUE$" ] |> Map.ofList
+          Globals = [ storage valueSymbol "VALUE$" HirType.String GlobalStorage ]
+          Routines = []
+          DataEntries = []
+          RestorePoints = []
+          Main = [ Assign(WriteVar(valueSymbol, HirType.String, pos), literalInt 3, pos) ] }
+
+    let generated = generateCFromHir "string_coercion_program" program
+
+    Assert.That(generated, Does.Contain("(&v0_VALUE_)->value = coerce_assignment_value(TYPE_STRING, make_int(3));"))
+
+[<Test>]
 let ``generateCFromHir emits globals routines labels and loop jumps`` () =
     let globalSymbol = SymbolId 0
     let routineSymbol = SymbolId 1

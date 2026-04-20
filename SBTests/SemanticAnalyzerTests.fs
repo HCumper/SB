@@ -568,11 +568,25 @@ let ``function cannot be used as a statement call`` () =
     Assert.That(analyzed.Errors, Has.Some.Contains("Function 'add' cannot be used as a statement call"))
 
 [<Test>]
-let ``assignment reports incompatible string and numeric types`` () =
+let ``assignment accepts numeric expression for string target`` () =
     let analyzed =
-        analyzeProgram "10 name$ = 1 + 2\n20 total = \"abc\"\n"
+        analyzeProgram "10 name$ = 1 + 2\n"
 
-    Assert.That(analyzed.Errors, Has.Some.Contains("Cannot assign Integer expression to String target"))
+    Assert.That(analyzed.Errors, Is.Empty)
+
+[<Test>]
+let ``assignment accepts coercible string for real target`` () =
+    let analyzed =
+        analyzeProgram "10 total = 0.5\n20 total = \"3.25\"\n"
+
+    Assert.That(analyzed.Errors, Is.Empty)
+
+[<Test>]
+let ``assignment rejects non coercible constant string for real target`` () =
+    let analyzed =
+        analyzeProgram "10 total = 0.5\n20 total = \"abc\"\n"
+
+    Assert.That(analyzed.Errors, Has.Some.Contains("Cannot assign String expression to Real target"))
 
 [<Test>]
 let ``superbasic arithmetic coerces numeric strings for plus`` () =
