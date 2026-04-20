@@ -160,7 +160,7 @@ let private canImplicitlyShadowBuiltIn name =
     match BuiltIns.tryGetFixedArity name with
     | Some 0 -> false
     | Some _ -> true
-    | None -> false
+    | None -> not (BuiltIns.isCoreKeyword name)
 
 let isRoutineScope scopeName (table: SymbolTable) =
     match Map.tryFind scopeName table with

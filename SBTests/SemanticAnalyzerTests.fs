@@ -554,6 +554,17 @@ let ``assignment target may shadow built in function name`` () =
     | other -> Assert.Fail($"Expected variable symbol for round, got %A{other}")
 
 [<Test>]
+let ``assignment target may shadow extension built in name`` () =
+    let analyzed =
+        analyzeProgram "10 time=1\n20 time=time+1\n"
+
+    Assert.That(analyzed.Errors, Is.Empty)
+
+    match analyzed.SymTab[globalScope].Symbols[normalizeIdentifier "time"] with
+    | VariableSym sym -> Assert.That(sym.Common.EvaluatedType, Is.EqualTo(SBType.Integer))
+    | other -> Assert.Fail($"Expected variable symbol for time, got %A{other}")
+
+[<Test>]
 let ``procedure cannot be used in expression context`` () =
     let analyzed =
         analyzeProgram "10 DEFine PROCedure show(x)\n20 END DEFine\n30 total = show(1)\n"
