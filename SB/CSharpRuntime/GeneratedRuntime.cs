@@ -335,9 +335,94 @@ public static class GeneratedRuntime
         __graphicsCursors[channelId] = (0, 0);
     }
 
+    public static void ClearConsoleForChannel(object? channel, int channelId)
+    {
+        if (channel is not null)
+        {
+            return;
+        }
+
+        try
+        {
+            Console.Clear();
+        }
+        catch
+        {
+        }
+    }
+
     public static void PlotPoint(int channelId, int x, int y)
     {
         EnsureGraphicsPixels(channelId).Add(GraphicsPointKey(x, y));
+        RenderGraphicsPointToConsole(channelId, x, y);
+    }
+
+    public static ConsoleColor MapQlColorToConsole(int color)
+    {
+        return (Math.Abs(color) % 8) switch
+        {
+            0 => ConsoleColor.Black,
+            1 => ConsoleColor.Blue,
+            2 => ConsoleColor.Red,
+            3 => ConsoleColor.Magenta,
+            4 => ConsoleColor.Green,
+            5 => ConsoleColor.Cyan,
+            6 => ConsoleColor.Yellow,
+            _ => ConsoleColor.White
+        };
+    }
+
+    public static void RenderGraphicsPointToConsole(int channelId, int x, int y)
+    {
+        if (!IsConsoleBackedChannel(channelId))
+        {
+            return;
+        }
+
+        try
+        {
+            if (Console.IsOutputRedirected || x < 0 || y < 0)
+            {
+                return;
+            }
+
+            EnsureScreenState(channelId);
+            var origin = __screenWindowOrigins[channelId];
+            var left = origin.Left + (x / 8);
+            var top = origin.Top + (y / 10);
+
+            if (left < 0 || top < 0)
+            {
+                return;
+            }
+
+            if (Console.BufferWidth > 0)
+            {
+                left = Math.Min(left, Console.BufferWidth - 1);
+            }
+
+            if (Console.BufferHeight > 0)
+            {
+                top = Math.Min(top, Console.BufferHeight - 1);
+            }
+
+            var previousLeft = Console.CursorLeft;
+            var previousTop = Console.CursorTop;
+            var previousForeground = Console.ForegroundColor;
+            var previousBackground = Console.BackgroundColor;
+            var inks = __screenInkColors[channelId];
+            var paper = __screenPaperColors[channelId];
+            Console.ForegroundColor = MapQlColorToConsole(inks.Length > 0 ? inks[0] : 7);
+            Console.BackgroundColor = MapQlColorToConsole(paper);
+            Console.SetCursorPosition(left, top);
+            Console.Write('█');
+            Console.ForegroundColor = previousForeground;
+            Console.BackgroundColor = previousBackground;
+            Console.SetCursorPosition(previousLeft, previousTop);
+        }
+        catch
+        {
+        }
     }
 
     public static int HasPoint(int channelId, int x, int y)
@@ -782,7 +867,7 @@ public static class GeneratedRuntime
             case "LOADMEM":
             case "SAVEMEM":
             case "SYSVAR":
-                return new NotSupportedException("Built-in statement depends on host-specific behavior that is not supported by the generated C# backend.");
+                return new NotSupportedException($"Host-specific built-in statement '{name}' is explicitly unsupported by the generated C# backend.");
         }
 
         if (name.StartsWith("TURBO", StringComparison.OrdinalIgnoreCase))
@@ -1662,7 +1747,7 @@ public static class GeneratedRuntime
                     NormalizeChannelId(channel, 1),
                     new Action<int>(ClearGraphicsState),
                     new Action<int, int, int>(SetScreenCursor),
-                    new Action(() => { try { Console.Clear(); } catch { } }));
+                    new Action(() => ClearConsoleForChannel(channel, NormalizeChannelId(channel, 1))));
                 break;
             case "WINDOW":
                 ManagedBuiltInBridge.ExecuteGeneratedWindow(
@@ -1703,64 +1788,44 @@ public static class GeneratedRuntime
                     new Action<int, int, int>(SetCharacterFontsState));
                 break;
             case "PLOT":
-            {
-                if (args.Length >= 2)
-                {
-                    var channelId = NormalizeChannelId(channel, 1);
-                    var x = AsInt(args.ElementAtOrDefault(0));
-                    var y = AsInt(args.ElementAtOrDefault(1));
-                    PlotPoint(channelId, x, y);
-                    SetGraphicsCursor(channelId, x, y);
-                }
-
+                ManagedBuiltInBridge.ExecuteGeneratedPlot(
+                    NormalizeChannelId(channel, 1),
+                    args,
+                    new Action<int, int, int>(PlotPoint),
+                    new Action<int, int, int>(SetGraphicsCursor));
                 break;
-            }
             case "DRAW":
             case "DLINE":
-            {
-                if (args.Length >= 2)
-                {
-                    var channelId = NormalizeChannelId(channel, 1);
-                    var start = GetGraphicsCursor(channelId);
-                    var endX = start.X + AsInt(args.ElementAtOrDefault(0));
-                    var endY = start.Y + AsInt(args.ElementAtOrDefault(1));
-                    DrawLineSegment(channelId, start.X, start.Y, endX, endY);
-                    SetGraphicsCursor(channelId, endX, endY);
-                }
-
+                ManagedBuiltInBridge.ExecuteGeneratedDrawRelative(
+                    NormalizeChannelId(channel, 1),
+                    args,
+                    new Func<int, ValueTuple<int, int>>(channelId =>
+                    {
+                        var cursor = GetGraphicsCursor(channelId);
+                        return new ValueTuple<int, int>(cursor.X, cursor.Y);
+                    }),
+                    new Action<int, int, int, int, int>(DrawLineSegment),
+                    new Action<int, int, int>(SetGraphicsCursor));
                 break;
-            }
             case "LINE":
-            {
-                if (args.Length >= 4)
-                {
-                    var channelId = NormalizeChannelId(channel, 1);
-                    var startX = AsInt(args.ElementAtOrDefault(0));
-                    var startY = AsInt(args.ElementAtOrDefault(1));
-                    var endX = AsInt(args.ElementAtOrDefault(2));
-                    var endY = AsInt(args.ElementAtOrDefault(3));
-                    DrawLineSegment(channelId, startX, startY, endX, endY);
-                    SetGraphicsCursor(channelId, endX, endY);
-                }
-
+                ManagedBuiltInBridge.ExecuteGeneratedLine(
+                    NormalizeChannelId(channel, 1),
+                    args,
+                    new Action<int, int, int, int, int>(DrawLineSegment),
+                    new Action<int, int, int>(SetGraphicsCursor));
                 break;
-            }
             case "LINE_R":
-            {
-                if (args.Length >= 4)
-                {
-                    var channelId = NormalizeChannelId(channel, 1);
-                    var origin = GetGraphicsCursor(channelId);
-                    var startX = origin.X + AsInt(args.ElementAtOrDefault(0));
-                    var startY = origin.Y + AsInt(args.ElementAtOrDefault(1));
-                    var endX = origin.X + AsInt(args.ElementAtOrDefault(2));
-                    var endY = origin.Y + AsInt(args.ElementAtOrDefault(3));
-                    DrawLineSegment(channelId, startX, startY, endX, endY);
-                    SetGraphicsCursor(channelId, endX, endY);
-                }
-
+                ManagedBuiltInBridge.ExecuteGeneratedLineRelative(
+                    NormalizeChannelId(channel, 1),
+                    args,
+                    new Func<int, ValueTuple<int, int>>(channelId =>
+                    {
+                        var cursor = GetGraphicsCursor(channelId);
+                        return new ValueTuple<int, int>(cursor.X, cursor.Y);
+                    }),
+                    new Action<int, int, int, int, int>(DrawLineSegment),
+                    new Action<int, int, int>(SetGraphicsCursor));
                 break;
-            }
             case "CIRCLE":
             {
                 var channelId = NormalizeChannelId(channel, 1);
@@ -1898,60 +1963,57 @@ public static class GeneratedRuntime
                 break;
             }
             case "FILL":
-                if (args.Length >= 1)
-                {
-                    SetGraphicsFillMode(NormalizeChannelId(channel, 1), AsInt(args.ElementAtOrDefault(0)));
-                }
-
+                ManagedBuiltInBridge.ExecuteGeneratedFill(
+                    NormalizeChannelId(channel, 1),
+                    args,
+                    new Action<int, int>(SetGraphicsFillMode));
                 break;
             case "SCALE":
-                if (args.Length >= 3)
-                {
-                    SetGraphicsScaleState(NormalizeChannelId(channel, 1), AsDouble(args.ElementAtOrDefault(0)), AsDouble(args.ElementAtOrDefault(1)), AsDouble(args.ElementAtOrDefault(2)));
-                }
-
+                ManagedBuiltInBridge.ExecuteGeneratedScale(
+                    NormalizeChannelId(channel, 1),
+                    args,
+                    new Action<int, double, double, double>(SetGraphicsScaleState));
                 break;
             case "OVER":
-                if (args.Length >= 1)
-                {
-                    SetGraphicsOverMode(NormalizeChannelId(channel, 1), AsInt(args.ElementAtOrDefault(0)));
-                }
-
+                ManagedBuiltInBridge.ExecuteGeneratedGraphicsMode(
+                    NormalizeChannelId(channel, 1),
+                    args,
+                    new Action<int, int>(SetGraphicsOverMode));
                 break;
             case "UNDER":
-                if (args.Length >= 1)
-                {
-                    SetGraphicsUnderMode(NormalizeChannelId(channel, 1), AsInt(args.ElementAtOrDefault(0)));
-                }
-
+                ManagedBuiltInBridge.ExecuteGeneratedGraphicsMode(
+                    NormalizeChannelId(channel, 1),
+                    args,
+                    new Action<int, int>(SetGraphicsUnderMode));
                 break;
             case "FLASH":
-                if (args.Length >= 1)
-                {
-                    SetGraphicsFlashMode(NormalizeChannelId(channel, 1), AsInt(args.ElementAtOrDefault(0)));
-                }
-
+                ManagedBuiltInBridge.ExecuteGeneratedGraphicsMode(
+                    NormalizeChannelId(channel, 1),
+                    args,
+                    new Action<int, int>(SetGraphicsFlashMode));
                 break;
             case "PENDOWN":
-                SetGraphicsPenDownMode(NormalizeChannelId(channel, 1), true);
+                ManagedBuiltInBridge.ExecuteGeneratedPenDown(
+                    NormalizeChannelId(channel, 1),
+                    new Action<int, bool>(SetGraphicsPenDownMode));
                 break;
             case "PENUP":
-                SetGraphicsPenDownMode(NormalizeChannelId(channel, 1), false);
+                ManagedBuiltInBridge.ExecuteGeneratedPenUp(
+                    NormalizeChannelId(channel, 1),
+                    new Action<int, bool>(SetGraphicsPenDownMode));
                 break;
             case "TURN":
-                if (args.Length >= 1)
-                {
-                    var channelId = NormalizeChannelId(channel, 1);
-                    SetGraphicsHeading(channelId, GetGraphicsHeading(channelId) + AsDouble(args.ElementAtOrDefault(0)));
-                }
-
+                ManagedBuiltInBridge.ExecuteGeneratedTurn(
+                    NormalizeChannelId(channel, 1),
+                    args,
+                    new Func<int, double>(GetGraphicsHeading),
+                    new Action<int, double>(SetGraphicsHeading));
                 break;
             case "TURNTO":
-                if (args.Length >= 1)
-                {
-                    SetGraphicsHeading(NormalizeChannelId(channel, 1), AsDouble(args.ElementAtOrDefault(0)));
-                }
-
+                ManagedBuiltInBridge.ExecuteGeneratedTurnTo(
+                    NormalizeChannelId(channel, 1),
+                    args,
+                    new Action<int, double>(SetGraphicsHeading));
                 break;
             case "PAPER":
                 ManagedBuiltInBridge.ExecuteGeneratedPaper(

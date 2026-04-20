@@ -220,6 +220,39 @@ let ``generateCSharpFromHir emits dynamic scope lookups and sequence for support
     Assert.That(generated, Does.Contain("foreach (var __loop0Suffix in new object?[] { 9 })"))
 
 [<Test>]
+let ``generateCSharpFromHir flattens sequence for loops when the body has numbered line targets`` () =
+    let counterSymbol = SymbolId 0
+
+    let program =
+        { SymbolNames = [ counterSymbol, "COUNTER" ] |> Map.ofList
+          Globals = [ storage counterSymbol "COUNTER" HirType.Int GlobalStorage ]
+          Routines = []
+          DataEntries = []
+          RestorePoints = []
+          Main =
+            [ Goto(literalInt 30, pos)
+              ForSequence(
+                LoopId 0,
+                counterSymbol,
+                [ literalInt 1; literalInt 2 ],
+                literalInt 5,
+                literalInt 6,
+                [ literalInt 9 ],
+                literalInt 1,
+                [ LineNumber(30, pos)
+                  BuiltInCall(Print, None, [ ReadVar(counterSymbol, HirType.Int, pos) ], pos) ],
+                pos) ] }
+
+    let generated = generateCSharpFromHir "FlatSequenceForProgram" program
+
+    Assert.That(generated, Does.Contain("case 30: __jumpedLoopId = 0; goto line_30;"))
+    Assert.That(generated, Does.Contain("__loop0Phase = 0;"))
+    Assert.That(generated, Does.Contain("__loop0PrefixValues = new object?[] { 1, 2 };"))
+    Assert.That(generated, Does.Contain("__loop0SuffixValues = new object?[] { 9 };"))
+    Assert.That(generated, Does.Not.Contain("bool __loop0Run(object? value)"))
+    Assert.That(generated, Does.Not.Contain("FOR ... TO ... with prefix/suffix sequence"))
+
+[<Test>]
 let ``generateCSharpFromHir emits gosub dispatch and when error runtime hooks`` () =
     let valueSymbol = SymbolId 0
 
@@ -251,6 +284,66 @@ let ``generateCSharpFromHir emits gosub dispatch and when error runtime hooks`` 
     Assert.That(generated, Does.Contain("case 1:"))
     Assert.That(generated, Does.Contain("__dispatchLine = 100;"))
     Assert.That(generated, Does.Contain("switch (__gosubStack.Pop())"))
+
+[<Test>]
+let ``generateCSharpFromHir emits local dispatch for numbered lines inside when error handlers`` () =
+    let ernumSymbol = SymbolId 0
+
+    let program =
+        { SymbolNames = [ ernumSymbol, "ERNUM" ] |> Map.ofList
+          Globals = []
+          Routines = []
+          DataEntries = []
+          RestorePoints = []
+          Main =
+            [ WhenError(
+                [ LineNumber(200, pos)
+                  Goto(literalInt 210, pos)
+                  LineNumber(205, pos)
+                  BuiltInCall(Print, None, [ literalString "BAD" ], pos)
+                  LineNumber(210, pos)
+                  BuiltInCall(Print, None, [ CallFunc(ernumSymbol, [], HirType.Int, pos) ], pos)
+                  BuiltInCall(NamedBuiltIn "CONTINUE", None, [], pos) ],
+                pos)
+              BuiltInCall(NamedBuiltIn "POKE_W", None, [ literalInt -1; literalInt 1 ], pos)
+              BuiltInCall(NamedBuiltIn "STOP", None, [], pos) ] }
+
+    let generated = generateCSharpFromHir "WhenErrorLineDispatchProgram" program
+
+    Assert.That(generated, Does.Contain("int? __whenError0DispatchLine = null;"))
+    Assert.That(generated, Does.Contain("__whenError0DispatchLine = 210;"))
+    Assert.That(generated, Does.Contain("case 200: goto line_200;"))
+    Assert.That(generated, Does.Contain("case 210: goto line_210;"))
+    Assert.That(generated, Does.Not.Contain("The generated C# backend cannot emit numbered line targets inside WHEN ERROR"))
+
+[<Test>]
+let ``generateCSharpFromHir emits routine end line dispatch as routine exit`` () =
+    let routineSymbol = SymbolId 0
+
+    let program =
+        { SymbolNames = [ routineSymbol, "WATER" ] |> Map.ofList
+          Globals = []
+          Routines =
+            [ { Name = "WATER"
+                Symbol = routineSymbol
+                Parameters = []
+                Locals = []
+                Body =
+                    [ LineNumber(1920, pos)
+                      Goto(literalInt 1970, pos)
+                      LineNumber(1960, pos)
+                      BuiltInCall(Print, None, [ literalString "BAD" ], pos) ]
+                ReturnType = None
+                EndLineNumber = Some 1970
+                Position = pos } ]
+          DataEntries = []
+          RestorePoints = []
+          Main = [ ProcCall(routineSymbol, None, [], pos) ] }
+
+    let generated = generateCSharpFromHir "RoutineEndDispatchProgram" program
+
+    Assert.That(generated, Does.Contain("case 1970: return null;"))
+    Assert.That(generated, Does.Contain("__dispatchLine = 1970;"))
 
 [<Test>]
 let ``generateCSharpFromHir emits dynamic line control flow without not supported fallbacks`` () =

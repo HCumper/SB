@@ -1,289 +1,177 @@
 # SB
 
-An F# SuperBASIC / Structured SuperBASIC toolchain targeting modern `.NET 10`.
+`SB` is an F# toolchain for SuperBASIC and Structured SuperBASIC on modern `.NET 10`.
 
-`SB` is a language implementation for contemporary platforms, not a Sinclair QL emulator. Its goal is to make SuperBASIC usable on modern hardware and operating systems while preserving the language model where practical. Hardware-specific, machine-code, shell/editor, and other environment features whose meaning depends on QL firmware or direct machine emulation are out of scope.
+The project is not a Sinclair QL emulator. Its purpose is to parse, analyze, lower, interpret, and optionally generate code for SuperBASIC-family programs on a contemporary host. The implementation preserves the language model where practical. It is not a QL emulator and so does not address QL hardware, direct machine-code execution, firmware-specific behavior, and full interactive QL environment emulation.
 
-## Command line
+## What It Does
 
-The CLI now supports a simple form.
+The active pipeline is:
 
-If you run the built tool as `sb`, the basic usage is:
+1. Load `.bas`, `.sb`, or `.ssb` source.
+2. Classify the source as numbered SuperBASIC or Structured SuperBASIC.
+3. Preprocess `.ssb` into numbered SuperBASIC when needed.
+4. Parse with ANTLR.
+5. Build a normalized AST.
+6. Run semantic analysis for symbols, typing, coercions, constant folding, and diagnostics.
+7. Lower the AST to HIR.
+8. Interpret HIR or emit C#, C, or a published `.NET` executable.
+
+Supported areas include core parsing, semantic analysis, HIR lowering, many control-flow constructs, a growing built-in/runtime layer, and partial screen/file/channel behavior. Known gaps remain around broad built-in coverage, precise QL compatibility, graphics/sound fidelity, and some generated-backend parity.
+
+## Command Line
+
+Run from the repository with:
 
 ```powershell
-sb myprog
-sb myprog out.c
-sb myprog out.cs
+dotnet run --project .\SB\SB.fsproj -- [arguments]
+```
+
+With no arguments, `SB` reads defaults from `SB/appsettings.json`.
+
+The short command forms are:
+
+```powershell
+dotnet run --project .\SB\SB.fsproj -- myprog
+dotnet run --project .\SB\SB.fsproj -- myprog out.c
+dotnet run --project .\SB\SB.fsproj -- myprog out.cs
 ```
 
 Behavior:
 
-- `sb myprog`
-  - searches for `myprog.bas`, then `myprog.sb`, then `myprog.ssb`
-  - if no second argument is given, it interprets the program
-- `sb myprog out.c`
-  - resolves the input the same way
-  - generates C beside the input file if `out.c` is just a file name
-  - also copies `sbruntime_c.h` and `sbruntime_c.c` beside the generated `.c`
-- `sb myprog out.cs`
-  - resolves the input the same way
-  - generates C# beside the input file if `out.cs` is just a file name
-  - also copies `GeneratedRuntime.cs` beside the generated `.cs`
+- `myprog` without an extension resolves to the first existing file among `myprog.bas`, `myprog.sb`, and `myprog.ssb`.
+- One argument always selects the `interpret` backend.
+- Two arguments infer the backend only for `.c` and `.cs` outputs.
+- A bare output file name is written beside the input file; rooted paths or paths with directories are used as given.
+- Other settings not supplied on the command line come from `SB/appsettings.json`.
+
+The full command form is:
+
+```powershell
+dotnet run --project .\SB\SB.fsproj -- <input> <output> <verbose> [backend] [runtimeHost]
+```
+
+Arguments:
+
+- `<input>` is the source file, or a base name resolved through `.bas`, `.sb`, then `.ssb`.
+- `<output>` is used by generated backends; it is still accepted for `interpret` but does not define interpreter output.
+- `<verbose>` is `true` or `false`.
+- `[backend]` is optional and overrides `AppSettings:Backend`.
+- `[runtimeHost]` is optional and overrides `AppSettings:RuntimeHost` for interpreter runs.
+
+Backends:
+
+- `interpret` lowers to HIR and runs the interpreter.
+- `csharp` writes generated C# and copies `GeneratedRuntime.cs`, `SBRuntime.dll`, and `FSharp.Core.dll` beside it.
+- `c` writes generated C and copies `sbruntime_c.h` and `sbruntime_c.c` beside it.
+- `dotnetexe`, `dotnet-exe`, or `exe` generates C# internally and publishes a single-file `.NET` executable.
 
 Examples:
 
 ```powershell
-# Interpret q3.bas / q3.sb / q3.ssb
+# Interpret q3.bas, q3.sb, or q3.ssb
+dotnet run --project .\SB\SB.fsproj -- q3
+
+# Generate C
+dotnet run --project .\SB\SB.fsproj -- .\q3.sb .\output\q3.c false c
+
+# Generate C#
+dotnet run --project .\SB\SB.fsproj -- .\q3.sb .\output\q3.generated.cs false csharp
+
+# Publish a .NET executable
+dotnet run --project .\SB\SB.fsproj -- .\q3.sb .\output\q3.exe false dotnetexe
+
+# Interpret with the Avalonia host instead of the console host
+dotnet run --project .\SB\SB.fsproj -- .\q3.sb .\unused.txt false interpret avalonia
+```
+
+If you have a wrapper command named `sb`, the same argument rules apply:
+
+```powershell
 sb q3
-
-# Generate C in the same folder as the source
 sb q3 q3.c
-
-# Generate C# in the same folder as the source
 sb q3 q3.cs
 ```
 
-If you are running directly from the repo rather than via a wrapper command, use:
+## Appsettings
 
-```powershell
-dotnet run --project .\SB\SB.fsproj -- <input> <output> <verbose> <backend>
-```
+`SB/appsettings.json` supplies defaults when command-line arguments are omitted. It is also the source for settings that the short command forms do not expose.
 
-Examples:
-
-```powershell
-# Interpret a program
-dotnet run --project .\SB\SB.fsproj -- .\q3.SB .\out.txt false interpret
-
-# Generate C
-dotnet run --project .\SB\SB.fsproj -- .\q3.SB .\q3.c false c
-
-# Generate C#
-dotnet run --project .\SB\SB.fsproj -- .\q3.SB .\q3.generated.cs false csharp
-
-# Publish a .NET executable
-dotnet run --project .\SB\SB.fsproj -- .\q3.SB .\q3.exe false dotnetexe
-```
-
-Notes:
-
-- Command-line arguments override the defaults in `SB/appsettings.json`.
-- The simple two-argument form infers backend from the output extension:
-  - `.c` -> `c`
-  - `.cs` -> `csharp`
-- The `c` backend writes the generated program and copies `sbruntime_c.h` and `sbruntime_c.c`.
-- The `csharp` backend writes the generated program and copies `GeneratedRuntime.cs`.
-- `dotnetexe` lowers to HIR, generates C#, includes `GeneratedRuntime.cs`, and publishes a single-file `.NET` executable.
-
-The active codebase currently supports:
-
-- SSB preprocessing into numbered SuperBASIC
-- ANTLR-based parsing
-- normalized AST construction
-- semantic analysis with symbol resolution, typing, coercion, constant folding, and diagnostics
-- lowering from AST to HIR
-- a partial interpreter for HIR
-- caller-dependent procedure argument binding in the interpreter and HIR
-- `REFERENCE`-driven parameter binding metadata in semantic analysis and HIR
-- interpreter support for `GOTO`, `GOSUB`, `RETURN`, `ON GOTO`, and `ON GOSUB`
-- alternate C# generation from lowered HIR
-- alternate plain C generation from lowered HIR
-- published `.NET` executable generation from lowered HIR
-
-The project already supports a meaningful subset of SuperBASIC on a modern host, but it is still incomplete as a runtime and toolchain. Many built-ins, host integrations, and semantic edge cases are still being filled in.
-
-## Solution layout
-
-- `SB/` - main compiler/interpreter executable and core pipeline
-- `SBLib/` - ANTLR grammar and generated parser artifacts
-- `TestBed/` - NUnit regression tests for parser, semantics, lowering, fixtures, and interpreter behavior
-
-## Current pipeline
-
-The active path is:
-
-1. load source
-2. classify input as numbered SuperBASIC or Structured SuperBASIC
-3. preprocess `.ssb` when needed
-4. parse with ANTLR
-5. convert parse tree to AST
-6. run semantic analysis
-7. lower AST to HIR
-8. interpret HIR or emit C# / C / `.NET exe`
-
-The CLI can also emit C#, plain C, or a published `.NET` executable from HIR instead of interpreting.
-
-Interpreter phases:
-
-```text
-Source (.sb / .ssb)
-        |
-        v
-1. Load Source
-   - read text
-   - classify numbered vs structured
-        |
-        v
-2. Preprocess (.ssb only)
-   - structured source -> numbered SuperBASIC
-        |
-        v
-3. Parse (ANTLR)
-   - tokens + parse tree
-        |
-        v
-4. Build AST
-   - normalize syntax
-   - attach source positions
-        |
-        v
-5. Semantic Analysis
-   - resolve symbols
-   - apply typing/coercions
-   - constant folding
-   - diagnostics
-        |
-        v
-6. Lower To HIR
-   - explicit routines
-   - control flow
-   - data/restore tables
-   - built-in calls
-        |
-        v
-7. Interpret HIR
-   - initialize runtime state
-     - globals
-     - frames
-     - data pointer
-     - host/runtime options
-   - evaluate expressions
-   - execute statements
-   - call built-ins/runtime host
-   - manage GOTO/GOSUB/RETURN/STOP
-        |
-        v
-8. Execution Result
-   - output
-   - mutated runtime state
-   - or runtime error
-```
-
-Important files in `SB/`:
-
-- `CompilerPipeline.fs` - pipeline orchestration
-- `ParseTreeVisitor.fs` - parse tree to AST lowering
-- `SemanticAnalyzer.fs` - semantic pass orchestration
-- `SemanticAnalysis.Symbols.fs` - scope and symbol rules
-- `SemanticAnalysis.Expressions.fs` - typing, coercion, folding, and expression validation
-- `AstToHir.fs` - semantic AST to HIR lowering
-- `Interpreter.fs` - HIR interpreter
-- `BuiltIns.fs` - built-in name/signature model
-- `HirCSharpBackend.fs` - HIR to C#
-- `HirCBackend.fs` - HIR to C
-- `CSharpRuntime/GeneratedRuntime.cs` - shared C# runtime source used by generated C#
-- `CRuntime/sbruntime_c.h` - shared C runtime header
-- `CRuntime/sbruntime_c.c` - shared C runtime source
-
-## Status
-
-Implemented well enough to be useful on a modern host:
-
-- symbol and scope analysis
-- many expression rules
-- assignment, loops, conditionals, `DATA`/`READ`/`RESTORE`
-- numbered control flow in the interpreter, including `GOTO`, `GOSUB`, `RETURN`, `ON GOTO`, and `ON GOSUB`
-- flexible and by-reference parameter binding metadata through semantics and HIR
-- HIR lowering for the core statement/expression set
-- interpreter support for a subset of function and statement built-ins
-
-Still incomplete within the project's chosen scope:
-
-- broad built-in coverage
-- full channel/device/file semantics
-- code generation parity for by-reference procedure semantics
-- graphics, sound, and environment-specific runtime behavior
-
-Deliberately out of scope:
-
-- Sinclair QL hardware or OS emulation
-- machine-code execution and raw low-level machine support
-- shell/editor-style interactive environment commands whose meaning depends on a full QL session model
-
-## Build
-
-Build the whole solution:
-
-```powershell
-dotnet build .\SB.sln
-```
-
-Build just the main project:
-
-```powershell
-dotnet build .\SB\SB.fsproj
-```
-
-## Run
-
-Run the main executable:
-
-```powershell
-dotnet run --project .\SB\SB.fsproj
-```
-
-`SB/appsettings.json` is used by default. The backend is selected by `AppSettings:Backend` or by a fourth CLI argument:
-
-```powershell
-dotnet run --project .\SB\SB.fsproj -- input.sb output.cs false csharp
-```
-
-Supported backends:
-
-- `interpret` - lower to HIR and run the interpreter
-- `csharp` - lower to HIR and write generated C# to the configured output path
-- `c` - lower to HIR and write generated C to the configured output path
-- `dotnetexe` - lower to HIR, generate C#, and publish a single-file `.NET` executable to the configured output path
-
-Example:
-
-```powershell
-dotnet run --project .\SB\SB.fsproj -- input.sb output.exe false dotnetexe
-```
-
-Or via `SB/appsettings.json`:
+Typical configuration:
 
 ```json
 {
   "ApplicationName": "SB",
   "AppSettings": {
-    "InputFile": "C:\\Source\\SB\\SB\\q3.sb",
-    "OutputFile": "C:\\Source\\SB\\SB\\q3-generated.exe",
+    "InputFile": "C:\\Source\\SB\\SB\\project planner.sb",
+    "OutputFile": "C:\\Source\\SB\\output\\project-planner.exe",
     "Verbose": false,
-    "Backend": "dotnetexe"
+    "Backend": "dotnetexe",
+    "RuntimeHost": "avalonia",
+    "SyntaxChecking": "relaxed",
+    "ExecutionThrottle": {
+      "Enabled": false,
+      "TargetStatementsPerSecond": 100,
+      "MaxRunAheadMilliseconds": 5
+    }
   }
 }
 ```
 
-## Test
+Important settings:
 
-Run the main test suite:
+- `ApplicationName` is passed to generated code as the app name.
+- `AppSettings:InputFile` is the default source file.
+- `AppSettings:OutputFile` is the default generated output path.
+- `AppSettings:Verbose` prints diagnostics, symbol tables, HIR, and backend progress.
+- `AppSettings:Backend` selects `interpret`, `csharp`, `c`, or `dotnetexe` when not overridden.
+- `AppSettings:RuntimeHost` selects `console` or `avalonia` for interpreter runs.
+- `AppSettings:SyntaxChecking` accepts `relaxed` or `rigorous`; unknown or blank values fall back to `relaxed`.
+- `AppSettings:ExecutionThrottle` can slow interpreter execution for host/UI responsiveness.
+
+Command-line values override `InputFile`, `OutputFile`, `Verbose`, `Backend`, and `RuntimeHost` when the matching arguments are supplied. `SyntaxChecking` and `ExecutionThrottle` are currently configured through appsettings.
+
+## Solution Layout
+
+- `SB/` - main compiler/interpreter executable and pipeline orchestration.
+- `SBLib/` - ANTLR grammar and generated parser artifacts.
+- `SBRuntime/` - shared managed runtime services used by interpreter and generated C#.
+- `SB.CSharpRuntime/` - generated-code runtime support.
+- `SB.AvaloniaHost/` - optional GUI host for interpreter execution.
+- `SBTests/` - compiler, lowering, backend, and execution tests.
+- `SBRuntimeTests/` - shared runtime tests.
+- `TestBed/` - legacy test/fixture area retained in the tree.
+
+Important implementation files:
+
+- `SB/CompilerPipeline.fs` - settings, source preparation, parsing, semantic analysis, and lowering helpers.
+- `SB/Program.fs` - CLI entry point and backend dispatch.
+- `SB/ParseTreeVisitor.fs` - parse tree to AST conversion.
+- `SB/SemanticAnalyzer.fs` - semantic pass orchestration.
+- `SB/AstToHir.fs` - AST to HIR lowering.
+- `SB/Interpreter.fs` - HIR interpreter.
+- `SB/HirCSharpBackend.fs` - HIR to C# backend.
+- `SB/HirCBackend.fs` - HIR to C backend.
+- `SB/CSharpRuntime/GeneratedRuntime.cs` - runtime source copied beside generated C#.
+- `SB/CRuntime/sbruntime_c.h` and `SB/CRuntime/sbruntime_c.c` - runtime files copied beside generated C.
+
+## Build And Test
+
+Build the full solution:
 
 ```powershell
-dotnet test .\TestBed\TestBed.fsproj
+dotnet build .\SB.sln
 ```
 
-The `TestBed` project covers:
+Run the active test projects:
 
-- parse-tree to AST behavior
-- semantic analysis
-- AST to HIR lowering
-- interpreter behavior
-- fixture programs such as `q3.SB`, `Golfer.sb`, `Project Planner.sb`, and `ssb272.ssb`
+```powershell
+dotnet test .\SBTests\SBTests.fsproj
+dotnet test .\SBRuntimeTests\SBRuntimeTests.fsproj
+```
 
-## Notes
+You can also run all solution tests with:
 
-- The grammar is in `SBLib/SB.g4`.
-- The generated ANTLR Java files in `SBLib/` are repository artifacts, not the main implementation surface.
-- The most active implementation areas are `SB/` and `TestBed/`.
-- The most natural next step is a registry/services-based runtime architecture for broader built-in coverage under `.NET`.
+```powershell
+dotnet test .\SB.sln
+```

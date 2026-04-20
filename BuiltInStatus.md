@@ -1,290 +1,493 @@
 # Built-In Status
 
-Current status of recognized SuperBASIC and project-specific built-ins, based on:
+Current status of recognized SuperBASIC and project-specific built-ins.
+
+Primary references:
 
 - [SB/BuiltIns.fs](/C:/Source/SB/SB/BuiltIns.fs)
-- [SBRuntime/BuiltInFunctions.fs](/C:/Source/SB/SBRuntime/BuiltInFunctions.fs)
 - [SB/Interpreter.fs](/C:/Source/SB/SB/Interpreter.fs)
+- [SB/CSharpRuntime/GeneratedRuntime.cs](/C:/Source/SB/SB/CSharpRuntime/GeneratedRuntime.cs)
+- [SB/CRuntime/sbruntime_c.c](/C:/Source/SB/SB/CRuntime/sbruntime_c.c)
+- [SBRuntime/BuiltInFunctions.fs](/C:/Source/SB/SBRuntime/BuiltInFunctions.fs)
+- [SBRuntime/BuiltInStatements.fs](/C:/Source/SB/SBRuntime/BuiltInStatements.fs)
+- [SBRuntime/ManagedBuiltInBridge.fs](/C:/Source/SB/SBRuntime/ManagedBuiltInBridge.fs)
 
 Status markers:
 
-- `[x]` implemented
-- `[~]` implemented but only partially faithful
-- `[ ]` recognized but unsupported
+- `[x]` implemented for the named runtime/backend.
+- `[~]` implemented with simplified or host-specific behavior.
+- `[ ]` recognized but unsupported.
+- `n/a` handled by syntax/lowering rather than as a callable runtime built-in.
 
-## Implemented
+## Summary
 
-- `[x] ABS` absolute value of a number.
-- `[x] ACOS` inverse cosine.
-- `[x] ACOT` inverse cotangent.
-- `[x] ADATE` add a number of seconds to the current date/time value.
-- `[x] APPEND` open an existing file or resource for append on a specified channel id.
-- `[x] ARC` draw an arc with absolute coordinates.
-- `[x] ARC_R` draw an arc with relative coordinates.
-- `[x] ASC` return the character code of the first character in a string.
-- `[x] ASIN` inverse sine.
-- `[x] AT` move the text cursor to a row and column.
-- `[x] ATAN` inverse tangent.
-- `[x] BEEP` play a beep or tone through the host sound device.
-- `[x] BEEPING` report whether the host sound device is currently beeping.
-- `[x] BLOCK` draw a filled rectangular block.
-- `[x] BORDER` set border color or border-related state.
-- `[x] CHR$` convert a numeric character code to a one-character string.
-- `[x] CIRCLE` draw a circle with absolute coordinates.
-- `[x] CIRCLE_R` draw a circle with relative coordinates.
-- `[x] CLEAR` clear graphics state or graphics surface.
-- `[x] CLOSE` close an open channel.
-- `[x] CLS` clear a screen or screen window.
-- `[x] CODE` return the character code of the first character in a string.
-- `[x] COPY` copy a file or directory-backed device-backed file.
-- `[x] COPY_N` copy a file using the current simplified host copy semantics.
-- `[x] COS` cosine.
-- `[x] COT` cotangent.
-- `[x] CSIZE` set text character size.
-- `[x] CURSOR` set or move the text cursor.
-- `[x] DATE` return the current date/time as a numeric value.
-- `[x] DATE$` format a numeric date/time value as a string.
-- `[x] DAY$` return the weekday name for a date/time value.
-- `[x] DELETE` delete a file or directory-backed device-backed file.
-- `[x] DEG` convert radians to degrees.
-- `[x] DIMN` query array dimensionality or bounds.
-- `[x] DIR` list a directory or device-backed directory contents.
-- `[x] DLINE` draw a polyline from explicit coordinate pairs.
-- `[x] DRAW` draw from the current graphics position to a new point.
-- `[x] ELLIPSE` draw an ellipse with absolute coordinates.
-- `[x] ELLIPSE_R` draw an ellipse with relative coordinates.
-- `[x] EOF` report whether a channel is at end-of-file.
-- `[x] EXP` exponential function, `e^x`.
-- `[x] FILL` set fill mode for graphics operations.
-- `[x] FILL$` repeat a string a specified number of times.
-- `[x] FLASH` set flashing text or graphics mode.
-- `[x] GETENV$` get an environment variable by name.
-- `[x] GOSUB` jump to a numbered line and push a return point.
-- `[x] GOTO` jump to a numbered line.
-- `[x] INK` set foreground color or ink state.
-- `[x] INKEY` read a key code as an integer.
-- `[x] INKEY$` read a key as a string.
-- `[x] INPUT` read values from the default input or a channel.
-- `[x] INSTR` find one string inside another and return a 1-based position.
-- `[x] INT` truncate toward negative infinity.
-- `[x] KEYROW` query keyboard-row state.
-- `[x] LEFT$` take the leftmost part of a string.
-- `[x] LEN` return the length of a string.
-- `[x] LINE` draw one or more straight line segments with absolute coordinates.
-- `[x] LINE_R` draw one or more relative line segments.
-- `[x] LN` natural logarithm.
-- `[x] LOAD` load a program through the configured runtime loader.
-- `[x] LOG` common logarithm, base 10.
-- `[x] LOG10` common logarithm, base 10.
-- `[x] LRUN` load and immediately run a program through the configured runtime loader.
-- `[x] MERGE` merge another program into the current source/HIR state when source is available.
-- `[x] MID$` take a substring starting at a 1-based position.
-- `[x] MODE` change the current screen mode.
-- `[x] MOVE` move or rename a file or directory-backed device-backed file.
-- `[x] MRUN` merge another program and immediately restart execution when source is available.
-- `[x] NEW` clear the current in-memory program.
-- `[x] ON-GOSUB` select a target from a list and perform a `GOSUB`.
-- `[x] ON-GOTO` select a target from a list and perform a `GOTO`.
-- `[x] OPEN` open a named device or channel on a specified channel id.
-- `[x] OPEN_IN` open a file for input on a specified channel id.
-- `[x] OPEN_NEW` open a new output file on a specified channel id.
-- `[x] OVER` set overprint drawing mode.
-- `[x] PALETTE` set a color palette or palette entries.
-- `[x] PAN` set screen panning or horizontal offset state.
-- `[x] PAPER` set background color or paper state.
-- `[x] PAUSE` delay execution for a period.
-- `[x] PEEK` read a byte from the host memory model.
-- `[x] PEEK_L` read a longword from the host memory model.
-- `[x] PEEK_W` read a word from the host memory model.
-- `[x] PENDOWN` enable drawing while moving.
-- `[x] PENUP` disable drawing while moving.
-- `[x] PI` return the mathematical constant pi.
-- `[x] PLOT` move or plot the graphics cursor at a point.
-- `[x] POINT` plot or mark a point with absolute coordinates.
-- `[x] POINT_R` plot or mark a point with relative coordinates.
-- `[x] POKE` write a byte into the host memory model.
-- `[x] POKE_L` write a longword into the host memory model.
-- `[x] POKE_W` write a word into the host memory model.
-- `[x] PRINT` write values to the default output or a channel.
-- `[x] RAD` convert degrees to radians.
-- `[x] RANDOMISE` reseed the random number generator.
-- `[x] READ` read values from `DATA`.
-- `[x] RECOL` change recolor or palette remapping state.
-- `[x] REFERENCE` carry explicit by-reference intent metadata.
-- `[x] REPL$` replace part of a string starting at a 1-based position.
-- `[x] RESTORE` reset the `DATA` read pointer.
-- `[x] RIGHT$` take the rightmost part of a string.
-- `[x] RND` produce a random number or random integer in a range.
-- `[x] ROUND` round to the nearest integer-like value.
-- `[x] RUN` restart the current loaded program, optionally from a line number.
-- `[x] SCALE` set graphics scaling state.
-- `[x] SCROLL` set scroll state for a screen or window.
-- `[x] SDATE` adjust the interpreter's runtime date/time offset.
-- `[x] SGN` return the sign of a number.
-- `[x] SIN` sine.
-- `[x] SQRT` square root.
-- `[x] STOP` stop program execution.
-- `[x] STR$` convert a numeric value to text.
-- `[x] STRIP` set strip/background state for screen output.
-- `[x] TAN` tangent.
-- `[x] TIME` return the current time-of-day value with an offset.
-- `[x] TURN` turn the graphics heading by a relative angle.
-- `[x] TURNTO` set the graphics heading to an absolute angle.
-- `[x] UNDER` set underprint drawing mode.
-- `[x] VAL` parse numeric text into a number.
-- `[x] WAIT` delay execution using the current pause timing behavior.
-- `[x] WIDTH` set text width or columns for a screen/window.
-- `[x] WINDOW` set a screen window’s size and position.
+The interpreter has the broadest built-in coverage and is the reference backend for new behavior.
 
-## Partial
+Generated C# has meaningful runtime support and delegates a growing subset to `SBRuntime.ManagedBuiltInBridge`, but it still uses its own generated runtime for storage, channels, screen state, graphics projection, and error control.
 
-- `[x] ADATE` implemented with simple Unix-epoch-based arithmetic, not QL-specific date semantics.
-- `[x] DATE` implemented as Unix seconds, not Sinclair QL native date representation.
-- `[x] DATE$` implemented with a pragmatic string format, not verified against QL formatting rules.
-- `[x] DAY$` implemented with host weekday names.
-- `[x] DELETE` resolves normal paths and directory-backed device paths, not full QL environment object deletion.
-- `[x] COPY` and `[x] COPY_N` use host file copy semantics, not full QL channel/resource copy behavior.
-- `[x] MOVE` uses host file move semantics, not full QL channel/resource move behavior.
-- `[x] DIR` uses the host filesystem and directory-backed device roots, not a full QL directory environment.
-- `[x] APPEND` supports basic file append, not full QL file semantics.
-- `[x] BEEP` and `[x] BEEPING` use host sound state, not full QL sound semantics.
-- `[x] DIMN` reports declared array dimensions from the current runtime model.
-- `[x] EOF` implemented against current host/channel behavior, not full QL file semantics.
-- `[x] GETENV$` uses host environment variables directly.
-- `[x] INKEY` uses host key events, not full QL keyboard semantics.
-- `[x] INKEY$` uses host key events, not full QL keyboard semantics.
-- `[x] KEYROW` currently uses a host callback and defaults to `0` in the interpreter.
-- `[x] MODE` uses host-defined modes and extensions.
-- `[x] OPEN` supports only a limited set of named devices in `DefaultHost`.
-- `[x] OPEN_IN` supports basic file reading, not full QL file semantics.
-- `[x] OPEN_NEW` supports basic file writing, not full QL file semantics.
-- `[x] LOAD`, `[x] LRUN`, `[x] MERGE`, `[x] MRUN`, `[x] NEW`, and `[x] RUN` operate on the interpreter's configured loader and in-memory program state, not a full interactive SuperBASIC environment.
-- `[x] PEEK`/`PEEK_W`/`PEEK_L` and `POKE`/`POKE_W`/`POKE_L` operate on the host memory model and the emulated mode 8 screen buffer, not real QL memory.
-- `[x] SDATE` changes the interpreter's effective clock offset rather than the host system clock.
-- `[x] CLOSE` closes channels, but channel/device lifecycle is still simplified.
-- `[x] screen/window/graphics operations` are broadly implemented, but the host model is still simplified compared with a full QL environment.
-- `[x] STRIP` currently models screen strip/background state rather than a standalone string-processing built-in.
-- `[x] TIME` uses host wall-clock time-of-day seconds, not verified QL semantics.
-- `[x] WAIT` currently shares `PAUSE` timing behavior.
+Generated C has a smaller runtime surface. It supports core output, some file/channel operations, and a subset of screen/graphics calls, but many higher-level or host-specific operations remain unsupported.
 
-## Unsupported
+`SBRuntime` currently owns shared expression built-ins, PRINT/INPUT formatting/parsing helpers, and bridge helpers for generated C# screen, graphics, and file/channel statements. It is not yet the single runtime for all interpreter and generated backend behavior.
 
-- `[ ] ALLOCATE` allocate memory or resources through toolkit/runtime support.
-- `[ ] AUTO` enable automatic line numbering in an interactive environment.
-- `[ ] BACKUP` perform a file or device backup operation.
-- `[ ] BAUD` configure serial baud rate.
-- `[ ] CALL` call machine code at an address.
-- `[ ] CONTINUE` resume after a stop or break.
-- `[ ] DEALLOCATE` free allocated memory or resources.
-- `[ ] EDIT` open an editor or edit a program line.
-- `[ ] EXEC` execute machine code or an external program.
-- `[ ] EXEC_W` execute machine code with workspace or variant semantics.
-- `[ ] FORMAT` format a device or storage medium.
-- `[ ] IF` keyword handled as syntax, not a callable built-in.
-- `[ ] LBYTES` load bytes from a file or channel into memory.
-- `[ ] LIST` list program lines.
-- `[ ] LOADMEM` load a memory image.
-- `[ ] LPRINT` print to a printer channel.
-- `[ ] NET` perform networking-related setup or operations.
-- `[ ] RENUM` renumber program lines.
-- `[ ] RESPR` reserve memory for resident procedure or machine code support.
-- `[ ] RETRY` retry a failed operation or interactive command.
-- `[ ] SAVE` save a program or file.
-- `[ ] SAVEMEM` save a memory image.
-- `[ ] SBYTES` save bytes from memory to a file or channel.
-- `[ ] SEXEC` save and execute or execute saved code depending on environment semantics.
-- `[ ] SHELL` invoke a shell or command processor.
-- `[ ] SYSVAR` access system variables.
-- `[ ] TRON` enable execution tracing.
-- `[ ] TROFF` disable execution tracing.
+## Shared SBRuntime Functions
 
-Turbo/project-specific placeholders:
+Implemented in `SBRuntime/BuiltInFunctions.fs` and usable by the interpreter and generated C# bridge:
 
-- `[ ] TURBO_BUFFERSZ` Turbo compiler/runtime configuration flag.
-- `[ ] TURBO_DIAGS` Turbo diagnostics configuration flag.
-- `[ ] TURBO_LOCSTR` Turbo local-string configuration flag.
-- `[ ] TURBO_OBJDAT` Turbo object-data configuration flag.
-- `[ ] TURBO_OBJFIL` Turbo object-file configuration flag.
-- `[ ] TURBO_OPTIM` Turbo optimization configuration flag.
-- `[ ] TURBO_REPFIL` Turbo report-file configuration flag.
-- `[ ] TURBO_STRUCT` Turbo structured mode configuration flag.
-- `[ ] TURBO_TASKN` Turbo task-name configuration flag.
-- `[ ] TURBO_WINDO` Turbo window configuration flag.
+- `[x] ABS`
+- `[x] ACOS`
+- `[x] ACOT`
+- `[x] ADATE`
+- `[x] ASC`
+- `[x] ASIN`
+- `[x] ATAN`
+- `[x] CHR$`
+- `[x] CODE`
+- `[x] COS`
+- `[x] COT`
+- `[x] DATE`
+- `[x] DATE$`
+- `[x] DAY$`
+- `[x] DEG`
+- `[x] EOF`
+- `[x] EXP`
+- `[x] FILL$`
+- `[x] GETENV$`
+- `[x] INKEY`
+- `[x] INKEY$`
+- `[x] INSTR`
+- `[x] INT`
+- `[x] KEYROW`
+- `[x] LEFT$`
+- `[x] LEN`
+- `[x] LN`
+- `[x] LOG`
+- `[x] LOG10`
+- `[x] MID$`
+- `[x] PI`
+- `[x] RAD`
+- `[x] REPL$`
+- `[x] RIGHT$`
+- `[x] RND`
+- `[x] ROUND`
+- `[x] SGN`
+- `[x] SIN`
+- `[x] SQRT`
+- `[x] STR$`
+- `[x] TAN`
+- `[x] TIME`
+- `[x] VAL`
 
-## Out Of Scope Or Low-Level
+Shared statement helpers in `SBRuntime/BuiltInStatements.fs`:
 
-- `[ ] CALL` direct machine-code call.
-- `[ ] EXEC` machine-code or external execution.
-- `[ ] EXEC_W` machine-code or external execution variant.
-- `[ ] SEXEC` saved/external execution support.
-- `[ ] RESPR` low-level memory reservation.
-- `[ ] LBYTES` low-level memory/file byte transfer.
-- `[ ] SBYTES` low-level memory/file byte transfer.
-- `[ ] LOADMEM` raw memory-image load.
-- `[ ] SAVEMEM` raw memory-image save.
-- `[ ] BAUD` serial communications configuration.
-- `[ ] NET` networking or system communications support.
-- `[ ] AUTO` interactive shell/editor command.
-- `[ ] EDIT` interactive editor command.
-- `[ ] LIST` interactive program listing command.
-- `[ ] SAVE` interactive environment save command.
-- `[ ] SHELL` shell invocation command.
-- `[ ] TRON` tracing command.
-- `[ ] TROFF` tracing command.
+- `[x] PRINT` formatting, including comma zones and trailing semicolon continuation markers.
+- `[x] INPUT` line splitting and typed value parsing.
 
+## Interpreter
 
-The highest-value next step is scr_ / con_ parameter parsing.
-You now have:
-•
-more device support
-•
-independent screen windows
-•
-MODE
-•
-many graphics ops
-•
-richer open paths
-But device strings still do almost nothing beyond prefix matching. A lot of QL-style environment behavior depends on opening screen devices with geometry and mode parameters.
-So I would do:
-1.
-parse scr_ / con_ device strings
-2.
-create window state from those parameters
-3.
-bind opened channels to that configured window
-4.
-add tests for realistic device-open cases
-After that:
-•
-add clipping and coordinate transforms so WINDOW, PAN, and SCALE affect drawing consistently
-•
-then consider a real backing buffer for text/graphics
-•
-then later an Avalonia host
-So the next step is: make opened screen devices carry real window configuration, not just “this is a screen-like channel.”
+Interpreter-only or interpreter-reference support in `SB/Interpreter.fs`:
 
+- `[x] PRINT`
+- `[x] INPUT`
+- `[x] REFERENCE`
+- `[x] RANDOMISE`
+- `[x] STOP`
+- `[x] GOTO`
+- `[x] GOSUB`
+- `[x] RETURN`
+- `[x] ON-GOTO`
+- `[x] ON-GOSUB`
+- `[x] WHEN ERROR` runtime state, including `REPORT`, `CONTINUE`, `RETRY`, `ERLIN`, `ERNUM`, and `ERR_*` predicates.
+- `[x] DATA`
+- `[x] READ`
+- `[x] RESTORE`
 
+Interpreter file, channel, and program-management built-ins:
 
-INPUT is still effectively blocked or broken in the windowed host.
-So the best next step is:
-1.
-add an input line box in the Avalonia UI
-2.
-queue submitted lines into the runtime host
-3.
-make ReadLine consume that queue
-4.
-optionally show prompt state in the UI
-After that:
-•
-runtime-driven repaint instead of timer polling
-•
-better focus handling for keyboard input
-•
-maybe channel-specific input/output panes
-•
-then host tests for Avalonia session behavior
-So the next milestone is: line-input support for interpreted programs, not more display polish.
+- `[~] OPEN`
+- `[~] OPEN_IN`
+- `[~] OPEN_NEW`
+- `[~] APPEND`
+- `[~] CLOSE`
+- `[~] EOF`
+- `[~] DIR`
+- `[~] DELETE`
+- `[~] COPY`
+- `[~] COPY_N`
+- `[~] MOVE`
+- `[~] LOAD`
+- `[~] LRUN`
+- `[~] MERGE`
+- `[~] MRUN`
+- `[~] NEW`
+- `[~] RUN`
 
-It is the wrong way around. I don't want an avalonia shell for running programs using sb, I want to run sb programs from dos command line e.g. sb golfer. The program run may just write to the default channels 0-2, it may open new console channels it may move any channels around and resize them. Both graphics and text may be performed in any console or screen channel. How to make it work like that.
+Interpreter screen/window/control built-ins:
+
+- `[~] AT`
+- `[~] BORDER`
+- `[~] CHAR_USE`
+- `[~] CLEAR`
+- `[~] CLS`
+- `[~] CSIZE`
+- `[~] CURSOR`
+- `[~] FLASH`
+- `[~] INK`
+- `[~] MODE`
+- `[~] OVER`
+- `[~] PALETTE`
+- `[~] PAN`
+- `[~] PAPER`
+- `[~] RECOL`
+- `[~] S_FONT`
+- `[~] SCROLL`
+- `[~] STRIP`
+- `[~] UNDER`
+- `[~] WIDTH`
+- `[~] WINDOW`
+
+Interpreter graphics built-ins:
+
+- `[~] ARC`
+- `[~] ARC_R`
+- `[~] BLOCK`
+- `[~] CIRCLE`
+- `[~] CIRCLE_R`
+- `[~] DLINE`
+- `[~] DRAW`
+- `[~] ELLIPSE`
+- `[~] ELLIPSE_R`
+- `[~] FILL`
+- `[~] LINE`
+- `[~] LINE_R`
+- `[~] PENDOWN`
+- `[~] PENUP`
+- `[~] PLOT`
+- `[~] POINT`
+- `[~] POINT_R`
+- `[~] SCALE`
+- `[~] TURN`
+- `[~] TURNTO`
+
+Interpreter host/time/memory built-ins:
+
+- `[~] BEEP`
+- `[~] BEEPING`
+- `[~] FLUSH`
+- `[~] PAUSE`
+- `[~] PEEK`
+- `[~] PEEK_W`
+- `[~] PEEK_L`
+- `[~] POKE`
+- `[~] POKE_W`
+- `[~] POKE_L`
+- `[~] SDATE`
+- `[~] SLUG`
+- `[~] WAIT`
+
+Interpreter no-op compatibility placeholders:
+
+- `[~] TURBO_BUFFERSZ`
+- `[~] TURBO_DIAGS`
+- `[~] TURBO_LOCSTR`
+- `[~] TURBO_OBJDAT`
+- `[~] TURBO_OBJFIL`
+- `[~] TURBO_OPTIM`
+- `[~] TURBO_REPFIL`
+- `[~] TURBO_STRUCT`
+- `[~] TURBO_TASKN`
+- `[~] TURBO_WINDO`
+
+## Generated C# Backend
+
+Generated C# has direct runtime support for:
+
+- `[x] PRINT`
+- `[x] INPUT`
+- `[x] REFERENCE`
+- `[x] RANDOMISE`
+- `[x] STOP`
+- `[x] RETRY`
+- `[x] CONTINUE`
+- `[x] REPORT`
+- `[x] ERLIN`
+- `[x] ERNUM`
+- `[x] ERR_*`
+- `[x] DATE`
+- `[x] EOF`
+- `[x] DIMN`
+- `[x] BEEP`
+- `[x] BEEPING`
+- `[x] FLUSH`
+- `[x] MODE`
+- `[x] PAUSE`
+- `[x] WAIT`
+- `[x] SDATE`
+- `[x] SLUG`
+- `[x] PEEK`
+- `[x] PEEK_W`
+- `[x] PEEK_L`
+- `[x] POKE`
+- `[x] POKE_W`
+- `[x] POKE_L`
+
+Generated C# delegates these statement families through `ManagedBuiltInBridge` or generated runtime state:
+
+- `[~] OPEN`
+- `[~] OPEN_IN`
+- `[~] OPEN_NEW`
+- `[~] APPEND`
+- `[~] CLOSE`
+- `[~] DELETE`
+- `[~] COPY`
+- `[~] COPY_N`
+- `[~] MOVE`
+- `[~] DIR`
+- `[~] CLS`
+- `[~] WINDOW`
+- `[~] AT`
+- `[~] CURSOR`
+- `[~] CSIZE`
+- `[~] CHAR_USE`
+- `[~] S_FONT`
+- `[~] INK`
+- `[~] PAPER`
+- `[~] STRIP`
+- `[~] BORDER`
+- `[~] CLEAR`
+- `[~] SCROLL`
+- `[~] WIDTH`
+- `[~] PAN`
+- `[~] RECOL`
+- `[~] PALETTE`
+- `[~] PLOT`
+- `[~] DRAW`
+- `[~] DLINE`
+- `[~] LINE`
+- `[~] LINE_R`
+- `[~] CIRCLE`
+- `[~] CIRCLE_R`
+- `[~] ELLIPSE`
+- `[~] ELLIPSE_R`
+- `[~] ARC`
+- `[~] ARC_R`
+- `[~] BLOCK`
+- `[~] FILL`
+- `[~] SCALE`
+- `[~] OVER`
+- `[~] UNDER`
+- `[~] FLASH`
+- `[~] PENDOWN`
+- `[~] PENUP`
+- `[~] TURN`
+- `[~] TURNTO`
+
+Generated C# explicitly rejects these host/program-management built-ins:
+
+- `[ ] RUN`
+- `[ ] LOAD`
+- `[ ] LRUN`
+- `[ ] MERGE`
+- `[ ] MRUN`
+- `[ ] SAVE`
+- `[ ] NEW`
+- `[ ] SEXEC`
+- `[ ] SBYTES`
+- `[ ] CALL`
+- `[ ] RESPR`
+- `[ ] LOADMEM`
+- `[ ] SAVEMEM`
+- `[ ] SYSVAR`
+
+## Generated C Backend
+
+Generated C supports core value/runtime operations, but the runtime surface is narrower than C#.
+
+Generated C function support includes:
+
+- `[x] ABS`
+- `[x] ACOS`
+- `[x] ACOT`
+- `[x] ADATE`
+- `[x] ASC`
+- `[x] ASIN`
+- `[x] ATAN`
+- `[x] BEEPING`
+- `[x] CHR$`
+- `[x] CODE`
+- `[x] COS`
+- `[x] COT`
+- `[x] DATE`
+- `[x] DATE$`
+- `[x] DAY$`
+- `[x] DEG`
+- `[x] DIMN`
+- `[x] EOF`
+- `[x] ERLIN`
+- `[x] ERNUM`
+- `[x] ERR_*`
+- `[x] EXP`
+- `[x] FILL$`
+- `[x] GETENV$`
+- `[x] INKEY`
+- `[x] INKEY$`
+- `[x] INT`
+- `[x] KEYROW`
+- `[x] LEFT$`
+- `[x] LEN`
+- `[x] LN`
+- `[x] LOG`
+- `[x] LOG10`
+- `[x] MID$`
+- `[x] PEEK`
+- `[x] PEEK_W`
+- `[x] PEEK_L`
+- `[x] PI`
+- `[x] RAD`
+- `[x] REPL$`
+- `[x] RIGHT$`
+- `[x] RND`
+- `[x] ROUND`
+- `[x] SGN`
+- `[x] SIN`
+- `[x] SQRT`
+- `[x] STR$`
+- `[x] TAN`
+- `[x] TIME`
+- `[x] VAL`
+
+Generated C statement support includes:
+
+- `[x] PRINT`
+- `[x] INPUT`
+- `[x] REFERENCE`
+- `[x] RANDOMISE`
+- `[x] STOP`
+- `[x] RETRY`
+- `[x] CONTINUE`
+- `[x] REPORT`
+- `[x] BEEP`
+- `[x] FLUSH`
+- `[x] MODE`
+- `[x] PAUSE`
+- `[x] POKE`
+- `[x] POKE_W`
+- `[x] POKE_L`
+- `[~] OPEN`
+- `[~] OPEN_IN`
+- `[~] OPEN_NEW`
+- `[~] APPEND`
+- `[~] CLOSE`
+- `[~] DIR`
+- `[~] DELETE`
+- `[~] COPY`
+- `[~] COPY_N`
+- `[~] CLS`
+- `[~] WINDOW`
+- `[~] AT`
+- `[~] CURSOR`
+- `[~] CSIZE`
+- `[~] CHAR_USE`
+- `[~] S_FONT`
+- `[~] INK`
+- `[~] PAPER`
+- `[~] STRIP`
+- `[~] BORDER`
+- `[~] LINE`
+- `[~] CIRCLE`
+- `[~] BLOCK`
+- `[~] OVER`
+- `[~] UNDER`
+- `[~] FLASH`
+- `[~] SCROLL`
+- `[~] RECOL`
+- `[~] SCALE`
+- `[~] ARC`
+- `[~] ELLIPSE`
+- `[~] TRUNCATE`
+- `[~] SET_POSITION`
+- `[~] SET_CHANNEL`
+
+Generated C explicitly rejects:
+
+- `[ ] RUN`
+- `[ ] LOAD`
+- `[ ] LRUN`
+- `[ ] MERGE`
+- `[ ] MRUN`
+- `[ ] SAVE`
+- `[ ] NEW`
+- `[ ] SEXEC`
+- `[ ] SBYTES`
+- `[ ] CALL`
+- `[ ] MOVE`
+- `[ ] RESPR`
+- `[ ] LOADMEM`
+- `[ ] SAVEMEM`
+- `[ ] SYSVAR`
+
+Generated C still reports many graphics/environment names as unsupported, including relative graphics variants and host-interactive functions that do not have a C runtime implementation.
+
+## Recognized But Unsupported Or Out Of Scope
+
+These names are recognized by the semantic/built-in registry but are not meaningfully implemented in the current runtime model:
+
+- `[ ] ALLOCATE`
+- `[ ] AUTO`
+- `[ ] BACKUP`
+- `[ ] BAUD`
+- `[ ] CALL`
+- `[ ] DEALLOCATE`
+- `[ ] EDIT`
+- `[ ] EXEC`
+- `[ ] EXEC_W`
+- `[ ] FORMAT`
+- `[ ] LBYTES`
+- `[ ] LIST`
+- `[ ] LOADMEM`
+- `[ ] LPRINT`
+- `[ ] NET`
+- `[ ] RENUM`
+- `[ ] RESPR`
+- `[ ] SAVE`
+- `[ ] SAVEMEM`
+- `[ ] SBYTES`
+- `[ ] SEXEC`
+- `[ ] SHELL`
+- `[ ] SYSVAR`
+- `[ ] TRON`
+- `[ ] TROFF`
+
+Language keywords handled by parser/lowering rather than callable built-ins:
+
+- `DATA`
+- `DEFine FuNction`
+- `DEFine PROCedure`
+- `DIM`
+- `ELSE`
+- `END DEFine`
+- `END FOR`
+- `END IF`
+- `END REPeat`
+- `END SELect`
+- `EXIT`
+- `FOR`
+- `IF`
+- `LET`
+- `LOCAL`
+- `MOD`
+- `NEXT`
+- `READ`
+- `REMark`
+- `REPEAT`
+- `RESTORE`
+- `RETurn`
+- `SELect`
+- `THEN`
+
+## Important Gaps
+
+- Host/channel behavior is pragmatic and file-system based, not full QL device semantics.
+- Screen/window behavior is partial and host-specific; console, Avalonia, generated C#, and generated C do not yet share one complete virtual screen implementation.
+- Graphics operations are modeled well enough for many tests, but clipping, transforms, backing buffers, and display projection are still incomplete.
+- Generated C# has better parity than generated C, but neither generated backend should be treated as fully equivalent to the interpreter.
+- Low-level memory, machine-code, shell, editor, serial, network, and QL firmware features are intentionally unsupported unless a host-neutral abstraction is added later.
