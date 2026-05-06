@@ -369,7 +369,7 @@ type private CollectingErrorListener() =
     
     let isIgnorableEofError (msg: string) =
         let normalized = if isNull msg then String.Empty else msg.Trim()
-        normalized.Contains("'<EOF>'")
+        normalized = "missing Newline at '<EOF>'"
 
     member _.Messages = List.rev errors
 

@@ -142,6 +142,8 @@ Command-line values override `InputFile`, `OutputFile`, `Verbose`, `Backend`, an
 - `SBRuntimeTests/` - shared runtime tests.
 - `TestBed/` - legacy test/fixture area retained in the tree.
 
+Architecture diagram: [docs/architecture.md](docs/architecture.md)
+
 Important implementation files:
 
 - `SB/CompilerPipeline.fs` - settings, source preparation, parsing, semantic analysis, and lowering helpers.

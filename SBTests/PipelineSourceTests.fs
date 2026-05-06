@@ -183,6 +183,15 @@ let ``loadAstFromInput rigorous syntax checking ignores eof only parser noise`` 
     )
 
 [<Test>]
+let ``loadAstFromInput rigorous syntax checking reports non-newline eof parse errors`` () =
+    withTempSource "10 PRINT 1 +" (fun path ->
+        match loadAstFromInput (testSettingsWithSyntaxChecking Rigorous path) with
+        | Error(ParseError message) -> Assert.That(message, Does.Contain("<EOF>"))
+        | Error(FileNotFound fileName) -> Assert.Fail($"Expected parse failure, got missing file %s{fileName}")
+        | Ok _ -> Assert.Fail("Expected rigorous syntax checking to reject a non-newline EOF parse error.")
+    )
+
+[<Test>]
 let ``loadAstFromInput relaxed syntax checking logs parser recovery warnings`` () =
     withTempSource "10 FOR i = 1 TO 2\n20 PRINT i\n30 END\n" (fun path ->
         let sink = CollectingSink()

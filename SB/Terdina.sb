@@ -1,0 +1,15 @@
+DIM num(4)
+z$="SS"
+k=2
+b=12
+mbat=7
+num(j)=z$
+f=num(k)
+DIM e_f(mbat,2)
+fa=e_fn(b)
+f=fa
+FOR j=1 TO f
+END FOR j
+DEFine FuNction e_fn (b)
+RETURN b
+END DEFine
