@@ -1,0 +1,21 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net9.0</TargetFramework>
+        <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <Reference Include="Antlr4.Runtime.Standard">
+        <HintPath>..\..\Antlr4\runtime\CSharp\src\obj\Debug\net45\Antlr4.Runtime.Standard.dll</HintPath>
+      </Reference>
+      <Reference Include="SBLib">
+        <HintPath>..\SBLib\bin\Debug\net9.0\SBLib.dll</HintPath>
+      </Reference>
+    </ItemGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\SBLib\SBLib.csproj" />
+    </ItemGroup>
+
+</Project>

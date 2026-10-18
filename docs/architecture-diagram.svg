@@ -1,0 +1,182 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1280" viewBox="0 0 1600 1280" role="img" aria-labelledby="title desc">
+  <title id="title">SB Solution Architecture</title>
+  <desc id="desc">A printable architecture diagram for the SB SuperBASIC toolchain solution, showing project relationships and the compiler pipeline.</desc>
+  <defs>
+    <style>
+      .title { font: 700 34px 'Segoe UI', Arial, sans-serif; fill: #112433; }
+      .section { font: 700 24px 'Segoe UI', Arial, sans-serif; fill: #112433; }
+      .label { font: 600 18px 'Segoe UI', Arial, sans-serif; fill: #112433; }
+      .text { font: 15px 'Segoe UI', Arial, sans-serif; fill: #284051; }
+      .small { font: 14px 'Segoe UI', Arial, sans-serif; fill: #4a6577; }
+      .box { fill: #ffffff; stroke: #24445a; stroke-width: 2; rx: 14; ry: 14; }
+      .group { fill: #f5f8fb; stroke: #93a9b8; stroke-width: 2.5; rx: 20; ry: 20; }
+      .accent { fill: #e6f0f7; stroke: #2b627d; stroke-width: 2.5; rx: 14; ry: 14; }
+      .runtime { fill: #eef6ea; stroke: #47704a; stroke-width: 2.5; rx: 14; ry: 14; }
+      .test { fill: #fbf3e7; stroke: #9a6a26; stroke-width: 2.5; rx: 14; ry: 14; }
+      .output { fill: #f7edf8; stroke: #7b4f8e; stroke-width: 2.5; rx: 14; ry: 14; }
+      .arrow { stroke: #35576d; stroke-width: 3; fill: none; marker-end: url(#arrow); }
+      .dashed { stroke-dasharray: 10 8; }
+      .divider { stroke: #c8d5df; stroke-width: 2; }
+    </style>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M 0 0 L 12 6 L 0 12 z" fill="#35576d" />
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="1600" height="1280" fill="#fcfdfe" />
+
+  <text x="64" y="62" class="title">SB Overall Architecture</text>
+  <text x="64" y="92" class="small">SuperBASIC / Structured SuperBASIC toolchain targeting .NET 10</text>
+
+  <line x1="64" y1="122" x2="1536" y2="122" class="divider" />
+
+  <text x="64" y="160" class="section">1. Solution Structure</text>
+
+  <rect x="240" y="190" width="1220" height="410" class="group" />
+  <text x="270" y="225" class="label">SB Solution</text>
+
+  <rect x="82" y="334" width="120" height="92" class="accent" />
+  <text x="110" y="370" class="label">Source</text>
+  <text x="96" y="395" class="text">.bas / .sb / .ssb</text>
+
+  <rect x="300" y="270" width="270" height="110" class="accent" />
+  <text x="410" y="308" text-anchor="middle" class="label">SB</text>
+  <text x="410" y="334" text-anchor="middle" class="text">CLI entry point</text>
+  <text x="410" y="356" text-anchor="middle" class="text">compiler pipeline</text>
+
+  <rect x="630" y="230" width="250" height="92" class="box" />
+  <text x="755" y="266" text-anchor="middle" class="label">SBLib</text>
+  <text x="755" y="292" text-anchor="middle" class="text">ANTLR grammar + parser</text>
+
+  <rect x="630" y="350" width="250" height="92" class="runtime" />
+  <text x="755" y="386" text-anchor="middle" class="label">SBRuntime</text>
+  <text x="755" y="412" text-anchor="middle" class="text">shared managed runtime</text>
+
+  <rect x="930" y="230" width="260" height="92" class="box" />
+  <text x="1060" y="266" text-anchor="middle" class="label">SB.AvaloniaHost</text>
+  <text x="1060" y="292" text-anchor="middle" class="text">optional GUI runtime host</text>
+
+  <rect x="930" y="350" width="260" height="92" class="box" />
+  <text x="1060" y="386" text-anchor="middle" class="label">SB.CSharpRuntime</text>
+  <text x="1060" y="412" text-anchor="middle" class="text">generated C# runtime support</text>
+
+  <rect x="1240" y="230" width="180" height="92" class="test" />
+  <text x="1330" y="266" text-anchor="middle" class="label">SBTests</text>
+  <text x="1330" y="292" text-anchor="middle" class="text">compiler and backend tests</text>
+
+  <rect x="1240" y="350" width="180" height="92" class="test" />
+  <text x="1330" y="386" text-anchor="middle" class="label">SBRuntimeTests</text>
+  <text x="1330" y="412" text-anchor="middle" class="text">runtime and host tests</text>
+
+  <rect x="300" y="470" width="260" height="80" class="box" />
+  <text x="430" y="503" text-anchor="middle" class="label">TestBed</text>
+  <text x="430" y="527" text-anchor="middle" class="text">legacy fixtures / experiments</text>
+
+  <path d="M 202 380 L 300 325" class="arrow" />
+  <path d="M 570 300 L 630 276" class="arrow" />
+  <path d="M 570 325 L 630 396" class="arrow" />
+  <path d="M 570 325 L 930 276" class="arrow" />
+  <path d="M 570 340 L 930 396" class="arrow" />
+  <path d="M 1190 396 L 630 396" class="arrow" />
+  <path d="M 1240 276 L 570 300" class="arrow" />
+  <path d="M 1240 396 L 570 335" class="arrow" />
+  <path d="M 1240 410 L 1190 410 L 1190 300" class="arrow" />
+  <path d="M 560 510 L 610 510 L 610 350 L 430 350 L 430 380" class="arrow dashed" />
+
+  <text x="64" y="660" class="section">2. Active Compiler and Runtime Flow</text>
+
+  <rect x="60" y="690" width="1480" height="530" class="group" />
+
+  <rect x="90" y="745" width="160" height="84" class="accent" />
+  <text x="170" y="779" text-anchor="middle" class="label">Input</text>
+  <text x="170" y="804" text-anchor="middle" class="text">.bas / .sb / .ssb</text>
+
+  <rect x="300" y="745" width="170" height="84" class="box" />
+  <text x="385" y="779" text-anchor="middle" class="label">Classify</text>
+  <text x="385" y="804" text-anchor="middle" class="text">source type</text>
+
+  <rect x="520" y="715" width="230" height="94" class="box" />
+  <text x="635" y="752" text-anchor="middle" class="label">Preprocess</text>
+  <text x="635" y="777" text-anchor="middle" class="text">Structured SuperBASIC</text>
+  <text x="635" y="799" text-anchor="middle" class="text">.ssb -&gt; numbered source</text>
+
+  <rect x="520" y="845" width="230" height="94" class="box" />
+  <text x="635" y="882" text-anchor="middle" class="label">Parse</text>
+  <text x="635" y="907" text-anchor="middle" class="text">ANTLR via SBLib</text>
+
+  <rect x="800" y="845" width="180" height="94" class="box" />
+  <text x="890" y="882" text-anchor="middle" class="label">AST</text>
+  <text x="890" y="907" text-anchor="middle" class="text">normalized tree</text>
+
+  <rect x="1030" y="825" width="260" height="116" class="box" />
+  <text x="1160" y="862" text-anchor="middle" class="label">Semantic Analysis</text>
+  <text x="1160" y="887" text-anchor="middle" class="text">symbols, typing, coercion,</text>
+  <text x="1160" y="909" text-anchor="middle" class="text">constant folding, diagnostics</text>
+
+  <rect x="1340" y="845" width="150" height="94" class="box" />
+  <text x="1415" y="882" text-anchor="middle" class="label">HIR</text>
+  <text x="1415" y="907" text-anchor="middle" class="text">lowered IR</text>
+
+  <rect x="1180" y="1000" width="210" height="98" class="accent" />
+  <text x="1285" y="1038" text-anchor="middle" class="label">Backend Dispatch</text>
+  <text x="1285" y="1063" text-anchor="middle" class="text">interpret / csharp / c / exe</text>
+
+  <rect x="110" y="1030" width="190" height="92" class="runtime" />
+  <text x="205" y="1066" text-anchor="middle" class="label">Interpreter</text>
+  <text x="205" y="1091" text-anchor="middle" class="text">reference execution path</text>
+
+  <rect x="340" y="980" width="160" height="70" class="box" />
+  <text x="420" y="1021" text-anchor="middle" class="label">Console Host</text>
+
+  <rect x="340" y="1070" width="160" height="70" class="box" />
+  <text x="420" y="1111" text-anchor="middle" class="label">Avalonia Host</text>
+
+  <rect x="560" y="1000" width="170" height="92" class="output" />
+  <text x="645" y="1036" text-anchor="middle" class="label">C# Backend</text>
+  <text x="645" y="1061" text-anchor="middle" class="text">emit generated C#</text>
+
+  <rect x="780" y="980" width="260" height="132" class="output" />
+  <text x="910" y="1018" text-anchor="middle" class="label">C# Artifacts</text>
+  <text x="910" y="1044" text-anchor="middle" class="text">.cs + GeneratedRuntime.cs</text>
+  <text x="910" y="1066" text-anchor="middle" class="text">SBRuntime.dll</text>
+  <text x="910" y="1088" text-anchor="middle" class="text">FSharp.Core.dll</text>
+
+  <rect x="560" y="1120" width="170" height="92" class="output" />
+  <text x="645" y="1156" text-anchor="middle" class="label">C Backend</text>
+  <text x="645" y="1181" text-anchor="middle" class="text">emit generated C</text>
+
+  <rect x="780" y="1120" width="260" height="92" class="output" />
+  <text x="910" y="1156" text-anchor="middle" class="label">C Artifacts</text>
+  <text x="910" y="1181" text-anchor="middle" class="text">.c + sbruntime_c.h/.c</text>
+
+  <rect x="1100" y="1120" width="170" height="92" class="output" />
+  <text x="1185" y="1156" text-anchor="middle" class="label">.NET Exe Backend</text>
+  <text x="1185" y="1181" text-anchor="middle" class="text">publish executable</text>
+
+  <rect x="1320" y="1120" width="180" height="92" class="output" />
+  <text x="1410" y="1156" text-anchor="middle" class="label">Published Exe</text>
+  <text x="1410" y="1181" text-anchor="middle" class="text">single-file .NET app</text>
+
+  <path d="M 250 787 L 300 787" class="arrow" />
+  <path d="M 470 787 L 520 787" class="arrow" />
+  <path d="M 385 829 L 385 892 L 520 892" class="arrow" />
+  <path d="M 635 809 L 635 845" class="arrow" />
+  <path d="M 750 892 L 800 892" class="arrow" />
+  <path d="M 980 892 L 1030 892" class="arrow" />
+  <path d="M 1290 892 L 1340 892" class="arrow" />
+  <path d="M 1415 939 L 1415 1049 L 1390 1049" class="arrow" />
+
+  <path d="M 1180 1035 L 300 1076" class="arrow" />
+  <path d="M 300 1076 L 300 1060 L 300 1076" class="arrow" />
+  <path d="M 205 1030 L 340 1015" class="arrow" />
+  <path d="M 205 1122 L 340 1105" class="arrow" />
+
+  <path d="M 1180 1035 L 730 1046" class="arrow" />
+  <path d="M 730 1046 L 780 1046" class="arrow" />
+
+  <path d="M 1180 1065 L 730 1166" class="arrow" />
+  <path d="M 730 1166 L 780 1166" class="arrow" />
+
+  <path d="M 1285 1098 L 1185 1120" class="arrow" />
+  <path d="M 1270 1166 L 1320 1166" class="arrow" />
+</svg>
