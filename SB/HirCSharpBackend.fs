@@ -24,6 +24,10 @@ type private EmitterContext = {
     DispatchLineName: string
     DispatchTargetName: string
     DispatchLabelName: string
+    // GOSUB return ids allocated in the current scope (a routine, the main program or a WHEN ERROR
+    // handler), and the label of the switch that RETURN jumps to in order to reach them.
+    GosubReturnIds: ResizeArray<int>
+    GosubReturnDispatchLabel: string
 }
 
 let cSharpRuntimeFileName = "GeneratedRuntime.cs"
@@ -32,6 +36,40 @@ let private indent level = String.replicate (level * 4) " "
 
 let private appendLine (builder: StringBuilder) level (text: string) =
     builder.Append(indent level).Append(text).AppendLine() |> ignore
+
+let private appendLines builder level (lines: string list) =
+    lines |> List.iter (appendLine builder level)
+
+// Writes "{", the body one level deeper, then "}".
+let private appendBraced builder level emitBody =
+    appendLine builder level "{"
+    emitBody (level + 1)
+    appendLine builder level "}"
+
+// Writes a header such as "if (...)", "try" or a method signature, then a braced body.
+let private appendBlock builder level (header: string) emitBody =
+    appendLine builder level header
+    appendBraced builder level emitBody
+
+// Writes a fixed C# fragment, usually a $$"""...""" string so that single braces are literal C# and
+// {{...}} interpolates. The fragment's common indentation is removed, so it can sit at the F# code's
+// indentation, and its own nesting is kept. Leading and trailing blank lines are dropped, so the
+// fragment can open and close on lines of its own.
+let private appendTemplate builder level (template: string) =
+    let lines =
+        template.Replace("\r", "").Split('\n')
+        |> Array.toList
+        |> List.skipWhile String.IsNullOrWhiteSpace
+        |> List.rev
+        |> List.skipWhile String.IsNullOrWhiteSpace
+        |> List.rev
+    let margin =
+        lines
+        |> List.filter (String.IsNullOrWhiteSpace >> not)
+        |> List.map (fun line -> line.Length - line.TrimStart(' ').Length)
+        |> List.fold min Int32.MaxValue
+    lines
+    |> List.iter (fun line -> appendLine builder level (if String.IsNullOrWhiteSpace line then "" else line.Substring margin))
 
 let private sanitizeIdentifier (value: string) =
     let normalized =
@@ -96,60 +134,101 @@ let private exprType = function
     | Binary(_, _, _, hirType, _)
     | CallFunc(_, _, hirType, _) -> hirType
 
-let rec private blockHasLineControlFlow (block: HirBlock) =
-    block
-    |> List.exists (function
+// ---- Block traversal ----
+//
+// Every question the emitter asks about a block is answered by walking it through childBlocks, so
+// the list of statements that own nested blocks lives in one place.
+
+// The blocks a statement owns, in source order.
+let private childBlocks = function
+    | If(_, thenBlock, elseBlock, _) -> thenBlock :: Option.toList elseBlock
+    | WhenError(body, _)
+    | For(_, _, _, _, _, body, _)
+    | ForSequence(_, _, _, _, _, _, _, body, _)
+    | Repeat(_, _, body, _) -> [ body ]
+    | _ -> []
+
+// Every statement in the block and in the blocks nested inside it, in source order. A WHEN ERROR
+// handler is emitted as a local function with its own dispatcher, so its statements are left out
+// unless includeHandlers is set.
+let rec private statementsIn includeHandlers (block: HirBlock) : HirStmt seq =
+    seq {
+        for stmt in block do
+            yield stmt
+            let children =
+                match stmt with
+                | WhenError _ when not includeHandlers -> []
+                | _ -> childBlocks stmt
+            for child in children do
+                yield! statementsIn includeHandlers child
+    }
+
+let private lineNumberOf = function
+    | LineNumber(value, _) -> Some value
+    | _ -> None
+
+let private isGosubSite = function
+    | Gosub _
+    | OnGosub _ -> true
+    | _ -> false
+
+let private blockHasLineControlFlow block =
+    statementsIn true block
+    |> Seq.exists (function
         | Goto _
         | Gosub _
         | OnGoto _
         | OnGosub _ -> true
-        | If(_, thenBlock, elseBlock, _) ->
-            blockHasLineControlFlow thenBlock
-            || (elseBlock |> Option.exists blockHasLineControlFlow)
-        | WhenError(body, _) -> blockHasLineControlFlow body
-        | For(_, _, _, _, _, body, _)
-        | ForSequence(_, _, _, _, _, _, _, body, _)
-        | Repeat(_, _, body, _) -> blockHasLineControlFlow body
         | _ -> false)
 
-let rec private blockHasWhenError (block: HirBlock) =
-    block
-    |> List.exists (function
+let private blockHasWhenError block =
+    statementsIn true block
+    |> Seq.exists (function
         | WhenError _ -> true
-        | If(_, thenBlock, elseBlock, _) ->
-            blockHasWhenError thenBlock
-            || (elseBlock |> Option.exists blockHasWhenError)
-        | For(_, _, _, _, _, body, _)
-        | ForSequence(_, _, _, _, _, _, _, body, _)
-        | Repeat(_, _, body, _) -> blockHasWhenError body
         | _ -> false)
 
-let rec private blockContainsLineNumbers (block: HirBlock) =
-    block
-    |> List.exists (function
-        | LineNumber _ -> true
-        | If(_, thenBlock, elseBlock, _) ->
-            blockContainsLineNumbers thenBlock
-            || (elseBlock |> Option.exists blockContainsLineNumbers)
-        | WhenError(body, _) -> blockContainsLineNumbers body
-        | For(_, _, _, _, _, body, _)
-        | ForSequence(_, _, _, _, _, _, _, body, _)
-        | Repeat(_, _, body, _) -> blockContainsLineNumbers body
-        | _ -> false)
+// A jump target is a label that code outside the block jumps to: a numbered line (reached from the
+// line dispatcher) or a GOSUB return point (reached from RETURN). C# cannot jump into a nested block
+// or a try block, so a construct whose body holds one is emitted flat and is not wrapped in a try.
+let private blockContainsJumpTargets block =
+    statementsIn true block
+    |> Seq.exists (fun stmt -> isGosubSite stmt || (lineNumberOf stmt).IsSome)
 
-let rec private collectLineNumbersInBlockIncludingHandlers (block: HirBlock) =
-    block
-    |> List.collect (function
-        | LineNumber(value, _) -> [ value ]
-        | If(_, thenBlock, elseBlock, _) ->
-            collectLineNumbersInBlockIncludingHandlers thenBlock
-            @ (elseBlock |> Option.map collectLineNumbersInBlockIncludingHandlers |> Option.defaultValue [])
-        | WhenError(handlerBlock, _) -> collectLineNumbersInBlockIncludingHandlers handlerBlock
-        | For(_, _, _, _, _, body, _)
-        | ForSequence(_, _, _, _, _, _, _, body, _)
-        | Repeat(_, _, body, _) -> collectLineNumbersInBlockIncludingHandlers body
-        | _ -> [])
-    |> List.distinct
+// Counts the GOSUBs in WHEN ERROR handlers too: a handler shares its method's GOSUB stack.
+let private countGosubSitesInBlock block =
+    statementsIn true block |> Seq.filter isGosubSite |> Seq.length
+
+// The numbered lines reachable from the block's own dispatcher.
+let private collectLineNumbersInBlock block =
+    statementsIn false block |> Seq.choose lineNumberOf |> Seq.distinct |> List.ofSeq
+
+// The numbered lines for a WHEN ERROR handler's dispatcher, including those of handlers nested in it.
+let private collectLineNumbersInBlockIncludingHandlers block =
+    statementsIn true block |> Seq.choose lineNumberOf |> Seq.distinct |> List.ofSeq
+
+// A loop whose body holds a jump target is emitted flat: labels and gotos in the enclosing method.
+let private flatLoopId stmt =
+    match stmt with
+    | For(loopId, _, _, _, _, body, _)
+    | ForSequence(loopId, _, _, _, _, _, _, body, _)
+    | Repeat(loopId, _, body, _) when blockContainsJumpTargets body -> Some loopId
+    | _ -> None
+
+let private collectFlatLoopIds block =
+    statementsIn true block |> Seq.choose flatLoopId |> Set.ofSeq
+
+// Maps each numbered line inside a flat loop to the innermost flat loop that holds it.
+let private collectFlatLoopLineOwners (block: HirBlock) =
+    let rec collect owner (block: HirBlock) =
+        block
+        |> List.collect (fun stmt ->
+            match lineNumberOf stmt with
+            | Some value -> owner |> Option.map (fun loopId -> value, loopId) |> Option.toList
+            | None ->
+                let childOwner = flatLoopId stmt |> Option.orElse owner
+                childBlocks stmt |> List.collect (collect childOwner))
+
+    collect None block |> Map.ofList
 
 let private buildContext className (program: HirProgram) =
     let programHasWhenError =
@@ -195,7 +274,9 @@ let private buildContext className (program: HirProgram) =
       FlatLoopLineOwners = Map.empty
       DispatchLineName = "__dispatchLine"
       DispatchTargetName = "__targetLine"
-      DispatchLabelName = "__dispatch" }
+      DispatchLabelName = "__dispatch"
+      GosubReturnIds = ResizeArray()
+      GosubReturnDispatchLabel = "__gosubReturnDispatch" }
 
 let private storageName ctx symbolId =
     Map.tryFind symbolId ctx.StorageNames
@@ -214,6 +295,23 @@ let private storageInfo ctx symbolId =
 
 let private storageSourceName ctx symbolId =
     (storageInfo ctx symbolId).Name
+
+// A float must stay a double in C#. "G17" prints whole numbers without a decimal point, and C# reads
+// those as int or long literals: 1E10 would become a long, which the runtime treats as 0.
+let private emitFloatLiteral (value: float) =
+    if Double.IsNaN value then "double.NaN"
+    elif Double.IsPositiveInfinity value then "double.PositiveInfinity"
+    elif Double.IsNegativeInfinity value then "double.NegativeInfinity"
+    else
+        let text = value.ToString("G17", CultureInfo.InvariantCulture)
+        if text.IndexOfAny([| '.'; 'E' |]) >= 0 then text else text + ".0"
+
+// The runtime computes + - * and unary minus in doubles. Like the interpreter, the result is rounded
+// to an integer unless the expression is typed Float.
+let private emitNumericResult hirType expr =
+    match hirType with
+    | HirType.Float -> expr
+    | _ -> $"AsInt({expr})"
 
 let private escapeStringLiteral (value: string) =
     value.Replace("\\", "\\\\").Replace("\"", "\\\"")
@@ -258,7 +356,7 @@ and private emitBuiltInFunctionArgs ctx symbolId args =
 
 and private emitExpr ctx = function
     | Literal(ConstInt value, _, _) -> string value
-    | Literal(ConstFloat value, _, _) -> value.ToString("G17", CultureInfo.InvariantCulture)
+    | Literal(ConstFloat value, _, _) -> emitFloatLiteral value
     | Literal(ConstString value, _, _) -> $"\"{escapeStringLiteral value}\""
     | ReadVar(symbolId, _, _) -> $"{storageName ctx symbolId}.Value"
     | ReadArrayElem(symbolId, indexes, _, _) ->
@@ -274,19 +372,19 @@ and private emitExpr ctx = function
     | DynamicReadStringChar(name, index, _, _) ->
         let cellExpr = emitInvocation "LookupDynamicCell" [ $"\"{name}\"" ]
         emitInvocation "GetStringCharValue" [ $"{cellExpr}.Value"; emitExpr ctx index ]
-    | Unary(op, inner, _, _) ->
+    | Unary(op, inner, hirType, _) ->
         match op with
         | Identity -> $"Identity({emitExpr ctx inner})"
-        | Negate -> $"Negate({emitExpr ctx inner})"
+        | Negate -> emitNumericResult hirType $"Negate({emitExpr ctx inner})"
         | BitwiseNot -> $"BitwiseNot({emitExpr ctx inner})"
         | UnaryUnknown name -> $"ApplyUnary(\"{name}\", {emitExpr ctx inner})"
-    | Binary(op, lhs, rhs, _, _) ->
+    | Binary(op, lhs, rhs, hirType, _) ->
         let left = emitExpr ctx lhs
         let right = emitExpr ctx rhs
         match op with
-        | Add -> $"Add({left}, {right})"
-        | Subtract -> $"Subtract({left}, {right})"
-        | Multiply -> $"Multiply({left}, {right})"
+        | Add -> emitNumericResult hirType $"Add({left}, {right})"
+        | Subtract -> emitNumericResult hirType $"Subtract({left}, {right})"
+        | Multiply -> emitNumericResult hirType $"Multiply({left}, {right})"
         | Divide -> $"Divide({left}, {right})"
         | Power -> $"Power({left}, {right})"
         | Concat -> $"Concat({left}, {right})"
@@ -356,6 +454,7 @@ let private nextStatementLabel ctx =
 let private nextGosubReturnId ctx =
     let id = !ctx.NextGosubReturnId
     ctx.NextGosubReturnId := id + 1
+    ctx.GosubReturnIds.Add id
     id
 
 let private nextWhenErrorId ctx =
@@ -367,68 +466,6 @@ let private nextSyntheticLabel ctx prefix =
     let id = !ctx.NextStatementId
     ctx.NextStatementId := id + 1
     $"{prefix}{id}"
-
-let rec private countGosubSitesInBlock (block: HirBlock) =
-    block
-    |> List.sumBy (function
-        | Gosub _ -> 1
-        | OnGosub _ -> 1
-        | If(_, thenBlock, elseBlock, _) ->
-            countGosubSitesInBlock thenBlock
-            + (elseBlock |> Option.map countGosubSitesInBlock |> Option.defaultValue 0)
-        | WhenError(handlerBlock, _) -> countGosubSitesInBlock handlerBlock
-        | For(_, _, _, _, _, body, _)
-        | ForSequence(_, _, _, _, _, _, _, body, _)
-        | Repeat(_, _, body, _) -> countGosubSitesInBlock body
-        | _ -> 0)
-
-let rec private collectLineNumbersInBlock (block: HirBlock) =
-    block
-    |> List.collect (function
-        | LineNumber(value, _) -> [ value ]
-        | If(_, thenBlock, elseBlock, _) ->
-            collectLineNumbersInBlock thenBlock
-            @ (elseBlock |> Option.map collectLineNumbersInBlock |> Option.defaultValue [])
-        | WhenError _ -> []
-        | For(_, _, _, _, _, body, _)
-        | ForSequence(_, _, _, _, _, _, _, body, _)
-        | Repeat(_, _, body, _) -> collectLineNumbersInBlock body
-        | _ -> [])
-    |> List.distinct
-
-let rec private collectNestedLineNumbersInBlock depth (block: HirBlock) =
-    block
-    |> List.collect (function
-        | LineNumber(value, _) when depth > 0 -> [ value ]
-        | LineNumber _ -> []
-        | If(_, thenBlock, elseBlock, _) ->
-            collectNestedLineNumbersInBlock (depth + 1) thenBlock
-            @ (elseBlock |> Option.map (collectNestedLineNumbersInBlock (depth + 1)) |> Option.defaultValue [])
-        | WhenError(handlerBlock, _) -> collectNestedLineNumbersInBlock (depth + 1) handlerBlock
-        | For(_, _, _, _, _, body, _)
-        | ForSequence(_, _, _, _, _, _, _, body, _)
-        | Repeat(_, _, body, _) -> collectNestedLineNumbersInBlock (depth + 1) body
-        | _ -> [])
-    |> List.distinct
-
-let rec private collectUnsupportedStructuredLineTargets (block: HirBlock) =
-    block
-    |> List.collect (function
-        | If(_, thenBlock, elseBlock, _) ->
-            collectUnsupportedStructuredLineTargets thenBlock
-            @ (elseBlock |> Option.map collectUnsupportedStructuredLineTargets |> Option.defaultValue [])
-        | For(_, _, _, _, _, body, _)
-        | Repeat(_, _, body, _) ->
-            collectUnsupportedStructuredLineTargets body
-        | _ -> [])
-    |> List.distinct
-
-let private validateNestedLineNumberTargets scopeName hasLineControlFlow block =
-    if hasLineControlFlow then
-        let unsupportedTargets = collectUnsupportedStructuredLineTargets block
-        if not unsupportedTargets.IsEmpty then
-            let targetList = unsupportedTargets |> String.concat ", "
-            invalidOp $"The generated C# backend cannot emit numbered line targets inside {targetList} in {scopeName}. Move these line numbers out of those constructs or use the interpreter backend instead."
 
 let private findNextLineNumber block pc inheritedNextLine =
     block
@@ -442,11 +479,6 @@ let private emitLineLiteral = function
     | Some value -> string value
     | None -> "null"
 
-let private emitTransferToLabel builder level continueLabelOpt returnText =
-    match continueLabelOpt with
-    | Some label -> appendLine builder level $"goto {label};"
-    | None -> appendLine builder level returnText
-
 let private emitDispatchToLine ctx builder level lineExpr =
     appendLine builder level $"{ctx.DispatchLineName} = {lineExpr};"
     appendLine builder level $"goto {ctx.DispatchLabelName};"
@@ -454,42 +486,151 @@ let private emitDispatchToLine ctx builder level lineExpr =
 let private emitDispatcher ctx builder level lineNumbers exitLineNumber =
     appendLine builder level $"int? {ctx.DispatchLineName} = null;"
     appendLine builder level $"{ctx.DispatchLabelName}: ;"
-    appendLine builder level $"if ({ctx.DispatchLineName}.HasValue)"
-    appendLine builder level "{"
-    appendLine builder (level + 1) $"var {ctx.DispatchTargetName} = {ctx.DispatchLineName}.Value;"
-    appendLine builder (level + 1) $"{ctx.DispatchLineName} = null;"
-    appendLine builder (level + 1) $"switch ({ctx.DispatchTargetName})"
-    appendLine builder (level + 1) "{"
-    lineNumbers
-    |> List.iter (fun lineNumber ->
-        match Map.tryFind lineNumber ctx.FlatLoopLineOwners with
-        | Some(LoopId loopId) ->
-            appendLine builder (level + 2) $"case {lineNumber}: __jumpedLoopId = {loopId}; goto line_{lineNumber};"
-        | None when not ctx.FlatLoopIds.IsEmpty ->
-            appendLine builder (level + 2) $"case {lineNumber}: __jumpedLoopId = null; goto line_{lineNumber};"
-        | None ->
-            appendLine builder (level + 2) $"case {lineNumber}: goto line_{lineNumber};")
-    match exitLineNumber with
-    | Some lineNumber when not (List.contains lineNumber lineNumbers) ->
-        appendLine builder (level + 2) $"case {lineNumber}: return null;"
-    | _ -> ()
-    appendLine builder (level + 2) $"default: throw new InvalidOperationException($\"Target line {{{ctx.DispatchTargetName}}} does not exist.\");"
-    appendLine builder (level + 1) "}"
-    appendLine builder level "}"
+    appendBlock builder level $"if ({ctx.DispatchLineName}.HasValue)" (fun level ->
+        appendLine builder level $"var {ctx.DispatchTargetName} = {ctx.DispatchLineName}.Value;"
+        appendLine builder level $"{ctx.DispatchLineName} = null;"
+        appendBlock builder level $"switch ({ctx.DispatchTargetName})" (fun level ->
+            for lineNumber in lineNumbers do
+                let jumpedLoop =
+                    match Map.tryFind lineNumber ctx.FlatLoopLineOwners with
+                    | Some(LoopId loopId) -> $"__jumpedLoopId = {loopId}; "
+                    | None when not ctx.FlatLoopIds.IsEmpty -> "__jumpedLoopId = null; "
+                    | None -> ""
+                appendLine builder level $"case {lineNumber}: {jumpedLoop}goto line_{lineNumber};"
+            match exitLineNumber with
+            | Some lineNumber when not (List.contains lineNumber lineNumbers) ->
+                appendLine builder level $"case {lineNumber}: return null;"
+            | _ -> ()
+            appendLine builder level $"default: throw new InvalidOperationException($\"Target line {{{ctx.DispatchTargetName}}} does not exist.\");"))
 
-let private emitBareReturnDispatch builder level returnText gosubReturnCount =
+let private emitBareReturnDispatch ctx builder level returnText gosubReturnCount =
     if gosubReturnCount > 0 then
-        appendLine builder level "if (__gosubStack.Count > 0)"
-        appendLine builder level "{"
-        appendLine builder (level + 1) "switch (__gosubStack.Pop())"
-        appendLine builder (level + 1) "{"
-        [ 0 .. gosubReturnCount - 1 ]
-        |> List.iter (fun id ->
-            appendLine builder (level + 2) $"case {id}: goto __gosub_return_{id};")
-        appendLine builder (level + 2) "default: throw new InvalidOperationException(\"RETURN without an active GOSUB target.\");"
-        appendLine builder (level + 1) "}"
-        appendLine builder level "}"
+        appendLine builder level $"if (__gosubStack.Count > 0) goto {ctx.GosubReturnDispatchLabel};"
     appendLine builder level returnText
+
+// Emitted once at the end of a scope, after its body, when every GOSUB in it has its return id.
+// Each RETURN jumps here rather than carrying its own switch, because a RETURN can come before
+// the GOSUBs it serves.
+let private emitGosubReturnDispatch ctx builder level gosubReturnCount =
+    if gosubReturnCount > 0 then
+        appendLine builder level $"{ctx.GosubReturnDispatchLabel}: ;"
+        appendBlock builder level "switch (__gosubStack.Pop())" (fun level ->
+            for id in ctx.GosubReturnIds do
+                appendLine builder level $"case {id}: goto __gosub_return_{id};"
+            appendLine builder level "default: throw new InvalidOperationException(\"RETURN without an active GOSUB target.\");")
+
+let private emitLineTarget ctx target =
+    match tryGetConstInt target with
+    | Some line -> string line
+    | None -> $"AsInt({emitExpr ctx target})"
+
+// Pushes the return id and jumps to the subroutine. The return label is emitted separately by
+// emitGosubReturnLabel, because it must stay outside any try block that guards the call.
+let private emitGosubCall ctx builder level returnId stmt =
+    match stmt with
+    | Gosub(target, _) ->
+        appendLine builder level $"__gosubStack.Push({returnId});"
+        emitDispatchToLine ctx builder level (emitLineTarget ctx target)
+    | OnGosub(selector, targets, _) ->
+        appendBlock builder level $"switch (AsInt({emitExpr ctx selector}))" (fun level ->
+            targets
+            |> List.iteri (fun index target ->
+                appendLine builder level $"case {index + 1}:"
+                appendLine builder (level + 1) $"__gosubStack.Push({returnId});"
+                emitDispatchToLine ctx builder (level + 1) (emitLineTarget ctx target))
+            appendLine builder level "default: break;")
+    | _ -> invalidArg (nameof stmt) "Expected a GOSUB or ON GOSUB statement."
+
+let private emitGosubReturnLabel builder level returnId =
+    appendLine builder level $"__gosub_return_{returnId}: ;"
+
+let private emitOnGoto ctx builder level selector targets =
+    appendBlock builder level $"switch (AsInt({emitExpr ctx selector}))" (fun level ->
+        targets
+        |> List.iteri (fun index target ->
+            appendLine builder level $"case {index + 1}:"
+            emitDispatchToLine ctx builder (level + 1) (emitLineTarget ctx target))
+        appendLine builder level "default: break;")
+
+// Wraps one statement so that an error raised by it is passed to the active WHEN ERROR handler.
+let private emitWithErrorHandler ctx builder level continueLabelOpt returnText stmtLabel emitBody =
+    let continueText =
+        match continueLabelOpt with
+        | Some label -> $"goto {label};"
+        | None -> returnText
+    appendBlock builder level "try" emitBody
+    appendTemplate builder level $$"""
+        catch (Exception __sbError)
+        {
+            if (__inErrorHandler || __activeErrorHandler is null || IsControlFlowException(__sbError))
+            {
+                throw;
+            }
+            var __errorAction = __activeErrorHandler(__sbError);
+            switch (__errorAction.Kind)
+            {
+                case ErrorActionKind.Retry:
+                {
+                    if (__errorAction.LineNumber.HasValue)
+                    {
+                        {{ctx.DispatchLineName}} = __errorAction.LineNumber.Value;
+                        goto {{ctx.DispatchLabelName}};
+                    }
+                    goto {{stmtLabel}};
+                }
+                case ErrorActionKind.Continue:
+                {
+                    if (__errorAction.LineNumber.HasValue)
+                    {
+                        {{ctx.DispatchLineName}} = __errorAction.LineNumber.Value;
+                        goto {{ctx.DispatchLabelName}};
+                    }
+                    {{continueText}}
+                }
+                case ErrorActionKind.Stop:
+                    throw new OperationCanceledException("STOP encountered.");
+                default:
+                    throw;
+            }
+        }
+        """
+
+// The test that keeps a FOR range going, shared by every form of FOR loop.
+let private forContinueTest id =
+    $"__loop{id}Step >= 0 ? __loop{id}Index <= __loop{id}End : __loop{id}Index >= __loop{id}End"
+
+// EXIT and NEXT in a structured loop throw LoopControlException. The loop whose id it carries stops,
+// or goes on to its next iteration; any other loop passes it on.
+let private emitLoopControlCatch builder level id =
+    appendTemplate builder level $$"""
+        catch (LoopControlException ex)
+        {
+            if (ex.LoopId != {{id}})
+            {
+                throw;
+            }
+            if (!ex.IsNext)
+            {
+                break;
+            }
+        }
+        """
+
+let private emitJumpedLoopEscapeCheck builder level id =
+    appendLine builder level $"if (__jumpedLoopId == {id}) throw new InvalidOperationException(\"Loop control escaped the current scope after a numbered line jump.\");"
+
+// After a flat loop's body. A loop entered by a numbered-line jump into its body leaves the current
+// scope when the body ends, and its NEXT and EXIT are errors.
+let private emitFlatLoopBodyEnd builder level id returnText =
+    appendBlock builder level $"if (__jumpedLoopId == {id})" (fun level ->
+        appendLine builder level "__jumpedLoopId = null;"
+        appendLine builder level returnText)
+    appendLine builder level $"__loop{id}Next: ;"
+    emitJumpedLoopEscapeCheck builder level id
+
+let private emitFlatLoopExit builder level id =
+    appendLine builder level $"__loop{id}Exit: ;"
+    emitJumpedLoopEscapeCheck builder level id
 
 let rec private emitBlock ctx builder level currentLine inheritedNextLine continueLabelOpt returnText gosubReturnCount lineNumbers enableErrorHandling (block: HirBlock) =
     let stmtLabels = block |> List.map (fun _ -> nextStatementLabel ctx)
@@ -509,10 +650,18 @@ let rec private emitBlock ctx builder level currentLine inheritedNextLine contin
 
     emitStatements 0 currentLine
 
+// CONTINUE after an error in the last statement of a loop body resumes at the end of the body, so
+// the loop runs its next iteration instead of leaving the routine.
+and private emitLoopBody ctx builder level currentLine inheritedNextLine returnText gosubReturnCount lineNumbers enableErrorHandling (LoopId id) body =
+    let continueLabelOpt = if enableErrorHandling then Some $"__loop{id}Continue" else None
+    emitBlock ctx builder level currentLine inheritedNextLine continueLabelOpt returnText gosubReturnCount lineNumbers enableErrorHandling body
+    continueLabelOpt |> Option.iter (fun label -> appendLine builder level $"{label}: ;")
+
 and private emitIf ctx builder level currentLine inheritedNextLine continueLabelOpt returnText gosubReturnCount lineNumbers enableErrorHandling condition thenBlock elseBlock =
-    let thenHasLineTargets = blockContainsLineNumbers thenBlock
-    let elseHasLineTargets = elseBlock |> Option.exists blockContainsLineNumbers
-    if thenHasLineTargets || elseHasLineTargets then
+    let hasJumpTargets =
+        blockContainsJumpTargets thenBlock
+        || (elseBlock |> Option.exists blockContainsJumpTargets)
+    if hasJumpTargets then
         let elseLabel = nextSyntheticLabel ctx "__if_else_"
         let endLabel = nextSyntheticLabel ctx "__if_end_"
         appendLine builder level $"if (!IsTrue({emitExpr ctx condition})) goto {(match elseBlock with | Some _ -> elseLabel | None -> endLabel)};"
@@ -526,279 +675,172 @@ and private emitIf ctx builder level currentLine inheritedNextLine continueLabel
         | None ->
             appendLine builder level $"{endLabel}: ;"
     else
-        appendLine builder level $"if (IsTrue({emitExpr ctx condition}))"
-        appendLine builder level "{"
-        emitBlock ctx builder (level + 1) currentLine inheritedNextLine continueLabelOpt returnText gosubReturnCount lineNumbers enableErrorHandling thenBlock
-        appendLine builder level "}"
-        match elseBlock with
-        | Some branch ->
-            appendLine builder level "else"
-            appendLine builder level "{"
-            emitBlock ctx builder (level + 1) currentLine inheritedNextLine continueLabelOpt returnText gosubReturnCount lineNumbers enableErrorHandling branch
-            appendLine builder level "}"
-        | None -> ()
+        appendBlock builder level $"if (IsTrue({emitExpr ctx condition}))" (fun level ->
+            emitBlock ctx builder level currentLine inheritedNextLine continueLabelOpt returnText gosubReturnCount lineNumbers enableErrorHandling thenBlock)
+        elseBlock
+        |> Option.iter (fun branch ->
+            appendBlock builder level "else" (fun level ->
+                emitBlock ctx builder level currentLine inheritedNextLine continueLabelOpt returnText gosubReturnCount lineNumbers enableErrorHandling branch))
 
+// The bounds are evaluated once, before the first iteration, in the interpreter's order: start, end, step.
+// As in the interpreter, the counter is assigned before each test, so it holds end + step after the loop.
 and private emitFor ctx builder level currentLine inheritedNextLine returnText gosubReturnCount lineNumbers enableErrorHandling loopId symbolId startExpr endExpr stepExpr body =
     let (LoopId id) = loopId
     let counterName = storageName ctx symbolId
     let loopIndexName = $"__loop{id}Index"
     let endName = $"__loop{id}End"
     let stepName = $"__loop{id}Step"
+    let emitBody level =
+        emitLoopBody ctx builder level currentLine inheritedNextLine returnText gosubReturnCount lineNumbers enableErrorHandling loopId body
     if Set.contains loopId ctx.FlatLoopIds then
-        appendLine builder level $"__loop{id}Test: ;"
-        appendLine builder level $"if (!__loop{id}Initialized)"
-        appendLine builder level "{"
-        appendLine builder (level + 1) $"{stepName} = AsInt({emitExpr ctx stepExpr});"
-        appendLine builder (level + 1) $"{endName} = AsInt({emitExpr ctx endExpr});"
-        appendLine builder (level + 1) $"{loopIndexName} = AsInt({emitExpr ctx startExpr});"
-        appendLine builder (level + 1) $"__loop{id}Initialized = true;"
-        appendLine builder level "}"
-        appendLine builder level $"if (!({stepName} >= 0 ? {loopIndexName} <= {endName} : {loopIndexName} >= {endName})) goto __loop{id}Exit;"
-        appendLine builder level $"__loop{id}Body: ;"
-        appendLine builder level $"{counterName}.Value = {loopIndexName};"
-        emitBlock ctx builder level currentLine inheritedNextLine None returnText gosubReturnCount lineNumbers enableErrorHandling body
-        appendLine builder level $"if (__jumpedLoopId == {id})"
-        appendLine builder level "{"
-        appendLine builder (level + 1) "__jumpedLoopId = null;"
-        appendLine builder (level + 1) $"__loop{id}Initialized = false;"
-        appendLine builder (level + 1) returnText
-        appendLine builder level "}"
-        appendLine builder level $"__loop{id}Next: ;"
-        appendLine builder level $"if (__jumpedLoopId == {id}) throw new InvalidOperationException(\"Loop control escaped the current scope after a numbered line jump.\");"
-        appendLine builder level $"{loopIndexName} += {stepName};"
-        appendLine builder level $"goto __loop{id}Test;"
-        appendLine builder level $"__loop{id}Exit: ;"
-        appendLine builder level $"if (__jumpedLoopId == {id}) throw new InvalidOperationException(\"Loop control escaped the current scope after a numbered line jump.\");"
-        appendLine builder level $"__loop{id}Initialized = false;"
+        // Reaching the FOR statement always starts the loop afresh, even when a GOTO or an outer loop's
+        // NEXT brings control back before the previous run finished. NEXT re-enters at the test instead.
+        appendLines builder level [
+            $"{loopIndexName} = AsInt({emitExpr ctx startExpr});"
+            $"{endName} = AsInt({emitExpr ctx endExpr});"
+            $"{stepName} = AsInt({emitExpr ctx stepExpr});"
+            $"__loop{id}Test: ;"
+            $"{counterName}.Value = {loopIndexName};"
+            $"if (!({forContinueTest id})) goto __loop{id}Exit;"
+            $"__loop{id}Body: ;" ]
+        emitBody level
+        emitFlatLoopBodyEnd builder level id returnText
+        appendLines builder level [
+            $"{loopIndexName} += {stepName};"
+            $"goto __loop{id}Test;" ]
+        emitFlatLoopExit builder level id
     else
-        let exitLabel = $"__loop{id}Exit"
-        appendLine builder level "{"
-        appendLine builder (level + 1) $"var {stepName} = AsInt({emitExpr ctx stepExpr});"
-        appendLine builder (level + 1) $"var {endName} = AsInt({emitExpr ctx endExpr});"
-        appendLine builder (level + 1) $"for (var {loopIndexName} = AsInt({emitExpr ctx startExpr}); {stepName} >= 0 ? {loopIndexName} <= {endName} : {loopIndexName} >= {endName}; {loopIndexName} += {stepName})"
-        appendLine builder (level + 1) "{"
-        appendLine builder (level + 2) $"{counterName}.Value = {loopIndexName};"
-        appendLine builder (level + 2) "try"
-        appendLine builder (level + 2) "{"
-        emitBlock ctx builder (level + 3) currentLine inheritedNextLine None returnText gosubReturnCount lineNumbers enableErrorHandling body
-        appendLine builder (level + 2) "}"
-        appendLine builder (level + 2) "catch (LoopControlException ex)"
-        appendLine builder (level + 2) "{"
-        appendLine builder (level + 3) $"if (ex.LoopId != {id})"
-        appendLine builder (level + 3) "{"
-        appendLine builder (level + 4) "throw;"
-        appendLine builder (level + 3) "}"
-        appendLine builder (level + 3) "if (!ex.IsNext)"
-        appendLine builder (level + 3) "{"
-        appendLine builder (level + 4) "break;"
-        appendLine builder (level + 3) "}"
-        appendLine builder (level + 2) "}"
-        appendLine builder (level + 1) "}"
-        appendLine builder level "}"
+        appendBraced builder level (fun level ->
+            appendLines builder level [
+                $"var {loopIndexName} = AsInt({emitExpr ctx startExpr});"
+                $"var {endName} = AsInt({emitExpr ctx endExpr});"
+                $"var {stepName} = AsInt({emitExpr ctx stepExpr});" ]
+            appendBlock builder level "while (true)" (fun level ->
+                appendLines builder level [
+                    $"{counterName}.Value = {loopIndexName};"
+                    $"if (!({forContinueTest id})) break;" ]
+                appendBlock builder level "try" emitBody
+                emitLoopControlCatch builder level id
+                appendLine builder level $"{loopIndexName} += {stepName};"))
 
+// Every value is evaluated once, before the first iteration, in the interpreter's order: the prefix
+// values, start, end, the suffix values, then step.
 and private emitForSequence ctx builder level currentLine inheritedNextLine returnText gosubReturnCount lineNumbers enableErrorHandling loopId symbolId prefixExprs startExpr endExpr suffixExprs stepExpr body =
     let (LoopId id) = loopId
     let counterName = storageName ctx symbolId
-    let exitLabel = $"__loop{id}Exit"
+    let loopIndexName = $"__loop{id}Index"
+    let endName = $"__loop{id}End"
+    let stepName = $"__loop{id}Step"
+    let prefixName = $"__loop{id}PrefixValues"
+    let suffixName = $"__loop{id}SuffixValues"
+    let emitBody level =
+        emitLoopBody ctx builder level currentLine inheritedNextLine returnText gosubReturnCount lineNumbers enableErrorHandling loopId body
+    let valueList exprs = exprs |> List.map (emitExpr ctx) |> String.concat ", "
     if Set.contains loopId ctx.FlatLoopIds then
-        let loopIndexName = $"__loop{id}Index"
-        let endName = $"__loop{id}End"
-        let stepName = $"__loop{id}Step"
-        let prefixValues = prefixExprs |> List.map (emitExpr ctx) |> String.concat ", "
-        let suffixValues = suffixExprs |> List.map (emitExpr ctx) |> String.concat ", "
-        appendLine builder level $"__loop{id}Test: ;"
-        appendLine builder level $"if (!__loop{id}Initialized)"
-        appendLine builder level "{"
-        appendLine builder (level + 1) $"__loop{id}PrefixValues = new object?[] {{ {prefixValues} }};"
-        appendLine builder (level + 1) $"__loop{id}PrefixIndex = 0;"
-        appendLine builder (level + 1) $"__loop{id}SuffixIndex = 0;"
-        appendLine builder (level + 1) $"__loop{id}Phase = 0;"
-        appendLine builder (level + 1) $"__loop{id}RangeInitialized = false;"
-        appendLine builder (level + 1) $"__loop{id}SuffixInitialized = false;"
-        appendLine builder (level + 1) $"__loop{id}Initialized = true;"
-        appendLine builder level "}"
-        appendLine builder level $"__loop{id}HasValue = false;"
-        appendLine builder level $"if (__loop{id}Phase == 0)"
-        appendLine builder level "{"
-        appendLine builder (level + 1) $"if (__loop{id}PrefixIndex < __loop{id}PrefixValues.Length)"
-        appendLine builder (level + 1) "{"
-        appendLine builder (level + 2) $"__loop{id}Value = __loop{id}PrefixValues[__loop{id}PrefixIndex++];"
-        appendLine builder (level + 2) $"__loop{id}HasValue = true;"
-        appendLine builder (level + 1) "}"
-        appendLine builder (level + 1) "else"
-        appendLine builder (level + 1) "{"
-        appendLine builder (level + 2) $"__loop{id}Phase = 1;"
-        appendLine builder (level + 1) "}"
-        appendLine builder level "}"
-        appendLine builder level $"if (!__loop{id}HasValue && __loop{id}Phase == 1)"
-        appendLine builder level "{"
-        appendLine builder (level + 1) $"if (!__loop{id}RangeInitialized)"
-        appendLine builder (level + 1) "{"
-        appendLine builder (level + 2) $"{stepName} = AsInt({emitExpr ctx stepExpr});"
-        appendLine builder (level + 2) $"{endName} = AsInt({emitExpr ctx endExpr});"
-        appendLine builder (level + 2) $"{loopIndexName} = AsInt({emitExpr ctx startExpr});"
-        appendLine builder (level + 2) $"__loop{id}RangeInitialized = true;"
-        appendLine builder (level + 1) "}"
-        appendLine builder (level + 1) $"if ({stepName} >= 0 ? {loopIndexName} <= {endName} : {loopIndexName} >= {endName})"
-        appendLine builder (level + 1) "{"
-        appendLine builder (level + 2) $"__loop{id}Value = {loopIndexName};"
-        appendLine builder (level + 2) $"{loopIndexName} += {stepName};"
-        appendLine builder (level + 2) $"__loop{id}HasValue = true;"
-        appendLine builder (level + 1) "}"
-        appendLine builder (level + 1) "else"
-        appendLine builder (level + 1) "{"
-        appendLine builder (level + 2) $"__loop{id}Phase = 2;"
-        appendLine builder (level + 1) "}"
-        appendLine builder level "}"
-        appendLine builder level $"if (!__loop{id}HasValue && __loop{id}Phase == 2)"
-        appendLine builder level "{"
-        appendLine builder (level + 1) $"if (!__loop{id}SuffixInitialized)"
-        appendLine builder (level + 1) "{"
-        appendLine builder (level + 2) $"__loop{id}SuffixValues = new object?[] {{ {suffixValues} }};"
-        appendLine builder (level + 2) $"__loop{id}SuffixInitialized = true;"
-        appendLine builder (level + 1) "}"
-        appendLine builder (level + 1) $"if (__loop{id}SuffixIndex < __loop{id}SuffixValues.Length)"
-        appendLine builder (level + 1) "{"
-        appendLine builder (level + 2) $"__loop{id}Value = __loop{id}SuffixValues[__loop{id}SuffixIndex++];"
-        appendLine builder (level + 2) $"__loop{id}HasValue = true;"
-        appendLine builder (level + 1) "}"
-        appendLine builder (level + 1) "else"
-        appendLine builder (level + 1) "{"
-        appendLine builder (level + 2) $"goto {exitLabel};"
-        appendLine builder (level + 1) "}"
-        appendLine builder level "}"
-        appendLine builder level $"{counterName}.Value = __loop{id}Value;"
-        appendLine builder level $"__loop{id}Body: ;"
-        emitBlock ctx builder level currentLine inheritedNextLine None returnText gosubReturnCount lineNumbers enableErrorHandling body
-        appendLine builder level $"if (__jumpedLoopId == {id})"
-        appendLine builder level "{"
-        appendLine builder (level + 1) "__jumpedLoopId = null;"
-        appendLine builder (level + 1) $"__loop{id}Initialized = false;"
-        appendLine builder (level + 1) returnText
-        appendLine builder level "}"
-        appendLine builder level $"__loop{id}Next: ;"
-        appendLine builder level $"if (__jumpedLoopId == {id}) throw new InvalidOperationException(\"Loop control escaped the current scope after a numbered line jump.\");"
+        // Reaching the FOR statement always starts the loop afresh, even when a GOTO or an outer loop's
+        // NEXT brings control back before the previous run finished. NEXT re-enters at the test instead.
+        appendLines builder level [
+            $"{prefixName} = new object?[] {{ {valueList prefixExprs} }};"
+            $"{loopIndexName} = AsInt({emitExpr ctx startExpr});"
+            $"{endName} = AsInt({emitExpr ctx endExpr});"
+            $"{suffixName} = new object?[] {{ {valueList suffixExprs} }};"
+            $"{stepName} = AsInt({emitExpr ctx stepExpr});"
+            $"__loop{id}PrefixIndex = 0;"
+            $"__loop{id}SuffixIndex = 0;"
+            $"__loop{id}Phase = 0;" ]
+        // Each pass takes the next value: the prefix values (phase 0), then the range (phase 1), then
+        // the suffix values (phase 2), and leaves the loop when the suffix values run out.
+        appendTemplate builder level $$"""
+            __loop{{id}}Test: ;
+            __loop{{id}}HasValue = false;
+            if (__loop{{id}}Phase == 0)
+            {
+                if (__loop{{id}}PrefixIndex < {{prefixName}}.Length)
+                {
+                    __loop{{id}}Value = {{prefixName}}[__loop{{id}}PrefixIndex++];
+                    __loop{{id}}HasValue = true;
+                }
+                else
+                {
+                    __loop{{id}}Phase = 1;
+                }
+            }
+            if (!__loop{{id}}HasValue && __loop{{id}}Phase == 1)
+            {
+                if ({{forContinueTest id}})
+                {
+                    __loop{{id}}Value = {{loopIndexName}};
+                    {{loopIndexName}} += {{stepName}};
+                    __loop{{id}}HasValue = true;
+                }
+                else
+                {
+                    __loop{{id}}Phase = 2;
+                }
+            }
+            if (!__loop{{id}}HasValue && __loop{{id}}Phase == 2)
+            {
+                if (__loop{{id}}SuffixIndex < {{suffixName}}.Length)
+                {
+                    __loop{{id}}Value = {{suffixName}}[__loop{{id}}SuffixIndex++];
+                    __loop{{id}}HasValue = true;
+                }
+                else
+                {
+                    goto __loop{{id}}Exit;
+                }
+            }
+            {{counterName}}.Value = __loop{{id}}Value;
+            __loop{{id}}Body: ;
+            """
+        emitBody level
+        emitFlatLoopBodyEnd builder level id returnText
         appendLine builder level $"goto __loop{id}Test;"
-        appendLine builder level $"{exitLabel}: ;"
-        appendLine builder level $"if (__jumpedLoopId == {id}) throw new InvalidOperationException(\"Loop control escaped the current scope after a numbered line jump.\");"
-        appendLine builder level $"__loop{id}Initialized = false;"
+        emitFlatLoopExit builder level id
     else
-        appendLine builder level "{"
-        appendLine builder (level + 1) $"bool __loop{id}Run(object? value)"
-        appendLine builder (level + 1) "{"
-        appendLine builder (level + 2) $"{counterName}.Value = value;"
-        appendLine builder (level + 2) "try"
-        appendLine builder (level + 2) "{"
-        emitBlock ctx builder (level + 3) currentLine inheritedNextLine None returnText gosubReturnCount lineNumbers enableErrorHandling body
-        appendLine builder (level + 2) "}"
-        appendLine builder (level + 2) "catch (LoopControlException ex)"
-        appendLine builder (level + 2) "{"
-        appendLine builder (level + 3) $"if (ex.LoopId != {id})"
-        appendLine builder (level + 3) "{"
-        appendLine builder (level + 4) "throw;"
-        appendLine builder (level + 3) "}"
-        appendLine builder (level + 3) "if (!ex.IsNext)"
-        appendLine builder (level + 3) "{"
-        appendLine builder (level + 4) "return false;"
-        appendLine builder (level + 3) "}"
-        appendLine builder (level + 2) "}"
-        appendLine builder (level + 2) "return true;"
-        appendLine builder (level + 1) "}"
-        if not (List.isEmpty prefixExprs) then
-            let prefixValues = prefixExprs |> List.map (emitExpr ctx) |> String.concat ", "
-            appendLine builder (level + 1) $"foreach (var __loop{id}Prefix in new object?[] {{ {prefixValues} }})"
-            appendLine builder (level + 1) "{"
-            appendLine builder (level + 2) $"if (!__loop{id}Run(__loop{id}Prefix)) goto {exitLabel};"
-            appendLine builder (level + 1) "}"
-        let loopIndexName = $"__loop{id}Index"
-        let endName = $"__loop{id}End"
-        let stepName = $"__loop{id}Step"
-        appendLine builder (level + 1) $"var {stepName} = AsInt({emitExpr ctx stepExpr});"
-        appendLine builder (level + 1) $"var {endName} = AsInt({emitExpr ctx endExpr});"
-        appendLine builder (level + 1) $"for (var {loopIndexName} = AsInt({emitExpr ctx startExpr}); {stepName} >= 0 ? {loopIndexName} <= {endName} : {loopIndexName} >= {endName}; {loopIndexName} += {stepName})"
-        appendLine builder (level + 1) "{"
-        appendLine builder (level + 2) $"if (!__loop{id}Run({loopIndexName})) goto {exitLabel};"
-        appendLine builder (level + 1) "}"
-        if not (List.isEmpty suffixExprs) then
-            let suffixValues = suffixExprs |> List.map (emitExpr ctx) |> String.concat ", "
-            appendLine builder (level + 1) $"foreach (var __loop{id}Suffix in new object?[] {{ {suffixValues} }})"
-            appendLine builder (level + 1) "{"
-            appendLine builder (level + 2) $"if (!__loop{id}Run(__loop{id}Suffix)) goto {exitLabel};"
-            appendLine builder (level + 1) "}"
-        appendLine builder (level + 1) $"{exitLabel}: ;"
-        appendLine builder level "}"
+        // The values come from a local iterator so that the body stays inline in the enclosing method:
+        // GOTO, GOSUB and RETURN in the body must be able to leave the loop, and they cannot do that
+        // from inside a local function. The iterator only reads values evaluated before it starts.
+        let startName = $"__loop{id}Start"
+        let valuesName = $"__loop{id}Values"
+        let emitValueArray level name exprs =
+            if not (List.isEmpty exprs) then
+                appendLine builder level $"var {name} = new object?[] {{ {valueList exprs} }};"
+        let emitYieldEach level name exprs itemName =
+            if not (List.isEmpty exprs) then
+                appendBlock builder level $"foreach (var {itemName} in {name})" (fun level ->
+                    appendLine builder level $"yield return {itemName};")
+        appendBraced builder level (fun level ->
+            emitValueArray level prefixName prefixExprs
+            appendLines builder level [
+                $"var {startName} = AsInt({emitExpr ctx startExpr});"
+                $"var {endName} = AsInt({emitExpr ctx endExpr});" ]
+            emitValueArray level suffixName suffixExprs
+            appendLine builder level $"var {stepName} = AsInt({emitExpr ctx stepExpr});"
+            appendBlock builder level $"IEnumerable<object?> {valuesName}()" (fun level ->
+                emitYieldEach level prefixName prefixExprs $"__loop{id}Prefix"
+                appendBlock builder level $"for (var {loopIndexName} = {startName}; {forContinueTest id}; {loopIndexName} += {stepName})" (fun level ->
+                    appendLine builder level $"yield return {loopIndexName};")
+                emitYieldEach level suffixName suffixExprs $"__loop{id}Suffix")
+            appendBlock builder level $"foreach (var __loop{id}Value in {valuesName}())" (fun level ->
+                appendLine builder level $"{counterName}.Value = __loop{id}Value;"
+                appendBlock builder level "try" emitBody
+                emitLoopControlCatch builder level id))
 
 and private emitRepeat ctx builder level currentLine inheritedNextLine returnText gosubReturnCount lineNumbers enableErrorHandling loopId body =
     let (LoopId id) = loopId
+    let emitBody level =
+        emitLoopBody ctx builder level currentLine inheritedNextLine returnText gosubReturnCount lineNumbers enableErrorHandling loopId body
     if Set.contains loopId ctx.FlatLoopIds then
         appendLine builder level $"__loop{id}Body: ;"
-        emitBlock ctx builder level currentLine inheritedNextLine None returnText gosubReturnCount lineNumbers enableErrorHandling body
-        appendLine builder level $"if (__jumpedLoopId == {id})"
-        appendLine builder level "{"
-        appendLine builder (level + 1) "__jumpedLoopId = null;"
-        appendLine builder (level + 1) returnText
-        appendLine builder level "}"
-        appendLine builder level $"__loop{id}Next: ;"
-        appendLine builder level $"if (__jumpedLoopId == {id}) throw new InvalidOperationException(\"Loop control escaped the current scope after a numbered line jump.\");"
+        emitBody level
+        emitFlatLoopBodyEnd builder level id returnText
         appendLine builder level $"goto __loop{id}Body;"
-        appendLine builder level $"__loop{id}Exit: ;"
-        appendLine builder level $"if (__jumpedLoopId == {id}) throw new InvalidOperationException(\"Loop control escaped the current scope after a numbered line jump.\");"
+        emitFlatLoopExit builder level id
     else
-        appendLine builder level "while (true)"
-        appendLine builder level "{"
-        appendLine builder (level + 1) "try"
-        appendLine builder (level + 1) "{"
-        emitBlock ctx builder (level + 2) currentLine inheritedNextLine None returnText gosubReturnCount lineNumbers enableErrorHandling body
-        appendLine builder (level + 1) "}"
-        appendLine builder (level + 1) "catch (LoopControlException ex)"
-        appendLine builder (level + 1) "{"
-        appendLine builder (level + 2) $"if (ex.LoopId != {id})"
-        appendLine builder (level + 2) "{"
-        appendLine builder (level + 3) "throw;"
-        appendLine builder (level + 2) "}"
-        appendLine builder (level + 2) "if (!ex.IsNext)"
-        appendLine builder (level + 2) "{"
-        appendLine builder (level + 3) "break;"
-        appendLine builder (level + 2) "}"
-        appendLine builder (level + 1) "}"
-        appendLine builder level "}"
-
-and private emitOnGotoLike keyword ctx builder level selector targets =
-    appendLine builder level $"switch (AsInt({emitExpr ctx selector}))"
-    appendLine builder level "{"
-    targets
-    |> List.iteri (fun index target ->
-        match tryGetConstInt target with
-        | Some line when keyword = "GOTO" ->
-            appendLine builder (level + 1) $"case {index + 1}:"
-            emitDispatchToLine ctx builder (level + 2) (string line)
-        | Some line ->
-            appendLine builder (level + 1) $"case {index + 1}:"
-            emitDispatchToLine ctx builder (level + 2) (string line)
-        | None ->
-            appendLine builder (level + 1) $"case {index + 1}:"
-            emitDispatchToLine ctx builder (level + 2) $"AsInt({emitExpr ctx target})")
-    appendLine builder (level + 1) "default: break;"
-    appendLine builder level "}"
-
-and private emitOnGosub ctx builder level selector targets =
-    let returnId = nextGosubReturnId ctx
-    appendLine builder level $"switch (AsInt({emitExpr ctx selector}))"
-    appendLine builder level "{"
-    targets
-    |> List.iteri (fun index target ->
-        match tryGetConstInt target with
-        | Some line ->
-            appendLine builder (level + 1) $"case {index + 1}:"
-            appendLine builder (level + 2) $"__gosubStack.Push({returnId});"
-            emitDispatchToLine ctx builder (level + 2) (string line)
-        | None ->
-            appendLine builder (level + 1) $"case {index + 1}:"
-            appendLine builder (level + 2) $"__gosubStack.Push({returnId});"
-            emitDispatchToLine ctx builder (level + 2) $"AsInt({emitExpr ctx target})")
-    appendLine builder (level + 1) "default: break;"
-    appendLine builder level "}"
-    appendLine builder level $"__gosub_return_{returnId}: ;"
+        appendBlock builder level "while (true)" (fun level ->
+            appendBlock builder level "try" emitBody
+            emitLoopControlCatch builder level id)
 
 and private emitWhenError ctx builder level currentLine nextLine returnText gosubReturnCount lineNumbers handlerBody =
     let handlerId = nextWhenErrorId ctx
@@ -808,35 +850,37 @@ and private emitWhenError ctx builder level currentLine nextLine returnText gosu
         { ctx with
             DispatchLineName = $"__whenError{handlerId}DispatchLine"
             DispatchTargetName = $"__whenError{handlerId}TargetLine"
-            DispatchLabelName = $"__whenError{handlerId}Dispatch" }
-    appendLine builder level $"ErrorAction __whenError{handlerId}(Exception __sbError)"
-    appendLine builder level "{"
-    appendLine builder (level + 1) $"RecordLastError(__sbError, {emitLineLiteral currentLine}, {emitLineLiteral currentLine}, {emitLineLiteral nextLine});"
-    appendLine builder (level + 1) "__inErrorHandler = true;"
-    appendLine builder (level + 1) "try"
-    appendLine builder (level + 1) "{"
-    if handlerHasLineControlFlow then
-        emitDispatcher handlerCtx builder (level + 2) handlerLineNumbers None
-    emitBlock handlerCtx builder (level + 2) currentLine nextLine None returnText gosubReturnCount handlerLineNumbers false handlerBody
-    appendLine builder (level + 2) "throw new InvalidOperationException(\"WHEN ERROR handler must exit with RETRY, CONTINUE, or STOP.\");"
-    appendLine builder (level + 1) "}"
-    appendLine builder (level + 1) "catch (RetryControlException ex)"
-    appendLine builder (level + 1) "{"
-    appendLine builder (level + 2) "return ErrorAction.Retry(ex.LineNumber);"
-    appendLine builder (level + 1) "}"
-    appendLine builder (level + 1) "catch (ContinueControlException ex)"
-    appendLine builder (level + 1) "{"
-    appendLine builder (level + 2) "return ErrorAction.Continue(ex.LineNumber);"
-    appendLine builder (level + 1) "}"
-    appendLine builder (level + 1) "catch (OperationCanceledException)"
-    appendLine builder (level + 1) "{"
-    appendLine builder (level + 2) "return ErrorAction.Stop();"
-    appendLine builder (level + 1) "}"
-    appendLine builder (level + 1) "finally"
-    appendLine builder (level + 1) "{"
-    appendLine builder (level + 2) "__inErrorHandler = false;"
-    appendLine builder (level + 1) "}"
-    appendLine builder level "}"
+            DispatchLabelName = $"__whenError{handlerId}Dispatch"
+            GosubReturnIds = ResizeArray()
+            GosubReturnDispatchLabel = $"__whenError{handlerId}GosubReturnDispatch" }
+    appendBlock builder level $"ErrorAction __whenError{handlerId}(Exception __sbError)" (fun level ->
+        appendLines builder level [
+            $"RecordLastError(__sbError, {emitLineLiteral currentLine}, {emitLineLiteral currentLine}, {emitLineLiteral nextLine});"
+            "__inErrorHandler = true;" ]
+        appendBlock builder level "try" (fun level ->
+            if handlerHasLineControlFlow then
+                emitDispatcher handlerCtx builder level handlerLineNumbers None
+            emitBlock handlerCtx builder level currentLine nextLine None returnText gosubReturnCount handlerLineNumbers false handlerBody
+            appendLine builder level "throw new InvalidOperationException(\"WHEN ERROR handler must exit with RETRY, CONTINUE, or STOP.\");"
+            emitGosubReturnDispatch handlerCtx builder level gosubReturnCount)
+        appendTemplate builder level """
+            catch (RetryControlException ex)
+            {
+                return ErrorAction.Retry(ex.LineNumber);
+            }
+            catch (ContinueControlException ex)
+            {
+                return ErrorAction.Continue(ex.LineNumber);
+            }
+            catch (OperationCanceledException)
+            {
+                return ErrorAction.Stop();
+            }
+            finally
+            {
+                __inErrorHandler = false;
+            }
+            """)
     appendLine builder level $"__activeErrorHandler = __whenError{handlerId};"
 
 and private emitStmtCore ctx builder level currentLine nextLine continueLabelOpt returnText gosubReturnCount lineNumbers enableErrorHandling stmt =
@@ -901,34 +945,23 @@ and private emitStmtCore ctx builder level currentLine nextLine continueLabelOpt
         else
             appendLine builder level (emitLoopTransfer loopId true)
     | Goto(target, _) ->
-        match tryGetConstInt target with
-        | Some line -> emitDispatchToLine ctx builder level (string line)
-        | None -> emitDispatchToLine ctx builder level $"AsInt({emitExpr ctx target})"
+        emitDispatchToLine ctx builder level (emitLineTarget ctx target)
     | OnGoto(selector, targets, _) ->
-        emitOnGotoLike "GOTO" ctx builder level selector targets
-    | Gosub(target, _) ->
-        match tryGetConstInt target with
-        | Some line ->
-            let returnId = nextGosubReturnId ctx
-            appendLine builder level $"__gosubStack.Push({returnId});"
-            emitDispatchToLine ctx builder level (string line)
-            appendLine builder level $"__gosub_return_{returnId}: ;"
-        | None ->
-            let returnId = nextGosubReturnId ctx
-            appendLine builder level $"__gosubStack.Push({returnId});"
-            emitDispatchToLine ctx builder level $"AsInt({emitExpr ctx target})"
-            appendLine builder level $"__gosub_return_{returnId}: ;"
-    | OnGosub(selector, targets, _) ->
-        emitOnGosub ctx builder level selector targets
+        emitOnGoto ctx builder level selector targets
+    | Gosub _
+    | OnGosub _ ->
+        let returnId = nextGosubReturnId ctx
+        emitGosubCall ctx builder level returnId stmt
+        emitGosubReturnLabel builder level returnId
     | Return(value, _) ->
         match value with
         | Some expr -> appendLine builder level $"return {emitExpr ctx expr};"
-        | None -> emitBareReturnDispatch builder level returnText gosubReturnCount
+        | None -> emitBareReturnDispatch ctx builder level returnText gosubReturnCount
     | LineNumber(_, _) -> ()
     | Restore(value, _) ->
         match value with
         | Some expr -> appendLine builder level $"RestoreToLine(AsInt({emitExpr ctx expr}));"
-        | None -> appendLine builder level "__dataPointer = 0;"
+        | None -> appendLine builder level "RestoreData();"
     | Read(targets, _) ->
         targets
         |> List.iter (fun target ->
@@ -945,55 +978,27 @@ and private emitStmtCore ctx builder level currentLine nextLine continueLabelOpt
         appendLine builder level $"// {text}"
 
 and private emitStmt ctx builder level currentLine nextLine continueLabelOpt returnText gosubReturnCount lineNumbers enableErrorHandling stmtLabel stmt =
+    // A structured statement whose body holds jump targets is emitted flat, and C# cannot jump into a
+    // try block, so it is not wrapped. A WHEN ERROR handler is a separate local function: safe to wrap.
     let stmtHasCrossScopeTargets =
         match stmt with
-        | If(_, thenBlock, elseBlock, _) ->
-            blockContainsLineNumbers thenBlock
-            || (elseBlock |> Option.exists blockContainsLineNumbers)
-        | For(_, _, _, _, _, body, _)
-        | Repeat(_, _, body, _) -> blockContainsLineNumbers body
-        | _ -> false
+        | WhenError _ -> false
+        | _ -> childBlocks stmt |> List.exists blockContainsJumpTargets
     appendLine builder level $"{stmtLabel}: ;"
     match stmt with
     | LineNumber(value, _) ->
         if ctx.ProgramHasLineControlFlow then
             appendLine builder level $"line_{value}: ;"
+    | Gosub _
+    | OnGosub _ when enableErrorHandling ->
+        // Guard the call, but keep the return label outside the try so RETURN can reach it.
+        let returnId = nextGosubReturnId ctx
+        emitWithErrorHandler ctx builder level continueLabelOpt returnText stmtLabel (fun bodyLevel ->
+            emitGosubCall ctx builder bodyLevel returnId stmt)
+        emitGosubReturnLabel builder level returnId
     | _ when enableErrorHandling && not stmtHasCrossScopeTargets ->
-        appendLine builder level "try"
-        appendLine builder level "{"
-        emitStmtCore ctx builder (level + 1) currentLine nextLine continueLabelOpt returnText gosubReturnCount lineNumbers enableErrorHandling stmt
-        appendLine builder level "}"
-        appendLine builder level "catch (Exception __sbError)"
-        appendLine builder level "{"
-        appendLine builder (level + 1) "if (__inErrorHandler || __activeErrorHandler is null || IsControlFlowException(__sbError))"
-        appendLine builder (level + 1) "{"
-        appendLine builder (level + 2) "throw;"
-        appendLine builder (level + 1) "}"
-        appendLine builder (level + 1) "var __errorAction = __activeErrorHandler(__sbError);"
-        appendLine builder (level + 1) "switch (__errorAction.Kind)"
-        appendLine builder (level + 1) "{"
-        appendLine builder (level + 2) "case ErrorActionKind.Retry:"
-        appendLine builder (level + 2) "{"
-        appendLine builder (level + 3) "if (__errorAction.LineNumber.HasValue)"
-        appendLine builder (level + 3) "{"
-        emitDispatchToLine ctx builder (level + 4) "__errorAction.LineNumber.Value"
-        appendLine builder (level + 3) "}"
-        appendLine builder (level + 3) $"goto {stmtLabel};"
-        appendLine builder (level + 2) "}"
-        appendLine builder (level + 2) "case ErrorActionKind.Continue:"
-        appendLine builder (level + 2) "{"
-        appendLine builder (level + 3) "if (__errorAction.LineNumber.HasValue)"
-        appendLine builder (level + 3) "{"
-        emitDispatchToLine ctx builder (level + 4) "__errorAction.LineNumber.Value"
-        appendLine builder (level + 3) "}"
-        emitTransferToLabel builder (level + 3) continueLabelOpt returnText
-        appendLine builder (level + 2) "}"
-        appendLine builder (level + 2) "case ErrorActionKind.Stop:"
-        appendLine builder (level + 3) "throw new OperationCanceledException(\"STOP encountered.\");"
-        appendLine builder (level + 2) "default:"
-        appendLine builder (level + 3) "throw;"
-        appendLine builder (level + 1) "}"
-        appendLine builder level "}"
+        emitWithErrorHandler ctx builder level continueLabelOpt returnText stmtLabel (fun bodyLevel ->
+            emitStmtCore ctx builder bodyLevel currentLine nextLine continueLabelOpt returnText gosubReturnCount lineNumbers enableErrorHandling stmt)
     | _ ->
         emitStmtCore ctx builder level currentLine nextLine continueLabelOpt returnText gosubReturnCount lineNumbers enableErrorHandling stmt
 
@@ -1014,125 +1019,87 @@ let private emitArrayDimensionRegistration (ctx: EmitterContext) (builder: Strin
         appendLine builder level $"RegisterArrayDimensions({storageName ctx storage.Symbol}, {args});"
     | _ -> ()
 
-let rec private collectFlatLoopIds (block: HirBlock) =
-    let rec collect block =
-        block
-        |> List.collect (function
-            | If(_, thenBlock, elseBlock, _) ->
-                collect thenBlock
-                @ (elseBlock |> Option.map collect |> Option.defaultValue [])
-            | For(loopId, _, _, _, _, body, _) ->
-                let nested = collect body
-                if blockContainsLineNumbers body then loopId :: nested else nested
-            | ForSequence(loopId, _, _, _, _, _, _, body, _) ->
-                let nested = collect body
-                if blockContainsLineNumbers body then loopId :: nested else nested
-            | Repeat(loopId, _, body, _) ->
-                let nested = collect body
-                if blockContainsLineNumbers body then loopId :: nested else nested
-            | WhenError(body, _) -> collect body
-            | _ -> [])
-
-    collect block |> Set.ofList
-
-let private collectFlatLoopLineOwners (block: HirBlock) =
-    let rec collect activeFlatLoop block =
-        block
-        |> List.collect (function
-            | LineNumber(value, _) ->
-                match activeFlatLoop with
-                | Some loopId -> [ value, loopId ]
-                | None -> []
-            | If(_, thenBlock, elseBlock, _) ->
-                collect activeFlatLoop thenBlock
-                @ (elseBlock |> Option.map (collect activeFlatLoop) |> Option.defaultValue [])
-            | For(loopId, _, _, _, _, body, _) ->
-                let nestedLoop = if blockContainsLineNumbers body then Some loopId else activeFlatLoop
-                collect nestedLoop body
-            | ForSequence(loopId, _, _, _, _, _, _, body, _) ->
-                let nestedLoop = if blockContainsLineNumbers body then Some loopId else activeFlatLoop
-                collect nestedLoop body
-            | Repeat(loopId, _, body, _) ->
-                let nestedLoop = if blockContainsLineNumbers body then Some loopId else activeFlatLoop
-                collect nestedLoop body
-            | WhenError(body, _) -> collect activeFlatLoop body
-            | _ -> [])
-
-    collect None block |> Map.ofList
-
-let private emitFlatLoopDeclarations ctx builder level =
+// A flat loop keeps its state in locals of the enclosing method. A FOR loop needs its range; a FOR
+// sequence also tracks where it is in its list of values; a REPeat loop needs no state.
+let private emitFlatLoopDeclarations builder level (block: HirBlock) =
     appendLine builder level "int? __jumpedLoopId = null;"
-    ctx.FlatLoopIds
-    |> Set.iter (fun (LoopId id) ->
-        appendLine builder level $"var __loop{id}Initialized = false;"
-        appendLine builder level $"var __loop{id}Index = 0;"
-        appendLine builder level $"var __loop{id}End = 0;"
-        appendLine builder level $"var __loop{id}Step = 0;"
-        appendLine builder level $"var __loop{id}Phase = 0;"
-        appendLine builder level $"var __loop{id}PrefixIndex = 0;"
-        appendLine builder level $"var __loop{id}SuffixIndex = 0;"
-        appendLine builder level $"var __loop{id}RangeInitialized = false;"
-        appendLine builder level $"var __loop{id}SuffixInitialized = false;"
-        appendLine builder level $"object?[] __loop{id}PrefixValues = Array.Empty<object?>();"
-        appendLine builder level $"object?[] __loop{id}SuffixValues = Array.Empty<object?>();"
-        appendLine builder level $"object? __loop{id}Value = null;"
-        appendLine builder level $"var __loop{id}HasValue = false;")
+    for stmt in statementsIn true block do
+        let rangeState id =
+            [ $"var __loop{id}Index = 0;"
+              $"var __loop{id}End = 0;"
+              $"var __loop{id}Step = 0;" ]
+        match stmt, flatLoopId stmt with
+        | For _, Some(LoopId id) -> appendLines builder level (rangeState id)
+        | ForSequence _, Some(LoopId id) ->
+            appendLines builder level (
+                rangeState id
+                @ [ $"var __loop{id}Phase = 0;"
+                    $"var __loop{id}PrefixIndex = 0;"
+                    $"var __loop{id}SuffixIndex = 0;"
+                    $"object?[] __loop{id}PrefixValues = Array.Empty<object?>();"
+                    $"object?[] __loop{id}SuffixValues = Array.Empty<object?>();"
+                    $"object? __loop{id}Value = null;"
+                    $"var __loop{id}HasValue = false;" ])
+        | _ -> ()
 
-let private emitRoutine ctx builder (routine: HirRoutine) =
+// The locals a routine's body, or the main program's __run, declares before its first statement.
+let private emitScopePrologue ctx builder level gosubReturnCount hasWhenError hasLineControlFlow lineNumbers exitLineNumber block =
+    if gosubReturnCount > 0 then
+        appendLine builder level "var __gosubStack = new Stack<int>();"
+    if hasWhenError then
+        appendLines builder level [
+            "Func<Exception, ErrorAction>? __activeErrorHandler = null;"
+            "var __inErrorHandler = false;" ]
+    if not ctx.FlatLoopIds.IsEmpty then
+        emitFlatLoopDeclarations builder level block
+    if hasLineControlFlow then
+        emitDispatcher ctx builder level lineNumbers exitLineNumber
+
+let private emitStorageReset ctx builder level (storage: HirStorage) =
+    match storage.Type with
+    | Array _ -> appendLine builder level $"{storageName ctx storage.Symbol}.Value = new Dictionary<string, Cell>(StringComparer.OrdinalIgnoreCase);"
+    | _ -> appendLine builder level $"{storageName ctx storage.Symbol}.Value = null;"
+
+let private emitRoutine ctx builder level (routine: HirRoutine) =
     let gosubReturnCount = countGosubSitesInBlock routine.Body
     let lineNumbers = collectLineNumbersInBlock routine.Body
     let hasWhenError = blockHasWhenError routine.Body
     let hasLineControlFlow = blockHasLineControlFlow routine.Body || hasWhenError
-    validateNestedLineNumberTargets $"routine '{routine.Name}'" hasLineControlFlow routine.Body
     let ctx =
         { ctx with
             FlatLoopIds = collectFlatLoopIds routine.Body
-            FlatLoopLineOwners = collectFlatLoopLineOwners routine.Body }
+            FlatLoopLineOwners = collectFlatLoopLineOwners routine.Body
+            GosubReturnIds = ResizeArray() }
     let parameterText =
         routine.Parameters
         |> List.map (fun parameter -> $"Cell {storageName ctx parameter.Storage.Symbol}")
         |> String.concat ", "
 
-    appendLine builder 1 $"private static object? {routineName ctx routine.Symbol}({parameterText})"
-    appendLine builder 1 "{"
-    routine.Locals
-    |> List.iter (fun storage ->
-        appendLine builder 2 $"var {storageName ctx storage.Symbol} = new Cell();")
-    let allBindings =
-        (routine.Parameters |> List.map _.Storage) @ routine.Locals
-    appendLine builder 2 "using var __frame = PushDynamicFrame(new Dictionary<string, Cell>(StringComparer.OrdinalIgnoreCase)"
-    appendLine builder 2 "{"
-    allBindings
-    |> List.iter (fun storage ->
-        appendLine builder 3 $"[\"{escapeStringLiteral storage.Name}\"] = {storageName ctx storage.Symbol},")
-    appendLine builder 2 "});"
-    if gosubReturnCount > 0 then
-        appendLine builder 2 "var __gosubStack = new Stack<int>();"
-    if hasWhenError then
-        appendLine builder 2 "Func<Exception, ErrorAction>? __activeErrorHandler = null;"
-        appendLine builder 2 "var __inErrorHandler = false;"
-    if not ctx.FlatLoopIds.IsEmpty then
-        emitFlatLoopDeclarations ctx builder 2
-    if hasLineControlFlow then
-        emitDispatcher ctx builder 2 lineNumbers routine.EndLineNumber
-    routine.Locals
-    |> List.iter (fun storage ->
-        match storage.Type with
-        | Array _ -> appendLine builder 2 $"{storageName ctx storage.Symbol}.Value = new Dictionary<string, Cell>(StringComparer.OrdinalIgnoreCase);"
-        | _ -> appendLine builder 2 $"{storageName ctx storage.Symbol}.Value = null;")
-    routine.Parameters
-    |> List.iter (fun parameter -> emitArrayDimensionRegistration ctx builder 2 parameter.Storage)
-    routine.Locals
-    |> List.iter (emitArrayDimensionRegistration ctx builder 2)
-    emitBlock ctx builder 2 None None None "return null;" gosubReturnCount lineNumbers hasWhenError routine.Body
-    appendLine builder 2 "return null;"
-    appendLine builder 1 "}"
+    appendBlock builder level $"private static object? {routineName ctx routine.Symbol}({parameterText})" (fun level ->
+        for storage in routine.Locals do
+            appendLine builder level $"var {storageName ctx storage.Symbol} = new Cell();"
+        appendLines builder level [
+            "using var __frame = PushDynamicFrame(new Dictionary<string, Cell>(StringComparer.OrdinalIgnoreCase)"
+            "{" ]
+        for storage in (routine.Parameters |> List.map _.Storage) @ routine.Locals do
+            appendLine builder (level + 1) $"[\"{escapeStringLiteral storage.Name}\"] = {storageName ctx storage.Symbol},"
+        appendLine builder level "});"
+        emitScopePrologue ctx builder level gosubReturnCount hasWhenError hasLineControlFlow lineNumbers routine.EndLineNumber routine.Body
+        for storage in routine.Locals do
+            emitStorageReset ctx builder level storage
+        for parameter in routine.Parameters do
+            emitArrayDimensionRegistration ctx builder level parameter.Storage
+        for storage in routine.Locals do
+            emitArrayDimensionRegistration ctx builder level storage
+        emitBlock ctx builder level None None None "return null;" gosubReturnCount lineNumbers hasWhenError routine.Body
+        appendLine builder level "return null;"
+        emitGosubReturnDispatch ctx builder level gosubReturnCount)
 
-let private emitDataLayout builder (program: HirProgram) =
+let private emitDataLayout builder level (program: HirProgram) =
     let renderDataEntry entry =
         match entry.Value with
         | Literal(ConstInt value, _, _) -> string value
-        | Literal(ConstFloat value, _, _) -> value.ToString("G17", CultureInfo.InvariantCulture)
+        | Literal(ConstFloat value, _, _) -> emitFloatLiteral value
         | Literal(ConstString value, _, _) -> $"\"{escapeStringLiteral value}\""
         | _ -> "null"
 
@@ -1144,8 +1111,9 @@ let private emitDataLayout builder (program: HirProgram) =
             $"{{ {point.LineNumber}, {slot} }}")
         |> String.concat ", "
 
-    appendLine builder 1 $"private static readonly object?[] __data = new object?[] {{ {dataItems} }};"
-    appendLine builder 1 $"private static readonly Dictionary<int, int> __restorePoints = new Dictionary<int, int> {{ {restorePoints} }};"
+    appendLines builder level [
+        $"private static readonly object?[] __data = new object?[] {{ {dataItems} }};"
+        $"private static readonly Dictionary<int, int> __restorePoints = new Dictionary<int, int> {{ {restorePoints} }};" ]
 
 let generateCSharpFromHir className (program: HirProgram) =
     let ctx = buildContext className program
@@ -1153,60 +1121,42 @@ let generateCSharpFromHir className (program: HirProgram) =
     let mainLineNumbers = collectLineNumbersInBlock program.Main
     let mainHasWhenError = blockHasWhenError program.Main
     let mainHasLineControlFlow = blockHasLineControlFlow program.Main || mainHasWhenError
-    validateNestedLineNumberTargets "the main program body" mainHasLineControlFlow program.Main
     let mainCtx =
         { ctx with
             FlatLoopIds = collectFlatLoopIds program.Main
             FlatLoopLineOwners = collectFlatLoopLineOwners program.Main }
     let builder = StringBuilder()
 
-    appendLine builder 0 "using System;"
-    appendLine builder 0 "using System.Collections.Generic;"
-    appendLine builder 0 "using SBGeneratedRuntime;"
-    appendLine builder 0 "using static SBGeneratedRuntime.GeneratedRuntime;"
-    appendLine builder 0 ""
-    appendLine builder 0 $"public static class {ctx.ClassName}"
-    appendLine builder 0 "{"
-    emitStorageDeclarations ctx builder 1 program.Globals
-    if not program.Globals.IsEmpty then
+    appendLines builder 0 [
+        "using System;"
+        "using System.Collections.Generic;"
+        "using SBGeneratedRuntime;"
+        "using static SBGeneratedRuntime.GeneratedRuntime;"
+        "" ]
+    appendBlock builder 0 $"public static class {ctx.ClassName}" (fun level ->
+        emitStorageDeclarations ctx builder level program.Globals
+        if not program.Globals.IsEmpty then
+            appendLine builder 0 ""
+        emitDataLayout builder level program
         appendLine builder 0 ""
-    emitDataLayout builder program
-    appendLine builder 0 ""
-    program.Routines |> List.iter (emitRoutine ctx builder)
-    if not program.Routines.IsEmpty then
-        appendLine builder 0 ""
-    appendLine builder 1 "public static void Main()"
-    appendLine builder 1 "{"
-    appendLine builder 2 "InitializeProgramState(__data, __restorePoints);"
-    emitGlobalRegistration ctx builder 2 program.Globals
-    program.Globals
-    |> List.iter (fun storage ->
-        match storage.Type with
-        | Array _ -> appendLine builder 2 $"{storageName ctx storage.Symbol}.Value = new Dictionary<string, Cell>(StringComparer.OrdinalIgnoreCase);"
-        | _ -> appendLine builder 2 $"{storageName ctx storage.Symbol}.Value = null;")
-    program.Globals
-    |> List.iter (emitArrayDimensionRegistration ctx builder 2)
-    appendLine builder 2 "void __run()"
-    appendLine builder 2 "{"
-    if mainGosubReturnCount > 0 then
-        appendLine builder 3 "var __gosubStack = new Stack<int>();"
-    if mainHasWhenError then
-        appendLine builder 3 "Func<Exception, ErrorAction>? __activeErrorHandler = null;"
-        appendLine builder 3 "var __inErrorHandler = false;"
-    if not mainCtx.FlatLoopIds.IsEmpty then
-        emitFlatLoopDeclarations mainCtx builder 3
-    if mainHasLineControlFlow then
-        emitDispatcher mainCtx builder 3 mainLineNumbers None
-    emitBlock mainCtx builder 3 None None None "return;" mainGosubReturnCount mainLineNumbers mainHasWhenError program.Main
-    appendLine builder 2 "}"
-    appendLine builder 2 "try"
-    appendLine builder 2 "{"
-    appendLine builder 3 "__run();"
-    appendLine builder 2 "}"
-    appendLine builder 2 "catch (OperationCanceledException)"
-    appendLine builder 2 "{"
-    appendLine builder 2 "}"
-    appendLine builder 1 "}"
-    appendLine builder 0 "}"
+        for routine in program.Routines do
+            emitRoutine ctx builder level routine
+        if not program.Routines.IsEmpty then
+            appendLine builder 0 ""
+        appendBlock builder level "public static void Main()" (fun level ->
+            appendLine builder level "InitializeProgramState(__data, __restorePoints);"
+            emitGlobalRegistration ctx builder level program.Globals
+            for storage in program.Globals do
+                emitStorageReset ctx builder level storage
+            for storage in program.Globals do
+                emitArrayDimensionRegistration ctx builder level storage
+            appendBlock builder level "void __run()" (fun level ->
+                emitScopePrologue mainCtx builder level mainGosubReturnCount mainHasWhenError mainHasLineControlFlow mainLineNumbers None program.Main
+                emitBlock mainCtx builder level None None None "return;" mainGosubReturnCount mainLineNumbers mainHasWhenError program.Main
+                if mainGosubReturnCount > 0 then
+                    appendLine builder level "return;"
+                    emitGosubReturnDispatch mainCtx builder level mainGosubReturnCount)
+            appendBlock builder level "try" (fun level -> appendLine builder level "__run();")
+            appendBlock builder level "catch (OperationCanceledException)" ignore))
 
     builder.ToString()

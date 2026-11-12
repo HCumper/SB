@@ -848,7 +848,13 @@ type ASTBuildingVisitor() =
                     |> Seq.map this.ForBodyLineToLine
                     |> Seq.toList
 
-                let terminator = bodyCtx.forTerminator()
+                // Only a tree recovered from a syntax error has a long-form body with no terminator.
+                let terminator =
+                    match bodyCtx.forTerminator() with
+                    | null ->
+                        let line = p.BasicLineNo |> Option.map string |> Option.defaultValue $"editor line {p.EditorLineNo}"
+                        failwith $"FOR {name} at line {line} has no END FOR or NEXT."
+                    | terminator -> terminator
                 let closingLine =
                     match terminator.plainStmtlist() with
                     | null -> []

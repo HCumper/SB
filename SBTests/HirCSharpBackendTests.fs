@@ -168,7 +168,7 @@ let ``generateCSharpFromHir emits array access routine calls and builtin functio
     Assert.That(generated, Does.Contain("private static readonly Cell v1_A = new Cell();"))
     Assert.That(generated, Does.Contain("v1_A.Value = new Dictionary<string, Cell>(StringComparer.OrdinalIgnoreCase);"))
     Assert.That(generated, Does.Contain("SetArrayValue(v1_A, r2_DOUBLEIT(), 1);"))
-    Assert.That(generated, Does.Contain("v0_TOTAL.Value = InvokeBuiltInFunction(\"ABS\", Negate(4));"))
+    Assert.That(generated, Does.Contain("v0_TOTAL.Value = InvokeBuiltInFunction(\"ABS\", AsInt(Negate(4)));"))
     Assert.That(generated, Does.Contain("ExecuteBuiltInStatement(\"PRINT\", null, GetArrayValue(v1_A, 1), v0_TOTAL.Value);"))
     Assert.That(generated, Does.Contain("GetArrayValue(v1_A, 1)"))
     Assert.That(generated, Does.Not.Contain("__dispatchLine"))
@@ -247,9 +247,12 @@ let ``generateCSharpFromHir emits dynamic scope lookups and sequence for support
 
     Assert.That(generated, Does.Contain("LookupDynamicCell(\"SCORE\").Value = 1;"))
     Assert.That(generated, Does.Contain("v0_COUNTER.Value = LookupDynamicCell(\"SCORE\").Value;"))
-    Assert.That(generated, Does.Contain("bool __loop0Run(object? value)"))
-    Assert.That(generated, Does.Contain("foreach (var __loop0Prefix in new object?[] { 1, 2 })"))
-    Assert.That(generated, Does.Contain("foreach (var __loop0Suffix in new object?[] { 9 })"))
+    Assert.That(generated, Does.Contain("IEnumerable<object?> __loop0Values()"))
+    Assert.That(generated, Does.Contain("foreach (var __loop0Value in __loop0Values())"))
+    Assert.That(generated, Does.Contain("var __loop0PrefixValues = new object?[] { 1, 2 };"))
+    Assert.That(generated, Does.Contain("foreach (var __loop0Prefix in __loop0PrefixValues)"))
+    Assert.That(generated, Does.Contain("var __loop0SuffixValues = new object?[] { 9 };"))
+    Assert.That(generated, Does.Contain("foreach (var __loop0Suffix in __loop0SuffixValues)"))
 
 [<Test>]
 let ``generateCSharpFromHir flattens sequence for loops when the body has numbered line targets`` () =
@@ -281,7 +284,7 @@ let ``generateCSharpFromHir flattens sequence for loops when the body has number
     Assert.That(generated, Does.Contain("__loop0Phase = 0;"))
     Assert.That(generated, Does.Contain("__loop0PrefixValues = new object?[] { 1, 2 };"))
     Assert.That(generated, Does.Contain("__loop0SuffixValues = new object?[] { 9 };"))
-    Assert.That(generated, Does.Not.Contain("bool __loop0Run(object? value)"))
+    Assert.That(generated, Does.Not.Contain("__loop0Values()"))
     Assert.That(generated, Does.Not.Contain("FOR ... TO ... with prefix/suffix sequence"))
 
 [<Test>]

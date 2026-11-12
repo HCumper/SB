@@ -918,7 +918,8 @@ public static class GeneratedRuntime
     public static object? Identity(object? value) => value;
     public static object? Negate(object? value) => -AsDouble(value);
     public static object? BitwiseNot(object? value) => ~AsInt(value);
-    public static object? Add(object? left, object? right) => left is string || right is string ? AsString(left) + AsString(right) : AsDouble(left) + AsDouble(right);
+    // + is always arithmetic in SuperBASIC; & concatenates.
+    public static object? Add(object? left, object? right) => AsDouble(left) + AsDouble(right);
     public static object? Subtract(object? left, object? right) => AsDouble(left) - AsDouble(right);
     public static object? Multiply(object? left, object? right) => AsDouble(left) * AsDouble(right);
     public static object? Divide(object? left, object? right) => AsDouble(left) / AsDouble(right);
@@ -935,7 +936,8 @@ public static class GeneratedRuntime
     public static int CompareLessThanOrEqual(object? left, object? right) => (left is string || right is string ? string.CompareOrdinal(AsString(left), AsString(right)) <= 0 : AsDouble(left) <= AsDouble(right)) ? 1 : 0;
     public static int CompareGreaterThan(object? left, object? right) => (left is string || right is string ? string.CompareOrdinal(AsString(left), AsString(right)) > 0 : AsDouble(left) > AsDouble(right)) ? 1 : 0;
     public static int CompareGreaterThanOrEqual(object? left, object? right) => (left is string || right is string ? string.CompareOrdinal(AsString(left), AsString(right)) >= 0 : AsDouble(left) >= AsDouble(right)) ? 1 : 0;
-    public static int Instr(object? left, object? right) => AsString(left).IndexOf(AsString(right), StringComparison.Ordinal) + 1;
+    // a$ INSTR b$ is the position of a$ within b$.
+    public static int Instr(object? left, object? right) => AsString(right).IndexOf(AsString(left), StringComparison.Ordinal) + 1;
     public static object? SliceRange(object? left, object? right) => (AsInt(left), AsInt(right));
     public static object? ApplyUnary(string name, object? value) => throw new NotSupportedException($"Unary operator '{name}' is not supported by the generated backend yet.");
     public static object? ApplyBinary(string name, object? left, object? right) => throw new NotSupportedException($"Binary operator '{name}' is not supported by the generated backend yet.");
@@ -2117,14 +2119,11 @@ public static class GeneratedRuntime
             throw new InvalidOperationException("READ moved past the end of DATA.");
         }
 
-        var value = __data[__dataPointer++];
-        return targetType switch
-        {
-            "string" => AsString(value),
-            "float" => AsDouble(value),
-            _ => AsInt(value)
-        };
+        // READ assigns like any other assignment: a target with no declared type keeps the value as is.
+        return CoerceAssignmentValue(targetType, __data[__dataPointer++]);
     }
+
+    public static void RestoreData() => __dataPointer = 0;
 
     public static void RestoreToLine(int line)
     {

@@ -172,6 +172,78 @@ let ``generated csharp executable supports dynamic goto and gosub`` () =
     Assert.That(stdout.Trim(), Is.EqualTo("SUB\nDONE".Replace("\n", Environment.NewLine).Replace("\r\n", "\n").Trim()))
 
 [<Test>]
+let ``generated csharp executable returns from a gosub inside a single-line if`` () =
+    let exitCode, stdout, stderr =
+        generateCompileAndRun
+            "10 x=1\n20 IF x=1 THEN GO SUB 100\n30 PRINT \"DONE\"\n40 STOP\n100 PRINT \"SUB\"\n110 RETURN\n"
+            None
+
+    Assert.That(exitCode, Is.EqualTo(0), stderr)
+    Assert.That(stdout.Trim(), Is.EqualTo("SUB\nDONE"))
+
+[<Test>]
+let ``generated csharp executable returns from gosubs in two procedures and the main program`` () =
+    let exitCode, stdout, stderr =
+        generateCompileAndRun
+            ("10 GO SUB 100\n20 p\n25 q\n30 STOP\n100 PRINT \"MAIN SUB\"\n110 RETURN\n"
+             + "200 DEFine PROCedure p\n210 GO SUB 240\n220 PRINT \"P DONE\"\n230 RETurn\n240 PRINT \"P SUB\"\n250 RETurn\n260 END DEFine\n"
+             + "300 DEFine PROCedure q\n310 GO SUB 340\n320 PRINT \"Q DONE\"\n330 RETurn\n340 PRINT \"Q SUB\"\n350 RETurn\n360 END DEFine\n")
+            None
+
+    Assert.That(exitCode, Is.EqualTo(0), stderr)
+    Assert.That(stdout.Trim(), Is.EqualTo("MAIN SUB\nP SUB\nP DONE\nQ SUB\nQ DONE"))
+
+[<Test>]
+let ``generated csharp executable returns from a gosub while a when error handler is active`` () =
+    let exitCode, stdout, stderr =
+        generateCompileAndRun
+            "10 WHEN ERRor\n20 CONTINUE\n30 END WHEN\n40 GO SUB 100\n50 PRINT \"DONE\"\n60 STOP\n100 PRINT \"SUB\"\n110 RETURN\n"
+            None
+
+    Assert.That(exitCode, Is.EqualTo(0), stderr)
+    Assert.That(stdout.Trim(), Is.EqualTo("SUB\nDONE"))
+
+[<Test>]
+let ``generated csharp executable compiles a gosub inside a when error handler`` () =
+    let exitCode, stdout, stderr =
+        generateCompileAndRun
+            "10 WHEN ERRor\n20 GO SUB 40\n30 PRINT \"BAD\"\n40 PRINT \"HANDLED\"\n50 CONTINUE\n60 END WHEN\n70 z = 0\n80 x = 1 DIV z\n90 PRINT \"DONE\"\n"
+            None
+
+    Assert.That(exitCode, Is.EqualTo(0), stderr)
+    Assert.That(stdout.Trim(), Is.EqualTo("HANDLED\nDONE"))
+
+[<Test>]
+let ``generated csharp executable runs a numbered sequence for loop while a when error handler is active`` () =
+    let exitCode, stdout, stderr =
+        generateCompileAndRun
+            "10 WHEN ERRor\n20 CONTINUE\n30 END WHEN\n40 FOR i = 1, 5 TO 6\n50 PRINT i\n60 END FOR i\n70 PRINT \"DONE\"\n"
+            None
+
+    Assert.That(exitCode, Is.EqualTo(0), stderr)
+    Assert.That(stdout.Trim(), Is.EqualTo("1\n5\n6\nDONE"))
+
+[<Test>]
+let ``generated csharp executable jumps out of a single-line sequence for loop`` () =
+    let exitCode, stdout, stderr =
+        generateCompileAndRun
+            "10 FOR i = 1, 2 TO 3 : PRINT i : IF i = 2 THEN GO TO 30\n20 PRINT \"BAD\"\n30 PRINT \"DONE\"\n"
+            None
+
+    Assert.That(exitCode, Is.EqualTo(0), stderr)
+    Assert.That(stdout.Trim(), Is.EqualTo("1\n2\nDONE"))
+
+[<Test>]
+let ``generated csharp executable returns a function value from inside a single-line sequence for loop`` () =
+    let exitCode, stdout, stderr =
+        generateCompileAndRun
+            "10 PRINT f\n20 STOP\n100 DEFine FuNction f\n110 FOR i = 1, 2 TO 5 : PRINT i : IF i = 3 THEN RETurn i * 10\n120 RETurn 0\n130 END DEFine\n"
+            None
+
+    Assert.That(exitCode, Is.EqualTo(0), stderr)
+    Assert.That(stdout.Trim(), Is.EqualTo("1\n2\n3\n30"))
+
+[<Test>]
 let ``generated csharp executable formats print commas as tab stops`` () =
     let exitCode, stdout, stderr =
         generateCompileAndRun "10 PRINT ,,\"A\"\n20 PRINT \"B\",\"C\"\n30 STOP\n" None
@@ -635,6 +707,107 @@ let ``generated csharp executable supports when error continue`` () =
 
     Assert.That(exitCode, Is.EqualTo(0), stderr)
     Assert.That(stdout.Trim(), Is.EqualTo("-15\nDONE".Replace("\n", Environment.NewLine).Replace("\r\n", "\n").Trim()))
+
+[<TestCase("single-line FOR", "50 FOR i = 1 TO 3 : PRINT i : x = i DIV z\n")>]
+[<TestCase("single-line FOR sequence", "50 FOR i = 1, 2 TO 3 : PRINT i : x = i DIV z\n")>]
+[<TestCase("numbered FOR", "50 FOR i = 1 TO 3\n60 PRINT i\n70 x = i DIV z\n80 END FOR i\n")>]
+[<TestCase("numbered FOR sequence", "50 FOR i = 1, 2 TO 3\n60 PRINT i\n70 x = i DIV z\n80 END FOR i\n")>]
+[<TestCase("numbered REPeat", "50 REPeat lp\n60 i = i + 1 : PRINT i\n70 IF i = 3 THEN EXIT lp\n80 x = i DIV z\n90 END REPeat lp\n")>]
+let ``generated csharp executable continues a loop after an error in the last statement of its body`` (shape: string) (loop: string) =
+    let exitCode, stdout, stderr =
+        generateCompileAndRun
+            ("10 WHEN ERRor\n20 CONTINUE\n30 END WHEN\n40 z = 0 : i = 0\n" + loop + "100 PRINT \"DONE\"\n")
+            None
+
+    Assert.That(exitCode, Is.EqualTo(0), stderr)
+    Assert.That(stdout.Trim(), Is.EqualTo("1\n2\n3\nDONE"), shape)
+
+// The interpreter evaluates every bound once, before the first iteration: start, end and step for a
+// FOR loop, and prefix values, start, end, suffix values and step for a FOR sequence.
+[<TestCase("single-line FOR", "10 FOR i = f(1) TO f(2) STEP f(3) : PRINT \"BODY\"\n", "1\n2\n3\nBODY")>]
+[<TestCase("numbered FOR", "10 FOR i = f(1) TO f(2) STEP f(3)\n20 PRINT \"BODY\"\n30 END FOR i\n", "1\n2\n3\nBODY")>]
+[<TestCase("single-line FOR sequence", "10 FOR i = f(1), f(2) TO f(3), f(5) STEP f(4) : PRINT \"BODY\"\n", "1\n2\n3\n5\n4\nBODY\nBODY\nBODY")>]
+[<TestCase("numbered FOR sequence", "10 FOR i = f(1), f(2) TO f(3), f(5) STEP f(4)\n20 PRINT \"BODY\"\n30 END FOR i\n", "1\n2\n3\n5\n4\nBODY\nBODY\nBODY")>]
+let ``generated csharp executable evaluates for bounds in the same order as the interpreter`` (shape: string) (loop: string) (expected: string) =
+    let exitCode, stdout, stderr =
+        generateCompileAndRun
+            (loop + "50 STOP\n100 DEFine FuNction f(n)\n110 PRINT n\n120 RETurn n\n130 END DEFine\n")
+            None
+
+    Assert.That(exitCode, Is.EqualTo(0), stderr)
+    Assert.That(stdout.Trim(), Is.EqualTo(expected), shape)
+
+// Each expectation is the interpreter's output for the same program.
+[<TestCase("restart_next_outer",
+            "10 FOR i = 1 TO 2\n20 FOR j = 1 TO 3\n30 IF j = 2 THEN NEXT i\n40 PRINT i & \",\" & j\n50 END FOR j\n60 END FOR i\n70 PRINT \"DONE\"\n",
+            "1,1\n2,1\nDONE")>]
+[<TestCase("restart_next_outer_seq",
+            "10 FOR i = 1 TO 2\n20 FOR j = 1, 2 TO 3\n30 IF j = 2 THEN NEXT i\n40 PRINT i & \",\" & j\n50 END FOR j\n60 END FOR i\n70 PRINT \"DONE\"\n",
+            "1,1\n2,1\nDONE")>]
+[<TestCase("restart_goto",
+            "10 n = 0\n20 FOR i = 1 TO 3\n30 IF i = 2 AND n = 0 THEN n = 1 : GO TO 20\n40 PRINT i\n50 END FOR i\n",
+            "1\n1\n2\n3")>]
+[<TestCase("restart_goto_seq",
+            "10 n = 0\n20 FOR i = 1, 2 TO 3\n30 IF i = 2 AND n = 0 THEN n = 1 : GO TO 20\n40 PRINT i\n50 END FOR i\n",
+            "1\n1\n2\n3")>]
+[<TestCase("counter_after",
+            "10 FOR i = 1 TO 3\n20 END FOR i\n30 PRINT i\n40 FOR j = 5 TO 1\n50 END FOR j\n60 PRINT j\n70 FOR k = 1 TO 3 : PRINT \"k\" & k\n80 PRINT k\n90 FOR m = 1 TO 5 : IF m = 2 THEN EXIT m\n100 PRINT m\n110 FOR q = 1 TO 2 : NEXT q\n120 PRINT q\n",
+            "4\n5\nk1\nk2\nk3\n4\n2\n3")>]
+[<TestCase("float_literals",
+            "10 a = 1\n20 PRINT 1E10 * a\n30 b = 3E9 : PRINT b + a\n40 PRINT 2.0 * a, 1E15 * a\n50 DATA 1E10, 2.5\n60 READ c, d : PRINT c, d\n",
+            "10000000000\n3000000001\n2       1000000000000000\n10000000000     2.5")>]
+[<TestCase("string_plus",
+            "10 a$ = \"6\"\n20 PRINT a$ + 1, 1 + a$\n30 PRINT \"2\" + \"3\"\n",
+            "7       7\n5")>]
+[<TestCase("instr",
+            "10 a$ = \"HELLO\"\n20 PRINT \"LL\" INSTR a$, \"Z\" INSTR a$, \"ll\" INSTR a$\n",
+            "3       0       0")>]
+[<TestCase("restore",
+            "10 DATA 1, 2\n20 DATA 3\n30 READ a, b\n40 RESTORE\n50 READ c\n60 RESTORE 20\n70 READ d\n80 PRINT a & \" \" & b & \" \" & c & \" \" & d\n",
+            "1 2 1 3")>]
+[<TestCase("int_results",
+            "10 a = 1\n20 PRINT 2147483647 + a\n30 b% = 7 : c% = 2\n40 PRINT b% * c%, b% - c%, -b%\n50 x = 2.5 : PRINT x * 2, -x\n",
+            "2147483647\n14      5       -7\n5       -2.5")>]
+let ``generated csharp executable matches the interpreter`` (name: string) (source: string) (expected: string) =
+    let exitCode, stdout, stderr = generateCompileAndRun source None
+    let actual =
+        stdout.Split('\n')
+        |> Array.map (fun line -> line.TrimEnd())
+        |> String.concat "\n"
+
+    Assert.That(exitCode, Is.EqualTo(0), stderr)
+    Assert.That(actual.Trim(), Is.EqualTo(expected), name)
+
+[<Test>]
+let ``generated csharp executable continues a single-line repeat loop after an error in the last statement of its body`` () =
+    let countSymbol = SymbolId 0
+    let count = ReadVar(countSymbol, HirType.Int, pos)
+
+    let program =
+        { SymbolNames = [ countSymbol, "COUNT" ] |> Map.ofList
+          Globals = [ storage countSymbol "COUNT" HirType.Int GlobalStorage ]
+          Routines = []
+          DataEntries = []
+          RestorePoints = []
+          Main =
+            [ WhenError([ BuiltInCall(NamedBuiltIn "CONTINUE", None, [], pos) ], pos)
+              Assign(WriteVar(countSymbol, HirType.Int, pos), literalInt 0, pos)
+              Repeat(
+                LoopId 0,
+                NamedLoop "lp",
+                [ Assign(WriteVar(countSymbol, HirType.Int, pos), Binary(Add, count, literalInt 1, HirType.Int, pos), pos)
+                  BuiltInCall(Print, None, [ count ], pos)
+                  If(Binary(Equal, count, literalInt 3, HirType.Int, pos), [ Exit(LoopId 0, pos) ], None, pos)
+                  BuiltInCall(NamedBuiltIn "POKE_W", None, [ literalInt -1; literalInt 1 ], pos) ],
+                pos)
+              BuiltInCall(Print, None, [ literalString "DONE" ], pos)
+              BuiltInCall(NamedBuiltIn "STOP", None, [], pos) ] }
+
+    let exitCode, stdout, stderr =
+        generateHirCompileAndRun "WhenErrorRepeatContinueProgram" program None
+
+    Assert.That(exitCode, Is.EqualTo(0), stderr)
+    Assert.That(stdout.Trim(), Is.EqualTo("1\n2\n3\nDONE"))
 
 [<Test>]
 let ``generated csharp executable supports numbered line jumps inside when error handlers`` () =

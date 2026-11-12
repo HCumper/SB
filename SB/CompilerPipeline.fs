@@ -507,6 +507,17 @@ let processToAST ((tree: IParseTree), _inputStream) verbose : Ast =
     if verbose then Console.WriteLine(prettyPrintAst astRoot)
     astRoot
 
+// In relaxed mode a parse with syntax errors still gets here, as the tree ANTLR built while recovering.
+// The visitor assumes a well-formed tree, so when it fails on a recovered one, the parser's messages are
+// the real explanation: report them as a parse error instead of crashing. A failure on a clean parse is
+// a visitor bug and is left to surface.
+let private processRecoveredParseToAST (parseWarnings: string list) (tree, inputStream) verbose =
+    try
+        Ok(processToAST (tree, inputStream) verbose)
+    with ex when not parseWarnings.IsEmpty ->
+        let details = parseWarnings @ [ $"The program could not be read after these syntax errors: {ex.Message}" ]
+        Result.Error(ParseError(String.concat Environment.NewLine details))
+
 let private validateLineSequence ast =
     let rec collectNestedLines contextName stmts =
         stmts
@@ -776,10 +787,12 @@ let loadAstFromInput settings =
                     Console.WriteLine("Preprocessed SuperBASIC:")
                     Console.WriteLine(preparedSource.EffectiveText)
                 printfn $"Parsing succeeded. Source kind: %A{preparedSource.Kind}"
-            let ast = processToAST (parseTree, inputStream) settings.Verbose
-            match validateLineSequence ast with
-            | [] -> Ok(parseTree, inputStream, ast)
-            | errors -> Result.Error(ParseError(String.concat Environment.NewLine errors))
+            match processRecoveredParseToAST parseWarnings (parseTree, inputStream) settings.Verbose with
+            | Result.Error parseError -> Result.Error parseError
+            | Ok ast ->
+                match validateLineSequence ast with
+                | [] -> Ok(parseTree, inputStream, ast)
+                | errors -> Result.Error(ParseError(String.concat Environment.NewLine errors))
 
 let lowerAstForRuntime (ast: Ast) =
     let state = runSemanticAnalysis ast

@@ -225,6 +225,19 @@ let ``loadAstFromInput relaxed syntax checking rejects out of sequence routine b
     )
 
 [<Test>]
+let ``loadAstFromInput relaxed syntax checking reports the syntax errors when the recovered tree cannot become an AST`` () =
+    // The grammar needs a TO range in a FOR list, so FOR j = 1, 2, 3 is a syntax error. Inside another
+    // FOR loop, the tree ANTLR builds while recovering has a FOR body with no END FOR or NEXT.
+    withTempSource "10 FOR i = 1 TO 2\n20 FOR j = 1, 2, 3\n30 END FOR j\n40 END FOR i\n" (fun path ->
+        match loadAstFromInput (testSettingsWithSyntaxChecking Relaxed path) with
+        | Error(ParseError message) ->
+            Assert.That(message, Does.Contain("line 2:18 no viable alternative"))
+            Assert.That(message, Does.Contain("has no END FOR or NEXT."))
+        | Error(FileNotFound fileName) -> Assert.Fail($"Expected a parse error, got missing file %s{fileName}")
+        | Ok _ -> Assert.Fail("Expected the malformed FOR list to be rejected.")
+    )
+
+[<Test>]
 let ``loadAstFromInput relaxed syntax checking accepts compact select clauses with comma separated matches`` () =
     withTempSource "10 REPeat keyLoop\n20 SELect ON keyCode\n30 =32,200\n40 PRINT keyCode\n50 =192\n60 PRINT 0\n70 END SELect\n80 END REPeat keyLoop\n" (fun path ->
         match loadAstFromInput (testSettingsWithSyntaxChecking Relaxed path) with
