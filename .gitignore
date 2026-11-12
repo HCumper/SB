@@ -367,3 +367,8 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+
+# Local scratch files, published builds and JetBrains Rider settings
+Temp/
+publish-win-x64/
+.idea/
