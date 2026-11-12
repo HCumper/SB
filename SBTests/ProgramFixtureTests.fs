@@ -14,7 +14,7 @@ open ParseTreeVisitor
 open CompilerPipeline
 open SemanticAnalyzer
 open SymbolTableManager
-open Monads.State
+open FSharpPlus.Data
 
 let private fixturePath fileName =
     let candidates =
@@ -59,7 +59,7 @@ let private analyzeAst ast =
           ActiveLoops = [] }
 
     let seededState = prePopulateSymbolTable initialState
-    let (_, analyzedState) = run (addToTable Overwrite ast seededState) seededState
+    let (_, analyzedState) = State.run (addToTable Overwrite ast seededState) seededState
     analyzedState
 
 let private analyzeAstFull ast =

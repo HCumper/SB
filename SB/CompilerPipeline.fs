@@ -8,6 +8,7 @@ open Microsoft.Extensions.Configuration
 open Serilog
 open Antlr4.Runtime
 open Antlr4.Runtime.Tree
+open FSharpPlus
 open FSharpPlus.Data
 
 open Types
@@ -15,8 +16,6 @@ open ProcessingTypes
 open ScopeNames
 open AstDiagnostics
 open AstToHir
-open HirCBackend
-open HirCSharpBackend
 open Interpreter
 open ParseTreeVisitor
 open SymbolTableManager
@@ -24,7 +23,6 @@ open SemanticAnalysisFacts
 open SemanticAnalyzer
 open TypeAnalyzer
 open SSB
-open Monads.State
 open SyntaxAst
 
 type SyntaxCheckingMode =
@@ -556,14 +554,14 @@ let private validateLineSequence ast =
 
 // Semantic analysis is modeled as a state pipeline so symbol-table mutations stay explicit.
 let semanticAnalysisState : State<ProcessingState, ProcessingState> =
-    state {
-        let! currentState = getState
+    monad {
+        let! currentState = State.get
         let prePopulatedState = prePopulateSymbolTable currentState
-        do! putState prePopulatedState
+        do! State.put prePopulatedState
         do! addToTable Overwrite currentState.Ast currentState
-        let! stateWithSymbols = getState
+        let! stateWithSymbols = State.get
         let finalState = fillImplicitTypesAndModifyNamesInState stateWithSymbols
-        do! putState finalState
+        do! State.put finalState
         return stateWithSymbols
     }
 
@@ -586,7 +584,7 @@ let runSemanticAnalysis (astRoot: Ast) =
           ParameterSymbols = Map.empty
           ActiveLoops = [] }
 
-    let (finalState: ProcessingState, _) = run semanticAnalysisState initialState
+    let (finalState: ProcessingState, _) = State.run semanticAnalysisState initialState
     finalState
 
 let runHirLowering (state: ProcessingState) =
@@ -721,37 +719,37 @@ let generateDotNetExeFromLoweredHir appName outputPath hirProgram =
 """
 
     try
-        Directory.CreateDirectory(tempDirectory) |> ignore
-        Directory.CreateDirectory(outputDirectory) |> ignore
-        File.WriteAllText(projectPath, projectText)
-        File.WriteAllText(sourcePath, generatedSource)
-        File.Copy(
-            Path.Combine(AppContext.BaseDirectory, "CSharpRuntime", HirCSharpBackend.cSharpRuntimeFileName),
-            runtimePath,
-            true)
+        monad' {
+            Directory.CreateDirectory(tempDirectory) |> ignore
+            Directory.CreateDirectory(outputDirectory) |> ignore
+            File.WriteAllText(projectPath, projectText)
+            File.WriteAllText(sourcePath, generatedSource)
+            File.Copy(
+                Path.Combine(AppContext.BaseDirectory, "CSharpRuntime", HirCSharpBackend.cSharpRuntimeFileName),
+                runtimePath,
+                true)
 
-        match runProcess
-                  "dotnet"
-                  [ "publish"
-                    projectPath
-                    "-c"
-                    "Release"
-                    "-r"
-                    runtimeIdentifier
-                    "-o"
-                    publishDirectory
-                    "--nologo" ]
-                  tempDirectory with
-        | Result.Error message ->
-            Result.Error message
-        | Result.Ok _ ->
+            let! _ =
+                runProcess
+                    "dotnet"
+                    [ "publish"
+                      projectPath
+                      "-c"
+                      "Release"
+                      "-r"
+                      runtimeIdentifier
+                      "-o"
+                      publishDirectory
+                      "--nologo" ]
+                    tempDirectory
             let publishedExe = Path.Combine(publishDirectory, $"{assemblyName}.exe")
 
             if not (File.Exists(publishedExe)) then
-                Result.Error $"dotnet publish completed but did not produce '{publishedExe}'."
+                return! Result.Error $"dotnet publish completed but did not produce '{publishedExe}'."
             else
                 File.Copy(publishedExe, outputFullPath, true)
-                Result.Ok outputFullPath
+                return outputFullPath
+        }
     finally
         if Directory.Exists(tempDirectory) then
             Directory.Delete(tempDirectory, true)
@@ -773,26 +771,25 @@ let logDiagnostics (config: Configuration) (parseTree, _) (ast: Ast) =
 
 let loadAstFromInput settings =
     // This is the shared parse entry point used by both tests and the CLI.
-    match prepareSource settings.InputFileName with
-    | Result.Error parseError -> Result.Error parseError
-    | Ok preparedSource ->
-        match parsePreparedSource settings.SyntaxChecking preparedSource with
-        | Result.Error parseError -> Result.Error parseError
-        | Ok(parseTree, inputStream, parseWarnings) ->
-            if parseWarnings |> List.isEmpty |> not then
-                for warning in parseWarnings do
-                    settings.Logger.Warning("Parser recovery warning: {Warning}", warning)
-            if settings.Verbose then
-                if preparedSource.Kind = Ssb.SourceKind.Ssb then
-                    Console.WriteLine("Preprocessed SuperBASIC:")
-                    Console.WriteLine(preparedSource.EffectiveText)
-                printfn $"Parsing succeeded. Source kind: %A{preparedSource.Kind}"
-            match processRecoveredParseToAST parseWarnings (parseTree, inputStream) settings.Verbose with
-            | Result.Error parseError -> Result.Error parseError
-            | Ok ast ->
-                match validateLineSequence ast with
-                | [] -> Ok(parseTree, inputStream, ast)
-                | errors -> Result.Error(ParseError(String.concat Environment.NewLine errors))
+    monad' {
+        let! preparedSource = prepareSource settings.InputFileName
+        let! (parseTree, inputStream, parseWarnings) =
+            parsePreparedSource settings.SyntaxChecking preparedSource
+
+        for (warning: string) in parseWarnings do
+            settings.Logger.Warning("Parser recovery warning: {Warning}", warning)
+
+        if settings.Verbose then
+            if preparedSource.Kind = Ssb.SourceKind.Ssb then
+                Console.WriteLine("Preprocessed SuperBASIC:")
+                Console.WriteLine(preparedSource.EffectiveText)
+            printfn $"Parsing succeeded. Source kind: %A{preparedSource.Kind}"
+
+        let! ast = processRecoveredParseToAST parseWarnings (parseTree, inputStream) settings.Verbose
+        match validateLineSequence ast with
+        | [] -> return (parseTree, inputStream, ast)
+        | errors -> return! Result.Error(ParseError(String.concat Environment.NewLine errors))
+    }
 
 let lowerAstForRuntime (ast: Ast) =
     let state = runSemanticAnalysis ast
@@ -862,9 +859,12 @@ let loadRuntimeProgram syntaxChecking verbose logger inputFileName : Result<Runt
           AppName = "SB"
           Logger = logger }
 
-    match loadAstFromInput settings with
-    | Result.Error(FileNotFound path) -> Result.Error $"File '{path}' not found."
-    | Result.Error(ParseError message) -> Result.Error message
-    | Result.Ok(_, _, ast) ->
-        lowerAstForRuntime ast
-        |> Result.map (fun hir -> { Ast = ast; Hir = hir })
+    monad' {
+        let! (_, _, ast) =
+            loadAstFromInput settings
+            |> Result.mapError (function
+                | FileNotFound path -> $"File '{path}' not found."
+                | ParseError message -> message)
+        let! hir = lowerAstForRuntime ast
+        return { Ast = ast; Hir = hir }
+    }

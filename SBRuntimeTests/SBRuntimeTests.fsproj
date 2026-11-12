@@ -26,13 +26,13 @@
     </ItemGroup>
 
     <ItemGroup>
-      <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.0-preview-25107-01" />
-      <PackageReference Include="NUnit" Version="4.5.1" />
-      <PackageReference Include="NUnit3TestAdapter" Version="4.6.0">
+      <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.12.0" />
+      <PackageReference Include="NUnit" Version="5.0.0" />
+      <PackageReference Include="NUnit3TestAdapter" Version="6.3.1">
         <PrivateAssets>all</PrivateAssets>
         <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       </PackageReference>
-      <PackageReference Update="FSharp.Core" Version="10.1.203" />
+      <PackageReference Update="FSharp.Core" Version="11.0.101" />
     </ItemGroup>
 
 </Project>

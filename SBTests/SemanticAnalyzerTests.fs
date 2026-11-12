@@ -10,7 +10,7 @@ open ScopeNames
 open ParseTreeVisitor
 open SemanticAnalyzer
 open SymbolTableManager
-open Monads.State
+open FSharpPlus.Data
 
 let private parseProgram (input: string) =
     let inputStream = AntlrInputStream(input)
@@ -43,7 +43,7 @@ let private analyzeProgram (input: string) =
           ActiveLoops = [] }
 
     let seededState = prePopulateSymbolTable initialState
-    let (_, analyzedState) = run (addToTable Overwrite ast seededState) seededState
+    let (_, analyzedState) = State.run (addToTable Overwrite ast seededState) seededState
     analyzedState
 
 [<Test>]

@@ -4,7 +4,7 @@ open Types
 open ProcessingTypes
 open ScopeNames
 open SymbolTableManager
-open Monads.State
+open FSharpPlus
 open FSharpPlus.Data
 open SyntaxAst
 open SemanticAnalysisFacts
@@ -156,8 +156,8 @@ and private collectReferenceParameterNamesFromBlock block =
     | StatementBlock stmts -> stmts |> List.collect collectReferenceParameterNamesFromStmt
     | LineBlock lines -> collectReferenceParameterNamesFromLines lines
 
-let rec private stateIter action items =
-    state {
+let rec private stateIter (action: 'T -> State<'S, unit>) (items: 'T list) : State<'S, unit> =
+    monad {
         match items with
         | [] -> return ()
         | head :: tail ->
@@ -166,15 +166,15 @@ let rec private stateIter action items =
     }
 
 let rec private collectRoutineDeclaration mode declareRoutine pos name parameters body =
-    state {
-        let! currentState = getState
+    monad {
+        let! currentState = State.get
         let referenceParameters =
             collectReferenceParameterNamesFromLines body |> Set.ofList
         let stateWithRoutine =
             currentState
             |> declareRoutine mode name pos
             |> fun s -> { s with SymTab = ensureScope name (Some globalScope) s.SymTab; CurrentScope = name }
-        do! putState stateWithRoutine
+        do! State.put stateWithRoutine
         let parameterSymbols : ParameterSymbol list =
             parameters
             |> List.map (fun parameter ->
@@ -199,10 +199,10 @@ let rec private collectRoutineDeclaration mode declareRoutine pos name parameter
             parameterSymbols
             |> List.fold (fun state parameter -> recordParameterSymbol name parameter.Common.Name parameter.Common.Name state) scopedState
             |> recordRoutineSymbol name name
-        do! putState recordedState
+        do! State.put recordedState
         do! collectDeclarationLineList mode body
-        let! stateAfterBody = getState
-        do! putState { stateAfterBody with CurrentScope = currentState.CurrentScope }
+        let! stateAfterBody = State.get
+        do! State.put { stateAfterBody with CurrentScope = currentState.CurrentScope }
     }
 
 and private collectDeclarationStmtList mode stmts =
@@ -212,22 +212,22 @@ and private collectDeclarationLineList mode lines =
     stateIter (collectDeclarationLine mode) lines
 
 and private collectDeclarationBlock mode block =
-    state {
+    monad {
         match block with
         | StatementBlock stmts -> do! collectDeclarationStmtList mode stmts
         | LineBlock lines -> do! collectDeclarationLineList mode lines
     }
 
 and private collectWritableDeclarations mode expr =
-    state {
-        let! currentState = getState
+    monad {
+        let! currentState = State.get
         match expr with
         | Identifier(_, pos, name)
         | PostfixName(_, pos, name, None) ->
-            do! putState (ensureWritableDeclared mode currentState.CurrentScope name pos currentState)
+            do! State.put (ensureWritableDeclared mode currentState.CurrentScope name pos currentState)
         | PostfixName(_, pos, name, Some _) ->
             if not (BuiltIns.isCallableBuiltIn name) then
-                do! putState (ensureWritableDeclared mode currentState.CurrentScope name pos currentState)
+                do! State.put (ensureWritableDeclared mode currentState.CurrentScope name pos currentState)
         | _ -> ()
     }
 
@@ -235,14 +235,14 @@ and private collectDeclarationWritableList mode exprs =
     stateIter (collectWritableDeclarations mode) exprs
 
 and private collectDeclarationLine mode (line: Line) : State<ProcessingState, unit> =
-    state {
+    monad {
         let (Line(_, _, children)) = line
         do! collectDeclarationStmtList mode children
     }
 
 and collectDeclarations (mode: SymbolAddMode) (node: Stmt) : State<ProcessingState, unit> =
-    state {
-        let! currentState = getState
+    monad {
+        let! currentState = State.get
         match node with
         // Routine declarations are handled in declaration-pass order:
         // create the routine symbol in the global scope, create or enter the
@@ -275,7 +275,7 @@ and collectDeclarations (mode: SymbolAddMode) (node: Stmt) : State<ProcessingSta
                         declareVariable mode targetScope name pos state
                     else
                         declareArray mode targetScope name pos sizes state) currentState
-            do! putState nextState
+            do! State.put nextState
 
         | LocalStmt(pos, items) ->
             let nextState =
@@ -291,17 +291,17 @@ and collectDeclarations (mode: SymbolAddMode) (node: Stmt) : State<ProcessingSta
                         else
                             declareArray mode state.CurrentScope name pos sizes state
                     | None -> declareVariable mode state.CurrentScope name pos state) currentState
-            do! putState nextState
+            do! State.put nextState
 
         | ImplicitStmt(_, decorator, names) ->
-            do! putState (updateImplicitTyping decorator (Set.ofList names) currentState)
+            do! State.put (updateImplicitTyping decorator (Set.ofList names) currentState)
 
         | ManifestStmt(pos, items) ->
             let nextState =
                 items
                 |> List.fold (fun state (name, _) ->
                     declareConstant mode state.CurrentScope name pos (inferredVariableType state state.CurrentScope name) None state) currentState
-            do! putState nextState
+            do! State.put nextState
 
         | ReferenceStmt _
         | DataStmt _ -> ()
@@ -325,7 +325,7 @@ and collectDeclarations (mode: SymbolAddMode) (node: Stmt) : State<ProcessingSta
 
         | ForStmt(pos, name, _, _, _, _, _, body, _) ->
             let nextState = ensureVariableDeclaredInScope mode currentState.CurrentScope name pos currentState
-            do! putState nextState
+            do! State.put nextState
             do! collectDeclarationBlock mode body
 
         | RepeatStmt(_, _, body, _) ->
@@ -339,7 +339,7 @@ and collectDeclarations (mode: SymbolAddMode) (node: Stmt) : State<ProcessingSta
 
         | SelectStmt(_, _, clauses) ->
             let rec collectClauses remaining =
-                state {
+                monad {
                     match remaining with
                     | [] -> return ()
                     | SelectClause(_, _, _, body) :: tail ->
@@ -361,17 +361,17 @@ and collectDeclarations (mode: SymbolAddMode) (node: Stmt) : State<ProcessingSta
     }
 
 let rec private resolveRoutineBody mode name body =
-    state {
-        let! currentState = getState
-        do! putState { currentState with CurrentScope = name }
+    monad {
+        let! currentState = State.get
+        do! State.put { currentState with CurrentScope = name }
         do! resolveLineList mode body
-        let! stateAfterBody = getState
-        do! putState { stateAfterBody with CurrentScope = currentState.CurrentScope }
+        let! stateAfterBody = State.get
+        do! State.put { stateAfterBody with CurrentScope = currentState.CurrentScope }
     }
 
 and private resolveExpr mode expr : State<ProcessingState, unit> =
-    state {
-        let! currentState = getState
+    monad {
+        let! currentState = State.get
         match expr with
         // Expression resolution is intentionally lighter-weight than expression
         // typing. This pass records reference and call facts, checks basic shape
@@ -395,7 +395,7 @@ and private resolveExpr mode expr : State<ProcessingState, unit> =
                 | Some(resolvedScope, symbol) ->
                     recordResolvedSymbol currentState.CurrentScope expr resolvedScope (Symbol.normalizedName symbol) validatedState
                 | None -> validatedState
-            do! putState recordedState
+            do! State.put recordedState
         | PostfixName(_, pos, name, Some args) ->
             let nextState =
                 if canUseDynamicScopeFallback currentState && not (isStaticallyResolved currentState name) then
@@ -417,7 +417,7 @@ and private resolveExpr mode expr : State<ProcessingState, unit> =
                 | Some(resolvedScope, symbol) ->
                     recordResolvedSymbol currentState.CurrentScope expr resolvedScope (Symbol.normalizedName symbol) validatedState
                 | None -> validatedState
-            do! putState recordedState
+            do! State.put recordedState
             do! resolveExprList mode args
         | SliceRange(_, _, lhs, rhs)
         | BinaryExpr(_, _, _, lhs, rhs) ->
@@ -440,7 +440,7 @@ and private resolveExpr mode expr : State<ProcessingState, unit> =
                 | Some(resolvedScope, symbol) ->
                     recordResolvedSymbol currentState.CurrentScope expr resolvedScope (Symbol.normalizedName symbol) validatedState
                 | None -> validatedState
-            do! putState recordedState
+            do! State.put recordedState
         | NumberLiteral _
         | StringLiteral _ -> ()
     }
@@ -455,21 +455,21 @@ and private resolveStmtList mode stmts =
     stateIter (resolveStmt mode) stmts
 
 and private resolveLine mode (line: Line) : State<ProcessingState, unit> =
-    state {
+    monad {
         let (Line(_, _, children)) = line
         do! resolveStmtList mode children
     }
 
 and private resolveBlock mode block : State<ProcessingState, unit> =
-    state {
+    monad {
         match block with
         | StatementBlock stmts -> do! resolveStmtList mode stmts
         | LineBlock lines -> do! resolveLineList mode lines
     }
 
 and private resolveWritableExpr mode expr : State<ProcessingState, unit> =
-    state {
-        let! currentState = getState
+    monad {
+        let! currentState = State.get
         let nextState, args =
             match expr with
             | Identifier(_, _, name)
@@ -491,17 +491,17 @@ and private resolveWritableExpr mode expr : State<ProcessingState, unit> =
                 | None -> withTargetType
             | _ -> withTargetType
         let typedArgsState = inferExprList args recordedState
-        do! putState typedArgsState
+        do! State.put typedArgsState
         do! resolveExprList mode args
     }
 
 and private resolveStmt (mode: SymbolAddMode) (node: Stmt) : State<ProcessingState, unit> =
-    state {
-        let! currentState = getState
+    monad {
+        let! currentState = State.get
         match node with
         | ProcedureDef(pos, name, _, body, closingName, _)
         | FunctionDef(pos, name, _, body, closingName, _) ->
-            do! putState (validateClosingName "routine" name closingName pos currentState)
+            do! State.put (validateClosingName "routine" name closingName pos currentState)
             do! resolveRoutineBody mode name body
 
         | DimStmt(_, items) ->
@@ -514,27 +514,27 @@ and private resolveStmt (mode: SymbolAddMode) (node: Stmt) : State<ProcessingSta
 
         | ManifestStmt(_, items) ->
             let resolveManifestItem (name, expr) =
-                state {
-                    let! beforeExpr = getState
+                monad {
+                    let! beforeExpr = State.get
                     if not (isManifestNumericLiteral expr) then
                         let pos = posOfExpr expr
-                        do! putState (appendDiagnostic SemanticDiagnosticCode.Generic (Some name) (Some pos) $"MANIFEST '{name}' must be assigned a numeric literal at {pos.EditorLineNo}:{pos.Column}" beforeExpr)
+                        do! State.put (appendDiagnostic SemanticDiagnosticCode.Generic (Some name) (Some pos) $"MANIFEST '{name}' must be assigned a numeric literal at {pos.EditorLineNo}:{pos.Column}" beforeExpr)
                     else
                         do! resolveExpr mode expr
-                        let! stateAfterExpr = getState
+                        let! stateAfterExpr = State.get
                         let exprType, typedState = inferExprType stateAfterExpr expr
                         let valueText = tryEvaluateConstantExprText typedState expr
                         let updatedTable =
                             tryUpdateResolvedSymbolTypeAndValue exprType valueText typedState.CurrentScope name typedState.SymTab
-                        do! putState { typedState with SymTab = updatedTable }
+                        do! State.put { typedState with SymTab = updatedTable }
                 }
             do! stateIter resolveManifestItem items
 
         | ReferenceStmt(_, children)
         | DataStmt(_, children) ->
             do! resolveExprList mode children
-            let! stateAfterChildren = getState
-            do! putState (inferExprList children stateAfterChildren)
+            let! stateAfterChildren = State.get
+            do! State.put (inferExprList children stateAfterChildren)
 
         | ReadStmt(_, children) ->
             do! stateIter (resolveWritableExpr mode) children
@@ -551,7 +551,7 @@ and private resolveStmt (mode: SymbolAddMode) (node: Stmt) : State<ProcessingSta
         | Assignment(_, lhs, rhs) ->
             do! resolveWritableExpr mode lhs
             do! resolveExpr mode rhs
-            let! stateAfterResolution = getState
+            let! stateAfterResolution = State.get
             let rhsType, stateAfterRhs = inferExprType stateAfterResolution rhs
             let rhsValue = tryEvaluateConstantExpr stateAfterRhs rhs
             let lhsType = inferWritableTargetType stateAfterRhs lhs
@@ -569,12 +569,12 @@ and private resolveStmt (mode: SymbolAddMode) (node: Stmt) : State<ProcessingSta
                         let pos = posOfExpr lhs
                         appendDiagnostic SemanticDiagnosticCode.InvalidAssignment None (Some pos) $"Cannot assign {rhsType} expression to {lhsType} target at {pos.EditorLineNo}:{pos.Column}" stateWithRecordedTypes
                 compatibilityCheckedState
-            do! putState finalState
+            do! State.put finalState
 
         | GotoStmt(_, target)
         | GosubStmt(_, target) ->
             do! resolveExpr mode target
-            let! stateAfterTarget = getState
+            let! stateAfterTarget = State.get
             let targetType, nextState = inferExprType stateAfterTarget target
             let typedState = recordExprType stateAfterTarget.CurrentScope target targetType nextState
             let finalState =
@@ -583,13 +583,13 @@ and private resolveStmt (mode: SymbolAddMode) (node: Stmt) : State<ProcessingSta
                     appendDiagnostic SemanticDiagnosticCode.InvalidControlFlowTarget None (Some pos) $"Control-flow target must be numeric at {pos.EditorLineNo}:{pos.Column}" typedState
                 else
                     typedState
-            do! putState finalState
+            do! State.put finalState
 
         | OnGotoStmt(_, selector, targets)
         | OnGosubStmt(_, selector, targets) ->
             do! resolveExpr mode selector
             do! resolveExprList mode targets
-            let! stateAfterSelector = getState
+            let! stateAfterSelector = State.get
             let selectorType, stateAfterTypeCheck = inferExprType stateAfterSelector selector
             let selectorTypedState = recordExprType stateAfterSelector.CurrentScope selector selectorType stateAfterTypeCheck
             let stateAfterTargetTypes =
@@ -603,7 +603,7 @@ and private resolveStmt (mode: SymbolAddMode) (node: Stmt) : State<ProcessingSta
                     appendDiagnostic SemanticDiagnosticCode.InvalidSelector None (Some pos) $"Selector expression must be numeric at {pos.EditorLineNo}:{pos.Column}" stateAfterTargetTypes
                 else
                     stateAfterTargetTypes
-            do! putState finalState
+            do! State.put finalState
 
         // Statement-call handling is separate from expression-call handling so
         // the analyzer can distinguish:
@@ -619,7 +619,7 @@ and private resolveStmt (mode: SymbolAddMode) (node: Stmt) : State<ProcessingSta
                 match tryResolveSymbol stateAfterCall.CurrentScope name stateAfterCall.SymTab with
                 | Some(_, symbol) -> validateCallArity name pos args.Length symbol stateAfterCall
                 | None -> stateAfterCall
-            do! putState (validateStatementCallShape name pos stateAfterArity)
+            do! State.put (validateStatementCallShape name pos stateAfterArity)
             if isInputStatement name then
                 let resolveInputArg expr =
                     match expr with
@@ -629,14 +629,14 @@ and private resolveStmt (mode: SymbolAddMode) (node: Stmt) : State<ProcessingSta
                 do! stateIter resolveInputArg args
             else
                 do! resolveExprList mode args
-            let! stateAfterArgs = getState
+            let! stateAfterArgs = State.get
             let stateAfterBuiltInValidation =
                 match tryResolveSymbol stateAfterArgs.CurrentScope name stateAfterArgs.SymTab with
                 | Some(_, BuiltInSym _) ->
                     let argTypes, typedState = inferArgumentTypes args stateAfterArgs
                     validateBuiltInArguments name pos (List.zip args argTypes) typedState
                 | _ -> inferExprList args stateAfterArgs
-            do! putState stateAfterBuiltInValidation
+            do! State.put stateAfterBuiltInValidation
 
         | ChannelProcedureCall(pos, name, channel, args) ->
             let stateAfterCall = recordCall name pos currentState
@@ -644,9 +644,9 @@ and private resolveStmt (mode: SymbolAddMode) (node: Stmt) : State<ProcessingSta
                 match tryResolveSymbol stateAfterCall.CurrentScope name stateAfterCall.SymTab with
                 | Some(_, symbol) -> validateCallArity name pos args.Length symbol stateAfterCall
                 | None -> stateAfterCall
-            do! putState (validateStatementCallShape name pos stateAfterArity)
+            do! State.put (validateStatementCallShape name pos stateAfterArity)
             do! resolveExpr mode channel
-            let! stateAfterChannel = getState
+            let! stateAfterChannel = State.get
             let channelType, stateAfterChannelType = inferExprType stateAfterChannel channel
             let typedChannelState = recordExprType stateAfterChannel.CurrentScope channel channelType stateAfterChannelType
             let stateAfterValidatedChannel =
@@ -654,7 +654,7 @@ and private resolveStmt (mode: SymbolAddMode) (node: Stmt) : State<ProcessingSta
                     appendDiagnostic SemanticDiagnosticCode.InvalidChannel None (Some pos) $"Channel expression must be numeric at {pos.EditorLineNo}:{pos.Column}" typedChannelState
                 else
                     typedChannelState
-            do! putState stateAfterValidatedChannel
+            do! State.put stateAfterValidatedChannel
             if isInputStatement name then
                 let resolveInputArg expr =
                     match expr with
@@ -664,14 +664,14 @@ and private resolveStmt (mode: SymbolAddMode) (node: Stmt) : State<ProcessingSta
                 do! stateIter resolveInputArg args
             else
                 do! resolveExprList mode args
-            let! stateAfterArgs = getState
+            let! stateAfterArgs = State.get
             let stateAfterBuiltInValidation =
                 match tryResolveSymbol stateAfterArgs.CurrentScope name stateAfterArgs.SymTab with
                 | Some(_, BuiltInSym _) ->
                     let argTypes, typedState = inferArgumentTypes args stateAfterArgs
                     validateBuiltInArguments name pos (List.zip args argTypes) typedState
                 | _ -> inferExprList args stateAfterArgs
-            do! putState stateAfterBuiltInValidation
+            do! State.put stateAfterBuiltInValidation
 
         | ImplicitChannelProcedureCall(pos, name, channel, args) ->
             let stateAfterCall = recordCall name pos currentState
@@ -679,13 +679,13 @@ and private resolveStmt (mode: SymbolAddMode) (node: Stmt) : State<ProcessingSta
                 match tryResolveSymbol stateAfterCall.CurrentScope name stateAfterCall.SymTab with
                 | Some(_, symbol) -> validateCallArity name pos args.Length symbol stateAfterCall
                 | None -> stateAfterCall
-            do! putState (validateStatementCallShape name pos stateAfterArity)
+            do! State.put (validateStatementCallShape name pos stateAfterArity)
             do! resolveExpr mode channel
-            let! stateAfterChannel = getState
+            let! stateAfterChannel = State.get
             let channelType, stateAfterChannelType = inferExprType stateAfterChannel channel
             let typedChannelState = recordExprType stateAfterChannel.CurrentScope channel channelType stateAfterChannelType
             let stateAfterValidatedChannel = validateImplicitChannelExpr pos channelType typedChannelState
-            do! putState stateAfterValidatedChannel
+            do! State.put stateAfterValidatedChannel
             if isInputStatement name then
                 let resolveInputArg expr =
                     match expr with
@@ -695,19 +695,19 @@ and private resolveStmt (mode: SymbolAddMode) (node: Stmt) : State<ProcessingSta
                 do! stateIter resolveInputArg args
             else
                 do! resolveExprList mode args
-            let! stateAfterArgs = getState
+            let! stateAfterArgs = State.get
             let stateAfterBuiltInValidation =
                 match tryResolveSymbol stateAfterArgs.CurrentScope name stateAfterArgs.SymTab with
                 | Some(_, BuiltInSym _) ->
                     let argTypes, typedState = inferArgumentTypes args stateAfterArgs
                     validateBuiltInArguments name pos (List.zip args argTypes) typedState
                 | _ -> inferExprList args stateAfterArgs
-            do! putState stateAfterBuiltInValidation
+            do! State.put stateAfterBuiltInValidation
 
         | ForStmt(pos, name, prefixExprs, startExpr, endExpr, suffixExprs, stepExpr, body, closingName) ->
-            do! putState (validateClosingName "FOR loop" name closingName pos currentState)
-            let! currentState = getState
-            do! putState (referenceSymbol None name pos currentState)
+            do! State.put (validateClosingName "FOR loop" name closingName pos currentState)
+            let! currentState = State.get
+            do! State.put (referenceSymbol None name pos currentState)
             do! resolveExprList mode prefixExprs
             do! resolveExpr mode startExpr
             do! resolveExpr mode endExpr
@@ -715,7 +715,7 @@ and private resolveStmt (mode: SymbolAddMode) (node: Stmt) : State<ProcessingSta
             match stepExpr with
             | Some expr -> do! resolveExpr mode expr
             | None -> ()
-            let! stateAfterBounds = getState
+            let! stateAfterBounds = State.get
             let prefixTypes, afterPrefix = inferArgumentTypes prefixExprs stateAfterBounds
             let startType, afterStart = inferExprType afterPrefix startExpr
             let endType, afterEnd = inferExprType afterStart endExpr
@@ -743,23 +743,23 @@ and private resolveStmt (mode: SymbolAddMode) (node: Stmt) : State<ProcessingSta
                     appendDiagnostic SemanticDiagnosticCode.InvalidForBounds None (Some pos) $"FOR bounds and step must be numeric at {pos.EditorLineNo}:{pos.Column}" (recordTargetType stateAfterBounds.CurrentScope counterExpr (classifyNumericResultType startType endType) stateAfterCounter)
                 else
                     recordTargetType stateAfterBounds.CurrentScope counterExpr (classifyNumericResultType startType endType) stateAfterCounter
-            do! putState finalState
-            do! putState (pushLoop name finalState)
+            do! State.put finalState
+            do! State.put (pushLoop name finalState)
             do! resolveBlock mode body
-            let! stateAfterBody = getState
-            do! putState (popLoop stateAfterBody)
+            let! stateAfterBody = State.get
+            do! State.put (popLoop stateAfterBody)
 
         | RepeatStmt(pos, name, body, closingName) ->
-            do! putState (validateClosingName "REPEAT loop" name closingName pos currentState)
-            let! currentState = getState
-            do! putState (pushLoop name currentState)
+            do! State.put (validateClosingName "REPEAT loop" name closingName pos currentState)
+            let! currentState = State.get
+            do! State.put (pushLoop name currentState)
             do! resolveBlock mode body
-            let! stateAfterBody = getState
-            do! putState (popLoop stateAfterBody)
+            let! stateAfterBody = State.get
+            do! State.put (popLoop stateAfterBody)
 
         | IfStmt(_, cond, thenBody, elseBody) ->
             do! resolveExpr mode cond
-            let! stateAfterCondition = getState
+            let! stateAfterCondition = State.get
             let condType, stateAfterTypeCheck = inferExprType stateAfterCondition cond
             let typedConditionState = recordExprType stateAfterCondition.CurrentScope cond condType stateAfterTypeCheck
             let stateWithCondition =
@@ -768,7 +768,7 @@ and private resolveStmt (mode: SymbolAddMode) (node: Stmt) : State<ProcessingSta
                     appendDiagnostic SemanticDiagnosticCode.InvalidCondition None (Some pos) $"Condition expression must be numeric at {pos.EditorLineNo}:{pos.Column}" typedConditionState
                 else
                     typedConditionState
-            do! putState stateWithCondition
+            do! State.put stateWithCondition
             do! resolveBlock mode thenBody
             match elseBody with
             | Some block -> do! resolveBlock mode block
@@ -776,7 +776,7 @@ and private resolveStmt (mode: SymbolAddMode) (node: Stmt) : State<ProcessingSta
 
         | SelectStmt(_, selector, clauses) ->
             do! resolveExpr mode selector
-            let! stateAfterSelector = getState
+            let! stateAfterSelector = State.get
             let selectorType, stateAfterSelectorType = inferExprType stateAfterSelector selector
             let selectorTypedState = recordExprType stateAfterSelector.CurrentScope selector selectorType stateAfterSelectorType
             let stateWithSelector =
@@ -785,15 +785,15 @@ and private resolveStmt (mode: SymbolAddMode) (node: Stmt) : State<ProcessingSta
                     appendDiagnostic SemanticDiagnosticCode.InvalidSelector None (Some pos) $"Selector expression cannot be void at {pos.EditorLineNo}:{pos.Column}" selectorTypedState
                 else
                     selectorTypedState
-            do! putState stateWithSelector
+            do! State.put stateWithSelector
             let rec resolveClauses remaining =
-                state {
+                monad {
                     match remaining with
                     | [] -> return ()
                     | SelectClause(_, clauseSelector, rangeExpr, body) :: tail ->
                         do! resolveExpr mode clauseSelector
                         do! resolveExpr mode rangeExpr
-                        let! stateAfterClauseExprs = getState
+                        let! stateAfterClauseExprs = State.get
                         let clauseType, afterClauseType = inferExprType stateAfterClauseExprs clauseSelector
                         let rangeType, afterRangeType = inferExprType afterClauseType rangeExpr
                         let typedClauseState =
@@ -809,7 +809,7 @@ and private resolveStmt (mode: SymbolAddMode) (node: Stmt) : State<ProcessingSta
                                 appendDiagnostic SemanticDiagnosticCode.InvalidSelectClause None (Some pos) $"SELECT range expression cannot be void at {pos.EditorLineNo}:{pos.Column}" typedClauseState
                             else
                                 typedClauseState
-                        do! putState validatedState
+                        do! State.put validatedState
                         match body with
                         | Some block -> do! resolveBlock mode block
                         | None -> ()
@@ -821,7 +821,7 @@ and private resolveStmt (mode: SymbolAddMode) (node: Stmt) : State<ProcessingSta
             match condition with
             | Some expr ->
                 do! resolveExpr mode expr
-                let! stateAfterCondition = getState
+                let! stateAfterCondition = State.get
                 let conditionType, nextState = inferExprType stateAfterCondition expr
                 let typedConditionState = recordExprType stateAfterCondition.CurrentScope expr conditionType nextState
                 let finalState =
@@ -830,7 +830,7 @@ and private resolveStmt (mode: SymbolAddMode) (node: Stmt) : State<ProcessingSta
                         appendDiagnostic SemanticDiagnosticCode.InvalidCondition None (Some pos) $"WHEN condition must be numeric at {pos.EditorLineNo}:{pos.Column}" typedConditionState
                     else
                         typedConditionState
-                do! putState finalState
+                do! State.put finalState
             | None -> ()
             do! resolveLineList mode body
 
@@ -839,7 +839,7 @@ and private resolveStmt (mode: SymbolAddMode) (node: Stmt) : State<ProcessingSta
             match value with
             | Some expr ->
                 do! resolveExpr mode expr
-                let! stateAfterValue = getState
+                let! stateAfterValue = State.get
                 let valueType, nextState = inferExprType stateAfterValue expr
                 let typedValueState = recordExprType stateAfterValue.CurrentScope expr valueType nextState
                 let finalState =
@@ -861,25 +861,25 @@ and private resolveStmt (mode: SymbolAddMode) (node: Stmt) : State<ProcessingSta
                         else
                             typedValueState
                     | _ -> typedValueState
-                do! putState finalState
+                do! State.put finalState
             | None ->
                 match node with
                 | ReturnStmt(pos, _) ->
                     match tryResolveSymbol currentState.CurrentScope currentState.CurrentScope currentState.SymTab with
                     | Some(_, FunctionSym _) ->
-                        do! putState (appendDiagnostic SemanticDiagnosticCode.InvalidReturn (Some currentState.CurrentScope) (Some pos) $"Function '{currentState.CurrentScope}' must return a value at {pos.EditorLineNo}:{pos.Column}" currentState)
+                        do! State.put (appendDiagnostic SemanticDiagnosticCode.InvalidReturn (Some currentState.CurrentScope) (Some pos) $"Function '{currentState.CurrentScope}' must return a value at {pos.EditorLineNo}:{pos.Column}" currentState)
                     | _ -> ()
                 | _ -> ()
 
         | ExitStmt(pos, name)
         | NextStmt(pos, name) ->
-            do! putState (validateLoopControl name pos currentState)
+            do! State.put (validateLoopControl name pos currentState)
 
         | Remark _ -> ()
     }
 
 let addToTable (mode: SymbolAddMode) (node: Ast) (_incomingState: ProcessingState) : State<ProcessingState, unit> =
-    state {
+    monad {
         let (Program(_, children)) = node
         // The semantic walk is intentionally split into two full-tree passes over
         // the same AST:
