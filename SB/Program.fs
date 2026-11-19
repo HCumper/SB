@@ -266,6 +266,24 @@ let main argv =
                         Console.WriteLine($"Generated C written to {settings.OutputFileName}")
                         Console.WriteLine($"Shared C runtime written to {headerPath} and {sourcePath}")
                     0
+                | "turboir"
+                | "turbo-ir"
+                | "ir" ->
+                    match generateTurboIrFromLoweredHir state hirProgram with
+                    | Result.Ok output ->
+                        for warning in output.Warnings do
+                            Console.Error.WriteLine($"Turbo IR warning: {warning}")
+                        File.WriteAllBytes(settings.OutputFileName, output.Bytes)
+                        let listingPath = HirTurboIrBackend.listingFileName settings.OutputFileName
+                        File.WriteAllText(listingPath, output.Listing)
+                        if settings.Verbose then
+                            Console.WriteLine($"Turbo IR written to {settings.OutputFileName} ({output.Bytes.Length} bytes)")
+                            Console.WriteLine($"Turbo IR listing written to {listingPath}")
+                        0
+                    | Result.Error errors ->
+                        Console.Error.WriteLine("Turbo IR generation failed:")
+                        errors |> List.iter (fun (error: string) -> Console.Error.WriteLine(error))
+                        1
                 | "dotnetexe"
                 | "dotnet-exe"
                 | "exe" ->
@@ -279,5 +297,5 @@ let main argv =
                         Console.Error.WriteLine(message : string)
                         1
                 | backend ->
-                    Console.Error.WriteLine($"Unknown backend '{backend}'. Supported backends: interpret, csharp, c, dotnetexe.")
+                    Console.Error.WriteLine($"Unknown backend '{backend}'. Supported backends: interpret, csharp, c, dotnetexe, turboir.")
                     1

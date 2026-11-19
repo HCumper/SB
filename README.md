@@ -41,7 +41,7 @@ Behavior:
 
 - `myprog` without an extension resolves to the first existing file among `myprog.bas`, `myprog.sb`, and `myprog.ssb`.
 - One argument always selects the `interpret` backend.
-- Two arguments infer the backend only for `.c` and `.cs` outputs.
+- Two arguments infer the backend only for `.c`, `.cs` and `.ir` (Turbo IR) outputs.
 - A bare output file name is written beside the input file; rooted paths or paths with directories are used as given.
 - Other settings not supplied on the command line come from `SB/appsettings.json`.
 
@@ -65,6 +65,7 @@ Backends:
 - `csharp` writes generated C# and copies `GeneratedRuntime.cs`, `SBRuntime.dll`, and `FSharp.Core.dll` beside it.
 - `c` writes generated C and copies `sbruntime_c.h` and `sbruntime_c.c` beside it.
 - `dotnetexe`, `dotnet-exe`, or `exe` generates C# internally and publishes a single-file `.NET` executable.
+- `turboir`, `turbo-ir`, or `ir` writes the binary intermediate stream read by the Turbo SuperBASIC compiler's QDOS code generator (see the Turbo IR specification), plus a readable listing beside it as `<output>.lst`. Constructs with no IR form are reported as errors, reduced-fidelity ones as warnings.
 
 Examples:
 
@@ -124,7 +125,7 @@ Important settings:
 - `AppSettings:InputFile` is the default source file.
 - `AppSettings:OutputFile` is the default generated output path.
 - `AppSettings:Verbose` prints diagnostics, symbol tables, HIR, and backend progress.
-- `AppSettings:Backend` selects `interpret`, `csharp`, `c`, or `dotnetexe` when not overridden.
+- `AppSettings:Backend` selects `interpret`, `csharp`, `c`, `dotnetexe`, or `turboir` when not overridden.
 - `AppSettings:RuntimeHost` selects `console` or `avalonia` for interpreter runs.
 - `AppSettings:SyntaxChecking` accepts `relaxed` or `rigorous`; unknown or blank values fall back to `relaxed`.
 - `AppSettings:ExecutionThrottle` can slow interpreter execution for host/UI responsiveness.
@@ -154,6 +155,7 @@ Important implementation files:
 - `SB/Interpreter.fs` - HIR interpreter.
 - `SB/HirCSharpBackend.fs` - HIR to C# backend.
 - `SB/HirCBackend.fs` - HIR to C backend.
+- `SB/HirTurboIrBackend.fs` - HIR to Turbo IR backend.
 - `SB/CSharpRuntime/GeneratedRuntime.cs` - runtime source copied beside generated C#.
 - `SB/CRuntime/sbruntime_c.h` and `SB/CRuntime/sbruntime_c.c` - runtime files copied beside generated C.
 

@@ -130,6 +130,7 @@ let private tryInferBackendFromOutput (output: string) =
     match (Path.GetExtension(output) |> fun ext -> if isNull ext then "" else ext.Trim().ToLowerInvariant()) with
     | ".c" -> Some "c"
     | ".cs" -> Some "csharp"
+    | ".ir" -> Some "turboir"
     | _ -> None
 
 let getSettings argv : RuntimeSettings =
@@ -603,6 +604,43 @@ let generateCSharpFromLoweredHir className hirProgram =
 
 let generateCFromLoweredHir programName hirProgram =
     HirCBackend.generateCFromHir programName hirProgram
+
+/// Turbo IR options from semantic analysis: the global IMPLICIT rule and MANIFEST values, which
+/// Turbo storage types and constant folding need but HIR does not carry.
+let turboIrOptionsFromState (state: ProcessingState) =
+    let rule = state.ImplicitTyping |> Map.tryFind globalScope
+
+    let manifestValue (valueText: string) =
+        match Int32.TryParse(valueText, Globalization.NumberStyles.Integer, Globalization.CultureInfo.InvariantCulture) with
+        | true, value -> Some(HIR.ConstInt value)
+        | _ ->
+            match Double.TryParse(valueText, Globalization.NumberStyles.Float, Globalization.CultureInfo.InvariantCulture) with
+            | true, value -> Some(HIR.ConstFloat value)
+            | _ -> None
+
+    let manifests =
+        match Map.tryFind globalScope state.SymTab with
+        | Some scope ->
+            scope.Symbols
+            |> Map.toList
+            |> List.choose (fun (name, symbol) ->
+                match symbol with
+                | ConstantSym constant ->
+                    constant.ValueText
+                    |> Option.bind manifestValue
+                    |> Option.map (fun value -> normalizeIdentifier name, value)
+                | _ -> None)
+            |> Map.ofList
+        | None -> Map.empty
+
+    { HirTurboIrBackend.defaultOptions with
+        ImplicitIntegers = rule |> Option.map _.Integers |> Option.defaultValue Set.empty
+        ImplicitReals = rule |> Option.map _.Reals |> Option.defaultValue Set.empty
+        ImplicitStrings = rule |> Option.map _.Strings |> Option.defaultValue Set.empty
+        ManifestConstants = manifests }
+
+let generateTurboIrFromLoweredHir (state: ProcessingState) hirProgram =
+    HirTurboIrBackend.generateTurboIrFromHir (turboIrOptionsFromState state) hirProgram
 
 let private formatHirLoweringErrorForRuntime (error: HirLoweringError) =
     let location =

@@ -18,6 +18,7 @@ The runtime is incomplete. Prefer making the interpreter correct and well-tested
 - interprets core control flow including `GOTO`, `GOSUB`, `RETURN`, `ON GOTO`, and `ON GOSUB`
 - generates alternate C# from lowered HIR
 - generates alternate plain C from lowered HIR
+- generates the Turbo SuperBASIC compiler's binary IR stream from lowered HIR
 - generates a published `.NET` executable from lowered HIR
 - shares some built-in/runtime behavior through `SBRuntime`
 
@@ -56,6 +57,7 @@ The runtime is incomplete. Prefer making the interpreter correct and well-tested
 - `SB/BuiltIns.fs` - built-in name/signature model
 - `SB/HirCSharpBackend.fs` - HIR to C#
 - `SB/HirCBackend.fs` - HIR to C
+- `SB/HirTurboIrBackend.fs` - HIR to Turbo IR (binary stream plus listing)
 - `SB/CSharpRuntime/GeneratedRuntime.cs` - runtime source copied beside generated C#
 - `SB/CRuntime/sbruntime_c.h` - shared C runtime header copied beside generated C
 - `SB/CRuntime/sbruntime_c.c` - shared C runtime source copied beside generated C
@@ -83,7 +85,7 @@ Rules:
 
 - input without an extension resolves to the first existing file among `.bas`, `.sb`, and `.ssb`
 - one argument selects `interpret`
-- two arguments infer `c` for `.c` output and `csharp` for `.cs` output
+- two arguments infer `c` for `.c` output, `csharp` for `.cs` output and `turboir` for `.ir` output
 - a bare output file name is written beside the input file
 - rooted output paths or paths with directories are used as given
 
@@ -99,6 +101,7 @@ Backends:
 - `csharp` - lower to HIR, write generated C#, and copy `GeneratedRuntime.cs`, `SBRuntime.dll`, and `FSharp.Core.dll`
 - `c` - lower to HIR, write generated C, and copy `sbruntime_c.h` and `sbruntime_c.c`
 - `dotnetexe`, `dotnet-exe`, `exe` - generate C# internally and publish a single-file `.NET` executable
+- `turboir`, `turbo-ir`, `ir` - write the Turbo IR stream to the output file and a listing to `<output>.lst`
 
 Runtime hosts:
 

@@ -20,6 +20,7 @@
         <Compile Include="HIRPrettyPrinter.fs" />
         <Compile Include="HirCBackend.fs" />
         <Compile Include="HirCSharpBackend.fs" />
+        <Compile Include="HirTurboIrBackend.fs" />
         <Compile Include="SyntaxAst.fs" />
         <Compile Include="Interpreter.fs" />
         <Compile Include="AstDiagnostics.fs" />
