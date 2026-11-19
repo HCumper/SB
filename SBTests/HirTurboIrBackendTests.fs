@@ -120,9 +120,9 @@ let private testSettings inputFile =
       AppName = "Test"
       Logger = LoggerConfiguration().CreateLogger() }
 
-let private lowerSource (text: string) =
+let private lowerFile (bytes: byte[]) =
     let path = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.bas")
-    File.WriteAllText(path, text)
+    File.WriteAllBytes(path, bytes)
     try
         match loadAstFromInput (testSettings path) with
         | Result.Error error -> failwith $"Parsing failed: %A{error}"
@@ -135,6 +135,8 @@ let private lowerSource (text: string) =
             | Result.Ok hir -> state, hir
     finally
         File.Delete path
+
+let private lowerSource (text: string) = lowerFile (Text.Encoding.UTF8.GetBytes text)
 
 let private expectOk result =
     match result with
@@ -468,6 +470,68 @@ let ``string slices, character stores and LEN lower to 175, 176, 375 and 270`` (
     """ (body output)
 
 [<Test>]
+let ``open-ended slices and slices of array elements lower to 175`` () =
+    // x$(3 TO), c$(i)(a TO b), c$(i, a TO b) and c$(i)(a TO), in the program and in a routine.
+    let output = compile (source """
+        10 DIM c$(3,10)
+        20 c$(1) = "Hello"
+        30 x$ = "abcdef"
+        40 PRINT x$(3 TO), c$(1)(2 TO 4), c$(1, 1 TO 2), c$(1)(3 TO)
+        50 show
+        60 DEFine PROCedure show
+        70 PRINT c$(1)(2 TO 3)
+        80 END DEFine
+    """)
+
+    assertLines """
+        106 3
+        106 10
+        190 0 1 ; C$
+        106 1
+        169 "Hello"
+        182 1 ; C$
+        169 "abcdef"
+        264 2 ; X$
+        106 1
+        281
+        106 3
+        263
+        175 2 ; X$
+        186
+        201
+        106 1
+        106 2
+        106 4
+        175 1 ; C$
+        186
+        201
+        106 1
+        106 1
+        106 2
+        175 1 ; C$
+        186
+        201
+        106 1
+        106 3
+        263
+        175 1 ; C$
+        186
+        203
+        236 65533 ; SHOW
+        220
+        65533: ; DEFine PROCedure SHOW
+        106 1
+        281
+        106 1
+        106 2
+        106 3
+        175 1 ; C$
+        186
+        203
+        244
+    """ (body output)
+
+[<Test>]
 let ``arrays are DIMmed at program start and indexed with typed templates`` () =
     let output = compile (source """
         10 DIM a%(5), m(2,3), n$(4,12)
@@ -525,13 +589,61 @@ let ``arrays are DIMmed at program start and indexed with typed templates`` () =
     assertLines """
         10001: ; first initialisation: windows, arrays, strings
         247 1 0 0 2 7 256 202 256 0 ; window #1
-        247 2 0 0 0 7 256 202 0 0 ; window #2
+        247 2 0 0 7 2 256 202 0 0 ; window #2
         247 0 0 0 0 4 512 50 0 206 ; window #0
         234 1 1 ; A%
         234 2 2 ; M
         234 2 3 ; N$
         242 10005
     """ (section "10001:" "242 10005" output)
+
+[<Test>]
+let ``DIM runs where it stands, with computed bounds and string lengths`` () =
+    // Parse_key_Decl (P 24146-24254): each bound is an integer expression; DIM c$(20) is
+    // 253 with a one-bound descriptor, LOCal s$(12) is 249, LOCal t(k) is 147.
+    let output = compile (source """
+        10 n = 5
+        20 DIM a(n), c$(20)
+        30 show 4
+        40 DEFine PROCedure show(k)
+        50   LOCal t(k), s$(12)
+        60   t(1) = k : s$ = "x"
+        70 END DEFine
+    """)
+
+    assertLines """
+        377 2051 20480 ; 5
+        150 3 ; N
+        141 3 ; N
+        334
+        158 0 1 ; A
+        106 20
+        253 2 ; C$
+        377 2051 16384 ; 4
+        236 65532 ; SHOW
+        220
+        65532: ; DEFine PROCedure SHOW
+        142 5 ; K
+        150 5 ; K
+        141 5 ; K
+        334
+        147 0 7 ; T
+        106 12
+        249 6 ; S$
+        106 1
+        141 5 ; K
+        144 7 ; T
+        169 "x"
+        264 6 ; S$
+        244
+    """ (body output)
+    assertLines """
+        234 1 1 ; A
+        234 1 2 ; C$
+        262 6 ; S$
+        234 1 7 ; T
+        242 10005
+    """ (section "234 1 1" "242 10005" output)
 
 [<Test>]
 let ``PRINT lowers items, commas, channels and a kept cursor`` () =
@@ -574,6 +686,148 @@ let ``PRINT lowers items, commas, channels and a kept cursor`` () =
         186
         203
         220
+    """ (body output)
+
+[<Test>]
+let ``PRINT keeps '!' and TO as 204 and 205`` () =
+    // As Decode_Print_Input (P 21798-21810): TO takes the column then 205 and swallows the
+    // separator after it; a trailing '!' emits nothing but still keeps the cursor.
+    let output = compile (source """
+        10 PRINT "a"!"b"
+        20 PRINT "ab" TO 6;"x"
+        30 PRINT TO 3,"y"
+        40 PRINT "p"!
+        50 PRINT "z" TO 4
+    """)
+
+    assertLines """
+        106 1
+        281
+        169 "a"
+        186
+        204
+        169 "b"
+        186
+        203
+        106 1
+        281
+        169 "ab"
+        186
+        106 6
+        205
+        169 "x"
+        186
+        203
+        106 1
+        281
+        106 3
+        205
+        169 "y"
+        186
+        203
+        106 1
+        281
+        169 "p"
+        186
+        106 1
+        281
+        169 "z"
+        186
+        106 4
+        205
+        220
+    """ (body output)
+
+[<Test>]
+let ``== lowers to the almost-equal comparisons 75, 43 and 11`` () =
+    let output = compile (source """
+        10 a$ = "abc" : b = 1.00000001 : i% = 3
+        20 PRINT a$ == "ABC"
+        30 PRINT b == 1
+        40 PRINT i% == 3
+    """)
+
+    assertLines """
+        169 "abc"
+        264 1 ; A$
+        138 2049 16384 11 ; 1.00000001
+        150 2 ; B
+        106 3
+        118 3 ; I%
+        106 1
+        281
+        265 1 ; A$
+        169 "ABC"
+        75
+        310
+        186
+        203
+        106 1
+        281
+        141 2 ; B
+        377 2049 16384 ; 1
+        43
+        310
+        186
+        203
+        106 1
+        281
+        109 3 ; I%
+        106 3
+        11
+        310
+        186
+        203
+        220
+    """ (body output)
+
+[<Test>]
+let ``whole arrays pass by reference and an omitted argument gets the empty value`` () =
+    // An indexed formal is a reference (294) and the array actual pushes its vector (246); the
+    // omitted middle argument is the float formal's empty value, 376 0 (P 21302-21322).
+    let output = compile (source """
+        10 DIM a(3)
+        20 fill a
+        30 PRINT DIMN(a)
+        40 test 1,,3
+        50 DEFine PROCedure fill(x)
+        60   x(1) = 7
+        70 END DEFine
+        80 DEFine PROCedure test(p,q,r)
+        90 END DEFine
+    """)
+
+    assertLines """
+        106 3
+        158 0 1 ; A
+        246 1 ; A
+        236 65534 ; FILL
+        106 1
+        281
+        106 1
+        266 1 0 ; A
+        312
+        186
+        203
+        377 2049 16384 ; 1
+        376 0
+        377 2050 24576 ; 3
+        236 65532 ; TEST
+        220
+        65534: ; DEFine PROCedure FILL
+        294 3 ; X
+        106 1
+        377 2051 28672 ; 7
+        144 3 ; X
+        244
+        65532: ; DEFine PROCedure TEST
+        142 7 ; R
+        150 7 ; R
+        142 6 ; Q
+        150 6 ; Q
+        142 5 ; P
+        150 5 ; P
+        244
     """ (body output)
 
 [<Test>]
@@ -821,7 +1075,7 @@ let ``procedures and functions bind formals in reverse and declare locals`` () =
         255
         10001: ; first initialisation: windows, arrays, strings
         247 1 0 0 2 7 256 202 256 0 ; window #1
-        247 2 0 0 0 7 256 202 0 0 ; window #2
+        247 2 0 0 7 2 256 202 0 0 ; window #2
         247 0 0 0 0 4 512 50 0 206 ; window #0
         262 2 ; W$
         262 5 ; S$
@@ -1195,6 +1449,17 @@ let ``line numbers option emits 248 at each numbered line`` () =
     """ (body output)
 
 [<Test>]
+let ``a source file saved in the QL character set keeps its accented letters`` () =
+    // 10 PRINT "Se<0x96>or <0x60>" is not valid UTF-8, so it is read as QL text: o-acute and pound.
+    let ascii (text: string) = Text.Encoding.ASCII.GetBytes text
+    let bytes =
+        Array.concat [ ascii "10 PRINT \"Se"; [| 0x96uy |]; ascii "or "; [| 0x60uy |]; ascii "\"\n" ]
+    let state, hir = lowerFile bytes
+    let output = generateTurboIrFromHir (turboIrOptionsFromState state) hir |> expectOk
+
+    Assert.That(toHex output.Bytes, Does.Contain("00 A9 00 07 53 65 96 6F 72 20 60 00"))
+
+[<Test>]
 let ``string literals are written in the QL character set`` () =
     let output = compile (source "10 PRINT \"ó£é\"")
 
@@ -1202,11 +1467,10 @@ let ``string literals are written in the QL character set`` () =
     Assert.That(toHex output.Bytes, Does.Contain("00 A9 00 03 96 60 83 00"))
 
 [<Test>]
-let ``warnings name directives, extensions and lost separators`` () =
+let ``warnings name directives and extensions`` () =
     let output = compile (source """
         10 TURBO_taskn "demo"
         20 a$ = LEFT$("abc", 2)
-        30 LINE 0,0 TO 10,10
     """)
 
     assertLines """
@@ -1214,18 +1478,56 @@ let ``warnings name directives, extensions and lost separators`` () =
         106 2
         224 1 2 [11 03] ; LEFT$
         264 1 ; A$
+        220
+    """ (body output)
+    Assert.That(output.Warnings.Length, Is.EqualTo(2))
+    Assert.That(output.Warnings[0], Does.Contain("TURBO_taskn"))
+    Assert.That(output.Warnings[1], Does.Contain("'LEFT$' is not a QL ROM keyword"))
+
+[<Test>]
+let ``resident routine arguments keep TO, a leading TO and a later '#'`` () =
+    // Ad_Hoc_Para_List (P 21494-21566): each descriptor is separator * 16 + type, bit 7 for '#';
+    // the empty argument before a leading TO has type 0 and pushes nothing.
+    let output = compile (source """
+        10 LINE 0,0 TO 10,10
+        20 LINE TO 20,5
+        30 ARC TO 10,20,1.5
+        40 LINE #2,1,2 TO 3,4 TO 5,6
+        50 CLOSE #3,#4
+    """)
+
+    assertLines """
         250
         263
         263
         106 10
         106 10
-        227 3 [13 13 13 03] ; LINE
+        227 1 [13 53 13 03] ; LINE
+        250
+        106 20
+        106 5
+        227 1 [50 13 03] ; LINE
+        250
+        106 10
+        106 20
+        377 2049 24576 ; 1.5
+        227 2 [50 13 13 02] ; ARC
+        250
+        106 2
+        106 1
+        106 2
+        106 3
+        106 4
+        106 5
+        106 6
+        227 1 [93 13 53 13 53 13 03] ; LINE
+        250
+        106 3
+        106 4
+        227 3 [93 83] ; CLOSE
         220
     """ (body output)
-    Assert.That(output.Warnings.Length, Is.EqualTo(3))
-    Assert.That(output.Warnings[0], Does.Contain("TURBO_taskn"))
-    Assert.That(output.Warnings[1], Does.Contain("'LEFT$' is not a QL ROM keyword"))
-    Assert.That(output.Warnings[2], Does.Contain("LINE: SB's front end turns the TO separators"))
+    Assert.That(output.Warnings, Is.Empty)
 
 // ---------------------------------------------------------------------------
 // Constructs with no IR form are errors
@@ -1357,10 +1659,10 @@ let ``a whole program lowers to the exact stream`` () =
         326
         346
         106 5
+        126 0 5 ; SCORE%
+        106 5
         106 10
         190 0 3 ; NAME$
-        106 5
-        126 0 5 ; SCORE%
         263
         118 1 ; COUNT%
         2000: ; REPeat

@@ -63,6 +63,7 @@ let private lowerUnaryOp op =
     | "+" -> HirUnaryOp.Identity
     | "-" -> HirUnaryOp.Negate
     | "NOT" -> HirUnaryOp.BitwiseNot
+    | "#" -> HirUnaryOp.Hash
     | _ -> HirUnaryOp.UnaryUnknown op
 
 let private lowerBinaryOp op =
@@ -78,8 +79,8 @@ let private lowerBinaryOp op =
     | "AND" -> HirBinaryOp.BitwiseAnd
     | "OR" -> HirBinaryOp.BitwiseOr
     | "XOR" -> HirBinaryOp.BitwiseXor
-    | "="
-    | "==" -> HirBinaryOp.Equal
+    | "=" -> HirBinaryOp.Equal
+    | "==" -> HirBinaryOp.AlmostEqual
     | "<>" -> HirBinaryOp.NotEqual
     | "<" -> HirBinaryOp.LessThan
     | "<=" -> HirBinaryOp.LessThanOrEqual
@@ -99,17 +100,6 @@ let private lowerBuiltInKind name =
     | "ON-GOTO" -> BuiltInKind.OnGotoBuiltIn
     | "ON-GOSUB" -> BuiltInKind.OnGosubBuiltIn
     | normalized -> BuiltInKind.NamedBuiltIn normalized
-
-let private normalizeBuiltInArgs name args =
-    match normalizeIdentifier name with
-    | "LINE"
-    | "ARC"
-    | "ARC_R" ->
-        args
-        |> List.collect (function
-            | SliceRange(_, _, lhs, rhs) -> [ lhs; rhs ]
-            | expr -> [ expr ])
-    | _ -> args
 
 let private lowerLoopName = function
     | null
@@ -337,6 +327,15 @@ let private isEmptyIdentifier = function
     | PostfixName(_, _, "", None) -> true
     | _ -> false
 
+/// Subscripts ending in a TO range: an element of a string array, then a slice of it.
+let private endsWithSlice (args: Expr list) =
+    args.Length >= 2
+    && (match List.last args with
+        | SliceRange _ -> true
+        | _ -> false)
+
+let private sliceIndexes (args: Expr list) = List.take (args.Length - 1) args
+
 let private makeBuiltInFunctionCall ctx pos name hirType args =
     requireSymbolIdForName ctx ctx.CurrentScope name pos
     |> map (fun symbolId -> CallFunc(symbolId, args |> List.map ValueArg, hirType, pos))
@@ -460,6 +459,8 @@ let rec private lowerExpr ctx expr =
     match expr with
     | NumberLiteral(_, pos, value) -> ok (lowerLiteral pos value)
     | StringLiteral(_, pos, value) -> ok (lowerLiteral pos value)
+    | Identifier(_, pos, "")
+    | PostfixName(_, pos, "", None) -> ok (Missing pos)
     | Identifier(_, pos, name) ->
         match getRecordedResolvedSymbol ctx expr with
         | _ when shouldLowerDynamicStorage ctx expr name ->
@@ -475,6 +476,8 @@ let rec private lowerExpr ctx expr =
                         match Map.tryFind resolved.Name scope.Symbols with
                         | Some(FunctionSym _)
                         | Some(BuiltInSym _) -> ok (CallFunc(symbolId, [], hirType, pos))
+                        // A whole array (an argument such as DIMN(a)) reads as the array itself.
+                        | Some(ArraySym _) -> ok (ReadVar(symbolId, HirType.Array hirType, pos))
                         | _ -> ok (ReadVar(symbolId, hirType, pos))
                     | None -> ok (ReadVar(symbolId, hirType, pos))
                 | _ when normalizeIdentifier name = "DATE" ->
@@ -495,6 +498,8 @@ let rec private lowerExpr ctx expr =
                         match Map.tryFind resolved.Name scope.Symbols with
                         | Some(FunctionSym _)
                         | Some(BuiltInSym _) -> ok (CallFunc(symbolId, [], hirType, pos))
+                        // A whole array (an argument such as DIMN(a)) reads as the array itself.
+                        | Some(ArraySym _) -> ok (ReadVar(symbolId, HirType.Array hirType, pos))
                         | _ -> ok (ReadVar(symbolId, hirType, pos))
                     | None -> ok (ReadVar(symbolId, hirType, pos))
                 | _ when normalizeIdentifier name = "DATE" ->
@@ -520,11 +525,23 @@ let rec private lowerExpr ctx expr =
                         DynamicReadStringChar(normalizeIdentifier name, loweredIndex, hirType, pos)
                     else
                         DynamicReadArrayElem(normalizeIdentifier name, [ loweredIndex ], hirType, pos))
+            | _ when endsWithSlice args ->
+                // a$(i, s TO e), also written a$(i)(s TO e): a slice of one element.
+                zip (getRecordedExprType ctx expr) (sliceIndexes args |> List.map (lowerExpr ctx) |> collectResults)
+                |> bind (fun (hirType, loweredIndexes) ->
+                    lowerElementSlice ctx pos (DynamicReadArrayElem(normalizeIdentifier name, loweredIndexes, hirType, pos)) args)
             | _ ->
                 zip (getRecordedExprType ctx expr) (args |> List.map (lowerExpr ctx) |> collectResults)
                 |> map (fun (hirType, loweredIndexes) -> DynamicReadArrayElem(normalizeIdentifier name, loweredIndexes, hirType, pos))
         | _ ->
             match args with
+            | _ when endsWithSlice args
+                     && (match tryLookupResolvedSymbol ctx expr with
+                         | Some(ArraySym _) -> true
+                         | _ -> false) ->
+                zip (getRecordedExprType ctx expr) (zip (requireSymbolIdForExpr ctx expr name pos) (sliceIndexes args |> List.map (lowerExpr ctx) |> collectResults))
+                |> bind (fun (hirType, (symbolId, loweredIndexes)) ->
+                    lowerElementSlice ctx pos (ReadArrayElem(symbolId, loweredIndexes, hirType, pos)) args)
             | [ SliceRange(_, _, lhs, rhs) ] ->
                 zip (getRecordedExprType ctx expr) (requireSymbolIdForExpr ctx expr name pos)
                 |> bind (fun (hirType, symbolId) ->
@@ -605,6 +622,13 @@ let rec private lowerExpr ctx expr =
     | UnaryExpr(_, pos, op, inner) ->
         zip (getRecordedExprType ctx expr) (lowerExpr ctx inner)
         |> map (fun (hirType, lowered) -> Unary(lowerUnaryOp op, lowered, hirType, pos))
+
+/// The slice of an array element whose subscripts end in a TO range (see endsWithSlice).
+and private lowerElementSlice ctx pos baseExpr (args: Expr list) =
+    match List.last args with
+    | SliceRange(_, _, startExpr, endExpr) ->
+        lowerStringSliceFromBase ctx pos baseExpr startExpr (if isEmptyIdentifier endExpr then None else Some endExpr)
+    | _ -> unsupported ctx pos "an array slice without a TO range"
 
 and private lowerStringSliceFromBase ctx pos baseExpr startExpr endExprOpt =
     lowerExpr ctx startExpr
@@ -687,6 +711,10 @@ let private lowerCallArg ctx expr =
     | PostfixName(_, pos, name, Some args), Some(ArraySym _) ->
         zip (getRecordedExprType ctx expr) (zip (requireSymbolIdForExpr ctx expr name pos) (args |> List.map (lowerExpr ctx) |> collectResults))
         |> map (fun (hirType, (symbolId, loweredArgs)) -> RefArg(WriteArrayElem(symbolId, loweredArgs, hirType, pos)))
+    // A whole array goes by reference, as SuperBASIC passes it.
+    | (Identifier(_, pos, name) | PostfixName(_, pos, name, None)), Some(ArraySym _) ->
+        zip (getRecordedExprType ctx expr) (requireSymbolIdForExpr ctx expr name pos)
+        |> map (fun (elementType, symbolId) -> RefArg(WriteVar(symbolId, HirType.Array elementType, pos)))
     | _ ->
         lowerExpr ctx expr |> map ValueArg
 
@@ -709,11 +737,20 @@ let private lowerInputArgs ctx pos args =
     loop [] [] false args
 
 let rec private lowerStmt ctx stmt =
+    // DIM and LOCal bounds become Dim statements where they stand (see HIR.Dim). A name with no
+    // symbol, or a bound that does not lower, leaves its Dim out, as HIR did before it kept DIMs.
+    let lowerDimItems pos (items: (string * Expr list) list) =
+        items
+        |> List.choose (fun (name, dims) ->
+            match requireSymbolIdForName ctx ctx.CurrentScope name pos, lowerExprList ctx dims with
+            | Result.Ok symbolId, Result.Ok bounds when not bounds.IsEmpty -> Some(Dim(symbolId, bounds, pos))
+            | _ -> None)
     match stmt with
+    | DimStmt(pos, items) -> ok (lowerDimItems pos items)
+    | LocalStmt(pos, items) ->
+        ok (lowerDimItems pos (items |> List.choose (fun (name, dims) -> dims |> Option.map (fun bounds -> name, bounds))))
     | ProcedureDef _
     | FunctionDef _
-    | DimStmt _
-    | LocalStmt _
     | ImplicitStmt _
     | ManifestStmt _ -> ok []
     | ReferenceStmt(pos, exprs) ->
@@ -740,7 +777,7 @@ let rec private lowerStmt ctx stmt =
             |> map (fun (prompts, loweredTargets) -> [ Input(None, prompts, loweredTargets, pos) ])
         else
             if lowersToBuiltInCall ctx name then
-                lowerExprList ctx (normalizeBuiltInArgs name args)
+                lowerExprList ctx args
                 |> map (fun loweredArgs -> [ BuiltInCall(lowerBuiltInKind name, None, loweredArgs, pos) ])
             else
                 lowerCallArgList ctx args
@@ -754,7 +791,7 @@ let rec private lowerStmt ctx stmt =
                 lowerInputArgs ctx pos args
                 |> map (fun (prompts, loweredTargets) -> [ Input(Some(ExplicitChannel loweredChannel), prompts, loweredTargets, pos) ])
             elif lowersToBuiltInCall ctx name then
-                lowerExprList ctx (normalizeBuiltInArgs name args)
+                lowerExprList ctx args
                 |> map (fun loweredArgs -> [ BuiltInCall(lowerBuiltInKind name, Some(ExplicitChannel loweredChannel), loweredArgs, pos) ])
             else
                 lowerCallArgList ctx args
@@ -768,7 +805,7 @@ let rec private lowerStmt ctx stmt =
                 lowerInputArgs ctx pos args
                 |> map (fun (prompts, loweredTargets) -> [ Input(Some(ImplicitChannel loweredChannel), prompts, loweredTargets, pos) ])
             elif lowersToBuiltInCall ctx name then
-                lowerExprList ctx (normalizeBuiltInArgs name args)
+                lowerExprList ctx args
                 |> map (fun loweredArgs -> [ BuiltInCall(lowerBuiltInKind name, Some(ImplicitChannel loweredChannel), loweredArgs, pos) ])
             else
                 lowerCallArgList ctx args

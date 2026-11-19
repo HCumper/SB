@@ -343,7 +343,7 @@ let private prepareSource (inputFileName: string) : Result<PreparedSource, Parse
         if not (File.Exists(inputFileName)) then
             Result.Error(FileNotFound inputFileName)
         else
-            let sourceText = File.ReadAllText(inputFileName)
+            let sourceText = QlCharacterSet.readSourceText inputFileName
             let lines = sourceText.Replace("\r\n", "\n").Split('\n') |> Array.toList
             let kind = Ssb.classifySource lines
             let effectiveText =
@@ -583,7 +583,8 @@ let runSemanticAnalysis (astRoot: Ast) =
           ResolvedSymbols = Map.empty
           RoutineSymbols = Map.empty
           ParameterSymbols = Map.empty
-          ActiveLoops = [] }
+          ActiveLoops = []
+          WholeArrayArguments = Set.empty }
 
     let (finalState: ProcessingState, _) = State.run semanticAnalysisState initialState
     finalState

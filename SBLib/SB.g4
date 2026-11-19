@@ -145,7 +145,8 @@ arg: chanArg | expr;
 // Identifier / postfix forms
 // ============================================================
 
-postfixName: ID postfixArg?;
+// A second bracket group slices an element: c$(i)(a TO b) is c$(i, a TO b).
+postfixName: ID postfixArg? postfixArg?;
 
 postfixArg: LeftParen postfixArgList? RightParen;
 

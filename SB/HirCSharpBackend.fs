@@ -133,6 +133,7 @@ let private exprType = function
     | Unary(_, _, hirType, _)
     | Binary(_, _, _, hirType, _)
     | CallFunc(_, _, hirType, _) -> hirType
+    | Missing _ -> HirType.Void
 
 // ---- Block traversal ----
 //
@@ -351,10 +352,13 @@ and private emitBuiltInFunctionArgs ctx symbolId args =
     match normalizedName, args with
     | "DIMN", [ ValueArg(ReadVar(arraySymbol, HirType.Array _, _)); ValueArg dimensionExpr ] ->
         [ storageName ctx arraySymbol; emitExpr ctx dimensionExpr ]
+    | "DIMN", [ ValueArg(ReadVar(arraySymbol, HirType.Array _, _)) ] ->
+        [ storageName ctx arraySymbol ]
     | _ ->
         args |> List.map (emitBuiltInCallArg ctx)
 
 and private emitExpr ctx = function
+    | Missing _ -> "null"
     | Literal(ConstInt value, _, _) -> string value
     | Literal(ConstFloat value, _, _) -> emitFloatLiteral value
     | Literal(ConstString value, _, _) -> $"\"{escapeStringLiteral value}\""
@@ -374,7 +378,8 @@ and private emitExpr ctx = function
         emitInvocation "GetStringCharValue" [ $"{cellExpr}.Value"; emitExpr ctx index ]
     | Unary(op, inner, hirType, _) ->
         match op with
-        | Identity -> $"Identity({emitExpr ctx inner})"
+        | Identity
+        | Hash -> $"Identity({emitExpr ctx inner})"
         | Negate -> emitNumericResult hirType $"Negate({emitExpr ctx inner})"
         | BitwiseNot -> $"BitwiseNot({emitExpr ctx inner})"
         | UnaryUnknown name -> $"ApplyUnary(\"{name}\", {emitExpr ctx inner})"
@@ -394,6 +399,7 @@ and private emitExpr ctx = function
         | BitwiseOr -> $"BitwiseOr({left}, {right})"
         | BitwiseXor -> $"BitwiseXor({left}, {right})"
         | Equal -> $"CompareEqual({left}, {right})"
+        | AlmostEqual -> $"CompareAlmostEqual({left}, {right})"
         | NotEqual -> $"CompareNotEqual({left}, {right})"
         | LessThan -> $"CompareLessThan({left}, {right})"
         | LessThanOrEqual -> $"CompareLessThanOrEqual({left}, {right})"
@@ -896,6 +902,10 @@ and private emitStmtCore ctx builder level currentLine nextLine continueLabelOpt
             | Some(ExplicitChannel(expr: HirExpr))
             | Some(ImplicitChannel(expr: HirExpr)) -> emitExpr ctx expr
             | None -> "null"
+        let args =
+            match kind with
+            | NamedBuiltIn name when flattensRangeArguments name -> flattenRangeArguments args
+            | _ -> args
         let argsText = args |> List.map (emitExpr ctx)
         let kindName =
             match kind with
@@ -976,6 +986,8 @@ and private emitStmtCore ctx builder level currentLine nextLine continueLabelOpt
             appendLine builder level (emitTargetWriteValue ctx target (targetType target) valueExpr))
     | Remark(text, _) ->
         appendLine builder level $"// {text}"
+    // Storage is sized from the constant bounds at startup; DIM itself does nothing here.
+    | Dim _ -> ()
 
 and private emitStmt ctx builder level currentLine nextLine continueLabelOpt returnText gosubReturnCount lineNumbers enableErrorHandling stmtLabel stmt =
     // A structured statement whose body holds jump targets is emitted flat, and C# cannot jump into a

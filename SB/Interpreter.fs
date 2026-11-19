@@ -394,6 +394,8 @@ let private fromRuntimeBuiltInValue value =
 
 let private printContinueSentinel = "\uE000PRINT_CONTINUE\uE000"
 let private printCommaSentinel = "\uE000PRINT_COMMA\uE000"
+let private printPlingSentinel = "\uE000PRINT_PLING\uE000"
+let private printToSentinel = "\uE000PRINT_TO\uE000"
 
 let private formatOutputValue value = asString value
 
@@ -424,15 +426,28 @@ let private formatScreenPrintValues values =
         buffer.Append(text) |> ignore
         column <- column + text.Length
 
-    for value in values do
-        match value with
-        | StringValue sentinel when sentinel = printCommaSentinel ->
+    let rec loop remaining =
+        match remaining with
+        | [] -> ()
+        | StringValue sentinel :: rest when sentinel = printCommaSentinel ->
             let nextTabStop = ((column / 8) + 1) * 8
             let spaces = max 1 (nextTabStop - column)
             appendText (System.String(' ', spaces))
-        | _ ->
+            loop rest
+        | StringValue sentinel :: rest when sentinel = printPlingSentinel ->
+            // '!': a space, except at the start of a line.
+            if column > 0 then appendText " "
+            loop rest
+        | StringValue sentinel :: target :: rest when sentinel = printToSentinel ->
+            // 'TO n': move on to column n (0-based); nothing if the cursor is already past it.
+            let targetColumn = asInt target
+            if targetColumn > column then appendText (System.String(' ', targetColumn - column))
+            loop rest
+        | value :: rest ->
             appendText (formatScreenOutputValue value)
+            loop rest
 
+    loop values
     buffer.ToString()
 
 let private lookupCell state symbolId =
@@ -803,6 +818,8 @@ let private popFrame state =
 
 let rec private evalExpr state expr =
     match expr with
+    // The interpreter has no unset value, so an omitted argument reads as 0.
+    | Missing _ -> Result.Ok(IntValue 0, state)
     | Literal(ConstInt n, _, _) -> Result.Ok(IntValue n, state)
     | Literal(ConstFloat n, _, _) -> Result.Ok(FloatValue n, state)
     | Literal(ConstString s, _, _) -> Result.Ok(StringValue s, state)
@@ -849,7 +866,8 @@ let rec private evalExpr state expr =
         |> Result.map (fun (value, nextState) ->
             let result =
                 match op with
-                | Identity -> value
+                | Identity
+                | Hash -> value
                 | Negate -> makeNumericValue hirType (-normalizeNumber value)
                 | BitwiseNot -> IntValue(~~~(asInt value))
                 | UnaryUnknown _ -> value
@@ -879,6 +897,12 @@ let rec private evalExpr state expr =
                         | StringValue _, _
                         | _, StringValue _ -> compareStrings (=)
                         | _ -> compareNumbers (=)
+                    | AlmostEqual ->
+                        match leftValue, rightValue with
+                        | StringValue _, _
+                        | _, StringValue _ -> compareStrings RuntimeValues.almostEqualStrings
+                        | IntValue _, IntValue _ -> compareNumbers (=)
+                        | _ -> compareNumbers RuntimeValues.almostEqualFloats
                     | NotEqual ->
                         match leftValue, rightValue with
                         | StringValue _, _
@@ -968,10 +992,14 @@ and private evalBuiltInFunction state symbolId argExprs hirType pos =
             Result.Ok(IntValue(if nextState.Options.Host.Sound.IsBeeping() then 1 else 0), nextState)
         | "BEEPING", _ ->
             runtimeError BuiltInArityMismatch (Some pos) $"Built-in function '{name}' expects zero arguments."
-        | "DIMN", [ arrayValue; dimensionValue ] ->
+        // DIMN(array) is DIMN(array, 1).
+        | "DIMN", arrayValue :: dimensionValues when dimensionValues.Length <= 1 ->
             match arrayValue with
             | ArrayValue _ ->
-                let requestedDimension = asInt dimensionValue
+                let requestedDimension =
+                    match dimensionValues with
+                    | [ dimensionValue ] -> asInt dimensionValue
+                    | _ -> 1
                 let dimensions = getArrayDimensions arrayValue
                 let value =
                     if requestedDimension >= 1 && requestedDimension <= dimensions.Length then
@@ -982,7 +1010,7 @@ and private evalBuiltInFunction state symbolId argExprs hirType pos =
             | _ ->
                 runtimeError BuiltInUnsupportedArguments (Some pos) $"Built-in function '{name}' requires an array as its first argument."
         | "DIMN", _ ->
-            runtimeError BuiltInArityMismatch (Some pos) $"Built-in function '{name}' expects two arguments."
+            runtimeError BuiltInArityMismatch (Some pos) $"Built-in function '{name}' expects one or two arguments."
         | ("PEEK" | "PEEK_W" | "PEEK_L"), [ addressValue ] ->
             peekMemory nextState pos name (asInt addressValue)
         | ("PEEK" | "PEEK_W" | "PEEK_L"), _ ->
@@ -1119,6 +1147,9 @@ and private callRoutine state (routine: HirRoutine) args pos =
         | FlexibleBinding, RefArg target ->
             resolveTargetCell currentState target
             |> Result.map (fun (cell, nextState) -> (parameter.Storage.Symbol, cell), nextState)
+        // An omitted argument (PROC a,,b) leaves the formal at its type's empty value.
+        | _, ValueArg(Missing _) ->
+            Result.Ok((parameter.Storage.Symbol, { Value = defaultValue parameter.Storage.Type parameter.Storage.Dimensions }), currentState)
         | ReferenceBinding, ValueArg _ ->
             runtimeError InvalidReferenceActual (Some parameter.Storage.Position) $"Parameter '{parameter.Storage.Name}' requires a writable argument."
         | FlexibleBinding, ValueArg expr ->
@@ -1250,6 +1281,7 @@ and private executeBuiltInCall state kind channel args targets pos =
     | Reference -> Result.Ok(Continue, state)
     | NamedBuiltIn name ->
         let normalized = normalizeIdentifier name
+        let args = if flattensRangeArguments normalized then flattenRangeArguments args else args
         let unsupportedChannel () =
             match channel with
             | Some _ -> runtimeError UnsupportedChannelExecution (Some pos) $"Built-in '{name}' does not support channel execution in the interpreter yet."
@@ -2376,6 +2408,8 @@ and private executeStmt resolveLine gosubStack state stmt =
                 | None -> runtimeError ReadPastData (Some pos) "READ moved past the end of DATA."
         assign state targets
     | Remark _ -> Result.Ok(Continue, state)
+    // Storage is sized from the constant bounds at startup; DIM itself does nothing here.
+    | Dim _ -> Result.Ok(Continue, state)
 
 and private findNextLineNumber block pc inheritedNextLine =
     block

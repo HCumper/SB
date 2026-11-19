@@ -281,7 +281,8 @@ module Ssb =
         if not (File.Exists(inputFile)) then
             raise (FatalSsbError(sprintf "File not found: %s" inputFile))
 
-        use reader = new StreamReader(inputFile)
+        // Read through QlCharacterSet so QL-native files keep their accented letters.
+        use reader = new StreamReader(new MemoryStream(Text.Encoding.UTF8.GetBytes(QlCharacterSet.readSourceText inputFile)), Text.Encoding.UTF8)
 
         while not reader.EndOfStream do
             let mutable line = reader.ReadLine()
@@ -359,7 +360,8 @@ module Ssb =
         if not (File.Exists(inputFile)) then
             raise (FatalSsbError(sprintf "File not found: %s" inputFile))
 
-        use reader = new StreamReader(inputFile)
+        // Read through QlCharacterSet so QL-native files keep their accented letters.
+        use reader = new StreamReader(new MemoryStream(Text.Encoding.UTF8.GetBytes(QlCharacterSet.readSourceText inputFile)), Text.Encoding.UTF8)
 
         while not reader.EndOfStream do
             let mutable line = reader.ReadLine()

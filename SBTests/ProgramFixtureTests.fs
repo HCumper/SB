@@ -56,7 +56,8 @@ let private analyzeAst ast =
           ResolvedSymbols = Map.empty
           RoutineSymbols = Map.empty
           ParameterSymbols = Map.empty
-          ActiveLoops = [] }
+          ActiveLoops = []
+          WholeArrayArguments = Set.empty }
 
     let seededState = prePopulateSymbolTable initialState
     let (_, analyzedState) = State.run (addToTable Overwrite ast seededState) seededState

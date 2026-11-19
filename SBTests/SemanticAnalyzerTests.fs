@@ -40,7 +40,8 @@ let private analyzeProgram (input: string) =
           ResolvedSymbols = Map.empty
           RoutineSymbols = Map.empty
           ParameterSymbols = Map.empty
-          ActiveLoops = [] }
+          ActiveLoops = []
+          WholeArrayArguments = Set.empty }
 
     let seededState = prePopulateSymbolTable initialState
     let (_, analyzedState) = State.run (addToTable Overwrite ast seededState) seededState
@@ -654,6 +655,20 @@ let ``array scalar use is rejected`` () =
         analyzeProgram "10 DIM score(10)\n20 PRINT score\n"
 
     Assert.That(analyzed.Errors, Has.Some.Contains("Array 'score' used without index"))
+
+[<Test>]
+let ``whole arrays can be passed to routines and indexed through a formal`` () =
+    let analyzed =
+        analyzeProgram "10 DIM a(3)\n20 fill a\n30 PRINT DIMN(a), total(a)\n40 DEFine PROCedure fill(x)\n50 x(1) = 7\n60 END DEFine\n70 DEFine FuNction total(y)\n80 RETurn y(1)\n90 END DEFine\n"
+
+    Assert.That(analyzed.Errors, Is.Empty)
+
+[<Test>]
+let ``an omitted argument between separators still counts towards the arity`` () =
+    let analyzed =
+        analyzeProgram "10 test 1,,3\n20 DEFine PROCedure test(p,q,r)\n30 END DEFine\n"
+
+    Assert.That(analyzed.Errors, Is.Empty)
 
 [<Test>]
 let ``procedure call arity is validated from declared parameters`` () =

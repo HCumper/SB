@@ -80,6 +80,7 @@ Value bitwise_and_value(Value left, Value right);
 Value bitwise_or_value(Value left, Value right);
 Value bitwise_xor_value(Value left, Value right);
 Value compare_equal(Value left, Value right);
+Value compare_almost_equal(Value left, Value right);
 Value compare_not_equal(Value left, Value right);
 Value compare_less_than(Value left, Value right);
 Value compare_less_than_or_equal(Value left, Value right);

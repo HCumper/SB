@@ -624,6 +624,59 @@ let ``interpreter string postfix slices support bounded and open ended ranges`` 
     Assert.That(String.concat "|" output, Is.EqualTo("05|Jan"))
 
 [<Test>]
+let ``interpreter slices string array elements in both SuperBASIC forms`` () =
+    let ast =
+        parseProgram
+            "10 DIM c$(3,10)\n20 c$(1) = \"Hello\"\n30 PRINT c$(1)(2 TO 4)\n40 PRINT c$(1, 1 TO 2)\n50 PRINT c$(1)(3 TO)\n"
+
+    let output = runProgram ast
+
+    Assert.That(String.concat "|" output, Is.EqualTo("ell|He|llo"))
+
+[<Test>]
+let ``interpreter prints the pling and TO separators`` () =
+    let ast =
+        parseProgram
+            "10 PRINT \"a\"!\"b\"!\"c\"\n20 PRINT \"ab\" TO 6;\"x\"\n30 PRINT TO 3,\"y\"\n40 PRINT \"p\"!\n50 PRINT \"q\"\n60 PRINT 1,2!3\n70 PRINT \"z\" TO 4\n80 PRINT \"w\"\n"
+
+    let output = runProgram ast
+
+    // The test host records each PRINT as one line, so the cursor kept by a trailing '!' or
+    // 'TO n' shows only as the padding written before it.
+    Assert.That(String.concat "|" output, Is.EqualTo("a b c|ab    x|   y|p|q|1       2 3|z   |w"))
+
+[<Test>]
+let ``interpreter passes whole arrays by reference and leaves an omitted argument empty`` () =
+    let ast =
+        parseProgram
+            "10 DIM a(3)\n20 fill a\n30 PRINT a(1)\n40 PRINT DIMN(a)\n50 PRINT total(a)\n60 test 1,,\"c\"\n70 DEFine PROCedure fill(x)\n80 x(1) = 7\n90 END DEFine\n100 DEFine FuNction total(y)\n110 RETurn y(1) + DIMN(y)\n120 END DEFine\n130 DEFine PROCedure test(p,q$,r$)\n140 PRINT p\n150 PRINT \"[\" & q$ & \"]\"\n160 PRINT r$\n170 END DEFine\n"
+
+    let output = runProgram ast
+
+    Assert.That(String.concat "|" output, Is.EqualTo("7|3|10|1|[]|c"))
+
+[<Test>]
+let ``interpreter == ignores case and tolerates float rounding where = does not`` () =
+    let ast =
+        parseProgram
+            "10 a$ = \"abc\" : b = 1.00000001 : i% = 3\n20 PRINT a$ == \"ABC\"\n30 PRINT a$ = \"ABC\"\n40 PRINT b == 1\n50 PRINT b = 1\n60 PRINT b == 1.001\n70 PRINT i% == 3\n80 PRINT \"Q\" == \"q\"\n"
+
+    let output = runProgram ast
+
+    Assert.That(String.concat "|" output, Is.EqualTo("1|0|1|0|0|1|1"))
+
+[<Test>]
+let ``almost equal floats follow Turbo's 127-unit mantissa tolerance`` () =
+    // 127 units of a 31-bit mantissa: about 1.18e-7 from 1.0 up to 2.0, twice that from 2.0.
+    Assert.That(RuntimeValues.almostEqualFloats 1.0 (1.0 + 1.1e-7), Is.True)
+    Assert.That(RuntimeValues.almostEqualFloats 1.0 (1.0 + 1.3e-7), Is.False)
+    Assert.That(RuntimeValues.almostEqualFloats 2.0 (2.0 + 2.3e-7), Is.True)
+    Assert.That(RuntimeValues.almostEqualFloats 2.0 (2.0 + 2.5e-7), Is.False)
+    Assert.That(RuntimeValues.almostEqualFloats 0.0 1e-300, Is.False)
+    Assert.That(RuntimeValues.almostEqualFloats 1e-8 (-1e-8), Is.False)
+    Assert.That(RuntimeValues.almostEqualFloats 0.0 0.0, Is.True)
+
+[<Test>]
 let ``runtime time and string helper built ins return expected values`` () =
     let evaluate name args =
         BuiltInFunctions.evaluate

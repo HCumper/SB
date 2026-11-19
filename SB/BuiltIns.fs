@@ -120,7 +120,6 @@ let private fixedArityBuiltIns =
       "COS", 1
       "COT", 1
       "DEG", 1
-      "DIMN", 2
       "EOF", 1
       "ERLIN", 0
       "ERNUM", 0
@@ -204,7 +203,8 @@ let private builtInSignatures =
       signature "DATE$" None None
       signature "DAY$" None None
       signature "DEG" (Some 1) (Some [ Numeric ])
-      signature "DIMN" (Some 2) None
+      // DIMN(array) is DIMN(array, 1).
+      signature "DIMN" None None
       signature "EOF" (Some 1) (Some [ Numeric ])
       signature "ERLIN" (Some 0) (Some [])
       signature "ERNUM" (Some 0) (Some [])

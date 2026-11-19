@@ -502,12 +502,13 @@ let ``lowerToHir uses reference args for array element actuals`` () =
     match hir.Main with
     | [ LineNumber(10, _)
         LineNumber(20, _)
+        Dim(_, [ Literal(ConstInt 5, HirType.Int, _) ], _)
         LineNumber(30, _)
         ProcCall(_, None, [ RefArg(WriteArrayElem(_, [ Literal(ConstInt 1, HirType.Int, _) ], _, _)) ], _) ] -> ()
     | other -> Assert.Fail($"Unexpected lowered main for array-element ref arg: %A{other}")
 
 [<Test>]
-let ``lowerToHir expands line to syntax into four built in arguments`` () =
+let ``lowerToHir keeps LINE's TO for Turbo and flattens it for SB's own backends`` () =
     let ast =
         Program(
             pos,
@@ -538,11 +539,13 @@ let ``lowerToHir expands line to syntax into four built in arguments`` () =
         BuiltInCall(
             NamedBuiltIn "LINE",
             None,
-            [ ReadVar(_, _, _)
-              ReadVar(_, _, _)
-              ReadVar(_, _, _)
-              Binary(Subtract, ReadVar(_, _, _), ReadVar(_, _, _), _, _) ],
-            _) ] -> ()
+            ([ ReadVar(_, _, _)
+               Binary(SliceRange, ReadVar(_, _, _), ReadVar(_, _, _), _, _)
+               Binary(Subtract, ReadVar(_, _, _), ReadVar(_, _, _), _, _) ] as args),
+            _) ] ->
+        match flattenRangeArguments args with
+        | [ ReadVar(_, _, _); ReadVar(_, _, _); ReadVar(_, _, _); Binary(Subtract, _, _, _, _) ] -> ()
+        | other -> Assert.Fail($"Unexpected flattened LINE arguments: %A{other}")
     | other -> Assert.Fail($"Unexpected lowered LINE HIR: %A{other}")
 
 [<Test>]

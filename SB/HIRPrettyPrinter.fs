@@ -47,6 +47,7 @@ let private formatUnaryOp = function
     | Identity -> "+"
     | Negate -> "-"
     | BitwiseNot -> "NOT"
+    | Hash -> "#"
     | UnaryUnknown value -> value
 
 let private formatBinaryOp = function
@@ -62,6 +63,7 @@ let private formatBinaryOp = function
     | BitwiseOr -> "OR"
     | BitwiseXor -> "XOR"
     | Equal -> "="
+    | AlmostEqual -> "=="
     | NotEqual -> "<>"
     | LessThan -> "<"
     | LessThanOrEqual -> "<="
@@ -87,6 +89,7 @@ let private formatLoopName = function
 
 let rec private formatExpr expr =
     match expr with
+    | Missing _ -> "<missing>"
     | Literal(value, _, _) -> formatConst value
     | ReadVar(symbolId, hirType, _) -> $"{formatSymbolId symbolId}:{formatType hirType}"
     | ReadArrayElem(symbolId, args, hirType, _) ->
@@ -210,6 +213,9 @@ and private appendStmt (builder: StringBuilder) level stmt =
         appendLine builder level $"Read [{formatTargetList targets}] @{formatPosition pos}"
     | Remark(text, pos) ->
         appendLine builder level $"Remark {text} @{formatPosition pos}"
+    | Dim(symbolId, bounds, pos) ->
+        let boundsText = bounds |> List.map formatExpr |> String.concat ", "
+        appendLine builder level $"Dim {formatSymbolId symbolId}({boundsText}) @{formatPosition pos}"
 
 let private appendStorage (builder: StringBuilder) level (storage: HirStorage) =
     appendLine builder level $"{formatSymbolId storage.Symbol} {storage.Name} {formatType storage.Type} {formatStorageClass storage.Class} {formatSlotId storage.Slot} @{formatPosition storage.Position}"

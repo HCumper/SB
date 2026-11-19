@@ -348,6 +348,46 @@ let ``generated c executable runs simple print program`` () =
     Assert.That(stdout.Trim(), Is.EqualTo("3"))
 
 [<Test>]
+let ``generated c executable prints the comma, pling and TO separators`` () =
+    let exitCode, stdout, stderr =
+        generateCompileAndRun "10 PRINT \"a\"!\"b\"\n20 PRINT \"ab\" TO 6;\"x\"\n30 PRINT 1,2\n40 PRINT \"p\";\n50 PRINT \"q\"\n60 STOP\n" None
+
+    Assert.That(exitCode, Is.EqualTo(0), stderr)
+    Assert.That(stdout.Replace("\r\n", "\n"), Is.EqualTo("a b\nab    x\n1       2\npq\n"))
+
+[<Test>]
+let ``generated c executable compares with == ignoring case and float rounding`` () =
+    let exitCode, stdout, stderr =
+        generateCompileAndRun "10 a$ = \"abc\" : b = 1.00000001 : i% = 3\n20 PRINT a$ == \"ABC\"\n30 PRINT a$ = \"ABC\"\n40 PRINT b == 1\n50 PRINT b == 1.001\n60 PRINT i% == 3\n70 STOP\n" None
+
+    Assert.That(exitCode, Is.EqualTo(0), stderr)
+    Assert.That(stdout.Replace("\r\n", "\n"), Is.EqualTo("1\n0\n1\n0\n1\n"))
+
+[<Test>]
+let ``generated c executable keeps an omitted argument's place`` () =
+    let exitCode, stdout, stderr =
+        generateCompileAndRun "10 test 1,,3\n20 STOP\n30 DEFine PROCedure test(p,q,r)\n40 PRINT p\n50 PRINT r\n60 END DEFine\n" None
+
+    Assert.That(exitCode, Is.EqualTo(0), stderr)
+    Assert.That(stdout.Replace("\r\n", "\n"), Is.EqualTo("1\n3\n"))
+
+[<Test>]
+let ``generated c executable passes whole arrays to procedures and functions`` () =
+    let exitCode, stdout, stderr =
+        generateCompileAndRun "10 DIM a(3)\n20 fill a\n30 PRINT a(1)\n40 PRINT total(a)\n50 STOP\n60 DEFine PROCedure fill(x)\n70 x(1) = 7\n80 END DEFine\n90 DEFine FuNction total(y)\n100 RETurn y(1) * 2\n110 END DEFine\n" None
+
+    Assert.That(exitCode, Is.EqualTo(0), stderr)
+    Assert.That(stdout.Replace("\r\n", "\n"), Is.EqualTo("7\n14\n"))
+
+[<Test>]
+let ``generated c executable takes DIMN with or without a dimension`` () =
+    let exitCode, stdout, stderr =
+        generateCompileAndRun "10 DIM a(3,5)\n20 PRINT DIMN(a)\n30 PRINT DIMN(a,2)\n40 STOP\n" None
+
+    Assert.That(exitCode, Is.EqualTo(0), stderr)
+    Assert.That(stdout.Replace("\r\n", "\n"), Is.EqualTo("3\n5\n"))
+
+[<Test>]
 let ``generated c executable preserves dimn semantics`` () =
     let arraySymbol = SymbolId 0
     let dimnSymbol = SymbolId 1

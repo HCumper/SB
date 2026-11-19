@@ -55,6 +55,18 @@ module RuntimeValues =
 
     let normalizeNumber = toFloat
 
+    /// SuperBASIC '==' on floats, as Turbo's mosteq_float (lib537): equal to about 1 part in
+    /// 10^7, that is within 127 units of a QL float's 31-bit mantissa at the larger operand's
+    /// exponent. Integers compare exactly (mosteq_int is eq_int).
+    let almostEqualFloats (left: double) (right: double) =
+        left = right
+        || abs (left - right) <= Math.ScaleB(127.0, Math.ILogB(max (abs left) (abs right)) - 30)
+
+    /// SuperBASIC '==' on strings: QDOS comparison type 3, which ignores case. Type 3 (and the
+    /// type 2 used by '=') also compares embedded numbers by value; SB compares them as text.
+    let almostEqualStrings (left: string) (right: string) =
+        String.Equals(left, right, StringComparison.OrdinalIgnoreCase)
+
     let formatOutputValue = toText
 
     let makeNumeric isFloat number =

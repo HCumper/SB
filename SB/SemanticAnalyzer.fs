@@ -93,6 +93,33 @@ let private canUseDynamicScopeFallback (state: ProcessingState) =
 let private isStaticallyResolved state name =
     tryResolveSymbol state.CurrentScope name state.SymTab |> Option.isSome
 
+/// Marks the bare array names among a call's arguments as passed whole (by reference), as
+/// SuperBASIC passes them. PRINT and INPUT take values, so an array name there stays an error,
+/// as it is in Turbo (Decode_Print_Input, P 21862).
+let private markWholeArrayArguments callName (args: Expr list) (state: ProcessingState) =
+    let isRoutineCall =
+        match normalizeIdentifier callName with
+        | "PRINT"
+        | "INPUT" -> false
+        | _ ->
+            match tryResolveSymbol state.CurrentScope callName state.SymTab with
+            | Some(_, (ArraySym _ | VariableSym _ | ConstantSym _ | ParameterSym _)) -> false
+            | _ -> true
+    if not isRoutineCall then
+        state
+    else
+        let wholeArrays =
+            args
+            |> List.choose (fun arg ->
+                match arg with
+                | Identifier(_, _, name)
+                | PostfixName(_, _, name, None) ->
+                    match tryResolveSymbol state.CurrentScope name state.SymTab with
+                    | Some(_, ArraySym _) -> Some(nodeIdOfExpr arg)
+                    | _ -> None
+                | _ -> None)
+        { state with WholeArrayArguments = Set.union state.WholeArrayArguments (Set.ofList wholeArrays) }
+
 let private inferArgumentTypes args state =
     (([], state), args)
     ||> List.fold (fun (collectedTypes, currentState) arg ->
@@ -388,8 +415,9 @@ and private resolveExpr mode expr : State<ProcessingState, unit> =
                     referenceSymbol None name pos currentState
             let validatedState =
                 match tryResolveSymbol nextState.CurrentScope name nextState.SymTab with
-                | Some(_, symbol) -> validateScalarVsArrayUsage name pos false symbol nextState
-                | None -> nextState
+                | Some(_, symbol) when not (nextState.WholeArrayArguments.Contains(nodeIdOfExpr expr)) ->
+                    validateScalarVsArrayUsage name pos false symbol nextState
+                | _ -> nextState
             let recordedState =
                 match tryResolveSymbol validatedState.CurrentScope name validatedState.SymTab with
                 | Some(resolvedScope, symbol) ->
@@ -417,14 +445,20 @@ and private resolveExpr mode expr : State<ProcessingState, unit> =
                 | Some(resolvedScope, symbol) ->
                     recordResolvedSymbol currentState.CurrentScope expr resolvedScope (Symbol.normalizedName symbol) validatedState
                 | None -> validatedState
-            do! State.put recordedState
+            do! State.put (markWholeArrayArguments name args recordedState)
             do! resolveExprList mode args
-        | SliceRange(_, _, lhs, rhs)
+        | SliceRange(_, _, lhs, rhs) ->
+            if not (isOmittedSliceBound lhs) then
+                do! resolveExpr mode lhs
+            if not (isOmittedSliceBound rhs) then
+                do! resolveExpr mode rhs
         | BinaryExpr(_, _, _, lhs, rhs) ->
             do! resolveExpr mode lhs
             do! resolveExpr mode rhs
         | UnaryExpr(_, _, _, inner) ->
             do! resolveExpr mode inner
+        // An omitted argument (PROC a,,b) names nothing.
+        | Identifier(_, _, "") -> ()
         | Identifier(_, pos, name) ->
             let nextState =
                 if canUseDynamicScopeFallback currentState && not (isStaticallyResolved currentState name) then
@@ -433,8 +467,9 @@ and private resolveExpr mode expr : State<ProcessingState, unit> =
                     referenceSymbol None name pos currentState
             let validatedState =
                 match tryResolveSymbol nextState.CurrentScope name nextState.SymTab with
-                | Some(_, symbol) -> validateScalarVsArrayUsage name pos false symbol nextState
-                | None -> nextState
+                | Some(_, symbol) when not (nextState.WholeArrayArguments.Contains(nodeIdOfExpr expr)) ->
+                    validateScalarVsArrayUsage name pos false symbol nextState
+                | _ -> nextState
             let recordedState =
                 match tryResolveSymbol validatedState.CurrentScope name validatedState.SymTab with
                 | Some(resolvedScope, symbol) ->
@@ -504,11 +539,18 @@ and private resolveStmt (mode: SymbolAddMode) (node: Stmt) : State<ProcessingSta
             do! State.put (validateClosingName "routine" name closingName pos currentState)
             do! resolveRoutineBody mode name body
 
+        // Bounds are typed as well as resolved, so HIR can keep them as Dim statements.
         | DimStmt(_, items) ->
-            do! resolveExprList mode (items |> List.collect snd)
+            let bounds = items |> List.collect snd
+            do! resolveExprList mode bounds
+            let! stateAfterBounds = State.get
+            do! State.put (inferExprList bounds stateAfterBounds)
 
         | LocalStmt(_, items) ->
-            do! resolveExprList mode (items |> List.collect (snd >> Option.defaultValue []))
+            let bounds = items |> List.collect (snd >> Option.defaultValue [])
+            do! resolveExprList mode bounds
+            let! stateAfterBounds = State.get
+            do! State.put (inferExprList bounds stateAfterBounds)
 
         | ImplicitStmt _ -> ()
 
@@ -628,6 +670,8 @@ and private resolveStmt (mode: SymbolAddMode) (node: Stmt) : State<ProcessingSta
                     | _ -> resolveExpr mode expr
                 do! stateIter resolveInputArg args
             else
+                let! stateBeforeArgs = State.get
+                do! State.put (markWholeArrayArguments name args stateBeforeArgs)
                 do! resolveExprList mode args
             let! stateAfterArgs = State.get
             let stateAfterBuiltInValidation =
@@ -663,6 +707,8 @@ and private resolveStmt (mode: SymbolAddMode) (node: Stmt) : State<ProcessingSta
                     | _ -> resolveExpr mode expr
                 do! stateIter resolveInputArg args
             else
+                let! stateBeforeArgs = State.get
+                do! State.put (markWholeArrayArguments name args stateBeforeArgs)
                 do! resolveExprList mode args
             let! stateAfterArgs = State.get
             let stateAfterBuiltInValidation =
@@ -694,6 +740,8 @@ and private resolveStmt (mode: SymbolAddMode) (node: Stmt) : State<ProcessingSta
                     | _ -> resolveExpr mode expr
                 do! stateIter resolveInputArg args
             else
+                let! stateBeforeArgs = State.get
+                do! State.put (markWholeArrayArguments name args stateBeforeArgs)
                 do! resolveExprList mode args
             let! stateAfterArgs = State.get
             let stateAfterBuiltInValidation =

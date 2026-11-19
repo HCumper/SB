@@ -13,6 +13,8 @@ type BuiltInInputType =
 module BuiltInStatements =
     let private printContinueSentinel = "\uE000PRINT_CONTINUE\uE000"
     let private printCommaSentinel = "\uE000PRINT_COMMA\uE000"
+    let private printPlingSentinel = "\uE000PRINT_PLING\uE000"
+    let private printToSentinel = "\uE000PRINT_TO\uE000"
     let private printZoneWidth = 8
 
     let formatPrintLine values =
@@ -32,13 +34,31 @@ module BuiltInStatements =
                 builder.Append(String(' ', nextColumn - builder.Length)) |> ignore
             suppressSeparator <- true
 
-        values
-        |> List.iter (fun value ->
-            match value with
-            | Text sentinel when sentinel = printContinueSentinel -> suppressSeparator <- true
-            | Text sentinel when sentinel = printCommaSentinel -> advanceToNextPrintZone ()
-            | _ -> appendText (RuntimeValues.formatOutputValue value))
+        let rec loop remaining =
+            match remaining with
+            | [] -> ()
+            | Text sentinel :: rest when sentinel = printContinueSentinel ->
+                suppressSeparator <- true
+                loop rest
+            | Text sentinel :: rest when sentinel = printCommaSentinel ->
+                advanceToNextPrintZone ()
+                loop rest
+            | Text sentinel :: rest when sentinel = printPlingSentinel ->
+                // '!': one space between items, none at the start of the line.
+                if builder.Length > 0 && builder[builder.Length - 1] <> ' ' then builder.Append(' ') |> ignore
+                suppressSeparator <- true
+                loop rest
+            | Text sentinel :: target :: rest when sentinel = printToSentinel ->
+                // 'TO n': pad to column n (0-based).
+                let column = RuntimeValues.toInt target
+                if column > builder.Length then builder.Append(String(' ', column - builder.Length)) |> ignore
+                suppressSeparator <- true
+                loop rest
+            | value :: rest ->
+                appendText (RuntimeValues.formatOutputValue value)
+                loop rest
 
+        loop values
         builder.ToString()
 
     let splitInputLine (line: string option) =

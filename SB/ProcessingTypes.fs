@@ -31,6 +31,9 @@ type ProcessingState = {
     RoutineSymbols: Map<string, ResolvedSymbolRef>
     ParameterSymbols: Map<string * string, ResolvedSymbolRef>
     ActiveLoops: string list
+    /// Bare array names passed straight to a routine, which SuperBASIC passes whole (by
+    /// reference); they are exempt from the array-used-without-index check.
+    WholeArrayArguments: Set<NodeId>
 }
 
 let exprPosition expr =

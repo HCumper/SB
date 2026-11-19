@@ -230,6 +230,63 @@ let private programs = [
         60 PRINT "no"
         70 IF y% < 0 THEN GO TO 50 : ELSE PRINT "yes"
     """)
+    ("slices", """
+        10 DIM c$(3,10)
+        20 c$(1) = "Hello"
+        30 x$ = "abcdef"
+        40 PRINT x$(3 TO), c$(1)(2 TO 4), c$(1, 1 TO 2), c$(1)(3 TO)
+        50 show
+        60 DEFine PROCedure show
+        70 PRINT c$(1)(2 TO 3)
+        80 END DEFine
+    """)
+    ("separators", """
+        10 n% = 12
+        20 PRINT "a"!"b"!n%
+        30 PRINT "ab" TO 6;"x" TO n% + 2,"y"
+        40 PRINT 1,2!3;
+        50 PRINT "p"!
+    """)
+    ("almost_equal", """
+        10 a$ = "abc" : b = 1.00000001 : i% = 3
+        20 IF a$ == "ABC" THEN PRINT "s"
+        30 IF b == 1 THEN PRINT "f"
+        40 IF i% == 3 THEN PRINT "i"
+        50 PRINT a$ == "abd", b == 1.001
+    """)
+    ("dim_dynamic", """
+        10 n = 5
+        20 DIM a(n), b$(3,10), c$(20), d%(2,2)
+        30 a(1) = 2 : c$ = "hello"
+        40 show 4
+        50 DEFine PROCedure show(k)
+        60   LOCal t(k), s$(12)
+        70   t(1) = k : s$ = "x"
+        80   PRINT t(1); s$; c$
+        90 END DEFine
+    """)
+    ("whole_arrays", """
+        10 DIM a(3)
+        20 fill a
+        30 PRINT a(1), DIMN(a), total(a)
+        40 test 1,,3
+        50 DEFine PROCedure fill(x)
+        60   x(1) = 7
+        70 END DEFine
+        80 DEFine FuNction total(y)
+        90   RETurn y(1) * 2
+        100 END DEFine
+        110 DEFine PROCedure test(p,q,r)
+        120   PRINT p, q, r
+        130 END DEFine
+    """)
+    ("rom_separators", """
+        10 LINE 0,0 TO 10,10
+        20 LINE TO 20,5
+        30 ARC 50,35 TO 50,25,-1.5
+        40 LINE #2,1,2 TO 3,4
+        50 CLOSE #3,#4
+    """)
     ("scores", """
         100 REMark Scores: read, sort and report a table
         110 TURBO_windo 1

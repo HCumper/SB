@@ -114,14 +114,15 @@ type TurboIrOutput = {
     Warnings: string list
 }
 
-// TURBO-IR ASSUMPTION: Turbo's parser copies the geometry and colours of its own open
-// windows (P 18062-18146), which only exist on a running QL. These defaults are the QL
-// monitor-mode layout (#0 512x50a0x206, #1 256x202a256x0, #2 256x202a0x0) with the paper
-// colours SB's runtime models (red for #1, black otherwise); confirm them against the target.
+// Turbo's parser copies the geometry and colours of its own open windows (P 18062-18146),
+// which only exist on a running QL. These defaults are the QL's monitor-mode (F1) windows, as
+// SuperBASIC opens them with the JS ROM (checked in Q-emuLator): #0 512x50a0x206 black paper
+// and green ink, #1 256x202a256x0 red paper and white ink, #2 256x202a0x0 white paper and red
+// ink. Border fields are zero, as the parser passes them.
 let defaultWindows = [
     { Channel = 0; BorderColour = 0; BorderWidth = 0; Paper = 0; Ink = 4; Width = 512; Height = 50; X = 0; Y = 206 }
     { Channel = 1; BorderColour = 0; BorderWidth = 0; Paper = 2; Ink = 7; Width = 256; Height = 202; X = 256; Y = 0 }
-    { Channel = 2; BorderColour = 0; BorderWidth = 0; Paper = 0; Ink = 7; Width = 256; Height = 202; X = 0; Y = 0 }
+    { Channel = 2; BorderColour = 0; BorderWidth = 0; Paper = 7; Ink = 2; Width = 256; Height = 202; X = 0; Y = 0 }
 ]
 
 let defaultOptions = {
@@ -154,6 +155,7 @@ module private Op =
     let divideInt = 8
     let geqInt = 9
     let gtInt = 10
+    let mostEqInt = 11
     let eqInt = 12
     let neqInt = 13
     let leqInt = 14
@@ -169,6 +171,7 @@ module private Op =
     let divideFloat = 40
     let geqFloat = 41
     let gtFloat = 42
+    let mostEqFloat = 43
     let eqFloat = 44
     let neqFloat = 45
     let leqFloat = 46
@@ -181,6 +184,7 @@ module private Op =
     let forRangeFloat = 58
     let geqString = 73
     let gtString = 74
+    let mostEqString = 75
     let eqString = 76
     let neqString = 77
     let leqString = 78
@@ -228,6 +232,8 @@ module private Op =
     let globalArrayString = 190
     let printComma = 201
     let printNewline = 203
+    let printPling = 204
+    let printTo = 205
     let progEnd = 220
     let eofChannel = 222
     let eofData = 223
@@ -249,6 +255,7 @@ module private Op =
     let initWindow = 247
     let lineNumber = 248
     let localString = 249
+    let globalString = 253
     let markStack = 250
     let dataEnd = 251
     let fast = 254
@@ -642,41 +649,6 @@ let encodeQdosFloat (value: float) : Result<int * int * int, string> =
             let bits = uint32 (int32 signedMantissa)
             Result.Ok(exponent, int (bits >>> 16), int (bits &&& 0xFFFFu))
 
-/// The Sinclair QL character set, as in QuillToDocx's QuillCharset: ASCII except 0x60 (pound)
-/// and 0x7F (copyright), then accented letters, Greek letters and arrows from 0x80 to 0xBF.
-/// 0xB5 is the SMSQ/E euro sign (the original ROM had a script mark there).
-module QlCharacterSet =
-    let private highCharacters =
-        "äãåéöõøüçñæœáàâë" // 80
-        + "èêïíìîóòôúùûß¢¥`" // 90
-        + "ÄÃÅÉÖÕØÜÇÑÆŒαδθλ" // A0
-        + "µπφ¡¿€§¤«»°÷←→↑↓" // B0
-
-    let private codes =
-        let map = Dictionary<char, byte>()
-        for code in 0 .. 0x1F do
-            map[char code] <- byte code
-        for code in 0x20 .. 0x7E do
-            if code <> 0x60 then map[char code] <- byte code
-        map['£'] <- 0x60uy
-        map['©'] <- 0x7Fuy
-        highCharacters |> Seq.iteri (fun index ch -> map[ch] <- byte (0x80 + index))
-        map
-
-    /// QL bytes for text, or the first character the QL character set cannot represent. Text is
-    /// never substituted: a program literal must reach the QL exactly or not at all (spec 2).
-    let tryEncode (text: string) : Result<byte[], char> =
-        let out = ResizeArray<byte>(text.Length)
-        let mutable failure = None
-        for ch in text do
-            if failure.IsNone then
-                match codes.TryGetValue ch with
-                | true, code -> out.Add code
-                | _ -> failure <- Some ch
-        match failure with
-        | Some ch -> Result.Error ch
-        | None -> Result.Ok(out.ToArray())
-
 // ---------------------------------------------------------------------------
 // Emitter
 // ---------------------------------------------------------------------------
@@ -700,8 +672,13 @@ type private VectorInfo(id: int, name: string, kind: VectorKind, valueType: Turb
     member _.Name = name
     member _.Kind = kind
     member _.Type = valueType
-    /// DIM bounds as declared, including a string array's maximum length.
+    /// DIM bounds as declared, including a string array's maximum length, when they are constants.
     member val Dimensions: int list option = None with get, set
+    /// How many bounds the name's DIM has (the 234 descriptor's D), constant or not.
+    member val BoundCount: int option = None with get, set
+    /// True for a simple string given a maximum length by a global DIM a$(n): pass 1 gives it a
+    /// one-bound descriptor instead of default storage (P 17974, Simple_String P 24270).
+    member val IsDimmedString = false with get, set
     /// True when the array has global or LOCal storage and so needs a 234 descriptor.
     member val HasDescriptor = false with get, set
     /// True when the name is a FOR variable anywhere it is not LOCal (101/133 storage).
@@ -721,6 +698,8 @@ type private Scope = {
 /// The value HIR gives PRINT's comma separator and trailing ';' or ',' (ParseTreeVisitor).
 let private printCommaSentinel = "PRINT_COMMA"
 let private printContinueSentinel = "PRINT_CONTINUE"
+let private printPlingSentinel = "\uE000PRINT_PLING\uE000"
+let private printToSentinel = "\uE000PRINT_TO\uE000"
 
 let private fitsWord (value: int) = value >= -32768 && value <= 32767
 
@@ -762,7 +741,8 @@ let private exprPos expr =
     | DynamicReadStringChar(_, _, _, pos)
     | Unary(_, _, _, pos)
     | Binary(_, _, _, _, pos)
-    | CallFunc(_, _, _, pos) -> pos
+    | CallFunc(_, _, _, pos)
+    | Missing pos -> pos
 
 let private targetAsExpr target =
     match target with
@@ -828,6 +808,7 @@ let private statementExprs stmt =
     | Return(Some value, _) -> [ value ]
     | Restore(Some target, _) -> [ target ]
     | Read(targets, _) -> targets |> List.map targetAsExpr
+    | Dim(_, bounds, _) -> bounds
     | _ -> []
 
 /// QL ROM keywords Turbo resolves as resident routines. Others need a loaded extension.
@@ -867,6 +848,8 @@ type private Emitter(options: TurboIrOptions, program: HirProgram) =
     let vectors = Dictionary<string, VectorInfo>()
     let vectorOrder = ResizeArray<VectorInfo>()
     let storages = Dictionary<SymbolId, HirStorage>()
+    /// Names with a Dim statement somewhere: they are DIMmed there, not on entry.
+    let dimmedSymbols = HashSet<SymbolId>()
     let routines = Dictionary<SymbolId, HirRoutine>()
     let referenceFormals = HashSet<SymbolId>()
     let arrayFormals = HashSet<SymbolId>()
@@ -1013,7 +996,9 @@ type private Emitter(options: TurboIrOptions, program: HirProgram) =
             | DynamicReadArrayElem(name, _, _, _) -> this.VectorType name
             | ReadStringChar _
             | DynamicReadStringChar _ -> TurboString
-            | Unary(Identity, inner, _, _) -> this.TypeOf inner
+            | Unary(Identity, inner, _, _)
+            | Unary(Hash, inner, _, _) -> this.TypeOf inner
+            | Missing _ -> TurboInt
             | Unary(Negate, inner, _, _)
             | Unary(BitwiseNot, inner, _, _) -> if this.TypeOf inner = TurboInt then TurboInt else TurboFloat
             | Unary(UnaryUnknown _, _, _, _) -> TurboFloat
@@ -1162,6 +1147,12 @@ type private Emitter(options: TurboIrOptions, program: HirProgram) =
         | Unary(UnaryUnknown name, _, _, pos) ->
             fail pos $"unary operator '{name}' has no Turbo IR equivalent."
             TurboFloat
+        | Unary(Hash, _, _, pos) ->
+            fail pos "a '#' argument can only be passed to a resident routine."
+            TurboInt
+        | Missing pos ->
+            fail pos "an omitted argument can only be passed to a resident routine."
+            TurboInt
         | Binary(binaryOp, lhs, rhs, _, pos) -> this.EmitBinary(scope, binaryOp, lhs, rhs, pos)
         | CallFunc(symbol, args, _, pos) -> this.EmitFunctionCall(scope, symbol, args, pos)
 
@@ -1212,6 +1203,7 @@ type private Emitter(options: TurboIrOptions, program: HirProgram) =
         | GreaterThanOrEqual -> comparison Op.geqInt Op.geqFloat Op.geqString
         | GreaterThan -> comparison Op.gtInt Op.gtFloat Op.gtString
         | Equal -> comparison Op.eqInt Op.eqFloat Op.eqString
+        | AlmostEqual -> comparison Op.mostEqInt Op.mostEqFloat Op.mostEqString
         | NotEqual -> comparison Op.neqInt Op.neqFloat Op.neqString
         | LessThanOrEqual -> comparison Op.leqInt Op.leqFloat Op.leqString
         | LessThan -> comparison Op.lessInt Op.lessFloat Op.lessString
@@ -1242,8 +1234,8 @@ type private Emitter(options: TurboIrOptions, program: HirProgram) =
 
     /// Number of subscripts a DIMmed array takes; a string array's last bound is its length.
     member private this.IndexRank(vector: VectorInfo) =
-        vector.Dimensions
-        |> Option.map (fun dims -> if vector.Type = TurboString then dims.Length - 1 else dims.Length)
+        vector.BoundCount
+        |> Option.map (fun count -> if vector.Type = TurboString then count - 1 else count)
 
     member private this.EmitIndexes(scope: Scope, vector: VectorInfo, indexes: HirExpr list, pos: SourcePosition) =
         match this.IndexRank vector with
@@ -1329,9 +1321,28 @@ type private Emitter(options: TurboIrOptions, program: HirProgram) =
             match finish with
             | Some value -> this.EmitAs(scope, TurboInt, value)
             | None -> op0 Op.quickZero
-        match this.NameOf baseExpr with
-        | Some name when this.IsSimpleStringVariable baseExpr ->
+        // A slice of a string-array element is taken in place: subscripts, then the bounds, then
+        // 175, as the parser does for a$(i, s TO e) (Gen_Array_Ref, P 24542-24618).
+        let elementSlice =
+            match baseExpr with
+            | ReadArrayElem(symbol, indexes, _, _) -> Some(this.SymbolName symbol, indexes)
+            | DynamicReadArrayElem(name, indexes, _, _) -> Some(name, indexes)
+            | _ -> None
+        let stringArray =
+            match elementSlice with
+            | Some(name, indexes) ->
+                match vectors.TryGetValue(normalizeIdentifier name) with
+                | true, vector when vector.Kind = ArrayVector && vector.Type = TurboString && this.IndexRank vector = Some indexes.Length ->
+                    Some(vector, indexes)
+                | _ -> None
+            | None -> None
+        match this.NameOf baseExpr, stringArray with
+        | Some name, _ when this.IsSimpleStringVariable baseExpr ->
             let vector = this.RequireSimpleString(name, pos)
+            bounds ()
+            opc Op.extractString [ Word vector.Id ] vector.Name
+        | _, Some(vector, indexes) ->
+            this.EmitIndexes(scope, vector, indexes, pos)
             bounds ()
             opc Op.extractString [ Word vector.Id ] vector.Name
         | _ ->
@@ -1353,7 +1364,10 @@ type private Emitter(options: TurboIrOptions, program: HirProgram) =
         routine.Parameters
         |> List.iteri (fun index parameter ->
             let formalName = normalizeIdentifier parameter.Storage.Name
-            let actual = List.tryItem index args
+            let actual =
+                match List.tryItem index args with
+                | Some(ValueArg(Missing _)) -> None
+                | other -> other
             if this.IsReferenceFormal parameter then
                 let actualName =
                     match actual with
@@ -1464,9 +1478,9 @@ type private Emitter(options: TurboIrOptions, program: HirProgram) =
                 // TURBO-IR ASSUMPTION: 266's second operand is the dimension counter R-1, the
                 // parser's struct% value (P 19504) and what the spec's "numeric D-1, string
                 // D-2" reduces to.
-                match vector.Dimensions with
-                | Some dims ->
-                    let counter = dims.Length - (if vector.Type = TurboString then 2 else 1)
+                match vector.BoundCount with
+                | Some count ->
+                    let counter = count - (if vector.Type = TurboString then 2 else 1)
                     opc Op.dimn [ Word vector.Id; Word counter ] vector.Name
                 | None -> fail pos $"DIMN needs the declared dimensions of '{vector.Name}', which are not known here."
             | None -> fail pos "DIMN needs an array name as its first argument."
@@ -1509,10 +1523,11 @@ type private Emitter(options: TurboIrOptions, program: HirProgram) =
             warn ("rom:" + name) $"'{name}' is not a QL ROM keyword; the compiled program needs a resident extension that provides it."
 
     /// Pushes a resident routine's arguments in source order and returns their descriptor bytes
-    /// (spec 8.3): base type, bit 7 for the '#' channel, the following separator in bits 4-6.
-    // TURBO-IR GAP: SB's HIR keeps only PRINT's separators. Every other argument is assumed to be
-    // followed by a comma (none after the last), except the TO inside an RND(a TO b)-style range,
-    // which HIR keeps. A '#' on any argument but a leading channel is lost by SB's front end.
+    /// (spec 8.3): base type, bit 7 for a '#', the following separator in bits 4-6. As in
+    /// Ad_Hoc_Para_List (P 21494-21566), 'a TO b' gives a separator 5 after a, and an omitted
+    /// argument (before a leading TO) has type 0 and pushes nothing.
+    // TURBO-IR GAP: SB's front end keeps ',' and TO between a routine's arguments but reads ';',
+    // '\' and '!' there as commas, so those three are emitted as 1.
     member private this.EmitRomArguments(scope: Scope, name: string, channel: HirChannel option, args: HirExpr list, pos: SourcePosition) =
         let flattened =
             args
@@ -1537,21 +1552,28 @@ type private Emitter(options: TurboIrOptions, program: HirProgram) =
         let bytes = ResizeArray<byte>()
         for expr, isChannel, separator in items do
             let typeCode =
-                if isChannel then
+                match expr with
+                | _ when isChannel ->
                     this.EmitAs(scope, TurboInt, expr)
                     0x80 ||| 3
-                elif this.IsArrayName expr then
+                | Missing _ -> 0
+                | Unary(Hash, inner, _, _) ->
+                    // TURBO-IR ASSUMPTION: a '#' argument is pushed as an integer channel, as the
+                    // leading one is; Turbo's ad hoc list would keep a float expression's type.
+                    this.EmitAs(scope, TurboInt, inner)
+                    0x80 ||| 3
+                | _ when this.IsArrayName expr ->
                     // TURBO-IR GAP: whole-array arguments to resident routines use the 108
                     // vector-offset protocol (spec 8.3), which this emitter does not implement.
                     let arrayName = this.NameOf expr |> Option.defaultValue "" |> normalizeIdentifier
                     fail pos $"passing array '{arrayName}' to resident routine '{name}' is not supported."
                     0
-                else
-                        match declared with
-                        | Some want ->
-                            this.EmitAs(scope, want, expr)
-                            romTypeCode want
-                        | None -> romTypeCode (this.EmitExpr(scope, expr))
+                | _ ->
+                    match declared with
+                    | Some want ->
+                        this.EmitAs(scope, want, expr)
+                        romTypeCode want
+                    | None -> romTypeCode (this.EmitExpr(scope, expr))
             bytes.Add(byte (typeCode ||| (separator <<< 4)))
         if bytes.Count > 255 then
             fail pos $"'{name}' has more than 255 arguments."
@@ -1667,9 +1689,9 @@ type private Emitter(options: TurboIrOptions, program: HirProgram) =
             fail pos $"{keyword} uses SB's '\\' channel form, which has no Turbo IR equivalent."
 
     /// PRINT (P 21758-21870): channel, 281, each item as a string then 186, 201 for a comma,
-    /// and 203 unless the statement ends with ';' or ','.
-    // TURBO-IR GAP: SB's front end keeps only ',' and the trailing ';'/','; it turns '\' into a
-    // separate PRINT and drops '!' and 'TO', so 204 (!) and 205 (TO) are never emitted.
+    /// and 203 unless the statement ends with a separator.
+    /// '!' is 204 and 'TO n' the column then 205; SB turns '\' into a separate PRINT, which
+    /// gives the same 203 between the parts.
     member private this.EmitPrint(scope: Scope, channel: HirChannel option, args: HirExpr list, pos: SourcePosition) =
         let printScope = { scope with InPrintInput = true }
         this.EmitChannel(scope, channel, "PRINT", pos)
@@ -1688,12 +1710,27 @@ type private Emitter(options: TurboIrOptions, program: HirProgram) =
             match List.rev args with
             | last :: rest when isSentinel printContinueSentinel last -> List.rev rest, true
             | _ -> args, false
-        for item in items do
-            if isSentinel printCommaSentinel item then
+        let rec emitItems items =
+            match items with
+            | [] -> ()
+            | item :: rest when isSentinel printCommaSentinel item ->
                 op0 Op.printComma
-            elif not (isSentinel printContinueSentinel item) then
+                emitItems rest
+            | item :: rest when isSentinel printPlingSentinel item ->
+                op0 Op.printPling
+                emitItems rest
+            | item :: column :: rest when isSentinel printToSentinel item ->
+                // TO: the column as an integer, then 205 (Discard_Int : Codegen 205, P 21798).
+                this.EmitAs(printScope, TurboInt, column)
+                op0 Op.printTo
+                emitItems rest
+            | item :: rest when isSentinel printContinueSentinel item ->
+                emitItems rest
+            | item :: rest ->
                 this.EmitAs(printScope, TurboString, item)
                 op0 Op.printString
+                emitItems rest
+        emitItems items
         if not keepCursor then op0 Op.printNewline
 
     /// INPUT (P 21758-21914): channel, 282, prompts printed with 186, then for each target its
@@ -1751,8 +1788,6 @@ type private Emitter(options: TurboIrOptions, program: HirProgram) =
         | "RUN" ->
             fail pos "RUN has no Turbo IR equivalent in the specification."
         | _ ->
-            if name = "LINE" || name = "LINE_R" || name = "ARC" || name = "ARC_R" then
-                warn ("to:" + name) $"{name}: SB's front end turns the TO separators into plain arguments, so they are emitted as commas."
             this.WarnIfNotRom name
             let vector = this.Vector(name, ResidentVector, pos)
             // A resident procedure call marks the evaluation stack first (spec 8.3).
@@ -1979,6 +2014,7 @@ type private Emitter(options: TurboIrOptions, program: HirProgram) =
             // Comments emit nothing; TURBO_ directives (which SB turns into remarks) were applied
             // or reported before emission.
             ()
+        | Dim(symbol, bounds, pos) -> this.EmitDimStatement(scope, symbol, bounds, pos)
 
     member private this.EmitBlock(scope: Scope, block: HirBlock) =
         for stmt in block do
@@ -1986,35 +2022,66 @@ type private Emitter(options: TurboIrOptions, program: HirProgram) =
 
     // -- declarations -------------------------------------------------------
 
-    /// Executable DIM (spec 6.2, Parse_key_Decl P 24174-24218): the bounds, then 126/158/190
-    /// (global) or 115/147/179 (LOCal) with the dimension counter R-1 and the vector.
+    /// Executable DIM (spec 6.2, Parse_key_Decl P 24146-24218): each bound as an integer, then
+    /// 126/158/190 (global) or 115/147/179 (LOCal) with the dimension counter R-1 and the vector.
+    member private this.EmitArrayDim(vector: VectorInfo, emitBounds: (unit -> unit) list, isGlobal: bool, pos: SourcePosition) =
+        let isString = vector.Type = TurboString
+        if isString && emitBounds.Length < 2 then
+            fail pos $"string array '{vector.Name}' needs at least one dimension and a length."
+        else
+            for emitBound in emitBounds do
+                emitBound ()
+            let counter = emitBounds.Length - (if isString then 2 else 1)
+            let opcode =
+                match isGlobal, vector.Type with
+                | true, TurboInt -> Op.globalArrayInt
+                | true, TurboFloat -> Op.globalArrayFloat
+                | true, TurboString -> Op.globalArrayString
+                | false, TurboInt -> Op.localArrayInt
+                | false, TurboFloat -> Op.localArrayFloat
+                | false, TurboString -> Op.localArrayString
+            opc opcode [ Word counter; Word vector.Id ] vector.Name
+
+    /// The DIM of an array that has no Dim statement, from its constant bounds, on entry.
     member private this.EmitDim(storage: HirStorage, isGlobal: bool) =
         let vector = this.Vector(storage.Name, ArrayVector, storage.Position)
         match storage.Dimensions with
         | Some dims when not dims.IsEmpty ->
-            let isString = vector.Type = TurboString
-            if isString && dims.Length < 2 then
-                fail storage.Position $"string array '{vector.Name}' needs at least one dimension and a length."
-            else
-                for bound in dims do
+            let emitBounds =
+                dims
+                |> List.map (fun bound () ->
                     if bound < 0 || bound > 32767 then
                         fail storage.Position $"DIM bound {bound} of '{vector.Name}' is outside 0..32767."
                     else
-                        this.EmitInt bound
-                let counter = dims.Length - (if isString then 2 else 1)
-                let opcode =
-                    match isGlobal, vector.Type with
-                    | true, TurboInt -> Op.globalArrayInt
-                    | true, TurboFloat -> Op.globalArrayFloat
-                    | true, TurboString -> Op.globalArrayString
-                    | false, TurboInt -> Op.localArrayInt
-                    | false, TurboFloat -> Op.localArrayFloat
-                    | false, TurboString -> Op.localArrayString
-                opc opcode [ Word counter; Word vector.Id ] vector.Name
-        | _ ->
-            // TURBO-IR GAP: SB's semantic analysis keeps only DIM bounds it can fold to constants
-            // (SemanticAnalyzer, DimStmt), and HIR drops the DIM statement itself.
-            fail storage.Position $"'{vector.Name}' has no constant DIM bounds in the HIR, so its DIM cannot be emitted."
+                        this.EmitInt bound)
+            this.EmitArrayDim(vector, emitBounds, isGlobal, storage.Position)
+        | _ -> fail storage.Position $"'{vector.Name}' has no DIM, so it cannot be emitted."
+
+    /// A DIM, or a LOCal with bounds, where it stands. A simple string takes one bound, its
+    /// maximum length, then 253 (DIM) or 249 (LOCal).
+    member private this.EmitDimStatement(scope: Scope, symbol: SymbolId, bounds: HirExpr list, pos: SourcePosition) =
+        let isLocal =
+            match storages.TryGetValue symbol with
+            | true, storage ->
+                match storage.Class with
+                | RoutineLocalStorage _ -> true
+                | _ -> false
+            | _ -> false
+        let vector = this.NamedVector(this.SymbolName symbol, pos)
+        let emitBound (bound: HirExpr) () =
+            match this.TryConstant bound with
+            | Some(ConstInt value) when value < 0 || value > 32767 ->
+                fail pos $"DIM bound {value} of '{vector.Name}' is outside 0..32767."
+            | _ -> this.EmitAs(scope, TurboInt, bound)
+        match vector.Kind, vector.Type with
+        | ScalarVector, TurboString ->
+            match bounds with
+            | [ length ] ->
+                emitBound length ()
+                opc (if isLocal then Op.localString else Op.globalString) [ Word vector.Id ] vector.Name
+            | _ -> fail pos $"DIM {vector.Name}: a simple string takes one bound, its maximum length."
+        | ArrayVector, _ -> this.EmitArrayDim(vector, bounds |> List.map emitBound, not isLocal, pos)
+        | _ -> fail pos $"'{vector.Name}' is {kindName vector.Kind} and cannot be DIMmed."
 
     member private this.EmitRoutine(routine: HirRoutine) =
         let vector = this.Vector(routine.Name, RoutineVector, routine.Position)
@@ -2036,15 +2103,16 @@ type private Emitter(options: TurboIrOptions, program: HirProgram) =
                     opc Op.storeFloat [ Word formal.Id ] formal.Name
         // LOCal declarations follow the formals (P 24198-24254). SB folds LOCal into the routine's
         // locals, so they are all declared at entry.
+        // A LOCal with bounds is a Dim statement in the body and is declared there instead.
         for local in routine.Locals do
             let localVector = this.NamedVector(local.Name, local.Position)
             match localVector.Kind with
+            | _ when dimmedSymbols.Contains local.Symbol -> ()
             | ArrayVector -> this.EmitDim(local, false)
             | _ ->
                 match localVector.Type with
                 | TurboString ->
-                    // TURBO-IR GAP: HIR does not keep a LOCal string's declared length, so every
-                    // LOCal string gets the default length, as an unsized one does in Turbo.
+                    // An unsized LOCal string gets the default length (P 24226-24238).
                     this.EmitInt options.LocalStringLength
                     opc Op.localString [ Word localVector.Id ] localVector.Name
                 | TurboInt ->
@@ -2198,7 +2266,9 @@ type private Emitter(options: TurboIrOptions, program: HirProgram) =
                 | Some existing when existing.Length <> dims.Length ->
                     fail storage.Position $"'{vector.Name}' is DIMmed with {existing.Length} and {dims.Length} bounds; one vector needs one shape."
                 | Some _ -> ()
-                | None -> vector.Dimensions <- Some dims
+                | None ->
+                    vector.Dimensions <- Some dims
+                    vector.BoundCount <- Some dims.Length
             | Array _, _ -> vector.HasDescriptor <- true
             | _ -> ()
         for storage in program.Globals do
@@ -2210,6 +2280,32 @@ type private Emitter(options: TurboIrOptions, program: HirProgram) =
                 this.Vector(parameter.Storage.Name, kind, parameter.Storage.Position) |> ignore
             for local in routine.Locals do
                 register local
+
+        // Dim statements give each DIMmed name its bound count, constant or not, and mark the
+        // simple strings a global DIM gives a length.
+        for block in allBlocks do
+            block
+            |> iterStatements (fun stmt ->
+                match stmt with
+                | Dim(symbol, bounds, pos) ->
+                    dimmedSymbols.Add symbol |> ignore
+                    match vectors.TryGetValue(normalizeIdentifier (this.SymbolName symbol)) with
+                    | true, vector ->
+                        match vector.BoundCount with
+                        | Some count when count <> bounds.Length ->
+                            fail pos $"'{vector.Name}' is DIMmed with {count} and {bounds.Length} bounds; one vector needs one shape."
+                        | Some _ -> ()
+                        | None -> vector.BoundCount <- Some bounds.Length
+                        let isGlobal =
+                            match storages.TryGetValue symbol with
+                            | true, storage -> storage.Class = GlobalStorage
+                            | _ -> false
+                        match vector.Kind with
+                        | ArrayVector -> vector.HasDescriptor <- true
+                        | ScalarVector when vector.Type = TurboString && isGlobal -> vector.IsDimmedString <- true
+                        | _ -> ()
+                    | _ -> ()
+                | _ -> ())
 
         let markGlobalFor (routine: HirRoutine option) (block: HirBlock) =
             block
@@ -2232,12 +2328,11 @@ type private Emitter(options: TurboIrOptions, program: HirProgram) =
         this.Prepare()
 
         current <- code
-        // Global DIMs run at the start of the program body.
-        // TURBO-IR ASSUMPTION: HIR drops DIM statements and keeps only each array's bounds, so a
-        // global array is DIMmed once on entry rather than where its DIM statement stood.
+        // DIMs run where their statements stand. TURBO-IR ASSUMPTION: a global array with constant
+        // bounds but no Dim statement (from HIR built without them) is DIMmed on entry.
         for storage in program.Globals do
             match storage.Type with
-            | Array _ -> this.EmitDim(storage, true)
+            | Array _ when not (dimmedSymbols.Contains storage.Symbol) -> this.EmitDim(storage, true)
             | _ -> ()
         let mainScope = { Routine = None; Loops = Map.empty; InPrintInput = false; InHandler = false }
         this.EmitBlock(mainScope, program.Main)
@@ -2257,9 +2352,11 @@ type private Emitter(options: TurboIrOptions, program: HirProgram) =
         for vector in vectorOrder do
             match vector.Kind with
             | ArrayVector when vector.HasDescriptor ->
-                match vector.Dimensions with
-                | Some dims -> opc Op.arrayDescriptor [ Word dims.Length; Word vector.Id ] vector.Name
+                match vector.BoundCount with
+                | Some count -> opc Op.arrayDescriptor [ Word count; Word vector.Id ] vector.Name
                 | None -> ()
+            | ScalarVector when vector.Type = TurboString && vector.IsDimmedString ->
+                opc Op.arrayDescriptor [ Word 1; Word vector.Id ] vector.Name
             | ScalarVector when vector.Type = TurboString -> opc Op.simpleString [ Word vector.Id ] vector.Name
             | _ -> ()
 

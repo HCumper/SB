@@ -135,7 +135,8 @@ let ``double caret parses as xor`` () =
     | other -> Assert.Fail($"Unexpected XOR AST: %A{other}")
 
 [<Test>]
-let ``print to channel parses as channel procedure call`` () =
+let ``print TO is a column separator, not a channel`` () =
+    // SuperBASIC's PRINT TO n moves to column n; the ';' after it belongs to the TO (P 21798-21802).
     let testTree =
         parseProgram
             "10 PRINT TO 4;\"hello\"\n"
@@ -148,7 +149,7 @@ let ``print to channel parses as channel procedure call`` () =
         [ Line(
             _,
             Some 10,
-            [ ChannelProcedureCall(_, "PRINT", NumberLiteral(_, _, "4"), [ StringLiteral(_, _, "\"hello\"") ]) ]) ]) -> Assert.Pass()
+            [ ProcedureCall(_, "PRINT", [ StringLiteral(_, _, toMarker); NumberLiteral(_, _, "4"); StringLiteral(_, _, "\"hello\"") ]) ]) ]) when toMarker.Contains("PRINT_TO") -> Assert.Pass()
     | other -> Assert.Fail($"Unexpected PRINT TO AST: %A{other}")
 
 [<Test>]

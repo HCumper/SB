@@ -87,6 +87,10 @@ type ASTBuildingVisitor() =
     let mutable selectSelectorStack: Expr list = []
     let printContinueSentinel = "\"\uE000PRINT_CONTINUE\uE000\""
     let printCommaSentinel = "\"\uE000PRINT_COMMA\uE000\""
+    // '!' (a space unless at the start of a line) and 'TO n' (move to column n; the column
+    // expression follows this marker).
+    let printPlingSentinel = "\"\uE000PRINT_PLING\uE000\""
+    let printToSentinel = "\"\uE000PRINT_TO\uE000\""
 
     let openBuiltInNames =
         set [ "OPEN"; "OPEN_IN"; "OPEN_NEW"; "APPEND" ]
@@ -170,11 +174,25 @@ type ASTBuildingVisitor() =
     member private this.CollectUnparenthesizedArgs(ctx: SBParser.UnparenthesizedlistContext) =
         this.SafeChildren(ctx.expr()) |> Seq.map (fun e -> this.SafeAcceptExpr(e)) |> Seq.toList
 
+    /// A statement's arguments, with an omitted one wherever two separators meet (PROC a,,b):
+    /// SuperBASIC passes it unset and Turbo an empty parameter (Ad_Hoc_Para_List, P 21542).
+    member private this.CollectSegmentArgs(segments: SBParser.StmtSegmentContext list) =
+        segments
+        |> List.mapi (fun index segment ->
+            let omittedBefore =
+                index > 0
+                && not (isNull (segment.separator()))
+                && isNull (segments[index - 1].stmtArg())
+            let omitted =
+                if omittedBefore then [ ExprNode(mkIdentifier (posOfTree segment) "") ] else []
+            omitted @ segment.Accept(this))
+        |> List.concat
+
     member private this.CollectStmtArgs(ctx: SBParser.StmtTailContext) =
         ctx.stmtSegment()
-        |> Seq.collect (fun segment -> segment.Accept(this))
-        |> Seq.map (fun node -> singleExpr ctx [ node ])
         |> Seq.toList
+        |> this.CollectSegmentArgs
+        |> List.map (fun node -> singleExpr ctx [ node ])
 
     member private this.NormalizeImplicitChannelExpr(expr: Expr) =
         match expr with
@@ -200,43 +218,11 @@ type ASTBuildingVisitor() =
 
                 let remainingArgs =
                     rest
-                    |> List.collect (fun segment -> segment.Accept(this))
+                    |> this.CollectSegmentArgs
                     |> List.map (fun node -> singleExpr tail [ node ])
 
                 Some(channelExpr, remainingArgs)
         | [] -> None
-
-    member private this.TryCollectToChannelCall(tail: SBParser.StmtTailContext) =
-        let segments = tail.stmtSegment() |> Seq.toList
-        match segments with
-        | first :: rest when isNull (first.separator()) && not (isNull (first.stmtArg())) ->
-            match first.stmtArg().toChanArg() with
-            | null -> None
-            | toChanArg ->
-                let channelExpr = this.SafeAcceptExpr(toChanArg.expr())
-                let remainingArgs =
-                    rest
-                    |> List.collect (fun segment -> segment.Accept(this))
-                    |> List.map (fun node -> singleExpr tail [ node ])
-
-                Some(channelExpr, remainingArgs)
-        | _ -> None
-
-    member private this.TryCollectLeadingToArgs(tail: SBParser.StmtTailContext) =
-        let segments = tail.stmtSegment() |> Seq.toList
-        match segments with
-        | first :: rest when isNull (first.separator()) && not (isNull (first.stmtArg())) ->
-            match first.stmtArg().toChanArg() with
-            | null -> None
-            | toChanArg ->
-                let firstArg = this.SafeAcceptExpr(toChanArg.expr())
-                let remainingArgs =
-                    rest
-                    |> List.collect (fun segment -> segment.Accept(this))
-                    |> List.map (fun node -> singleExpr tail [ node ])
-
-                Some(firstArg :: remainingArgs)
-        | _ -> None
 
     member private this.CollectPrintCallsFromStmtTail(pos: SourcePosition, name: string, mkStmt: Expr list -> Stmt, tail: SBParser.StmtTailContext) =
         let mutable groups : Expr list list = []
@@ -244,16 +230,31 @@ type ASTBuildingVisitor() =
         let mutable endedWithExplicitBreak = false
         let mutable suppressTrailingNewline = false
 
-        for segment in tail.stmtSegment() do
+        let mutable previousWasTo = false
+
+        let segments = tail.stmtSegment()
+        for index in 0 .. segments.Length - 1 do
+            let segment = segments[index]
+            let isLast = index = segments.Length - 1
             let separatorText =
                 match segment.separator() with
                 | null -> None
+                // Turbo's parser takes the separator after 'TO n' as part of the TO (P 21798-21802),
+                // so it neither moves to a zone, prints a space nor starts a new line.
+                | _ when previousWasTo -> Some ";"
                 | separator -> Some(separator.GetText())
 
-            let argOpt =
+            // 'TO n' is an argument in the grammar but a separator in SuperBASIC. It arrives alone
+            // (toChanArg) or after the item before it, which the grammar reads as 'item TO n'.
+            let argOpt, toColumn =
                 match segment.stmtArg() with
-                | null -> None
-                | arg -> Some(singleExpr arg (arg.Accept(this)))
+                | null -> None, None
+                | arg when not (isNull (arg.toChanArg())) ->
+                    None, Some(this.SafeAcceptExpr(arg.toChanArg().expr()))
+                | arg when not (isNull (arg.rangedExpr())) && arg.rangedExpr().expr().Length = 2 ->
+                    let item = arg.rangedExpr().expr(0)
+                    Some(singleExpr item (item.Accept(this))), Some(this.SafeAcceptExpr(arg.rangedExpr().expr(1)))
+                | arg -> Some(singleExpr arg (arg.Accept(this))), None
 
             match separatorText with
             | Some "\\" ->
@@ -263,6 +264,9 @@ type ASTBuildingVisitor() =
                 suppressTrailingNewline <- false
             | Some "," ->
                 currentGroup <- currentGroup @ [ mkStringLiteral pos printCommaSentinel ]
+            | Some "!" when not (isLast && argOpt.IsNone && toColumn.IsNone) ->
+                // A trailing '!' only keeps the cursor on the line (Parse PRINT, P 21810).
+                currentGroup <- currentGroup @ [ mkStringLiteral pos printPlingSentinel ]
             | _ -> ()
 
             match argOpt with
@@ -272,10 +276,19 @@ type ASTBuildingVisitor() =
                 suppressTrailingNewline <- false
             | None -> ()
 
-            match separatorText, argOpt with
-            | Some (";" | ","), None ->
+            match toColumn with
+            | Some column ->
+                currentGroup <- currentGroup @ [ mkStringLiteral pos printToSentinel; column ]
+                endedWithExplicitBreak <- false
+                suppressTrailingNewline <- isLast
+            | None -> ()
+
+            match separatorText, argOpt, toColumn with
+            | Some (";" | "," | "!"), None, None ->
                 suppressTrailingNewline <- true
             | _ -> ()
+
+            previousWasTo <- toColumn.IsSome
 
         if (not endedWithExplicitBreak) || not (List.isEmpty currentGroup) then
             groups <- groups @ [ currentGroup ]
@@ -663,7 +676,6 @@ type ASTBuildingVisitor() =
     override this.VisitProcedureCallStmt(ctx: SBParser.ProcedureCallStmtContext) =
         let p = posOfTree ctx
         let name = ctx.ID().GetText()
-        let normalizedName = normalizeIdentifier name
         if this.IsIgnoredDirectiveName name then
             single (StmtNode(Remark(p, ctx.GetText())))
         else
@@ -673,34 +685,14 @@ type ASTBuildingVisitor() =
                 match this.TryCollectImplicitChannelCall(sa.stmtTail()) with
                 | Some(channelExpr, args) ->
                     single (StmtNode(ImplicitChannelProcedureCall(p, name, channelExpr, this.NormalizeOpenArgs name args)))
-                | None when normalizedName = "ARC" || normalizedName = "ARC_R" ->
-                    match this.TryCollectLeadingToArgs(sa.stmtTail()) with
-                    | Some args ->
-                        single (StmtNode(ProcedureCall(p, name, this.NormalizeOpenArgs name args)))
-                    | None ->
-                        match this.TryCollectToChannelCall(sa.stmtTail()) with
-                        | Some(channelExpr, args) ->
-                            single (StmtNode(ChannelProcedureCall(p, name, channelExpr, this.NormalizeOpenArgs name args)))
-                        | None when String.Equals(name, "PRINT", StringComparison.OrdinalIgnoreCase) ->
-                            this.CollectPrintCallsFromStmtTail(p, name, (fun args -> ProcedureCall(p, name, args)), sa.stmtTail())
-                        | None ->
-                            let args =
-                                sa.Accept(this)
-                                |> List.map (fun node -> singleExpr sa [ node ])
-                                |> this.NormalizeOpenArgs name
-                            single (StmtNode(ProcedureCall(p, name, args)))
+                | None when String.Equals(name, "PRINT", StringComparison.OrdinalIgnoreCase) ->
+                    this.CollectPrintCallsFromStmtTail(p, name, (fun args -> ProcedureCall(p, name, args)), sa.stmtTail())
                 | None ->
-                    match this.TryCollectToChannelCall(sa.stmtTail()) with
-                    | Some(channelExpr, args) ->
-                        single (StmtNode(ChannelProcedureCall(p, name, channelExpr, this.NormalizeOpenArgs name args)))
-                    | None when String.Equals(name, "PRINT", StringComparison.OrdinalIgnoreCase) ->
-                        this.CollectPrintCallsFromStmtTail(p, name, (fun args -> ProcedureCall(p, name, args)), sa.stmtTail())
-                    | None ->
-                        let args =
-                            sa.Accept(this)
-                            |> List.map (fun node -> singleExpr sa [ node ])
-                            |> this.NormalizeOpenArgs name
-                        single (StmtNode(ProcedureCall(p, name, args)))
+                    let args =
+                        sa.Accept(this)
+                        |> List.map (fun node -> singleExpr sa [ node ])
+                        |> this.NormalizeOpenArgs name
+                    single (StmtNode(ProcedureCall(p, name, args)))
             | sa ->
                 let args =
                     sa.Accept(this)
@@ -721,11 +713,20 @@ type ASTBuildingVisitor() =
             ctx.stmtTail().Accept(this)
 
     override this.VisitStmtTail(ctx: SBParser.StmtTailContext) =
-        ctx.stmtSegment() |> Seq.collect (fun segment -> segment.Accept(this)) |> Seq.toList
+        ctx.stmtSegment() |> Seq.toList |> this.CollectSegmentArgs
 
     override this.VisitStmtSegment(ctx: SBParser.StmtSegmentContext) =
         match ctx.stmtArg() with
         | null -> []
+        // A '#' on an argument after the first is kept (a leading one is the statement's
+        // channel): Turbo marks it in the argument's descriptor (Ad_Hoc_Para_List, P 21514).
+        | arg when not (isNull (arg.chanArg())) ->
+            single (ExprNode(mkUnaryExpr (posOfTree arg) "#" (this.SafeAcceptExpr(arg.chanArg().expr()))))
+        // 'TO x' with nothing before it, as in LINE TO x,y or ARC TO x,y,a, is an omitted argument
+        // followed by TO: a range whose lower bound is omitted (Turbo's empty parameter, P 21542).
+        | arg when not (isNull (arg.toChanArg())) ->
+            let p = posOfTree arg
+            single (ExprNode(mkSliceRange p (mkIdentifier p "") (this.SafeAcceptExpr(arg.toChanArg().expr()))))
         | arg -> arg.Accept(this)
 
     override this.VisitStmtArg(ctx: SBParser.StmtArgContext) =
@@ -760,10 +761,11 @@ type ASTBuildingVisitor() =
     override this.VisitPostfixName(ctx: SBParser.PostfixNameContext) =
         let p = posOfTree ctx
         let name = ctx.ID().GetText()
+        // Both bracket groups of c$(i)(a TO b) become one argument list, the SuperBASIC c$(i, a TO b).
         let children =
-            match ctx.postfixArg() with
-            | null -> []
-            | pa -> pa.Accept(this) |> List.map (fun node -> singleExpr pa [ node ])
+            ctx.postfixArg()
+            |> Seq.collect (fun pa -> pa.Accept(this) |> List.map (fun node -> singleExpr pa [ node ]))
+            |> List.ofSeq
         let expr =
             match children with
             | [] -> mkIdentifier p name

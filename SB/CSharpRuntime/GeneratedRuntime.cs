@@ -931,6 +931,12 @@ public static class GeneratedRuntime
     public static object? BitwiseOr(object? left, object? right) => AsInt(left) | AsInt(right);
     public static object? BitwiseXor(object? left, object? right) => AsInt(left) ^ AsInt(right);
     public static int CompareEqual(object? left, object? right) => Equals(left is string || right is string ? AsString(left) : AsDouble(left), left is string || right is string ? AsString(right) : AsDouble(right)) ? 1 : 0;
+    public static int CompareAlmostEqual(object? left, object? right) =>
+        left is string || right is string
+            ? (RuntimeValues.almostEqualStrings(AsString(left), AsString(right)) ? 1 : 0)
+            : left is int && right is int
+                ? ((int)left == (int)right ? 1 : 0)
+                : (RuntimeValues.almostEqualFloats(AsDouble(left), AsDouble(right)) ? 1 : 0);
     public static int CompareNotEqual(object? left, object? right) => CompareEqual(left, right) == 0 ? 1 : 0;
     public static int CompareLessThan(object? left, object? right) => (left is string || right is string ? string.CompareOrdinal(AsString(left), AsString(right)) < 0 : AsDouble(left) < AsDouble(right)) ? 1 : 0;
     public static int CompareLessThanOrEqual(object? left, object? right) => (left is string || right is string ? string.CompareOrdinal(AsString(left), AsString(right)) <= 0 : AsDouble(left) <= AsDouble(right)) ? 1 : 0;
@@ -1545,7 +1551,8 @@ public static class GeneratedRuntime
                     return 0;
                 }
 
-                var requestedDimension = AsInt(args.ElementAtOrDefault(1));
+                // DIMN(array) is DIMN(array, 1).
+                var requestedDimension = args.Length > 1 ? AsInt(args[1]) : 1;
                 var dimensions = GetArrayDimensions(arrayCell);
                 return requestedDimension >= 1 && requestedDimension <= dimensions.Length
                     ? dimensions[requestedDimension - 1]
@@ -1592,12 +1599,19 @@ public static class GeneratedRuntime
         }
     }
 
+    private const string PrintContinueMarker = "\uE000PRINT_CONTINUE\uE000";
+
     public static void ExecuteBuiltInStatement(string name, object? channel, params object?[] args)
     {
         switch (name.ToUpperInvariant())
         {
             case "PRINT":
-                WriteLineToChannel(channel, ManagedBuiltInBridge.FormatPrintLine(args));
+                // A trailing ';', ',', '!' or 'TO n' ends the arguments with the continue marker and
+                // keeps the cursor on the line.
+                if (args.Length > 0 && args[^1] is string last && last == PrintContinueMarker)
+                    WriteToChannel(channel, ManagedBuiltInBridge.FormatPrintLine(args));
+                else
+                    WriteLineToChannel(channel, ManagedBuiltInBridge.FormatPrintLine(args));
                 break;
             case "REFERENCE":
                 break;

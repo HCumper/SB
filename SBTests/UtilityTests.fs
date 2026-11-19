@@ -116,7 +116,8 @@ let ``fillImplicitTypesAndModifyNamesInState updates symbol type to Integer when
           ResolvedSymbols = Map.empty
           RoutineSymbols = Map.empty
           ParameterSymbols = Map.empty
-          ActiveLoops = [] }
+          ActiveLoops = []
+          WholeArrayArguments = Set.empty }
     let updatedState = fillImplicitTypesAndModifyNamesInState state
     let updatedSymbol = updatedState.SymTab["global"].Symbols[normalizeIdentifier "var"]
     match updatedSymbol with
@@ -146,7 +147,8 @@ let ``fillImplicitTypesAndModifyNamesInState updates symbol type to String when 
           ResolvedSymbols = Map.empty
           RoutineSymbols = Map.empty
           ParameterSymbols = Map.empty
-          ActiveLoops = [] }
+          ActiveLoops = []
+          WholeArrayArguments = Set.empty }
     let updatedState = fillImplicitTypesAndModifyNamesInState state
     let updatedSymbol = updatedState.SymTab["global"].Symbols[normalizeIdentifier "var"]
     match updatedSymbol with
@@ -176,7 +178,8 @@ let ``fillImplicitTypesAndModifyNamesInState applies implicit typing case-insens
           ResolvedSymbols = Map.empty
           RoutineSymbols = Map.empty
           ParameterSymbols = Map.empty
-          ActiveLoops = [] }
+          ActiveLoops = []
+          WholeArrayArguments = Set.empty }
     let updatedState = fillImplicitTypesAndModifyNamesInState state
     let updatedSymbol = updatedState.SymTab["global"].Symbols[normalizeIdentifier "VAR"]
     match updatedSymbol with
@@ -206,7 +209,8 @@ let ``fillImplicitTypesAndModifyNamesInState updates symbol type to Real when ru
           ResolvedSymbols = Map.empty
           RoutineSymbols = Map.empty
           ParameterSymbols = Map.empty
-          ActiveLoops = [] }
+          ActiveLoops = []
+          WholeArrayArguments = Set.empty }
     let updatedState = fillImplicitTypesAndModifyNamesInState state
     let updatedSymbol = updatedState.SymTab["global"].Symbols[normalizeIdentifier "var"]
     match updatedSymbol with

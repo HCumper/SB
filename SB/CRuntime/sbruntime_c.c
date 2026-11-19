@@ -450,6 +450,29 @@ Value bitwise_and_value(Value left, Value right) { return make_int(as_int(left) 
 Value bitwise_or_value(Value left, Value right) { return make_int(as_int(left) | as_int(right)); }
 Value bitwise_xor_value(Value left, Value right) { return make_int(as_int(left) ^ as_int(right)); }
 Value compare_equal(Value left, Value right) { return make_int((left.type == TYPE_STRING || right.type == TYPE_STRING) ? strcmp(as_string(left), as_string(right)) == 0 : fabs(as_double(left) - as_double(right)) < 0.0000001); }
+/* SuperBASIC '==': strings equal ignoring case (QDOS comparison type 3); floats equal to within
+   127 units of a QL float's 31-bit mantissa at the larger operand's exponent, about 1 part in
+   10^7 (Turbo's mosteq_float); integers exactly. */
+Value compare_almost_equal(Value left, Value right)
+{
+    if (left.type == TYPE_STRING || right.type == TYPE_STRING)
+    {
+        const char* a = as_string(left);
+        const char* b = as_string(right);
+        while (*a && *b && tolower((unsigned char)*a) == tolower((unsigned char)*b)) { a++; b++; }
+        return make_int(tolower((unsigned char)*a) == tolower((unsigned char)*b));
+    }
+    if (left.type == TYPE_INT && right.type == TYPE_INT) return make_int(left.int_value == right.int_value);
+    {
+        double l = as_double(left);
+        double r = as_double(right);
+        double larger = fabs(l) > fabs(r) ? fabs(l) : fabs(r);
+        int exponent;
+        if (l == r) return make_int(1);
+        frexp(larger, &exponent); /* larger = m * 2^exponent, 0.5 <= m < 1, as a QL float */
+        return make_int(fabs(l - r) <= ldexp(127.0, exponent - 31));
+    }
+}
 Value compare_not_equal(Value left, Value right) { return make_int(as_int(compare_equal(left, right)) == 0); }
 Value compare_less_than(Value left, Value right) { return make_int((left.type == TYPE_STRING || right.type == TYPE_STRING) ? strcmp(as_string(left), as_string(right)) < 0 : as_double(left) < as_double(right)); }
 Value compare_less_than_or_equal(Value left, Value right) { return make_int((left.type == TYPE_STRING || right.type == TYPE_STRING) ? strcmp(as_string(left), as_string(right)) <= 0 : as_double(left) <= as_double(right)); }
@@ -1056,10 +1079,11 @@ Value invoke_builtin_function(const char* name, int arg_count, ...)
     if (ci_compare(name, "BEEPING") == 0) { va_end(args); return make_int(sb_beeping); }
     if (ci_compare(name, "DIMN") == 0)
     {
+        /* DIMN(array) is DIMN(array, 1). */
         Value array_value = va_arg(args, Value);
-        Value dimension_value = va_arg(args, Value);
+        int dimension = arg_count > 1 ? as_int(va_arg(args, Value)) : 1;
         va_end(args);
-        return make_int(get_array_dimension(array_value, as_int(dimension_value)));
+        return make_int(get_array_dimension(array_value, dimension));
     }
     if (ci_compare(name, "FILL$") == 0) { Value text = va_arg(args, Value); Value count = va_arg(args, Value); va_end(args); return fill_string(text, as_int(count)); }
     if (ci_compare(name, "GETENV$") == 0) { Value v = va_arg(args, Value); const char* raw = getenv(as_string(v)); va_end(args); return make_string(raw ? raw : ""); }
@@ -1154,15 +1178,54 @@ void execute_builtin_statement(const char* name, Value channel, int arg_count, .
 
     if (ci_compare(name, "PRINT") == 0)
     {
+        /* PRINT separators arrive as marker strings (U+E000 PRINT_... U+E000, as UTF-8): a comma
+           moves to the next 8-column zone, '!' gives a space unless at the start of the line,
+           'TO n' moves to column n (the next argument), and a trailing ';' or ',' keeps the
+           cursor on the line. Other items are separated by a space, as before. */
+        static const char* print_comma = "\xEE\x80\x80" "PRINT_COMMA" "\xEE\x80\x80";
+        static const char* print_continue = "\xEE\x80\x80" "PRINT_CONTINUE" "\xEE\x80\x80";
+        static const char* print_pling = "\xEE\x80\x80" "PRINT_PLING" "\xEE\x80\x80";
+        static const char* print_to = "\xEE\x80\x80" "PRINT_TO" "\xEE\x80\x80";
         FILE* writer = resolve_writer(channel);
         int i;
+        int column = 0;
+        int newline = 1;
+        int separate = 0;
         for (i = 0; i < arg_count; i++)
         {
             Value value = va_arg(args, Value);
-            fputs(as_string(value), writer);
-            if (i + 1 < arg_count) fputc(' ', writer);
+            const char* text = as_string(value);
+            if (strcmp(text, print_comma) == 0)
+            {
+                int next = (column / 8 + 1) * 8;
+                while (column < next) { fputc(' ', writer); column++; }
+                separate = 0;
+                continue;
+            }
+            if (strcmp(text, print_continue) == 0) { newline = 0; continue; }
+            if (strcmp(text, print_pling) == 0)
+            {
+                if (column > 0) { fputc(' ', writer); column++; }
+                separate = 0;
+                continue;
+            }
+            if (strcmp(text, print_to) == 0)
+            {
+                if (i + 1 < arg_count)
+                {
+                    int target = as_int(va_arg(args, Value));
+                    i++;
+                    while (column < target) { fputc(' ', writer); column++; }
+                }
+                separate = 0;
+                continue;
+            }
+            if (separate) { fputc(' ', writer); column++; }
+            fputs(text, writer);
+            column += (int)strlen(text);
+            separate = 1;
         }
-        fputc('\n', writer);
+        if (newline) fputc('\n', writer);
         fflush(writer);
         va_end(args);
         return;

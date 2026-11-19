@@ -356,8 +356,8 @@ let rec tryEvaluateConstantExpr (state: ProcessingState) expr =
                             let lhs = stripQuotedString coercedLeft
                             let rhs = stripQuotedString coercedRight
                             match normalizeIdentifier op with
-                            | "="
-                            | "==" -> lhs = rhs
+                            | "=" -> lhs = rhs
+                            | "==" -> SBRuntime.RuntimeValues.almostEqualStrings lhs rhs
                             | "<>" -> lhs <> rhs
                             | "<" -> lhs < rhs
                             | "<=" -> lhs <= rhs
@@ -368,8 +368,9 @@ let rec tryEvaluateConstantExpr (state: ProcessingState) expr =
                             match tryParseFloat coercedLeft, tryParseFloat coercedRight with
                             | (true, lhs), (true, rhs) ->
                                 match normalizeIdentifier op with
-                                | "="
-                                | "==" -> lhs = rhs
+                                | "=" -> lhs = rhs
+                                | "==" when coercedType = SBType.Integer -> lhs = rhs
+                                | "==" -> SBRuntime.RuntimeValues.almostEqualFloats lhs rhs
                                 | "<>" -> lhs <> rhs
                                 | "<" -> lhs < rhs
                                 | "<=" -> lhs <= rhs
@@ -454,9 +455,9 @@ let validateScalarVsArrayUsage name position requiresIndexedAccess symbol (state
     match symbol with
     | ArraySym _ when not requiresIndexedAccess ->
         appendDiagnostic SemanticDiagnosticCode.InvalidIndexing (Some name) (Some position) $"Array '{name}' used without index at {position.EditorLineNo}:{position.Column}" state
+    // A formal takes whatever the caller passes, so it may be indexed as an array.
     | VariableSym _
-    | ConstantSym _
-    | ParameterSym _ when requiresIndexedAccess ->
+    | ConstantSym _ when requiresIndexedAccess ->
         appendDiagnostic SemanticDiagnosticCode.InvalidIndexing (Some name) (Some position) $"Scalar '{name}' cannot be indexed at {position.EditorLineNo}:{position.Column}" state
     | _ -> state
 
@@ -485,8 +486,8 @@ let private appendNonWritableTargetError name position symbol (state: Processing
 
 let private isWritableResolvedTarget requiresIndexedAccess symbol =
     match symbol with
-    | VariableSym _
-    | ParameterSym _ -> not requiresIndexedAccess
+    | VariableSym _ -> not requiresIndexedAccess
+    | ParameterSym _ -> true
     | ArraySym _ -> requiresIndexedAccess
     | _ -> false
 
@@ -617,6 +618,13 @@ let private validateConstantCoercion pos operator coercedType leftExpr rightExpr
     | Some value -> validateOperand value rightExpr stateAfterLeft
     | None -> stateAfterLeft
 
+/// The missing end of an a$(n TO) slice, which the parse tree visitor leaves as an empty name.
+let isOmittedSliceBound expr =
+    match expr with
+    | Identifier(_, _, "")
+    | PostfixName(_, _, "", None) -> true
+    | _ -> false
+
 let rec inferExprType (state: ProcessingState) expr =
     let typed inferredType nextState =
         let constantValue = tryEvaluateConstantExpr nextState expr
@@ -631,10 +639,14 @@ let rec inferExprType (state: ProcessingState) expr =
         | true, _ -> typed SBType.Integer state
         | _ -> typed SBType.Real state
     | StringLiteral _ -> typed SBType.String state
+    // An omitted argument (PROC a,,b) has no value of its own.
+    | Identifier(_, _, "") -> typed SBType.Unknown state
     | Identifier(_, _, name) ->
         match tryResolveSymbol state.CurrentScope name state.SymTab with
         | Some(_, symbol) ->
-            let validatedState = validateScalarVsArrayUsage name (posOfExpr expr) false symbol state
+            let validatedState =
+                if state.WholeArrayArguments.Contains(nodeIdOfExpr expr) then state
+                else validateScalarVsArrayUsage name (posOfExpr expr) false symbol state
             let contextValidatedState, symbolType =
                 match symbol with
                 | BuiltInSym _ -> validatedState, builtInResultType name
@@ -706,8 +718,10 @@ let rec inferExprType (state: ProcessingState) expr =
             typed inferred contextValidatedState
         | None -> typed (inferredVariableType stateAfterArgs stateAfterArgs.CurrentScope name) stateAfterArgs
     | SliceRange(_, pos, lhs, rhs) ->
-        let lhsType, stateAfterLhs = inferExprType state lhs
-        let rhsType, stateAfterRhs = inferExprType stateAfterLhs rhs
+        let lhsType, stateAfterLhs =
+            if isOmittedSliceBound lhs then SBType.Integer, state else inferExprType state lhs
+        let rhsType, stateAfterRhs =
+            if isOmittedSliceBound rhs then SBType.Integer, stateAfterLhs else inferExprType stateAfterLhs rhs
         let nextState =
             if isIntegerCompatible lhsType && isIntegerCompatible rhsType then
                 stateAfterRhs

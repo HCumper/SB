@@ -299,6 +299,7 @@ let private exprType = function
     | Unary(_, _, hirType, _)
     | Binary(_, _, _, hirType, _)
     | CallFunc(_, _, hirType, _) -> hirType
+    | Missing _ -> HirType.Void
 
 let private emitCall targetName args =
     match args with
@@ -342,6 +343,7 @@ and private emitBuiltInFunctionArgs ctx symbolId args =
         args |> List.map (emitBuiltInCallArg ctx)
 
 and private emitExpr ctx = function
+    | Missing _ -> "make_null()"
     | Literal(ConstInt value, _, _) -> $"make_int({value})"
     | Literal(ConstFloat value, _, _) ->
         let rendered = value.ToString("G17", CultureInfo.InvariantCulture)
@@ -362,7 +364,8 @@ and private emitExpr ctx = function
     | Unary(op, inner, _, _) ->
         let value = emitExpr ctx inner
         match op with
-        | Identity -> value
+        | Identity
+        | Hash -> value
         | Negate -> $"negate_value({value})"
         | BitwiseNot -> $"bitwise_not_value({value})"
         | UnaryUnknown name -> $"unsupported_unary(\"{escapeCString name}\", {value})"
@@ -382,6 +385,7 @@ and private emitExpr ctx = function
         | BitwiseOr -> $"bitwise_or_value({left}, {right})"
         | BitwiseXor -> $"bitwise_xor_value({left}, {right})"
         | Equal -> $"compare_equal({left}, {right})"
+        | AlmostEqual -> $"compare_almost_equal({left}, {right})"
         | NotEqual -> $"compare_not_equal({left}, {right})"
         | LessThan -> $"compare_less_than({left}, {right})"
         | LessThanOrEqual -> $"compare_less_than_or_equal({left}, {right})"
@@ -642,6 +646,10 @@ and private emitStmtCore ctx builder level gosubReturnStart gosubReturnCount act
     | BuiltInCall(NamedBuiltIn "STOP", _, _, _) ->
         appendLine builder level "goto sb_exit;"
     | BuiltInCall(kind, channel, args, _) ->
+        let args =
+            match kind with
+            | NamedBuiltIn name when flattensRangeArguments name -> flattenRangeArguments args
+            | _ -> args
         let kindName =
             match kind with
             | Reference -> "REFERENCE"
@@ -749,6 +757,8 @@ and private emitStmtCore ctx builder level gosubReturnStart gosubReturnCount act
             appendLine builder level (emitTargetWriteValue ctx target (targetType target) valueExpr))
     | Remark(text, _) ->
         appendLine builder level $"/* {escapeCString text} */"
+    // Storage is sized from the constant bounds at startup; DIM itself does nothing here.
+    | Dim _ -> ()
 
 and private emitStmt ctx builder level gosubReturnStart gosubReturnCount activeHandlerVar hasWhenError stmtId currentLine nextLine nextStmtIdOpt stmt =
     if hasWhenError then
