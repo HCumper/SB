@@ -642,6 +642,23 @@ let turboIrOptionsFromState (state: ProcessingState) =
 let generateTurboIrFromLoweredHir (state: ProcessingState) hirProgram =
     HirTurboIrBackend.generateTurboIrFromHir (turboIrOptionsFromState state) hirProgram
 
+/// A Turbo task name from an output file name: its printable ASCII stem, at most 12 characters.
+let turboTaskName (outputFileName: string) =
+    let stem =
+        Path.GetFileNameWithoutExtension(outputFileName)
+        |> String.filter (fun ch -> ch >= ' ' && ch <= '~')
+    if stem.Length > 12 then stem.Substring(0, 12) else stem
+
+/// The Turbo IR stream and the QDOS executable Turbo's code generator makes from it.
+let generateTurboExecutableFromLoweredHir (state: ProcessingState) (taskName: string) hirProgram =
+    match generateTurboIrFromLoweredHir state hirProgram with
+    | Result.Error errors -> Result.Error errors
+    | Result.Ok ir ->
+        let options = { TurboCodegen.defaultCodegenOptions with TaskName = taskName }
+        match TurboCodegen.generateFromIr options ir.Bytes with
+        | Result.Ok executable -> Result.Ok(ir, executable)
+        | Result.Error errors -> Result.Error errors
+
 let private formatHirLoweringErrorForRuntime (error: HirLoweringError) =
     let location =
         match error.Position with

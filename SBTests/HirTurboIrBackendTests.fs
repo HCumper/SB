@@ -317,7 +317,7 @@ let ``spec 10.3 resident procedure call marks the stack and describes its argume
     assertLines """
         250
         106 7
-        376 2
+        377 2050 16384 ; 2
         227 1 [13 02] ; BEEP
         220
     """ (body output)
@@ -369,7 +369,7 @@ let ``arithmetic follows Turbo types, conversions and logical operators`` () =
         118 4 ; D%
         109 1 ; A%
         320
-        376 2
+        377 2050 16384 ; 2
         40
         150 5 ; E
         109 1 ; A%
@@ -380,7 +380,7 @@ let ``arithmetic follows Turbo types, conversions and logical operators`` () =
         20
         5
         118 6 ; F%
-        376 2
+        377 2050 16384 ; 2
         109 1 ; A%
         320
         51
@@ -399,7 +399,7 @@ let ``arithmetic follows Turbo types, conversions and logical operators`` () =
         106 1
         10
         141 2 ; B
-        376 3
+        377 2050 24576 ; 3
         46
         54
         265 15 ; S$
@@ -407,7 +407,7 @@ let ``arithmetic follows Turbo types, conversions and logical operators`` () =
         76
         53
         141 2 ; B
-        376 0
+        377 0 0 ; 0
         45
         55
         150 11 ; K
@@ -495,7 +495,7 @@ let ``arrays are DIMmed at program start and indexed with typed templates`` () =
         106 2
         111 1 ; A%
         320
-        376 4
+        377 2051 16384 ; 4
         40
         144 2 ; M
         106 3
@@ -647,8 +647,8 @@ let ``FOR loops use the range, instance, NEXT and EXIT protocol`` () =
         2003: ; NEXT I%
         230 1 ; I%
         378 2001
-        376 0
-        376 1
+        377 0 0 ; 0
+        377 2049 16384 ; 1
         377 2047 16384 ; 0.25
         357 2006
         58 3 2005 ; X
@@ -662,8 +662,8 @@ let ``FOR loops use the range, instance, NEXT and EXIT protocol`` () =
         203
         232 3 ; X
         378 2006
-        376 1
-        376 3
+        377 2049 16384 ; 1
+        377 2050 24576 ; 3
         357 2008
         360 4 2007 ; Y
         355
@@ -676,13 +676,13 @@ let ``FOR loops use the range, instance, NEXT and EXIT protocol`` () =
         203
         232 4 ; Y
         378 2008
-        376 1
+        377 2049 16384 ; 1
         56 2 2009 ; K
-        376 3
-        376 5
+        377 2050 24576 ; 3
+        377 2051 20480 ; 5
         357 2010
         360 2 2009 ; K
-        376 9
+        377 2052 18432 ; 9
         56 2 2009 ; K
         355
         2009: ; FOR K
@@ -833,7 +833,7 @@ let ``procedures and functions bind formals in reverse and declare locals`` () =
         10002: ; program body
         326
         346
-        376 0
+        377 0 0 ; 0
         150 1 ; C
         169 "hi"
         264 2 ; W$
@@ -849,7 +849,7 @@ let ``procedures and functions bind formals in reverse and declare locals`` () =
         260
         186
         201
-        376 7
+        377 2051 28672 ; 7
         356 65525 ; HALF
         310
         186
@@ -864,7 +864,7 @@ let ``procedures and functions bind formals in reverse and declare locals`` () =
         106 2
         147 0 8 ; Z
         141 4 ; N
-        376 1
+        377 2049 16384 ; 1
         37
         150 4 ; N
         106 1
@@ -887,7 +887,7 @@ let ``procedures and functions bind formals in reverse and declare locals`` () =
         142 12 ; V
         150 12 ; V
         141 12 ; V
-        376 2
+        377 2050 16384 ; 2
         40
         244
         244
@@ -1019,7 +1019,7 @@ let ``built-ins use their templates and other routines go through the resident l
         269
         118 2 ; C%
         377 2066 16384 ; 131072
-        376 255
+        377 2056 32640 ; 255
         278
         377 2066 16384 ; 131072
         271
@@ -1027,7 +1027,7 @@ let ``built-ins use their templates and other routines go through the resident l
         377 2066 16384 ; 131072
         276
         150 6 ; Q
-        376 100
+        377 2055 25600 ; 100
         275
         150 7 ; R
         106 3
@@ -1039,7 +1039,7 @@ let ``built-ins use their templates and other routines go through the resident l
         106 6
         224 2 11 [53 03] ; RND
         150 8 ; X
-        376 1
+        377 2049 16384 ; 1
         224 2 12 [02] ; SIN
         150 9 ; Y
         250
@@ -1514,7 +1514,7 @@ let ``a whole program lowers to the exact stream`` () =
         118 8 ; N%
         102 15 ; K%
         142 16 ; TOTAL
-        376 0
+        377 0 0 ; 0
         150 16 ; TOTAL
         106 1
         109 8 ; N%

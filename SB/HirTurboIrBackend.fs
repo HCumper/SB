@@ -1038,18 +1038,17 @@ type private Emitter(options: TurboIrOptions, program: HirProgram) =
     member private this.EmitInt(value: int) =
         if value = 0 then op0 Op.quickZero else op Op.constantInt [ Word value ]
 
-    /// Float constant: 376 for an integral value in word range (as the spec's own examples do),
-    /// 377 when the mantissa's low word is zero, otherwise 138 (Examine_NumLit, P 18526).
+    /// Float constant: 377 when the mantissa's low word is zero, otherwise 138, as the parser does
+    /// for float literals and for integer literals in a float context (Examine_NumLit and
+    /// Stack_Int, P 18526-18618). 376 would be shorter for small integers, but codegen's improver
+    /// only recognises x = x + 1, 2 or 4 when the constant is a 377 record.
     member private this.EmitFloat(value: float, pos: SourcePosition) =
-        if value >= -32768.0 && value <= 32767.0 && value = Math.Round value then
-            op Op.wordFloat [ Word(int value) ]
-        else
-            match encodeQdosFloat value with
-            | Result.Ok(exponent, high, low) ->
-                let comment = value.ToString("R", CultureInfo.InvariantCulture)
-                if low = 0 then opc Op.longFloat [ Word exponent; Word high ] comment
-                else opc Op.constFloat [ Word exponent; Word high; Word low ] comment
-            | Result.Error message -> fail pos message
+        match encodeQdosFloat value with
+        | Result.Ok(exponent, high, low) ->
+            let comment = value.ToString("R", CultureInfo.InvariantCulture)
+            if low = 0 then opc Op.longFloat [ Word exponent; Word high ] comment
+            else opc Op.constFloat [ Word exponent; Word high; Word low ] comment
+        | Result.Error message -> fail pos message
 
     member private this.EncodeText(text: string, pos: SourcePosition) =
         match QlCharacterSet.tryEncode text with

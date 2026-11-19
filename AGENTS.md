@@ -18,7 +18,7 @@ The runtime is incomplete. Prefer making the interpreter correct and well-tested
 - interprets core control flow including `GOTO`, `GOSUB`, `RETURN`, `ON GOTO`, and `ON GOSUB`
 - generates alternate C# from lowered HIR
 - generates alternate plain C from lowered HIR
-- generates the Turbo SuperBASIC compiler's binary IR stream from lowered HIR
+- generates the Turbo SuperBASIC compiler's binary IR stream from lowered HIR, and a QDOS executable from it with a port of Turbo's code generator
 - generates a published `.NET` executable from lowered HIR
 - shares some built-in/runtime behavior through `SBRuntime`
 
@@ -58,6 +58,7 @@ The runtime is incomplete. Prefer making the interpreter correct and well-tested
 - `SB/HirCSharpBackend.fs` - HIR to C#
 - `SB/HirCBackend.fs` - HIR to C
 - `SB/HirTurboIrBackend.fs` - HIR to Turbo IR (binary stream plus listing)
+- `SB/TurboCodegen.fs` - Turbo IR to QDOS executable (port of codegen410 over the bundled lib537 library); `SBTests/TurboCodegenOracle.fs` runs the genuine codegen in a 68000 emulator to check it byte for byte
 - `SB/CSharpRuntime/GeneratedRuntime.cs` - runtime source copied beside generated C#
 - `SB/CRuntime/sbruntime_c.h` - shared C runtime header copied beside generated C
 - `SB/CRuntime/sbruntime_c.c` - shared C runtime source copied beside generated C
@@ -102,6 +103,7 @@ Backends:
 - `c` - lower to HIR, write generated C, and copy `sbruntime_c.h` and `sbruntime_c.c`
 - `dotnetexe`, `dotnet-exe`, `exe` - generate C# internally and publish a single-file `.NET` executable
 - `turboir`, `turbo-ir`, `ir` - write the Turbo IR stream to the output file and a listing to `<output>.lst`
+- `turbo`, `turboexe`, `turbo-exe` - also run the code generator and write a QDOS executable with a `]!QDOS File Header` block
 
 Runtime hosts:
 

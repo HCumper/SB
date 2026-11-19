@@ -21,6 +21,8 @@
         <Compile Include="HirCBackend.fs" />
         <Compile Include="HirCSharpBackend.fs" />
         <Compile Include="HirTurboIrBackend.fs" />
+        <Compile Include="TurboCodegen.fs" />
+        <EmbeddedResource Include="TurboRuntime\lib537.bin" LogicalName="lib537.bin" />
         <Compile Include="SyntaxAst.fs" />
         <Compile Include="Interpreter.fs" />
         <Compile Include="AstDiagnostics.fs" />

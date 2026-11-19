@@ -66,6 +66,7 @@ Backends:
 - `c` writes generated C and copies `sbruntime_c.h` and `sbruntime_c.c` beside it.
 - `dotnetexe`, `dotnet-exe`, or `exe` generates C# internally and publishes a single-file `.NET` executable.
 - `turboir`, `turbo-ir`, or `ir` writes the binary intermediate stream read by the Turbo SuperBASIC compiler's QDOS code generator (see the Turbo IR specification), plus a readable listing beside it as `<output>.lst`. Constructs with no IR form are reported as errors, reduced-fidelity ones as warnings.
+- `turbo`, `turboexe`, or `turbo-exe` runs a second pass, a port of Turbo's own code generator using its genuine template library (lib537), and writes a QDOS executable preceded by the 30-byte `]!QDOS File Header` block that QDOS emulators use to keep the file's type and dataspace. The task name is the output file name (12 characters at most).
 
 Examples:
 
@@ -125,7 +126,7 @@ Important settings:
 - `AppSettings:InputFile` is the default source file.
 - `AppSettings:OutputFile` is the default generated output path.
 - `AppSettings:Verbose` prints diagnostics, symbol tables, HIR, and backend progress.
-- `AppSettings:Backend` selects `interpret`, `csharp`, `c`, `dotnetexe`, or `turboir` when not overridden.
+- `AppSettings:Backend` selects `interpret`, `csharp`, `c`, `dotnetexe`, `turboir`, or `turbo` when not overridden.
 - `AppSettings:RuntimeHost` selects `console` or `avalonia` for interpreter runs.
 - `AppSettings:SyntaxChecking` accepts `relaxed` or `rigorous`; unknown or blank values fall back to `relaxed`.
 - `AppSettings:ExecutionThrottle` can slow interpreter execution for host/UI responsiveness.
@@ -156,6 +157,7 @@ Important implementation files:
 - `SB/HirCSharpBackend.fs` - HIR to C# backend.
 - `SB/HirCBackend.fs` - HIR to C backend.
 - `SB/HirTurboIrBackend.fs` - HIR to Turbo IR backend.
+- `SB/TurboCodegen.fs` - Turbo IR to QDOS executable (port of Turbo's codegen410), with `SB/TurboRuntime/lib537.bin` as its template library.
 - `SB/CSharpRuntime/GeneratedRuntime.cs` - runtime source copied beside generated C#.
 - `SB/CRuntime/sbruntime_c.h` and `SB/CRuntime/sbruntime_c.c` - runtime files copied beside generated C.
 

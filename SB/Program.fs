@@ -284,6 +284,25 @@ let main argv =
                         Console.Error.WriteLine("Turbo IR generation failed:")
                         errors |> List.iter (fun (error: string) -> Console.Error.WriteLine(error))
                         1
+                | "turbo"
+                | "turboexe"
+                | "turbo-exe" ->
+                    let taskName = turboTaskName settings.OutputFileName
+                    match generateTurboExecutableFromLoweredHir state taskName hirProgram with
+                    | Result.Ok(ir, executable) ->
+                        for warning in ir.Warnings do
+                            Console.Error.WriteLine($"Turbo IR warning: {warning}")
+                        File.WriteAllBytes(settings.OutputFileName, TurboCodegen.executableFile executable)
+                        if settings.Verbose then
+                            let listingPath = HirTurboIrBackend.listingFileName settings.OutputFileName
+                            File.WriteAllText(listingPath, ir.Listing)
+                            Console.WriteLine($"QDOS executable written to {settings.OutputFileName} ({executable.Code.Length} bytes, dataspace {executable.Dataspace})")
+                            Console.WriteLine($"Turbo IR listing written to {listingPath}")
+                        0
+                    | Result.Error errors ->
+                        Console.Error.WriteLine("Turbo code generation failed:")
+                        errors |> List.iter (fun (error: string) -> Console.Error.WriteLine(error))
+                        1
                 | "dotnetexe"
                 | "dotnet-exe"
                 | "exe" ->
@@ -297,5 +316,5 @@ let main argv =
                         Console.Error.WriteLine(message : string)
                         1
                 | backend ->
-                    Console.Error.WriteLine($"Unknown backend '{backend}'. Supported backends: interpret, csharp, c, dotnetexe, turboir.")
+                    Console.Error.WriteLine($"Unknown backend '{backend}'. Supported backends: interpret, csharp, c, dotnetexe, turboir, turbo.")
                     1
