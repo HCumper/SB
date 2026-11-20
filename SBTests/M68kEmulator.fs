@@ -1,9 +1,9 @@
 module SBTests.M68kEmulator
 
-// A user-mode Motorola 68000 interpreter, used as a test oracle: it runs the genuine Turbo
-// code generator (TurboReference/codegen_task.bin) so the F# port can be compared with it byte
-// for byte. It implements the integer instruction set a QDOS job uses (no BCD, no supervisor
-// state, no exceptions other than TRAP); anything else raises M68kFault so a gap is never
+// A Motorola 68000 integer interpreter used for the genuine Turbo code generator and compiled
+// program execution tests. It models SR bits used to enter/leave QDOS scheduler critical
+// sections, without interrupt handling, supervisor stack switching or BCD instructions.
+// Exceptions other than host-handled TRAPs are unsupported; gaps raise M68kFault so they are never
 // silently mis-executed. Traps go to TrapHandler, and Hooks intercept calls to addresses that
 // stand for QDOS vectored utilities.
 
@@ -62,6 +62,7 @@ type Cpu(memory: byte[]) =
     let mutable fz = false
     let mutable fv = false
     let mutable fc = false
+    let mutable statusUpper = 0u
     let mutable halted = false
     let mutable steps = 0L
     let mutable opcodePc = 0u
@@ -90,6 +91,12 @@ type Cpu(memory: byte[]) =
             fz <- value &&& 4u <> 0u
             fv <- value &&& 2u <> 0u
             fc <- value &&& 1u <> 0u
+
+    member this.StatusRegister
+        with get () = statusUpper ||| this.Ccr
+        and set (value: uint32) =
+            statusUpper <- value &&& 0xA700u
+            this.Ccr <- value
 
     // -- memory -------------------------------------------------------------
 
@@ -315,13 +322,16 @@ type Cpu(memory: byte[]) =
             | kind ->
                 if mode = 7 && register = 4 then
                     let size = (op >>> 6) &&& 3
-                    if size <> 0 then this.Fault "immediate operation on SR is not supported"
-                    let value = this.Fetch16() &&& 0xFFu
-                    match kind with
-                    | 0 -> this.Ccr <- this.Ccr ||| value
-                    | 1 -> this.Ccr <- this.Ccr &&& value
-                    | 5 -> this.Ccr <- this.Ccr ^^^ value
-                    | _ -> this.Fault "invalid CCR operation"
+                    if size > 1 then this.Fault "invalid immediate status-register operation size"
+                    let value = this.Fetch16()
+                    let current = if size = 0 then this.Ccr else this.StatusRegister
+                    let result =
+                        match kind with
+                        | 0 -> current ||| value
+                        | 1 -> current &&& value
+                        | 5 -> current ^^^ value
+                        | _ -> this.Fault "invalid status-register operation"
+                    if size = 0 then this.Ccr <- result else this.StatusRegister <- result
                 else
                     let size = sizeFromBits ((op >>> 6) &&& 3)
                     let immediate =
@@ -433,7 +443,7 @@ type Cpu(memory: byte[]) =
         elif op &&& 0xFB80 = 0x4880 then this.Movem op
         elif op &&& 0xF1C0 = 0x41C0 then a[(op >>> 9) &&& 7] <- this.ControlAddress(mode, register)
         elif op &&& 0xFFC0 = 0x44C0 then this.Ccr <- this.Load(OpSize.Word, this.Resolve(mode, register, OpSize.Word))
-        elif op &&& 0xFFC0 = 0x40C0 then this.Store(OpSize.Word, this.Resolve(mode, register, OpSize.Word), this.Ccr)
+        elif op &&& 0xFFC0 = 0x40C0 then this.Store(OpSize.Word, this.Resolve(mode, register, OpSize.Word), this.StatusRegister)
         elif op &&& 0xFFC0 = 0x4AC0 then
             let location = this.Resolve(mode, register, OpSize.Byte)
             let value = this.Load(OpSize.Byte, location)
