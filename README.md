@@ -1,6 +1,10 @@
 # SB
 
 `SB` is an F# toolchain for SuperBASIC and Structured SuperBASIC on modern `.NET 10`.
+The managed SSB preprocessor supports SSB 2.8.0 record types, dotted fields,
+whole-record copies, writable record and record-array parameters, scalar `VAL`
+parameters, and optional record pools. See [SSB 2.8.0 support](docs/ssb280.md)
+for examples, compatibility profiles and limits.
 
 The project is not a Sinclair QL emulator. Its purpose is to parse, analyze, lower, interpret, and optionally generate code for SuperBASIC-family programs on a contemporary host. The implementation preserves the language model where practical. It is not a QL emulator and so does not address QL hardware, direct machine-code execution, firmware-specific behavior, and full interactive QL environment emulation.
 

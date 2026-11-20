@@ -190,75 +190,29 @@ module Ssb =
             raise (FatalSsbError(sprintf "Malformed #INCLUDE: %s" directiveLine))
         cfg.WorkingDir1 + directiveLine.Substring(9)
 
-    let inStringEndPosition (s: string) (stopHere1Based: int) =
-        let mutable doubleQuoted = false
-        let mutable singleQuoted = false
+    // Track the active delimiter: the other quote character is ordinary text.
+    let private commentMarker (marker: string) (s: string) =
+        let mutable quote = '\000'
+        let mutable found = -1
+        let mutable i = 0
+        while i < s.Length && found < 0 do
+            let ch = s[i]
+            if quote <> '\000' then
+                if ch = quote then quote <- '\000'
+            elif ch = '\'' || ch = '"' then quote <- ch
+            elif i + marker.Length <= s.Length && s.Substring(i, marker.Length) = marker then found <- i
+            i <- i + 1
+        found
 
-        for i = 0 to stopHere1Based - 1 do
-            let ch = s.[i]
-            if ch = '"' then
-                doubleQuoted <- not doubleQuoted
-            elif ch = '\'' then
-                singleQuoted <- not singleQuoted
-
-        if not doubleQuoted && not singleQuoted then
-            0
-        else
-            let quote = if doubleQuoted then '"' else '\''
-            let mutable found = 0
-            let mutable i = stopHere1Based - 1
-            while found = 0 && i < s.Length do
-                if s.[i] = quote then
-                    found <- i + 1
-                i <- i + 1
-            found
-
-    let stripTabs (s: string) =
-        s.Replace('\t', ' ')
+    let stripTabs (s: string) = s.Replace('\t', ' ')
 
     let stripComment (s: string) =
-        let rec loop (remaining: string) (acc: string) =
-            let pos = remaining.IndexOf("##", StringComparison.Ordinal)
-            if pos < 0 then
-                acc + remaining
-            elif pos = 0 then
-                acc
-            else
-                let marker1 = pos + 1
-                let quoteEnd = inStringEndPosition remaining marker1
-                if quoteEnd = 0 then
-                    acc + remaining.Substring(0, pos)
-                else
-                    let keep = remaining.Substring(0, quoteEnd)
-                    let tail =
-                        if quoteEnd < remaining.Length then
-                            remaining.Substring(quoteEnd)
-                        else
-                            ""
-                    loop tail (acc + keep)
-        loop s ""
+        let position = commentMarker "##" s
+        if position < 0 then s else s.Substring(0, position)
 
     let doRemark (s: string) =
-        let rec loop (remaining: string) (acc: string) =
-            let pos = remaining.IndexOf("**", StringComparison.Ordinal)
-            if pos < 0 then
-                acc + remaining
-            elif pos = 0 then
-                acc + "REMark" + remaining.Substring(2)
-            else
-                let marker1 = pos + 1
-                let quoteEnd = inStringEndPosition remaining marker1
-                if quoteEnd = 0 then
-                    acc + remaining.Substring(0, pos) + "REMark" + remaining.Substring(pos + 2)
-                else
-                    let keep = remaining.Substring(0, quoteEnd)
-                    let tail =
-                        if quoteEnd < remaining.Length then
-                            remaining.Substring(quoteEnd)
-                        else
-                            ""
-                    loop tail (acc + keep)
-        loop s ""
+        let position = commentMarker "**" s
+        if position < 0 then s else s.Substring(0, position) + "REMark" + s.Substring(position + 2)
 
     let joinLineFromReader (reader: StreamReader) (initial: string) =
         let mutable outLine = initial
@@ -276,157 +230,104 @@ module Ssb =
     let emitLine (writer: TextWriter) (lineNum: int) (text: string) =
         writer.WriteLine($"{lineNum} {text}")
 
-    // Pass one assigns final line numbers to labels and collects conditional symbols.
-    let rec passOne (cfg: Config) (state: Pass1State) (inputFile: string) =
-        if not (File.Exists(inputFile)) then
-            raise (FatalSsbError(sprintf "File not found: %s" inputFile))
-
-        // Read through QlCharacterSet so QL-native files keep their accented letters.
-        use reader = new StreamReader(new MemoryStream(Text.Encoding.UTF8.GetBytes(QlCharacterSet.readSourceText inputFile)), Text.Encoding.UTF8)
-
-        while not reader.EndOfStream do
-            let mutable line = reader.ReadLine()
-            let fc = firstChar line
-
-            if fc = 0 then
-                ()
-            elif startsWithFirstNonSpace "##" line then
-                ()
-            elif firstNonSpaceIs '.' line then
-                ()
-            elif line.Length >= 6 && startsAtCol1 "#ENDIF" (upperAscii line) then
-                ()
-            else
-                line <- joinLineFromReader reader line
-
-                if line.Length > 0 && line.[0] = '@' then
-                    if line.Length > cfg.MaxNameLength + 1 then
-                        raise (FatalSsbError(sprintf "Label too long: %s" line))
-                    if state.Labels.Count >= cfg.MaxLabels - 1 then
-                        raise (FatalSsbError("Too many labels"))
-                    state.Labels.[line] <- state.LineNum
-
-                elif startsAtCol1 "#INCLUDE" (upperAscii line) then
-                    let includeFile = resolveIncludePath cfg line
-                    passOne cfg state includeFile
-
-                elif startsAtCol1 "#DEFINE" (upperAscii line) then
-                    if line.Length < 9 then
-                        raise (FatalSsbError(sprintf "Malformed #DEFINE: %s" line))
-                    let name = upperAscii (line.Substring(8))
-                    if name.Length > cfg.MaxNameLength then
-                        raise (FatalSsbError(sprintf "DEFINE too long: %s" name))
-                    if state.Defines.Count >= cfg.MaxLabels - 1 then
-                        raise (FatalSsbError("Too many DEFINEs"))
-                    state.Defines.Add(name) |> ignore
-
-                elif startsAtCol1 "#IFDEF" (upperAscii line) then
-                    if line.Length < 8 then
-                        raise (FatalSsbError(sprintf "Malformed #IFDEF: %s" line))
-                    let symbol = upperAscii (line.Substring(7))
-                    if not (state.Defines.Contains(symbol)) then
-                        let mutable foundEndif = false
-                        while not foundEndif do
-                            if reader.EndOfStream then
-                                raise (FatalSsbError("End of file found before #ENDIF"))
-                            let skipLine = reader.ReadLine()
-                            if skipLine.Length >= 6 && startsAtCol1 "#ENDIF" (upperAscii skipLine) then
-                                foundEndif <- true
-                else
-                    state.LineNum <- state.LineNum + cfg.LineDelta
+    // Freeze active input once. Both expansion and numbering consume this stream,
+    // so nested conditionals, includes and preserved blanks cannot skew labels.
+    let private activeSource (cfg: Config) (inputFile: string) =
+        let symbols = HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        let activeFiles = HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        let output = ResizeArray<SsbRecords.SourceLine>()
+        let rec readFile depth input =
+            let path = Path.GetFullPath(input)
+            if depth >= 19 then raise (FatalSsbError($"{path}: Include nesting exceeds 19 input files"))
+            if not (activeFiles.Add path) then raise (FatalSsbError($"{path}: Cyclic #INCLUDE"))
+            if not (File.Exists path) then raise (FatalSsbError($"File not found: {path}"))
+            let conditions = ResizeArray<bool>()
+            use reader = new StringReader(QlCharacterSet.readSourceText path)
+            let mutable number = 0
+            let fail message = raise (FatalSsbError($"{path}:{number}: {message}"))
+            let enabled () = conditions |> Seq.forall id
+            let read () =
+                number <- number + 1
+                reader.ReadLine() |> stripTabs
+            while reader.Peek() >= 0 do
+                let firstNumber = number + 1
+                let mutable line = read ()
+                let initial = line.TrimStart()
+                let directive = upperAscii initial
+                if directive.StartsWith("#IFDEF ", StringComparison.Ordinal) then
+                    if conditions.Count >= 32 then fail "Conditional nesting exceeds 32"
+                    conditions.Add(symbols.Contains(initial.Substring(7).Trim()))
+                elif directive = "#ENDIF" then
+                    if conditions.Count = 0 then fail "Unmatched #ENDIF"
+                    conditions.RemoveAt(conditions.Count - 1)
+                elif enabled () then
+                    if directive.StartsWith("#DEFINE ", StringComparison.Ordinal) then
+                        let name = initial.Substring(8).Trim()
+                        if name.Length = 0 || name.Length > cfg.MaxNameLength then fail "Invalid #DEFINE name"
+                        symbols.Add name |> ignore
+                    elif directive.StartsWith("#INCLUDE ", StringComparison.Ordinal) then
+                        let name = initial.Substring(9).Trim().Trim('"')
+                        let configured = cfg.WorkingDir1 + name
+                        let relative = Path.Combine(Path.GetDirectoryName(path), name)
+                        let includePath = if File.Exists configured then configured else relative
+                        readFile (depth + 1) includePath
+                    elif initial.StartsWith("##", StringComparison.Ordinal) || initial.StartsWith(".", StringComparison.Ordinal) then ()
+                    else
+                        while endsWithContinuation line do
+                            if reader.Peek() < 0 then fail "End of file found while looking for continuation line"
+                            let next = read () |> ltrimSpaces
+                            line <- rtrimSpaces (line.Substring(0, line.Length - 2)) + " " + next
+                        if line.Length > 1000 then fail "Source logical line exceeds 1000 bytes"
+                        line <- line |> stripComment |> doRemark
+                        if String.IsNullOrWhiteSpace line then
+                            if not cfg.IgnoreBlankLines then output.Add { Text = ":"; File = path; Number = firstNumber }
+                        else output.Add { Text = line; File = path; Number = firstNumber }
+            if conditions.Count <> 0 then fail "End of file found before #ENDIF"
+            activeFiles.Remove path |> ignore
+        readFile 0 inputFile
+        List.ofSeq output
 
     let resolveLabelReference (labels: Dictionary<string, int>) (line: string) =
-        let pos = line.IndexOf('@')
-        if pos < 0 then
-            None
-        else
-            let suffix = line.Substring(pos)
-            match labels.TryGetValue suffix with
-            | true, n ->
-                let prefix = line.Substring(0, pos)
-                Some(prefix + string n)
-            | _ ->
-                raise (FatalSsbError(sprintf "Label not found: %s" suffix))
-
-    // Pass two emits numbered SuperBASIC, expanding includes and substituting resolved labels.
-    let rec passTwo
-        (cfg: Config)
-        (labels: Dictionary<string, int>)
-        (defines: HashSet<string>)
-        (writer: TextWriter)
-        (lineNumRef: int ref)
-        (inputFile: string) =
-
-        if not (File.Exists(inputFile)) then
-            raise (FatalSsbError(sprintf "File not found: %s" inputFile))
-
-        // Read through QlCharacterSet so QL-native files keep their accented letters.
-        use reader = new StreamReader(new MemoryStream(Text.Encoding.UTF8.GetBytes(QlCharacterSet.readSourceText inputFile)), Text.Encoding.UTF8)
-
-        while not reader.EndOfStream do
-            let mutable line = reader.ReadLine()
-            line <- stripTabs line
-
-            let fc = firstChar line
-
-            if fc = 0 then
-                if cfg.IgnoreBlankLines then
-                    ()
-                else
-                    emitLine writer !lineNumRef ":"
-                    lineNumRef := !lineNumRef + cfg.LineDelta
-
-            elif line.Length > 0 && line.[0] = '@' then
-                ()
-
-            elif startsWithFirstNonSpace "##" line then
-                ()
-
-            elif firstNonSpaceIs '.' line then
-                ()
-
+        // Only @identifiers outside literals, REMarks and DATA are references.
+        let builder = StringBuilder()
+        let mutable i = 0
+        let mutable quote = '\000'
+        let mutable changed = false
+        let mutable statementStart = true
+        while i < line.Length do
+            let ch = line[i]
+            if quote <> '\000' then
+                builder.Append(ch) |> ignore
+                if ch = quote then quote <- '\000'
+                i <- i + 1
+            elif ch = '"' || ch = '\'' then
+                quote <- ch
+                statementStart <- false
+                builder.Append(ch) |> ignore
+                i <- i + 1
+            elif statementStart && Char.IsLetter ch then
+                let first = i
+                while i < line.Length && Char.IsLetter line[i] do i <- i + 1
+                let word = line.Substring(first, i-first)
+                if word.Equals("DATA", StringComparison.OrdinalIgnoreCase) || word.StartsWith("REM", StringComparison.OrdinalIgnoreCase) then
+                    builder.Append(line.Substring(first)) |> ignore
+                    i <- line.Length
+                else builder.Append(word) |> ignore
+                statementStart <- false
+            elif ch = '@' then
+                let first = i
+                i <- i + 1
+                while i < line.Length && (Char.IsLetterOrDigit line[i] || line[i] = '_') do i <- i + 1
+                let name = line.Substring(first, i-first)
+                match labels.TryGetValue name with
+                | true, n -> builder.Append(n) |> ignore; changed <- true
+                | _ -> raise (FatalSsbError($"Label not found: {name}"))
             else
-                if endsWithContinuation line then
-                    line <- joinLineFromReader reader line
-
-                if line.Contains("##", StringComparison.Ordinal) then
-                    line <- stripComment line
-
-                if line.Contains("**", StringComparison.Ordinal) then
-                    line <- doRemark line
-
-                if startsAtCol1 "#DEFINE" (upperAscii line) then
-                    ()
-
-                elif line.Length >= 6 && startsAtCol1 "#ENDIF" (upperAscii line) then
-                    ()
-
-                else
-                    match resolveLabelReference labels line with
-                    | Some replaced ->
-                        emitLine writer !lineNumRef replaced
-                        lineNumRef := !lineNumRef + cfg.LineDelta
-
-                    | None when startsAtCol1 "#INCLUDE" (upperAscii line) ->
-                        let includeFile = resolveIncludePath cfg line
-                        passTwo cfg labels defines writer lineNumRef includeFile
-
-                    | None when startsAtCol1 "#IFDEF" (upperAscii line) ->
-                        if line.Length < 8 then
-                            raise (FatalSsbError(sprintf "Malformed #IFDEF: %s" line))
-                        let symbol = upperAscii (line.Substring(7))
-                        if not (defines.Contains(symbol)) then
-                            let mutable foundEndif = false
-                            while not foundEndif do
-                                if reader.EndOfStream then
-                                    raise (FatalSsbError("End of file found before #ENDIF"))
-                                let skipLine = reader.ReadLine()
-                                if skipLine.Length >= 6 && startsAtCol1 "#ENDIF" (upperAscii skipLine) then
-                                    foundEndif <- true
-
-                    | None ->
-                        emitLine writer !lineNumRef line
-                        lineNumRef := !lineNumRef + cfg.LineDelta
+                builder.Append(ch) |> ignore
+                if ch = ':' then statementStart <- true
+                elif not (Char.IsWhiteSpace ch) then statementStart <- false
+                i <- i + 1
+        if changed then Some(builder.ToString()) else None
 
     let derivePaths (cfg: Config) (args: string[]) =
         match args with
@@ -501,17 +402,36 @@ module Ssb =
             else
                 SourceKind.Ssb
 
-    // Shared implementation used by both the file-to-file CLI and the in-memory compiler pipeline.
+    // Expansion must complete before labels acquire their final line numbers.
     let private transformToWriter (cfg: Config) (inputFile: string) (startLine: int) (writer: TextWriter) =
-        let pass1 =
-            { LineNum = startLine
-              Labels = Dictionary<string, int>(StringComparer.Ordinal)
-              Defines = HashSet<string>(StringComparer.Ordinal) }
-
-        passOne cfg pass1 inputFile
-
-        let lineNumRef = ref startLine
-        passTwo cfg pass1.Labels pass1.Defines writer lineNumRef inputFile
+        if startLine < 1 || startLine > 32767 then raise (FatalSsbError("SSBSTART must be from 1 to 32767"))
+        if cfg.LineDelta <= 0 then raise (FatalSsbError("SSBINC must be positive"))
+        let lines =
+            try activeSource cfg inputFile |> SsbRecords.expand
+            with :? InvalidOperationException as error -> raise (FatalSsbError(error.Message))
+        let labels = Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
+        let mutable lineNumber = int64 startLine
+        for line in lines do
+            if line.Text.StartsWith("@", StringComparison.Ordinal) then
+                let name = line.Text.TrimEnd()
+                if name.Length > cfg.MaxNameLength + 1 then raise (FatalSsbError($"Label too long: {name}"))
+                if labels.ContainsKey name then raise (FatalSsbError($"Duplicate label: {name}"))
+                if labels.Count >= cfg.MaxLabels then raise (FatalSsbError("Too many labels"))
+                labels.Add(name, int lineNumber)
+            else
+                if lineNumber > 32767L then raise (FatalSsbError($"{line.File}:{line.Number}: Generated line number exceeds 32767"))
+                lineNumber <- lineNumber + int64 cfg.LineDelta
+        lineNumber <- int64 startLine
+        // Build all output before publishing so unresolved labels leave no partial file.
+        let numbered = ResizeArray<int * string>()
+        for line in lines do
+            if not (line.Text.StartsWith("@", StringComparison.Ordinal)) then
+                let resolved =
+                    try resolveLabelReference labels line.Text |> Option.defaultValue line.Text
+                    with :? FatalSsbError as error -> raise (FatalSsbError($"{line.File}:{line.Number}: {error.Message}"))
+                numbered.Add(int lineNumber, resolved)
+                lineNumber <- lineNumber + int64 cfg.LineDelta
+        for n, line in numbered do emitLine writer n line
 
     // Transform an SSB file into numbered source text without writing an intermediate file.
     let transformFile (inputFile: string) =
@@ -532,11 +452,19 @@ module Ssb =
         if not (File.Exists(inputFile)) then
             raise (FatalSsbError(sprintf "Input file does not exist: %s" inputFile))
 
-        if File.Exists(outputFile) then
-            if cfg.Overwrite then
-                File.Delete(outputFile)
-            else
-                raise (FatalSsbError(sprintf "Output file exists: %s" outputFile))
-
-        use writer = new StreamWriter(outputFile, false)
+        if File.Exists(outputFile) && not cfg.Overwrite then
+            raise (FatalSsbError(sprintf "Output file exists: %s" outputFile))
+        let builder = StringBuilder()
+        use writer = new StringWriter(builder)
         transformToWriter cfg inputFile startLine writer
+        let destination = Path.GetFullPath outputFile
+        let temporary = destination + "." + Guid.NewGuid().ToString("N") + ".tmp"
+        try
+            File.WriteAllText(temporary, builder.ToString())
+            if File.Exists destination then
+                let mutable index = 1
+                while File.Exists(destination + $"_bak{index}") do index <- index + 1
+                File.Move(destination, destination + $"_bak{index}")
+            File.Move(temporary, destination)
+        finally
+            if File.Exists temporary then File.Delete temporary

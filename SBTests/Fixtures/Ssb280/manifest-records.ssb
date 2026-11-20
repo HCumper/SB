@@ -1,0 +1,13 @@
+MANIFEST : MaxLabel = 12
+MANIFEST : Marker% = 7 : Label$ = "a:b"
+TYPE labelBox
+  text$(MaxLabel)
+END TYPE
+DIM box AS labelBox
+box.text$ = "kept"
+OPEN_NEW #9,"win1_result"
+PRINT #9,Marker%;",";Label$
+PRINT #9,box.text$
+CLOSE #9
+OPEN_NEW #9,"win1_done":PRINT #9,"OK":CLOSE #9
+STOP

@@ -558,7 +558,7 @@ and private resolveStmt (mode: SymbolAddMode) (node: Stmt) : State<ProcessingSta
             let resolveManifestItem (name, expr) =
                 monad {
                     let! beforeExpr = State.get
-                    if not (isManifestNumericLiteral expr) then
+                    if not (isManifestNumericLiteral expr || (match expr with StringLiteral _ -> true | _ -> false)) then
                         let pos = posOfExpr expr
                         do! State.put (appendDiagnostic SemanticDiagnosticCode.Generic (Some name) (Some pos) $"MANIFEST '{name}' must be assigned a numeric literal at {pos.EditorLineNo}:{pos.Column}" beforeExpr)
                     else

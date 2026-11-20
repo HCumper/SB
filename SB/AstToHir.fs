@@ -461,6 +461,12 @@ let rec private lowerExpr ctx expr =
     | StringLiteral(_, pos, value) -> ok (lowerLiteral pos value)
     | Identifier(_, pos, "")
     | PostfixName(_, pos, "", None) -> ok (Missing pos)
+    | Identifier(_, pos, _)
+    | PostfixName(_, pos, _, None)
+        when (match tryLookupResolvedSymbol ctx expr with Some(ConstantSym { ValueText = Some _ }) -> true | _ -> false) ->
+        match tryLookupResolvedSymbol ctx expr with
+        | Some(ConstantSym { ValueText = Some value }) -> ok (lowerLiteral pos value)
+        | _ -> fail ctx.CurrentScope (Some pos) "Missing MANIFEST value."
     | Identifier(_, pos, name) ->
         match getRecordedResolvedSymbol ctx expr with
         | _ when shouldLowerDynamicStorage ctx expr name ->
@@ -575,7 +581,13 @@ let rec private lowerExpr ctx expr =
                         lowerExpr ctx args.Head
                         |> map (fun loweredIndex -> ReadArrayElem(symbolId, [ loweredIndex ], hirType, pos)))
             | _ ->
-                zip (getRecordedExprType ctx expr) (zip (requireSymbolIdForExpr ctx expr name pos) (args |> List.map (fun arg -> lowerExpr ctx arg |> map ValueArg) |> collectResults))
+                // User functions accept writable arguments just like procedures.
+                // Built-ins and array subscripts still consume values.
+                let lowerArgument =
+                    match tryLookupResolvedSymbol ctx expr with
+                    | Some(FunctionSym _) -> lowerCallArg ctx
+                    | _ -> fun arg -> lowerExpr ctx arg |> map ValueArg
+                zip (getRecordedExprType ctx expr) (zip (requireSymbolIdForExpr ctx expr name pos) (args |> List.map lowerArgument |> collectResults))
                 |> map (fun (hirType, (symbolId, loweredArgs)) ->
                     match getRecordedResolvedSymbol ctx expr with
                     | Some resolved when isCallableBuiltIn resolved.Name -> CallFunc(symbolId, loweredArgs, hirType, pos)
@@ -658,7 +670,7 @@ and private lowerStringSliceFromBase ctx pos baseExpr startExpr endExprOpt =
                         pos)
                 makeBuiltInFunctionCall ctx pos "RIGHT$" HirType.String [ baseExpr; count ]))
 
-let private lowerTarget ctx expr =
+and private lowerTarget ctx expr =
     match expr with
     | Identifier(_, pos, name)
     | PostfixName(_, pos, name, None) ->
@@ -691,16 +703,16 @@ let private lowerTarget ctx expr =
     | _ ->
         fail ctx.CurrentScope (Some(exprPosition expr)) "Expression is not a writable target."
 
-let private lowerExprList ctx exprs =
+and private lowerExprList ctx exprs =
     exprs |> List.map (lowerExpr ctx) |> collectResults
 
-let private lowerTargetList ctx exprs =
+and private lowerTargetList ctx exprs =
     exprs |> List.map (lowerTarget ctx) |> collectResults
 
-let private canLowerAsTarget ctx expr =
+and private canLowerAsTarget ctx expr =
     Map.containsKey (nodeIdOfExpr expr) ctx.State.TargetTypes
 
-let private lowerCallArg ctx expr =
+and private lowerCallArg ctx expr =
     match expr, tryLookupResolvedSymbol ctx expr with
     | (Identifier(_, pos, name) | PostfixName(_, pos, name, None)), Some(VariableSym _ | ParameterSym _) ->
         zip (getRecordedExprType ctx expr) (requireSymbolIdForExpr ctx expr name pos)

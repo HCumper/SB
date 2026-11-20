@@ -38,6 +38,7 @@
         <Compile Include="SemanticAnalysis.Expressions.fs" />
         <Compile Include="SemanticAnalyzer.fs" />
         <Compile Include="TypeAnalyzer.fs" />
+        <Compile Include="SsbRecords.fs" />
         <Compile Include="SSB.fs" />
         <Compile Include="AstToHir.fs" />
         <Compile Include="CompilerPipeline.fs" />

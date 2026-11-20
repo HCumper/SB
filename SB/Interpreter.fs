@@ -1191,7 +1191,11 @@ and private callRoutine state (routine: HirRoutine) args pos =
             | TransferredContinue, Some _ -> Result.Ok(IntValue 0, finalState)
             | TransferredContinue, None -> Result.Ok(IntValue 0, finalState)
             | JumpToLine lineNumber, _ when routine.EndLineNumber = Some lineNumber -> Result.Ok(IntValue 0, finalState)
-            | StopExecution, _ -> runtimeError EscapedStop (Some pos) $"STOP escaped from routine '{routine.Name}'."
+            | StopExecution, _ ->
+                // A generated guard prints its reason before STOP. Preserve that
+                // diagnostic when an expression-level routine cannot return state.
+                let detail = afterBody.Output |> List.tryLast |> Option.map (fun line -> " Last output: " + line) |> Option.defaultValue ""
+                runtimeError EscapedStop (Some pos) ($"STOP escaped from routine '{routine.Name}'." + detail)
             | JumpToLine lineNumber, _ -> runtimeError MissingGotoTarget (Some pos) $"GOTO target line {lineNumber} does not exist in routine '{routine.Name}'."
             | GosubToLine lineNumber, _ -> runtimeError MissingGosubTarget (Some pos) $"GOSUB target line {lineNumber} does not exist in routine '{routine.Name}'."
             | RetryError _, _
