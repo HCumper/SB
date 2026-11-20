@@ -31,7 +31,7 @@ open System.Text
 type TurboCodegenOptions = {
     /// Task name stored in the program header (at most 12 characters).
     TaskName: string
-    /// Compiled program dataspace in KiB (intercom P+2).
+    /// Compiled program dataspace in KiB, 0..65535 (unsigned intercom P+2).
     DataspaceKiB: int
     /// CPU stack size in bytes, 350..9998 (intercom P+114). None keeps the library default.
     StackSize: int option
@@ -141,6 +141,7 @@ type private Generator(sourceLibrary: byte[], options: TurboCodegenOptions, sour
     let mutable stSize = 0 // D7
     let mutable labInc = initLabInc // lab_inc (a word)
     let mutable entryAd = 0
+    let mutable runtimeEntrySize = 0
     let mutable maxTwoByte = maxTwoByteDestination
     let mutable codeSize = 0
     let mutable line = 0
@@ -164,6 +165,13 @@ type private Generator(sourceLibrary: byte[], options: TurboCodegenOptions, sour
 
     let fail message =
         raise (CodegenFailure(if line > 0 then $"line {line}: {message}" else message))
+
+    let checkPrefixSize size =
+        // Startup indexes the vector table with the signed entry-offset word. Shared P
+        // templates also need signed A6-relative addresses. Check before word arithmetic wraps.
+        let baseOffset = int (int16 (uint16 initLabInc))
+        if size - runtimeEntrySize > int Int16.MaxValue || size + baseOffset > int Int16.MaxValue then
+            fail "The runtime prefix exceeds the signed 16-bit address range."
 
     let natToP = word lib 2
     let vectTabAd = word lib 0
@@ -439,6 +447,7 @@ type private Generator(sourceLibrary: byte[], options: TurboCodegenOptions, sour
 
     /// copy_p_template: a P template's first use copies it, then the inner interpreter.
     member private this.CopyPTemplate(record: int, length: int) =
+        checkPrefixSize (output.Count + length + interpreter.Length)
         this.SetCompilationAddress(record, labInc)
         labInc <- (labInc + length + interpreter.Length) &&& 0xFFFF
         write (slice lib (this.CodeAddress record) length)
@@ -604,9 +613,13 @@ type private Generator(sourceLibrary: byte[], options: TurboCodegenOptions, sour
             let opposite = if token = 239 then 245 else 239
             let oldPos = ic
             let k = word ()
+            let nextPosition = ic
             match this.NextToken() with
             | None -> None
-            | Some(nextToken, nextRecord) when nextToken <> opJump -> this.ImproveAt(nextToken, nextRecord)
+            // NextToken skips labels (including 378). A jump with its own entry label
+            // must survive, since other branches can reach it without testing this condition.
+            | Some(nextToken, nextRecord) when nextToken <> opJump || ic <> nextPosition + 2 ->
+                this.ImproveAt(nextToken, nextRecord)
             | Some _ ->
                 let oldPos2 = ic
                 let l = word ()
@@ -653,16 +666,14 @@ type private Generator(sourceLibrary: byte[], options: TurboCodegenOptions, sour
                             let exponent, mantissa =
                                 if k = 0 then 0, 0
                                 else
-                                    let mutable d7 = k
-                                    let mutable d6 = 14
-                                    let mutable shifting = true
-                                    while shifting do
-                                        d7 <- (d7 <<< 1) &&& 0xFFFF
-                                        if d7 &&& 0x8000 <> 0 then shifting <- false
-                                        else
-                                            d6 <- d6 - 1
-                                            if d6 = -1 then shifting <- false
-                                    (d6 + 0x801) &&& 0xFFFF, d7 >>> 1
+                                    // 106's operand is signed. Normalize the signed high
+                                    // mantissa word; the low word is zero for every Int16.
+                                    let mutable mantissa = int (int16 (uint16 k))
+                                    let mutable exponent = 0x80F
+                                    while mantissa >= -0x4000 && mantissa < 0x4000 do
+                                        mantissa <- mantissa <<< 1
+                                        exponent <- exponent - 1
+                                    exponent, mantissa &&& 0xFFFF
                             let values = [ 377; exponent; mantissa; next ]
                             for value in values do
                                 setWord ir ic value
@@ -700,6 +711,8 @@ type private Generator(sourceLibrary: byte[], options: TurboCodegenOptions, sour
         pass <- 1
         let d1, _ = this.ProcessPars(record, 999)
         let size999 = this.Length record
+        runtimeEntrySize <- size999
+        checkPrefixSize output.Count
         let end999 = (size999 + labInc) &&& 0xFFFF
         labInc <- (labInc + objCode) &&& 0xFFFF
         maxTwoByte <- maxTwoByte - objCode
@@ -879,6 +892,8 @@ type private Generator(sourceLibrary: byte[], options: TurboCodegenOptions, sour
     member this.Run() : Result<TurboCodegenOutput, string list> =
         try
             if options.SmallCode then fail "The <64K code option is not supported."
+            if options.DataspaceKiB < 0 || options.DataspaceKiB > int UInt16.MaxValue then
+                fail "Dataspace must be between 0 and 65535 KiB."
             this.Improve()
             pass <- 0
             pMode <- false

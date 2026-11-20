@@ -690,6 +690,8 @@ type private LoopInfo =
 
 type private Scope = {
     Routine: HirRoutine option
+    /// Copies of a routine use private anchors for jumps within that copy.
+    LineLabels: Map<int, int>
     Loops: Map<LoopId, LoopInfo>
     InPrintInput: bool
     InHandler: bool
@@ -853,6 +855,12 @@ type private Emitter(options: TurboIrOptions, program: HirProgram) =
     let routines = Dictionary<SymbolId, HirRoutine>()
     let referenceFormals = HashSet<SymbolId>()
     let arrayFormals = HashSet<SymbolId>()
+    let arrayFormalBounds = Dictionary<SymbolId, int>()
+    // Turbo has a static call ABI. A flexible HIR formal can be a value in one call
+    // and a reference in another, so those calls need separate entry points.
+    let primaryReferences = Dictionary<SymbolId, Set<SymbolId>>()
+    let variantEntries = Dictionary<SymbolId * Set<SymbolId>, int>()
+    let routineVariants = ResizeArray<HirRoutine * Set<SymbolId> * int>()
     let localForSymbols = HashSet<SymbolId>()
     let declaredLines = SortedSet<int>()
     let referencedLines = HashSet<int>()
@@ -941,11 +949,15 @@ type private Emitter(options: TurboIrOptions, program: HirProgram) =
     member private this.Manifest(name: string) =
         options.ManifestConstants |> Map.tryFind (normalizeIdentifier name)
 
+    member private this.ManifestSymbol(symbol: SymbolId) =
+        match storages.TryGetValue symbol with
+        | true, storage when storage.Class = GlobalStorage -> this.Manifest storage.Name
+        | _ -> None
+
     member private this.TryConstant(expr: HirExpr) : HirConst option =
         match expr with
         | Literal(constant, _, _) -> Some constant
-        | ReadVar(symbol, _, _) -> this.Manifest(this.SymbolName symbol)
-        | DynamicReadVar(name, _, _) -> this.Manifest name
+        | ReadVar(symbol, _, _) -> this.ManifestSymbol symbol
         | Unary(Identity, inner, _, _) -> this.TryConstant inner
         | Unary(Negate, inner, _, _) ->
             match this.TryConstant inner with
@@ -977,7 +989,7 @@ type private Emitter(options: TurboIrOptions, program: HirProgram) =
     /// True when the expression is a simple string variable (not a MANIFEST).
     member private this.IsSimpleStringVariable(expr: HirExpr) =
         match this.NameOf expr with
-        | Some name when (this.Manifest name).IsNone ->
+        | Some name when (this.TryConstant expr).IsNone ->
             match vectors.TryGetValue(normalizeIdentifier name) with
             | true, vector -> vector.Kind = ScalarVector && vector.Type = TurboString
             | _ -> this.TypeOfName name = TurboString
@@ -1232,13 +1244,30 @@ type private Emitter(options: TurboIrOptions, program: HirProgram) =
             fail pos $"'{vector.Name}' is {kindName vector.Kind}, not a variable."
         vector.Type
 
+    member private this.ParameterBounds(parameter: HirParameter) =
+        match parameter.Storage.Dimensions with
+        | Some dims when not dims.IsEmpty -> Some dims.Length
+        | _ ->
+            match arrayFormalBounds.TryGetValue parameter.Storage.Symbol with
+            | true, count -> Some count
+            | _ -> None
+
+    member private this.BoundsInScope(scope: Scope, vector: VectorInfo) =
+        let formal =
+            scope.Routine
+            |> Option.bind (fun routine ->
+                routine.Parameters |> List.tryFind (fun p -> normalizeIdentifier p.Storage.Name = vector.Name))
+        match formal with
+        | Some parameter when arrayFormals.Contains parameter.Storage.Symbol -> this.ParameterBounds parameter
+        | _ -> vector.BoundCount
+
     /// Number of subscripts a DIMmed array takes; a string array's last bound is its length.
-    member private this.IndexRank(vector: VectorInfo) =
-        vector.BoundCount
+    member private this.IndexRank(scope: Scope, vector: VectorInfo) =
+        this.BoundsInScope(scope, vector)
         |> Option.map (fun count -> if vector.Type = TurboString then count - 1 else count)
 
     member private this.EmitIndexes(scope: Scope, vector: VectorInfo, indexes: HirExpr list, pos: SourcePosition) =
-        match this.IndexRank vector with
+        match this.IndexRank(scope, vector) with
         | Some rank when rank <> indexes.Length ->
             fail pos $"'{vector.Name}' has {rank} dimension(s) but {indexes.Length} subscript(s) are given."
         | _ -> ()
@@ -1247,8 +1276,8 @@ type private Emitter(options: TurboIrOptions, program: HirProgram) =
 
     /// Splits a string-array subscript list into element subscripts and an optional character
     /// position: a$(i, n) is character n of element i in SuperBASIC.
-    member private this.SplitStringSubscripts(vector: VectorInfo, indexes: HirExpr list) =
-        match this.IndexRank vector with
+    member private this.SplitStringSubscripts(scope: Scope, vector: VectorInfo, indexes: HirExpr list) =
+        match this.IndexRank(scope, vector) with
         | Some rank when vector.Type = TurboString && indexes.Length = rank + 1 ->
             List.truncate rank indexes, Some(List.last indexes)
         | _ -> indexes, None
@@ -1271,7 +1300,7 @@ type private Emitter(options: TurboIrOptions, program: HirProgram) =
         let vector = this.ArrayOf(name, pos)
         match vector.Type with
         | TurboString ->
-            let elementIndexes, character = this.SplitStringSubscripts(vector, indexes)
+            let elementIndexes, character = this.SplitStringSubscripts(scope, vector, indexes)
             this.EmitIndexes(scope, vector, elementIndexes, pos)
             match character with
             | Some position ->
@@ -1332,7 +1361,7 @@ type private Emitter(options: TurboIrOptions, program: HirProgram) =
             match elementSlice with
             | Some(name, indexes) ->
                 match vectors.TryGetValue(normalizeIdentifier name) with
-                | true, vector when vector.Kind = ArrayVector && vector.Type = TurboString && this.IndexRank vector = Some indexes.Length ->
+                | true, vector when vector.Kind = ArrayVector && vector.Type = TurboString && this.IndexRank(scope, vector) = Some indexes.Length ->
                     Some(vector, indexes)
                 | _ -> None
             | None -> None
@@ -1356,11 +1385,55 @@ type private Emitter(options: TurboIrOptions, program: HirProgram) =
     member private this.IsReferenceFormal(parameter: HirParameter) =
         referenceFormals.Contains parameter.Storage.Symbol
 
+    member private this.DefaultReferences(routine: HirRoutine) =
+        routine.Parameters
+        |> List.filter this.IsReferenceFormal
+        |> List.map (fun p -> p.Storage.Symbol)
+        |> Set.ofList
+
+    member private this.PrimaryReferences(routine: HirRoutine) =
+        match primaryReferences.TryGetValue routine.Symbol with
+        | true, refs -> refs
+        | _ ->
+            let refs = this.DefaultReferences routine
+            primaryReferences[routine.Symbol] <- refs
+            refs
+
+    member private this.RoutineEntry(routine: HirRoutine, refs: Set<SymbolId>, pos: SourcePosition) =
+        let primary =
+            match primaryReferences.TryGetValue routine.Symbol with
+            | true, refs -> refs
+            | _ ->
+                primaryReferences[routine.Symbol] <- refs
+                refs
+        if primary = refs then
+            let vector = this.Vector(routine.Name, RoutineVector, pos)
+            TurboIrLabels.routineEntry vector.Id
+        else
+            let key = routine.Symbol, refs
+            match variantEntries.TryGetValue key with
+            | true, label -> label
+            | _ ->
+                let label = newLabel pos
+                variantEntries[key] <- label
+                routineVariants.Add(routine, refs, label)
+                label
+
     /// Pushes a compiled routine's arguments (spec 7.2): values in the formal's type, strings
     /// made inline with 259, by-reference actuals with 246.
     member private this.EmitRoutineArguments(scope: Scope, routine: HirRoutine, args: HirCallArg list, pos: SourcePosition) =
         if args.Length > routine.Parameters.Length then
             fail pos $"'{routine.Name}' takes {routine.Parameters.Length} argument(s) but {args.Length} are given."
+        let refs =
+            routine.Parameters
+            |> List.mapi (fun index parameter ->
+                let byReference =
+                    this.IsReferenceFormal parameter
+                    || (match List.tryItem index args with Some(RefArg _) -> true | _ -> false)
+                if byReference then Some parameter.Storage.Symbol else None)
+            |> List.choose id
+            |> Set.ofList
+        let entry = this.RoutineEntry(routine, refs, pos)
         routine.Parameters
         |> List.iteri (fun index parameter ->
             let formalName = normalizeIdentifier parameter.Storage.Name
@@ -1368,18 +1441,32 @@ type private Emitter(options: TurboIrOptions, program: HirProgram) =
                 match List.tryItem index args with
                 | Some(ValueArg(Missing _)) -> None
                 | other -> other
-            if this.IsReferenceFormal parameter then
+            if refs.Contains parameter.Storage.Symbol then
                 let actualName =
                     match actual with
                     | Some(RefArg(WriteVar(symbol, _, _)))
-                    | Some(ValueArg(ReadVar(symbol, _, _))) -> Some(this.SymbolName symbol)
-                    | Some(RefArg(DynamicWriteVar(name, _, _)))
-                    | Some(ValueArg(DynamicReadVar(name, _, _))) -> Some name
+                        when (this.ManifestSymbol symbol).IsNone -> Some(this.SymbolName symbol)
+                    | Some(RefArg(DynamicWriteVar(name, _, _))) -> Some name
+                    // Keep the public HIR API's whole-array value spelling; arrays have
+                    // no by-value representation. Scalar ValueArg remains a value.
+                    | Some(ValueArg expr) when this.IsArrayName expr -> this.NameOf expr
                     | _ -> None
                 match actualName with
-                | Some name when (this.Manifest name).IsNone ->
+                | Some name ->
                     let vector = this.NamedVector(name, pos)
-                    opc Op.pushOldRef [ Word vector.Id ] vector.Name
+                    let formalType = this.TypeOfName formalName
+                    let formalKind = if arrayFormals.Contains parameter.Storage.Symbol then ArrayVector else ScalarVector
+                    let expectedBounds = this.ParameterBounds parameter
+                    let actualBounds = this.BoundsInScope(scope, vector)
+                    if vector.Type <> formalType then
+                        fail pos $"by-reference parameter '{formalName}' of '{routine.Name}' needs {typeName formalType} storage, but '{vector.Name}' has {typeName vector.Type} storage."
+                    elif vector.Kind <> formalKind then
+                        fail pos $"by-reference parameter '{formalName}' of '{routine.Name}' needs {kindName formalKind}, but '{vector.Name}' is {kindName vector.Kind}."
+                    elif formalKind = ArrayVector && expectedBounds.IsSome && actualBounds.IsSome
+                         && expectedBounds <> actualBounds then
+                        fail pos $"by-reference array parameter '{formalName}' of '{routine.Name}' needs {expectedBounds.Value} bounds, but '{vector.Name}' has {actualBounds.Value}."
+                    else
+                        opc Op.pushOldRef [ Word vector.Id ] vector.Name
                 | _ ->
                     fail pos $"by-reference parameter '{formalName}' of '{routine.Name}' needs a variable or array name as its argument."
             else
@@ -1400,6 +1487,7 @@ type private Emitter(options: TurboIrOptions, program: HirProgram) =
                     | TurboFloat -> op Op.wordFloat [ Word 0 ]
                     | TurboInt -> op0 Op.quickZero
                 if formalType = TurboString then op0 Op.upString)
+        entry
 
     member private this.EmitFunctionCall(scope: Scope, symbol: SymbolId, args: HirCallArg list, pos: SourcePosition) : TurboType =
         match routines.TryGetValue symbol with
@@ -1407,11 +1495,11 @@ type private Emitter(options: TurboIrOptions, program: HirProgram) =
             if routine.ReturnType.IsNone then
                 fail pos $"procedure '{routine.Name}' is used as a function."
             let vector = this.Vector(routine.Name, RoutineVector, pos)
-            this.EmitRoutineArguments(scope, routine, args, pos)
+            let entry = this.EmitRoutineArguments(scope, routine, args, pos)
             // Inside PRINT and INPUT a compiled function is called with 356, which keeps the
             // I/O context (spec 7.2, P 19402).
             let callOpcode = if scope.InPrintInput then Op.printGosub else Op.gosub
-            opc callOpcode [ LabelRef(TurboIrLabels.routineEntry vector.Id) ] vector.Name
+            opc callOpcode [ LabelRef entry ] vector.Name
             let resultType = this.TypeOfName routine.Name
             if resultType = TurboString then op0 Op.downString
             resultType
@@ -1478,7 +1566,7 @@ type private Emitter(options: TurboIrOptions, program: HirProgram) =
                 // TURBO-IR ASSUMPTION: 266's second operand is the dimension counter R-1, the
                 // parser's struct% value (P 19504) and what the spec's "numeric D-1, string
                 // D-2" reduces to.
-                match vector.BoundCount with
+                match this.BoundsInScope(scope, vector) with
                 | Some count ->
                     let counter = count - (if vector.Type = TurboString then 2 else 1)
                     opc Op.dimn [ Word vector.Id; Word counter ] vector.Name
@@ -1583,15 +1671,15 @@ type private Emitter(options: TurboIrOptions, program: HirProgram) =
 
     member private this.EmitStore(scope: Scope, target: HirTarget, emitValue: TurboType -> unit) =
         match target with
-        | WriteVar(symbol, _, pos) -> this.EmitStoreName(this.SymbolName symbol, emitValue, pos)
-        | DynamicWriteVar(name, _, pos) -> this.EmitStoreName(name, emitValue, pos)
+        | WriteVar(symbol, _, pos) -> this.EmitStoreName(this.SymbolName symbol, emitValue, pos, (this.ManifestSymbol symbol).IsSome)
+        | DynamicWriteVar(name, _, pos) -> this.EmitStoreName(name, emitValue, pos, false)
         | WriteArrayElem(symbol, indexes, _, pos) -> this.EmitStoreElement(scope, this.SymbolName symbol, indexes, emitValue, pos)
         | DynamicWriteArrayElem(name, indexes, _, pos) -> this.EmitStoreElement(scope, name, indexes, emitValue, pos)
         | WriteStringChar(symbol, index, _, pos) -> this.EmitStoreChar(scope, this.SymbolName symbol, index, emitValue, pos)
         | DynamicWriteStringChar(name, index, _, pos) -> this.EmitStoreChar(scope, name, index, emitValue, pos)
 
-    member private this.EmitStoreName(name: string, emitValue: TurboType -> unit, pos: SourcePosition) =
-        if (this.Manifest name).IsSome then
+    member private this.EmitStoreName(name: string, emitValue: TurboType -> unit, pos: SourcePosition, isManifest: bool) =
+        if isManifest then
             fail pos $"MANIFEST constant '{normalizeIdentifier name}' cannot be assigned."
         else
             let vector = this.NamedVector(name, pos)
@@ -1620,7 +1708,7 @@ type private Emitter(options: TurboIrOptions, program: HirProgram) =
         let vector = this.ArrayOf(name, pos)
         match vector.Type with
         | TurboString ->
-            let elementIndexes, character = this.SplitStringSubscripts(vector, indexes)
+            let elementIndexes, character = this.SplitStringSubscripts(scope, vector, indexes)
             this.EmitIndexes(scope, vector, elementIndexes, pos)
             match character with
             | Some position ->
@@ -1654,7 +1742,7 @@ type private Emitter(options: TurboIrOptions, program: HirProgram) =
 
     // -- statements ---------------------------------------------------------
 
-    member private this.LineLabel(target: HirExpr, keyword: string, pos: SourcePosition) =
+    member private this.LineLabel(scope: Scope, target: HirExpr, keyword: string, pos: SourcePosition) =
         match this.TryConstant target with
         | Some(ConstInt line) ->
             let candidates = declaredLines.GetViewBetween(line, Int32.MaxValue)
@@ -1662,7 +1750,7 @@ type private Emitter(options: TurboIrOptions, program: HirProgram) =
                 fail pos $"{keyword} {line}: there is no line {line} or later."
                 TurboIrLabels.lineBase
             else
-                TurboIrLabels.lineBase + candidates.Min
+                scope.LineLabels |> Map.tryFind candidates.Min |> Option.defaultValue (TurboIrLabels.lineBase + candidates.Min)
         | _ ->
             // TURBO-IR GAP: Turbo branches only to constant line numbers (Check_Line_Reference,
             // P 22234); a computed GO TO or GO SUB has no IR form.
@@ -1888,8 +1976,8 @@ type private Emitter(options: TurboIrOptions, program: HirProgram) =
                 if routine.ReturnType.IsSome then
                     fail pos $"function '{routine.Name}' is called as a procedure."
                 let vector = this.Vector(routine.Name, RoutineVector, pos)
-                this.EmitRoutineArguments(scope, routine, args, pos)
-                opc Op.gosub [ LabelRef(TurboIrLabels.routineEntry vector.Id) ] vector.Name
+                let entry = this.EmitRoutineArguments(scope, routine, args, pos)
+                opc Op.gosub [ LabelRef entry ] vector.Name
             | _ -> fail pos $"'{this.SymbolName symbol}' is not a compiled procedure."
         | BuiltInCall(Print, channel, args, pos) -> this.EmitPrint(scope, channel, args, pos)
         | BuiltInCall(NamedBuiltIn name, channel, args, pos) ->
@@ -1963,8 +2051,8 @@ type private Emitter(options: TurboIrOptions, program: HirProgram) =
                 op Op.jump [ LabelRef label ]
             | Some(RepeatLoop(top, _)) -> op Op.nextRepeat [ LabelRef top ]
             | None -> fail pos "NEXT is not inside the loop it names."
-        | Goto(target, pos) -> op Op.jump [ LabelRef(this.LineLabel(target, "GO TO", pos)) ]
-        | Gosub(target, pos) -> op Op.gosub [ LabelRef(this.LineLabel(target, "GO SUB", pos)) ]
+        | Goto(target, pos) -> op Op.jump [ LabelRef(this.LineLabel(scope, target, "GO TO", pos)) ]
+        | Gosub(target, pos) -> op Op.gosub [ LabelRef(this.LineLabel(scope, target, "GO SUB", pos)) ]
         | OnGoto(selector, targets, pos)
         | OnGosub(selector, targets, pos) ->
             // ON ... GO TO/SUB (P 22514-22606): integer selector, 240/241, then the address table
@@ -1980,7 +2068,7 @@ type private Emitter(options: TurboIrOptions, program: HirProgram) =
             | None -> op Op.onGoto [ Word targets.Length ]
             op0 Op.fast
             for target in targets do
-                op Op.address [ LabelRef(this.LineLabel(target, (if isGosub then "ON GO SUB" else "ON GO TO"), pos)) ]
+                op Op.address [ LabelRef(this.LineLabel(scope, target, (if isGosub then "ON GO SUB" else "ON GO TO"), pos)) ]
             op0 Op.slow
             match returnLabel with
             | Some label -> define label "after ON GO SUB"
@@ -1999,7 +2087,8 @@ type private Emitter(options: TurboIrOptions, program: HirProgram) =
         | LineNumber(line, pos) ->
             if referencedLines.Contains line then
                 if line > 32767 then fail pos $"line {line} is above 32767 and cannot be a branch target."
-                define (TurboIrLabels.lineBase + line) $"line {line}"
+                let label = scope.LineLabels |> Map.tryFind line |> Option.defaultValue (TurboIrLabels.lineBase + line)
+                define label $"line {line}"
             if options.LineNumbers then op Op.lineNumber [ Word line ]
         | Restore(None, _) -> op Op.restore [ LabelRef TurboIrLabels.data ]
         | Restore(Some target, pos) ->
@@ -2087,14 +2176,22 @@ type private Emitter(options: TurboIrOptions, program: HirProgram) =
         | ArrayVector, _ -> this.EmitArrayDim(vector, bounds |> List.map emitBound, not isLocal, pos)
         | _ -> fail pos $"'{vector.Name}' is {kindName vector.Kind} and cannot be DIMmed."
 
-    member private this.EmitRoutine(routine: HirRoutine) =
+    member private this.EmitRoutine(routine: HirRoutine, refs: Set<SymbolId>, entry: int, isVariant: bool) =
         let vector = this.Vector(routine.Name, RoutineVector, routine.Position)
         let keyword = if routine.ReturnType.IsSome then "FuNction" else "PROCedure"
-        define (TurboIrLabels.routineEntry vector.Id) $"DEFine {keyword} {vector.Name}"
+        let ownLines = HashSet<int>()
+        routine.Body |> iterStatements (function LineNumber(line, _) -> ownLines.Add line |> ignore | _ -> ())
+        routine.EndLineNumber |> Option.iter (fun line -> ownLines.Add line |> ignore)
+        let anchors = ownLines |> Seq.filter referencedLines.Contains |> Seq.sort |> Seq.toList
+        let lineLabels =
+            if isVariant then anchors |> List.map (fun line -> line, newLabel routine.Position) |> Map.ofList
+            else Map.empty
+        let suffix = if isVariant then " (alternate argument bindings)" else ""
+        define entry $"DEFine {keyword} {vector.Name}{suffix}"
         // Formals bind in reverse order: the last argument is on top (spec 7.2, P 23962-24006).
         for parameter in List.rev routine.Parameters do
             let formal = this.NamedVector(parameter.Storage.Name, parameter.Storage.Position)
-            if this.IsReferenceFormal parameter then
+            if refs.Contains parameter.Storage.Symbol then
                 opc Op.createRef [ Word formal.Id ] formal.Name
             else
                 match formal.Type with
@@ -2123,8 +2220,24 @@ type private Emitter(options: TurboIrOptions, program: HirProgram) =
                     opc (if localForSymbols.Contains local.Symbol then Op.localForInt else Op.localInt) [ Word localVector.Id ] localVector.Name
                 | TurboFloat ->
                     opc (if localForSymbols.Contains local.Symbol then Op.localForFloat else Op.localFloat) [ Word localVector.Id ] localVector.Name
-        let scope = { Routine = Some routine; Loops = Map.empty; InPrintInput = false; InHandler = false }
+        let scope = { Routine = Some routine; LineLabels = lineLabels; Loops = Map.empty; InPrintInput = false; InHandler = false }
         this.EmitBlock(scope, routine.Body)
+        routine.EndLineNumber |> Option.iter (fun line -> this.EmitStmt(scope, LineNumber(line, routine.Position)))
+        // A function must leave a result even when execution reaches END DEFine.
+        // Avoid dead defaults after an unconditional return, unless a line jump
+        // can enter that tail. The interpreter's implicit result is numeric zero.
+        let rec fallsThrough block =
+            block
+            |> List.exists (function
+                | Return _ -> true
+                | BuiltInCall(NamedBuiltIn name, _, _, _) when List.contains (normalizeIdentifier name) [ "STOP"; "NEW" ] -> true
+                | If(_, yes, Some no, _) -> not (fallsThrough yes) && not (fallsThrough no)
+                | _ -> false)
+            |> not
+        if routine.ReturnType.IsSome && (fallsThrough routine.Body || not anchors.IsEmpty) then
+            let resultType = this.TypeOfName routine.Name
+            this.EmitConstant(resultType, ConstInt 0, routine.Position)
+            if resultType = TurboString then op0 Op.upString
         op0 Op.returnOp
 
     /// DATA records (spec 8.1, Record_Data P 14758-14938).
@@ -2205,6 +2318,8 @@ type private Emitter(options: TurboIrOptions, program: HirProgram) =
                 storages[local.Symbol] <- local
 
         let allBlocks = program.Main :: (program.Routines |> List.map _.Body)
+        for routine in program.Routines do
+            routine.EndLineNumber |> Option.iter (fun line -> declaredLines.Add line |> ignore)
         for block in allBlocks do
             block
             |> iterStatements (fun stmt ->
@@ -2239,7 +2354,15 @@ type private Emitter(options: TurboIrOptions, program: HirProgram) =
                     expr
                     |> iterExpr (fun inner ->
                         match inner with
-                        | ReadArrayElem(symbol, indexes, _, _) when isArrayUse symbol indexes -> arrayFormals.Add symbol |> ignore
+                        | ReadArrayElem(symbol, indexes, _, _) when isArrayUse symbol indexes ->
+                            arrayFormals.Add symbol |> ignore
+                            // Numeric array subscripts unambiguously establish rank.
+                            // String subscripts may also contain a character position.
+                            if this.TypeOfName formalNames[symbol] <> TurboString then
+                                match arrayFormalBounds.TryGetValue symbol with
+                                | true, count when count <> indexes.Length ->
+                                    fail (exprPos inner) $"array parameter '{formalNames[symbol]}' is indexed with inconsistent ranks."
+                                | _ -> arrayFormalBounds[symbol] <- indexes.Length
                         | _ -> ()))
             for parameter in routine.Parameters do
                 match parameter.Storage.Type with
@@ -2338,12 +2461,18 @@ type private Emitter(options: TurboIrOptions, program: HirProgram) =
             match storage.Type with
             | Array _ when not (dimmedSymbols.Contains storage.Symbol) -> this.EmitDim(storage, true)
             | _ -> ()
-        let mainScope = { Routine = None; Loops = Map.empty; InPrintInput = false; InHandler = false }
+        let mainScope = { Routine = None; LineLabels = Map.empty; Loops = Map.empty; InPrintInput = false; InHandler = false }
         this.EmitBlock(mainScope, program.Main)
         // Runtime end before the routines, so control cannot fall into a definition (spec 7.2).
         op0 Op.progEnd
         for routine in program.Routines do
-            this.EmitRoutine routine
+            let vector = this.Vector(routine.Name, RoutineVector, routine.Position)
+            this.EmitRoutine(routine, this.PrimaryReferences routine, TurboIrLabels.routineEntry vector.Id, false)
+        let mutable variantIndex = 0
+        while variantIndex < routineVariants.Count do
+            let routine, refs, entry = routineVariants[variantIndex]
+            this.EmitRoutine(routine, refs, entry, true)
+            variantIndex <- variantIndex + 1
 
         current <- data
         this.EmitData()

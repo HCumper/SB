@@ -1,8 +1,8 @@
 module SBTests.TurboCodegenTests
 
 // TurboCodegen (the F# port of Turbo's code generator) is checked against the genuine generator,
-// Codegen 3.27, run in a 68000 emulator (TurboCodegenOracle): for every program the two must
-// produce the same executable, byte for byte.
+// Codegen 3.27, run in a 68000 emulator (TurboCodegenOracle). Where the original has a known
+// improver bug, compare against an equivalent stream that avoids the faulty rewrite.
 
 open System
 open System.IO
@@ -81,8 +81,8 @@ let private portOptions =
 let private toHex (bytes: byte[]) = bytes |> Array.map (fun b -> b.ToString("X2")) |> String.concat " "
 
 /// Runs both generators and requires identical output.
-let private assertSameAsReference (ir: byte[]) =
-    let reference = TurboCodegenOracle.run oracleSettings ir
+let private assertMatchesReference (referenceIr: byte[]) (ir: byte[]) =
+    let reference = TurboCodegenOracle.run oracleSettings referenceIr
     Assert.That(reference.Status, Is.EqualTo(-1), $"The reference code generator failed: {reference.Screen}")
     match generateFromIr portOptions ir with
     | Result.Error errors -> Assert.Fail(String.concat "; " errors)
@@ -101,7 +101,46 @@ let private assertSameAsReference (ir: byte[]) =
                 $"Outputs differ at byte {offset} (reference {expected.Length} bytes, port {actual.Length})."
                 + $"{newline}reference: {window expected}{newline}port:      {window actual}")
 
+let private assertSameAsReference ir = assertMatchesReference ir ir
+
 let private programs = [
+    ("flexible_bindings", """
+        10 a% = 1
+        20 bump a%
+        30 bump (a%)
+        40 PRINT a%
+        100 DEFine PROCedure bump(n%)
+        110 IF n% > 1 THEN GO TO 130
+        120 n% = n% + 1
+        130 END DEFine
+    """)
+    ("function_fallthrough", """
+        10 PRINT f%(0), g(0), s$(0)
+        100 DEFine FuNction f%(x%)
+        110 IF x% > 0 THEN RETurn 7
+        120 END DEFine
+        200 DEFine FuNction g(x%)
+        210 IF x% > 0 THEN RETurn 7
+        220 END DEFine
+        300 DEFine FuNction s$(x%)
+        310 IF x% > 0 THEN RETurn "seven"
+        320 END DEFine
+    """)
+    ("manifest_shadow", """
+        10 MANIFEST : n = 3
+        20 PRINT f(7)
+        100 DEFine FuNction f(n)
+        110 RETurn n
+        120 END DEFine
+    """)
+    ("recursive_bindings", """
+        10 PRINT count%(3)
+        100 DEFine FuNction count%(n%)
+        110 IF n% = 0 THEN RETurn 0
+        120 n% = n% - 1
+        130 RETurn 1 + count%(n%)
+        140 END DEFine
+    """)
     ("arith", """
         10 a% = 7 : b = 2.5 : s$ = "x"
         20 c = a% + b
@@ -392,6 +431,136 @@ let ``the port matches the reference improver on the parser's integer-under-floa
 [<TestCaseSource(nameof programNames)>]
 let ``the port matches the reference code generator on native code`` (name: string) =
     assertSameAsReference (nativeBodyOf (irOf (programs |> List.find (fun (n, _) -> n = name) |> snd)))
+
+[<TestCase(239, false, false)>]
+[<TestCase(239, false, true)>]
+[<TestCase(239, true, false)>]
+[<TestCase(239, true, true)>]
+[<TestCase(245, false, false)>]
+[<TestCase(245, false, true)>]
+[<TestCase(245, true, false)>]
+[<TestCase(245, true, true)>]
+let ``branch inversion preserves a jump reached through its own label`` (condition: int, explicitLabel: bool, native: bool) =
+    // Execution must take 10 -> 60 -> 30 -> 100. Deleting the labelled jump at 30
+    // instead makes the incoming GO TO fall through to the wrong branch at 50.
+    let ir = irOf "10 GO TO 60\n15 a% = 0\n20 IF a% = 0 THEN\n30 GO TO 100\n40 END IF\n50 PRINT \"wrong\" : STOP\n60 GO TO 30\n70 GO TO 50\n100 PRINT \"right\" : STOP"
+    let ir = if native then nativeBodyOf ir else ir
+    let items = decode ir |> Result.defaultWith failwith |> List.toArray
+    let branch =
+        items |> Array.findIndex (function Instruction(239, _, _) -> true | _ -> false)
+    match items[branch] with
+    | Instruction(_, operands, _) -> items[branch] <- Instruction(condition, operands, "")
+    | _ -> failwith "Expected a conditional branch."
+    Assert.That(items[branch + 1], Is.EqualTo(LabelDef(20030, "")))
+    if explicitLabel then items[branch + 1] <- Instruction(378, [ LabelRef 20030 ], "")
+    // Opcode 2 emits no code, but keeps the original improver from deleting the jump.
+    let protectedReference =
+        Array.concat [ items[..branch]; [| Instruction(2, [], "") |]; items[branch + 1..] ]
+        |> serialize
+    assertMatchesReference protectedReference (serialize items)
+
+let integerUnderFloatCases =
+    [| for value in [ -32768; -16385; -16384; -3; -2; -1; 0; 1; 2; 16383; 16384; 32767 ] do
+           for operandOpcode in [ 138; 377; 141 ] do
+               yield TestCaseData(value, operandOpcode) |]
+
+[<TestCaseSource(nameof integerUnderFloatCases)>]
+let ``integer-under-float conversion preserves signed Int16 values`` (value: int, operandOpcode: int) =
+    let items = irOf "10 v = 2.5\n20 x = 1 + v" |> decode |> Result.defaultWith failwith |> List.toArray
+    let constant = items |> Array.findIndex (fun item -> item = Instruction(377, [ Word 2049; Word 16384 ], ""))
+    let floatOperand =
+        match operandOpcode with
+        | 138 -> Instruction(138, [ Word 2050; Word 20480; Word 0 ], "")
+        | 377 -> Instruction(377, [ Word 2050; Word 20480 ], "")
+        | _ -> items[constant + 1]
+    let rewritten =
+        Array.concat
+            [ items[..constant - 1]
+              [| Instruction(106, [ Word value ], ""); floatOperand
+                 Instruction(155, [], ""); Instruction(320, [], ""); Instruction(156, [], "") |]
+              items[constant + 2..] ]
+        |> serialize
+    // Compare with a correctly encoded float rather than the original's unsigned rewrite.
+    let exponent, high, low = encodeQdosFloat (float value) |> Result.defaultWith failwith
+    Assert.That(low, Is.Zero)
+    let canonical =
+        Array.concat
+            [ items[..constant - 1]
+              [| Instruction(377, [ Word exponent; Word high ], ""); floatOperand |]
+              items[constant + 2..] ]
+        |> serialize
+    assertMatchesReference canonical rewritten
+
+/// A native stream with no shared templates, or a P body that needs shared templates.
+let private prefixTestIr vectors threaded padding =
+    serialize [
+        yield Instruction(999, [ Word vectors ], "")
+        if threaded then yield Instruction(255, [], "")
+        yield LabelDef(TurboIrLabels.body, "")
+        for _ in 1..padding do
+            yield Instruction(263, [], "")
+            yield Instruction(221, [], "")
+        yield Instruction(220, [], "")
+        if threaded then yield Instruction(254, [], "")
+        yield LabelDef(TurboIrLabels.linkage, "")
+        yield LabelDef(TurboIrLabels.residentNames, "")
+        yield Instruction(261, [ Word 0xFFFF; Bytes8 [||] ], "")
+        yield Instruction(243, [ LabelRef TurboIrLabels.residentNames ], "")
+        yield Instruction(358, [ Word 0 ], "")
+        yield Instruction(243, [ LabelRef TurboIrLabels.linkage ], "")
+        yield Instruction(0, [], "") ]
+
+[<Test>]
+let ``the largest native vector table with a signed entry offset is accepted`` () =
+    let ir = prefixTestIr 8190 false 0
+    Assert.That(validate ir, Is.Empty)
+    match generateFromIr portOptions ir with
+    | Result.Error errors -> Assert.Fail(String.concat "; " errors)
+    | Result.Ok output ->
+        let last = output.Code.Length - 2
+        let entryOffset = (int output.Code[last] <<< 8) ||| int output.Code[last + 1]
+        Assert.That(entryOffset, Is.EqualTo(32764))
+
+[<TestCase(8191, false)>]
+[<TestCase(16384, false)>]
+[<TestCase(8190, true)>]
+let ``an oversized runtime prefix is rejected before addresses wrap`` (vectors: int, threaded: bool) =
+    // The last case fits the vector table, but copying a shared P template exceeds the limit.
+    let ir = prefixTestIr vectors threaded 0
+    Assert.That(validate ir, Is.Empty)
+    match generateFromIr portOptions ir with
+    | Result.Error errors -> Assert.That(errors[0], Does.Contain("runtime prefix"))
+    | Result.Ok _ -> Assert.Fail("Expected an unaddressable runtime prefix to be rejected.")
+
+[<TestCase(false)>]
+[<TestCase(true)>]
+let ``large program bodies remain valid when the runtime prefix fits`` (threaded: bool) =
+    let ir = prefixTestIr 1 threaded 18000
+    Assert.That(validate ir, Is.Empty)
+    match generateFromIr portOptions ir with
+    | Result.Error errors -> Assert.Fail(String.concat "; " errors)
+    | Result.Ok output -> Assert.That(output.Code.Length, Is.GreaterThan(65536))
+
+[<TestCase(-1)>]
+[<TestCase(65536)>]
+[<TestCase(Int32.MaxValue)>]
+let ``unsupported dataspace sizes are rejected`` (size: int) =
+    match generateFromIr { portOptions with DataspaceKiB = size } specExample with
+    | Result.Error errors -> Assert.That(errors[0], Does.Contain("between 0 and 65535 KiB"))
+    | Result.Ok _ -> Assert.Fail("Expected an unsupported dataspace size to be rejected.")
+
+[<TestCase(0)>]
+[<TestCase(1)>]
+[<TestCase(65535)>]
+let ``valid dataspace sizes are preserved in the QDOS header`` (size: int) =
+    match generateFromIr { portOptions with DataspaceKiB = size } specExample with
+    | Result.Error errors -> Assert.Fail(String.concat "; " errors)
+    | Result.Ok output ->
+        Assert.That(output.Dataspace, Is.EqualTo(size * 1024))
+        let header = qdosFileHeader output.Dataspace
+        let bytes = header[22..25]
+        if BitConverter.IsLittleEndian then Array.Reverse bytes
+        Assert.That(BitConverter.ToInt32(bytes, 0), Is.EqualTo(size * 1024))
 
 // ---------------------------------------------------------------------------
 // Command-line selection

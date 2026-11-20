@@ -1092,13 +1092,11 @@ let ``procedures and functions bind formals in reverse and declare locals`` () =
         169 "hi"
         264 2 ; W$
         246 1 ; C
-        265 2 ; W$
-        259
+        246 2 ; W$
         236 65533 ; BUMP
         106 1
         281
-        265 2 ; W$
-        259
+        246 2 ; W$
         356 65527 ; GREET$
         260
         186
@@ -1110,7 +1108,7 @@ let ``procedures and functions bind formals in reverse and declare locals`` () =
         203
         220
         65533: ; DEFine PROCedure BUMP
-        293 5 ; S$
+        294 5 ; S$
         294 4 ; N
         110 6 ; K%
         106 128
@@ -1130,7 +1128,7 @@ let ``procedures and functions bind formals in reverse and declare locals`` () =
         264 7 ; M$
         244
         65527: ; DEFine FuNction GREET$
-        293 10 ; WHO$
+        294 10 ; WHO$
         169 "Hi "
         265 10 ; WHO$
         84
@@ -1688,7 +1686,7 @@ let ``a whole program lowers to the exact stream`` () =
         112 5 ; SCORE%
         242 2000
         2001: ; END REPeat
-        109 1 ; COUNT%
+        246 1 ; COUNT%
         236 65529 ; SORT
         250
         227 17 [] ; CLS
@@ -1701,7 +1699,7 @@ let ``a whole program lowers to the exact stream`` () =
         2003: ; FOR I%
         106 1
         281
-        109 2 ; I%
+        246 2 ; I%
         356 65524 ; RANK$
         260
         186
@@ -1724,7 +1722,7 @@ let ``a whole program lowers to the exact stream`` () =
         281
         169 "Average: "
         186
-        109 1 ; COUNT%
+        246 1 ; COUNT%
         356 65522 ; AVERAGE
         310
         186
@@ -1732,8 +1730,7 @@ let ``a whole program lowers to the exact stream`` () =
         220
         220
         65529: ; DEFine PROCedure SORT
-        110 8 ; N%
-        118 8 ; N%
+        294 8 ; N%
         102 2 ; I%
         102 9 ; J%
         106 128
@@ -1794,8 +1791,7 @@ let ``a whole program lowers to the exact stream`` () =
         378 2006
         244
         65524: ; DEFine FuNction RANK$
-        110 13 ; R%
-        118 13 ; R%
+        294 13 ; R%
         109 13 ; R%
         106 1
         12
@@ -1812,8 +1808,7 @@ let ``a whole program lowers to the exact stream`` () =
         244
         244
         65522: ; DEFine FuNction AVERAGE
-        110 8 ; N%
-        118 8 ; N%
+        294 8 ; N%
         102 15 ; K%
         142 16 ; TOTAL
         377 0 0 ; 0
@@ -1872,6 +1867,196 @@ let ``a whole program lowers to the exact stream`` () =
     Assert.That(output.Bytes.Length % 2, Is.EqualTo(0))
 
 // ---------------------------------------------------------------------------
+// Regression coverage for call bindings, scope and routine boundaries.
+// These checks exercise the ABI consumed by the unmodified Turbo runtime.
+
+[<TestCase("x%", "n", "float storage")>]
+[<TestCase("x", "n%", "integer storage")>]
+let ``reference calls reject incompatible numeric storage`` (actual: string) (formal: string) (message: string) =
+    let result = compileWith id (source $"""
+        10 {actual} = 7
+        20 overwrite {actual}
+        30 DEFine PROCedure overwrite({formal})
+        40 REFERENCE {formal}
+        50 {formal} = 2
+        60 END DEFine
+    """)
+    let errors = expectErrors result
+    Assert.That(String.concat "; " errors, Does.Contain(message))
+
+[<TestCase(false)>]
+[<TestCase(true)>]
+let ``reference calls reject scalar and array mismatches`` (actualIsArray: bool) =
+    let declaration = if actualIsArray then "DIM x%(2)" else "x% = 7"
+    let assignment = if actualIsArray then "n% = 99" else "n%(1) = 99"
+    let result = compileWith id (source $"""
+        10 {declaration}
+        20 overwrite x%%
+        30 DEFine PROCedure overwrite(n%%)
+        40 REFERENCE n%%
+        50 {assignment}
+        60 END DEFine
+    """)
+    let errors = expectErrors result
+    Assert.That(String.concat "; " errors, Does.Contain("by-reference parameter"))
+    Assert.That(String.concat "; " errors, Does.Contain("an array"))
+
+[<Test>]
+let ``reference calls reject incompatible declared array ranks`` () =
+    let result = compileWith id (source """
+        10 DIM x%(2)
+        20 overwrite x%
+        30 DEFine PROCedure overwrite(n%)
+        40 REFERENCE n%
+        50 n%(1,1) = 99
+        60 END DEFine
+    """)
+    let errors = expectErrors result
+    Assert.That(String.concat "; " errors, Does.Contain("needs 2 bounds"))
+
+[<Test>]
+let ``array parameter ranks are scoped even when names share a vector`` () =
+    let output = compile (source """
+        10 DIM a%(2), b%(2,2)
+        20 one a%
+        30 two b%
+        100 DEFine PROCedure one(x%)
+        110 x%(1) = 1
+        120 END DEFine
+        200 DEFine PROCedure two(x%)
+        210 x%(1,1) = 2
+        220 END DEFine
+    """)
+    Assert.That(output.Warnings, Is.Empty)
+
+[<Test>]
+let ``flexible variable arguments retain their reference binding`` () =
+    let text = source """
+        10 a% = 1
+        20 bump a%
+        30 PRINT a%
+        100 DEFine PROCedure bump(n%)
+        110 n% = n% + 1
+        120 END DEFine
+    """
+    let _, hir = lowerSource text
+    Assert.That((Interpreter.interpretProgram hir |> Result.toOption).Value.Output, Is.EqualTo<string list>([ "2" ]))
+    let output = compile text
+    Assert.That(body output, Does.Contain("246 1 ; A%"))
+    Assert.That(body output, Does.Contain("294 3 ; N%"))
+    Assert.That(body output, Does.Not.Contain("110 3 ; N%"))
+
+[<TestCase(false)>]
+[<TestCase(true)>]
+let ``flexible formals support both value and reference calls`` (valueFirst: bool) =
+    // Parentheses deliberately force a value argument even though the expression
+    // is just a variable read. The other call must continue to alias the variable.
+    let first, second = if valueFirst then "bump (a%)", "bump a%" else "bump a%", "bump (a%)"
+    let text = source $"""
+        10 a%% = 1
+        20 {first}
+        30 {second}
+        40 PRINT a%%
+        100 DEFine PROCedure bump(n%%)
+        110 n%% = n%% + 1
+        120 END DEFine
+    """
+    let _, hir = lowerSource text
+    Assert.That((Interpreter.interpretProgram hir |> Result.toOption).Value.Output, Is.EqualTo<string list>([ "2" ]))
+    let output = compile text
+    let targets = output.Items |> List.choose (function Instruction(236, [ LabelRef label ], _) -> Some label | _ -> None)
+    Assert.That(targets |> List.distinct |> List.length, Is.EqualTo(2))
+    Assert.That(body output, Does.Contain("294 3 ; N%"))
+    Assert.That(body output, Does.Contain("110 3 ; N%"))
+
+[<Test>]
+let ``recursive flexible calls reuse a finite set of argument bindings`` () =
+    let output = compile (source """
+        10 PRINT count%(3)
+        100 DEFine FuNction count%(n%)
+        110 IF n% = 0 THEN RETurn 0
+        120 n% = n% - 1
+        130 RETurn 1 + count%(n%)
+        140 END DEFine
+    """)
+    let entries = output.Items |> List.filter (function LabelDef(_, text) when text.StartsWith("DEFine") -> true | _ -> false)
+    Assert.That(entries.Length, Is.EqualTo(2))
+
+[<TestCase("f%", "263")>]
+[<TestCase("f", "377 0 0 ; 0")>]
+[<TestCase("f$", "263\n312\n259")>]
+let ``function fallthrough supplies a typed zero result`` (name: string) (expected: string) =
+    let returned = if name.EndsWith "$" then "\"7\"" else "7"
+    let text = source $"""
+        10 PRINT {name}(0)
+        100 DEFine FuNction {name}(x%%)
+        110 IF x%% > 0 THEN RETurn {returned}
+        120 END DEFine
+    """
+    let _, hir = lowerSource text
+    Assert.That((Interpreter.interpretProgram hir |> Result.toOption).Value.Output, Is.EqualTo<string list>([ "0" ]))
+    let output = compile text
+    let ending = body output |> List.rev |> List.truncate ((lines expected).Length + 1) |> List.rev
+    assertLines (expected + "\n244") ending
+
+[<Test>]
+let ``a parameter shadowing MANIFEST is read from its own storage`` () =
+    let output = compile (source """
+        10 MANIFEST : n = 3
+        20 PRINT f(7)
+        100 DEFine FuNction f(n)
+        110 RETurn n
+        120 END DEFine
+    """)
+    Assert.That(body output, Does.Contain("141 2 ; N"))
+    Assert.That(body output, Does.Not.Contain("377 2050 24576 ; 3"))
+
+[<Test>]
+let ``a local shadowing MANIFEST remains writable`` () =
+    let output = compile (source """
+        10 MANIFEST : n = 3
+        20 show
+        100 DEFine PROCedure show
+        110 LOCal n
+        120 n = 7
+        130 PRINT n
+        140 END DEFine
+    """)
+    Assert.That(body output, Does.Contain("150 2 ; N"))
+    Assert.That(body output, Does.Contain("141 2 ; N"))
+
+[<TestCase(false)>]
+[<TestCase(true)>]
+let ``GO TO the END DEFine line returns rather than selecting a later line`` (laterLine: bool) =
+    let prefix = source """
+        10 p
+        20 PRINT "done" : STOP
+        100 DEFine PROCedure p
+        110 GO TO 130
+        120 PRINT "not reached"
+        130 END DEFine
+    """
+    let text = prefix + (if laterLine then "200 PRINT \"wrong destination\" : STOP\n" else "")
+    let output = compile text
+    Assert.That(body output, Does.Contain("242 20130"))
+    Assert.That(body output, Does.Contain("20130: ; line 130"))
+    Assert.That(body output, Does.Not.Contain("242 20200"))
+
+[<Test>]
+let ``alternate routine entries have private source line anchors`` () =
+    let output = compile (source """
+        10 a% = 1
+        20 p a%
+        30 p (5)
+        100 DEFine PROCedure p(n%)
+        110 IF n% > 0 THEN GO TO 130
+        120 n% = 99
+        130 END DEFine
+    """)
+    let anchors = output.Items |> List.choose (function LabelDef(label, "line 130") -> Some label | _ -> None)
+    Assert.That(anchors.Length, Is.EqualTo(2))
+    Assert.That(anchors |> List.distinct |> List.length, Is.EqualTo(2))
+
 // Encodings, decoding and validation
 // ---------------------------------------------------------------------------
 
