@@ -30,6 +30,7 @@ let rec describeExpr expr =
     | PostfixName(_, _, name, Some _) -> $"{name}(...)"
     | NumberLiteral(_, _, value) -> value
     | StringLiteral(_, _, value) -> value
+    | GroupedExpr(_, _, inner) -> "(" + describeExpr inner + ")"
     | UnaryExpr(_, _, op, _) -> op
     | BinaryExpr(_, _, op, _, _) -> op
     | SliceRange _ -> "TO"
@@ -307,6 +308,7 @@ let rec tryEvaluateConstantExpr (state: ProcessingState) expr =
                 | _ -> None
 
     match expr with
+    | GroupedExpr(_, _, inner) -> tryEvaluateConstantExpr state inner
     | NumberLiteral(_, _, value) -> Some value
     | StringLiteral(_, _, value) -> Some value
     | Identifier(_, _, name)
@@ -634,6 +636,9 @@ let rec inferExprType (state: ProcessingState) expr =
         inferredType, recordedState
 
     match expr with
+    | GroupedExpr(_, _, inner) ->
+        let innerType, nextState = inferExprType state inner
+        typed innerType nextState
     | NumberLiteral(_, _, value) ->
         match tryParseInt value with
         | true, _ -> typed SBType.Integer state

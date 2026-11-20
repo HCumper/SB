@@ -25,6 +25,7 @@
         <Compile Include="GeneratedCSharpExecutionTests.fs" />
         <Compile Include="PipelineSourceTests.fs" />
         <Compile Include="Ssb280Tests.fs" />
+        <Compile Include="SsbCorrectnessTests.fs" />
     </ItemGroup>
 
     <ItemGroup>

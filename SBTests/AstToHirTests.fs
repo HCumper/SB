@@ -135,7 +135,12 @@ let ``parse and lower compact select on clauses with comma separated matches`` (
         | [ LineNumber(10, _)
             Assign(WriteVar(_, _, _), Literal(ConstInt 1, Int, _), _)
             LineNumber(20, _)
-            If(_, [ LineNumber(40, _); Goto(Literal(ConstInt 100, Int, _), _) ], Some [ If(_, [ LineNumber(40, _); Goto(Literal(ConstInt 100, Int, _), _) ], Some [ If(_, [ LineNumber(60, _); Goto(Literal(ConstInt 200, Int, _), _) ], None, _) ], _) ], _) ] -> ()
+            Assign(WriteVar(savedSelector, _, _), ReadVar(originalSelector, _, _), _)
+            // The range list =1,5 is one test of both ranges, so line 40 is lowered once.
+            If(Binary(BitwiseOr, Binary(Equal, ReadVar(firstMatch, _, _), Literal(ConstInt 1, _, _), _, _), Binary(Equal, ReadVar(secondMatch, _, _), Literal(ConstInt 5, _, _), _, _), _, _), [ LineNumber(40, _); Goto(Literal(ConstInt 100, Int, _), _) ], Some [ If(Binary(Equal, ReadVar(thirdMatch, _, _), Literal(ConstInt 2, _, _), _, _), [ LineNumber(60, _); Goto(Literal(ConstInt 200, Int, _), _) ], None, _) ], _) ] ->
+            Assert.That(savedSelector, Is.Not.EqualTo(originalSelector))
+            Assert.That([firstMatch; secondMatch; thirdMatch], Is.All.EqualTo(savedSelector))
+            Assert.That(hir.Globals |> List.exists (fun storage -> storage.Symbol = savedSelector), Is.True)
         | other -> Assert.Fail($"Unexpected comma-separated compact SELECT HIR: %A{other}")
     | other -> Assert.Fail($"Unexpected comma-separated compact SELECT AST: %A{other}")
 

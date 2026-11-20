@@ -253,20 +253,22 @@ module Ssb =
                 let firstNumber = number + 1
                 let mutable line = read ()
                 let initial = line.TrimStart()
-                let directive = upperAscii initial
+                // A directive may carry a trailing ## comment, as in #ENDIF ## debug.
+                let directiveText = if initial.StartsWith("#", StringComparison.Ordinal) then (stripComment initial).Trim() else initial
+                let directive = upperAscii directiveText
                 if directive.StartsWith("#IFDEF ", StringComparison.Ordinal) then
                     if conditions.Count >= 32 then fail "Conditional nesting exceeds 32"
-                    conditions.Add(symbols.Contains(initial.Substring(7).Trim()))
+                    conditions.Add(symbols.Contains(directiveText.Substring(7).Trim()))
                 elif directive = "#ENDIF" then
                     if conditions.Count = 0 then fail "Unmatched #ENDIF"
                     conditions.RemoveAt(conditions.Count - 1)
                 elif enabled () then
                     if directive.StartsWith("#DEFINE ", StringComparison.Ordinal) then
-                        let name = initial.Substring(8).Trim()
+                        let name = directiveText.Substring(8).Trim()
                         if name.Length = 0 || name.Length > cfg.MaxNameLength then fail "Invalid #DEFINE name"
                         symbols.Add name |> ignore
                     elif directive.StartsWith("#INCLUDE ", StringComparison.Ordinal) then
-                        let name = initial.Substring(9).Trim().Trim('"')
+                        let name = directiveText.Substring(9).Trim().Trim('"')
                         let configured = cfg.WorkingDir1 + name
                         let relative = Path.Combine(Path.GetDirectoryName(path), name)
                         let includePath = if File.Exists configured then configured else relative
@@ -305,15 +307,15 @@ module Ssb =
                 statementStart <- false
                 builder.Append(ch) |> ignore
                 i <- i + 1
-            elif statementStart && Char.IsLetter ch then
+            elif Char.IsLetter ch then
                 let first = i
-                while i < line.Length && Char.IsLetter line[i] do i <- i + 1
+                while i < line.Length && (Char.IsLetterOrDigit line[i] || line[i] = '_' || line[i] = '$' || line[i] = '%') do i <- i + 1
                 let word = line.Substring(first, i-first)
-                if word.Equals("DATA", StringComparison.OrdinalIgnoreCase) || word.StartsWith("REM", StringComparison.OrdinalIgnoreCase) then
+                if statementStart && (word.Equals("DATA", StringComparison.OrdinalIgnoreCase) || (word.Length >= 3 && word.Length <= 6 && "REMARK".StartsWith(word, StringComparison.OrdinalIgnoreCase))) then
                     builder.Append(line.Substring(first)) |> ignore
                     i <- line.Length
                 else builder.Append(word) |> ignore
-                statementStart <- false
+                statementStart <- word.Equals("THEN", StringComparison.OrdinalIgnoreCase) || word.Equals("ELSE", StringComparison.OrdinalIgnoreCase)
             elif ch = '@' then
                 let first = i
                 i <- i + 1

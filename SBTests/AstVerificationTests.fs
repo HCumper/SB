@@ -55,11 +55,11 @@ let ``compact if accepts else without colon after else and empty print statement
                 _,
                 BinaryExpr(_, _, "<", Identifier(_, _, "w1"), NumberLiteral(_, _, "13")),
                 StatementBlock
-                    [ ProcedureCall(_, "sysmess", [ NumberLiteral(_, _, "7") ])
+                    [ ProcedureCall(_, "sysmess", [ GroupedExpr(_, _, NumberLiteral(_, _, "7")) ])
                       ProcedureCall(_, "PRINT", []) ],
                 Some(
                     StatementBlock
-                        [ ProcedureCall(_, "sysmess", [ NumberLiteral(_, _, "8") ])
+                        [ ProcedureCall(_, "sysmess", [ GroupedExpr(_, _, NumberLiteral(_, _, "8")) ])
                           ProcedureCall(_, "PRINT", []) ])) ]) ]) -> Assert.Pass()
     | other -> Assert.Fail($"Unexpected compact IF/ELSE AST: %A{other}")
 
@@ -283,3 +283,12 @@ let ``hex literals parse as number literals`` () =
     | other -> Assert.Fail($"Unexpected hex DATA AST: %A{other}")
 
 
+
+
+[<TestCase("ram1_example"); TestCase("win1_document")>]
+let ``grouped OPEN device literals retain literal normalization`` device =
+    let tree = parseProgram ($"10 OPEN ({device})\n")
+    match convertTreeToAst tree with
+    | [Program(_, [Line(_, Some 10, [ProcedureCall(_, "OPEN", [GroupedExpr(_, _, StringLiteral(_, _, value))])])])] ->
+        Assert.That(value, Is.EqualTo("\"" + device + "\""))
+    | other -> Assert.Fail($"Unexpected grouped OPEN AST: %A{other}")

@@ -146,13 +146,6 @@ type HirDataEntry = {
 
 type HirBlock = HirStmt list
 
-and HirSelectClause = {
-    Selector: HirExpr
-    Range: HirExpr
-    Body: HirBlock option
-    Position: SourcePosition
-}
-
 and HirStmt =
     | Assign of HirTarget * HirExpr * SourcePosition
     | ProcCall of SymbolId * HirChannel option * HirCallArg list * SourcePosition

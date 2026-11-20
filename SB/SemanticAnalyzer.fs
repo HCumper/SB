@@ -141,6 +141,7 @@ let private isSizedStringDeclaration name (dims: Expr list) =
 let rec private isManifestNumericLiteral expr =
     match expr with
     | NumberLiteral _ -> true
+    | GroupedExpr(_, _, inner) -> isManifestNumericLiteral inner
     | UnaryExpr(_, _, op, inner) when op = "+" || op = "-" -> isManifestNumericLiteral inner
     | _ -> false
 
@@ -455,6 +456,7 @@ and private resolveExpr mode expr : State<ProcessingState, unit> =
         | BinaryExpr(_, _, _, lhs, rhs) ->
             do! resolveExpr mode lhs
             do! resolveExpr mode rhs
+        | GroupedExpr(_, _, inner)
         | UnaryExpr(_, _, _, inner) ->
             do! resolveExpr mode inner
         // An omitted argument (PROC a,,b) names nothing.
@@ -838,6 +840,11 @@ and private resolveStmt (mode: SymbolAddMode) (node: Stmt) : State<ProcessingSta
                 monad {
                     match remaining with
                     | [] -> return ()
+                    | SelectClause(_, _, Identifier(_, _, name), body) :: tail when normalizeIdentifier name = "REMAINDER" ->
+                        match body with
+                        | Some block -> do! resolveBlock mode block
+                        | None -> ()
+                        do! resolveClauses tail
                     | SelectClause(_, clauseSelector, rangeExpr, body) :: tail ->
                         do! resolveExpr mode clauseSelector
                         do! resolveExpr mode rangeExpr

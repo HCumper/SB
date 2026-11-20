@@ -21,7 +21,53 @@ let private upper (s: string) = s.ToUpperInvariant()
 let private ident (s: string) = Regex.IsMatch(s, @"^[A-Za-z_][A-Za-z0-9_]*[$%]?$")
 let private text (tokens: string list) = String.concat " " tokens
 let private lexer = Regex("\"(?:[^\"]|\"\")*\"|'(?:[^']|'')*'|@[A-Za-z_][A-Za-z0-9_]*|[A-Za-z_][A-Za-z0-9_]*[$%]?|\\$[0-9A-Fa-f]+|%[01]+|(?:[0-9]+(?:\\.[0-9]*)?|\\.[0-9]+)(?:[Ee][+-]?[0-9]+)?|<>|<=|>=|==|&&|\\|\\||[^\\s]", RegexOptions.Compiled)
-let tokenize (line: string) = lexer.Matches(line) |> Seq.cast<Match> |> Seq.map (fun m -> m.Value) |> Seq.toList
+// REMark/DATA tails are opaque, including colons, parentheses and @ names.
+// Recognise remarks only where a statement can start, not in names like remove.
+let tokenize (line: string) =
+    let result = ResizeArray<string>()
+    let mutable statementStart = true
+    let mutable ended = false
+    for m in lexer.Matches(line) |> Seq.cast<Match> do
+        if not ended then
+            let token = m.Value
+            result.Add token
+            let remark = token.Length >= 3 && token.Length <= 6 && "REMARK".StartsWith(upper token, StringComparison.Ordinal)
+            if statementStart && (remark || eq token "DATA") then
+                let tail = line.Substring(m.Index + m.Length).TrimStart()
+                if tail <> "" then result.Add tail
+                ended <- true
+            else
+                statementStart <- token = ":" || eq token "THEN" || eq token "ELSE"
+    List.ofSeq result
+
+// Split only the first ordinary statement. Inline control statements own the
+// rest of their physical line, so their conditions/loops keep their whole body.
+let private statementSequence tokens =
+    let rec sequence ts =
+        match ts with
+        | [] -> []
+        | first :: _ when eq first "IF" || eq first "FOR" || eq first "REPEAT" || eq first "REP" || eq first "MANIFEST" -> [ts]
+        | _ ->
+            let mutable depth = 0
+            let cut = ts |> List.tryFindIndex (fun token ->
+                if token = "(" then depth <- depth + 1
+                elif token = ")" then depth <- depth - 1
+                token = ":" && depth = 0)
+            match cut with
+            | Some n ->
+                let first = ts |> List.take n
+                (if first.IsEmpty then [[":"]] else [first]) @ sequence (ts |> List.skip (n+1))
+            | None -> [ts]
+    sequence tokens
+
+let private firstColon tokens =
+    let mutable depth = 0
+    match tokens |> List.tryFindIndex (fun token ->
+        if token = "(" then depth <- depth + 1
+        elif token = ")" then depth <- depth - 1
+        token = ":" && depth = 0) with
+    | Some n -> tokens |> List.take n, Some(tokens |> List.skip (n+1))
+    | None -> tokens, None
 
 let private split separator tokens =
     let result = ResizeArray<string list>()
@@ -60,7 +106,7 @@ let private group tokens =
 let private parseDeclaration allowValue tokens =
     let value, tokens =
         match tokens with
-        | v :: rest when eq v "VAL" -> true, rest
+        | v :: name :: rest when eq v "VAL" && ident name && not (eq name "AS") -> true, name :: rest
         | _ -> false, tokens
     if value && not allowValue then invalidOp "VAL is only valid on scalar parameters"
     match tokens with
@@ -108,15 +154,46 @@ let private isRemark tokens =
     | [] -> false
 
 let expand (lines: SourceLine list) : SourceLine list =
-    let tokens = lines |> List.map (fun line -> line, tokenize line.Text)
+    let rawTokens = lines |> List.map (fun line -> line, tokenize line.Text)
+    let candidateTokens = rawTokens |> List.collect (fun (line, ts) ->
+        match statementSequence ts with
+        | [_] | [] -> [line, ts]
+        | parts -> parts |> List.map (fun part -> { line with Text = text part }, part))
+    // TYPE name opens a record type only when field declarations and then END TYPE follow it.
+    // Anything else, such as a call to a procedure named TYPE, stays an ordinary statement.
+    let typeHeaders =
+        let statements = candidateTokens |> List.map snd |> Array.ofList
+        let isEndType ts = match ts with [ e; t ] -> eq e "END" && eq t "TYPE" | _ -> false
+        let isField ts =
+            List.isEmpty ts || ts = [ ":" ] || isRemark ts
+            || (try parseDeclaration false ts |> ignore; true with :? InvalidOperationException -> false)
+        let headers = HashSet<int>()
+        for i in 0 .. statements.Length - 1 do
+            match statements[i] with
+            | [ t; name ] when eq t "TYPE" && ident name ->
+                let mutable j = i + 1
+                while j < statements.Length && not (isEndType statements[j]) && isField statements[j] do j <- j + 1
+                if j < statements.Length && isEndType statements[j] then headers.Add i |> ignore
+            | _ -> ()
+        headers
     let extended =
-        tokens |> List.exists (fun (_, ts) ->
-            not (isRemark ts) &&
-            (match ts with
-             | first :: _ when eq first "TYPE" -> true
-             | d :: _ when eq d "DIM" || keyword d "LOCAL" 3 -> ts |> List.exists (eq "AS")
-             | d :: _ when eq d "DEF" || eq d "DEFINE" -> ts |> List.exists (fun t -> eq t "AS" || eq t "VAL")
-             | _ -> false))
+        candidateTokens |> List.indexed |> List.exists (fun (index, (_, ts)) ->
+            if isRemark ts then false
+            else
+                match ts with
+                | [t; name] when eq t "TYPE" && ident name -> typeHeaders.Contains index
+                | d :: tail when eq d "DIM" || keyword d "LOCAL" 3 ->
+                    split "," tail |> List.exists (fun part ->
+                        try (parseDeclaration false part).TypeName.IsSome
+                        with :? InvalidOperationException -> false)
+                | d :: _ when eq d "DEF" || eq d "DEFINE" ->
+                    try
+                        match header ts with
+                        | Some(_, _, ps) -> ps |> List.exists (fun p -> p.Value || p.TypeName.IsSome)
+                        | None -> false
+                    with :? InvalidOperationException -> false
+                | _ -> false)
+    let tokens = candidateTokens
     if not extended then lines
     else
         let types = Dictionary<string, Field list>(StringComparer.OrdinalIgnoreCase)
@@ -199,7 +276,7 @@ let expand (lines: SourceLine list) : SourceLine list =
                     if fields |> Seq.exists (fun f -> eq f.Name decl.Name) then fail "Duplicate field"
                     fields.Add { Name = decl.Name; Bounds = decl.Bounds; Embedded = decl.TypeName }
                     typeLines.Add index |> ignore
-                | None, [ t; name ] when eq t "TYPE" && ident name ->
+                | None, [ t; name ] when eq t "TYPE" && ident name && typeHeaders.Contains index ->
                     if inRoutine then fail "TYPE declarations must be top-level"
                     if name.Length > 64 then fail "TYPE name exceeds 64 bytes"
                     if types.ContainsKey name then fail "Duplicate TYPE"
@@ -307,6 +384,16 @@ let expand (lines: SourceLine list) : SourceLine list =
             | None -> ()
             name
         let newTemp () = newTempWith "%"
+        // Ordinary temporaries live within one statement and are renumbered for each one. A
+        // SELECT's captured selector is read by the arms on later lines, so it gets its own name.
+        let mutable selectSerial = 0
+        let newSelectTemp suffix =
+            selectSerial <- selectSerial + 1
+            let name = $"rec_s{selectSerial}" + suffix
+            match routine with
+            | Some r when not (r.Temps.Contains name) -> r.Temps.Add name
+            | _ -> ()
+            name
         let generatedLine value = { origin with Text = value }
         let dimension name indices = if List.isEmpty indices then name else name + "(" + String.concat "," indices + ")"
         let logicalBounds (leaf: Leaf) = if (List.last leaf.Path).EndsWith("$") then leaf.Bounds |> List.take (leaf.Bounds.Length - 1) else leaf.Bounds
@@ -369,9 +456,9 @@ let expand (lines: SourceLine list) : SourceLine list =
         let loops bounds body =
             let counters = bounds |> List.map (fun _ -> newTemp ())
             (List.map2 (fun counter b -> $"FOR {counter} = 0 TO {b}") counters bounds) @ body counters @ (counters |> List.rev |> List.map (fun counter -> "END FOR " + counter))
-        let guard condition message = [ "IF " + condition + " THEN"; "PRINT \"" + message + "\""; "STOP"; "END IF" ]
-        // Lower SELECT to guarded branches: SB's older SELECT lowering doesn't
-        // yet model a REMAINDER clause or exact compact-clause equality.
+        let guard condition message = [ "IF " + condition + " THEN"; "PRINT \"" + message + "\""; "STOP : REMark rec_guard_error " + message; "END IF" ]
+        // Keep record argument captures in the appropriate SELECT condition.
+        // Ordinary SELECT syntax has the same matching rules in shared HIR lowering.
         let selects = Stack<string * int ref * bool ref * string>()
         let rec stringExpression ts =
             if ts |> List.exists (eq "&") then true
@@ -440,16 +527,9 @@ let expand (lines: SourceLine list) : SourceLine list =
                 match parameter.Record with
                 | None ->
                     let value = expression prefix arg
-                    // The current BASIC AST erases grouping. An identity expression
-                    // preserves the value argument through lowering on every backend.
-                    let explicitlyGrouped =
-                        match arg with
-                        | "(" :: _ -> let _, remaining = group arg in remaining.IsEmpty
-                        | _ -> false
-                    [ if parameter.Declaration.Value || explicitlyGrouped then
-                          if parameter.Declaration.Name.EndsWith("$") then "(\"\" & (" + value + "))"
-                          else "(0 + (" + value + "))"
-                      else value ]
+                    // Grouping is retained by the common AST and forces value
+                    // passing in every source mode; VAL adds that grouping here.
+                    [if parameter.Declaration.Value then "(" + value + ")" else value]
                 | Some expected ->
                     match tryView arg with
                     | Some(view, []) when eq view.TypeName expected.TypeName ->
@@ -499,7 +579,8 @@ let expand (lines: SourceLine list) : SourceLine list =
                         loops bs (fun counters -> [ dimension ("rec_" + storage.Name + "_used%") counters + " = 0" ])
                 List.ofSeq prefix @ allocation @ poolInit
         let rec statements (ts: string list) =
-            if ts.IsEmpty then []
+            if ts = [":"] then [":"]
+            elif ts.IsEmpty then []
             elif isRemark ts || eq ts.Head "MANIFEST" then [text ts]
             else
                 let splitAt word =
@@ -512,14 +593,14 @@ let expand (lines: SourceLine list) : SourceLine list =
                 match ts with
                 | select :: on :: selector when keyword select "SELECT" 3 && eq on "ON" ->
                     let value = checkedExpression prefix selector
-                    let captured = newTempWith (if stringExpression selector then "$" else "")
+                    let captured = newSelectTemp (if stringExpression selector then "$" else "")
                     selects.Push(captured, ref 0, ref false, value)
                     List.ofSeq prefix @ [captured + " = " + value]
                 | e :: s :: _ when eq e "END" && keyword s "SELECT" 3 ->
                     if selects.Count = 0 then fail "END SELECT without SELECT"
                     let _, count, _, _ = selects.Pop()
                     [ for _ in 1 .. count.Value -> "END IF" ]
-                | on :: tail when eq on "ON" && selects.Count > 0 ->
+                | on :: tail when eq on "ON" && selects.Count > 0 && (split "=" tail).Length > 1 ->
                     match split "=" tail with
                     | selector :: rest when not rest.IsEmpty ->
                         let _, _, _, original = selects.Peek()
@@ -533,9 +614,8 @@ let expand (lines: SourceLine list) : SourceLine list =
                 | "=" :: tail when selects.Count > 0 ->
                     let selector, count, remainder, _ = selects.Peek()
                     if remainder.Value then fail "SELECT arm after REMAINDER"
-                    let parts = split ":" tail
-                    let ranges = parts.Head
-                    let body = parts.Tail |> List.collect statements
+                    let ranges, bodyTokens = firstColon tail
+                    let body = bodyTokens |> Option.map statements |> Option.defaultValue []
                     let otherwise = count.Value > 0
                     if ranges.Length = 1 && eq ranges.Head "REMAINDER" then
                         remainder.Value <- true
@@ -564,15 +644,17 @@ let expand (lines: SourceLine list) : SourceLine list =
                             | [yes; no] -> List.ofSeq prefix @ ["IF " + condition + " THEN"] @ statements yes @ ["ELSE"] @ statements no @ ["END IF"]
                             | _ -> fail "Malformed inline IF"
                 | first :: _ when eq first "FOR" || keyword first "REPEAT" 3 ->
-                    let parts = split ":" ts
-                    match parts with
-                    | [one] ->
+                    let firstPart, body = firstColon ts
+                    match body with
+                    | None ->
+                        let one = firstPart
                         let rendered = checkedExpression prefix one
                         if eq first "FOR" then
                             let counter = one |> List.skip 1 |> split "=" |> List.head |> expression (ResizeArray())
                             if counter.Contains("(") then fail "A record-array field cannot be a FOR counter"
                         List.ofSeq prefix @ [rendered]
-                    | firstPart :: body ->
+                    | Some bodyTokens ->
+                        let body = statementSequence bodyTokens
                         if body |> List.exists (fun part -> match part with e :: _ when eq e "END" -> true | _ -> false) then fail "Use multiline form for explicitly closed inline loops"
                         let beginLoop = expression prefix firstPart
                         let loopName =
@@ -583,9 +665,8 @@ let expand (lines: SourceLine list) : SourceLine list =
                             else text (List.tail firstPart)
                         if loopName.Contains("(") then fail "A record-array field cannot be a FOR counter"
                         List.ofSeq prefix @ [beginLoop] @ (body |> List.collect statements) @ [ (if eq first "FOR" then "END FOR " else "END REPeat ") + loopName ]
-                    | _ -> []
                 | _ ->
-                    let parts = split ":" ts
+                    let parts = statementSequence ts
                     if parts.Length > 1 then
                         // SELECT arms have an expression before their first colon.
                         match ts with

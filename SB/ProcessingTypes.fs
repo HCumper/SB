@@ -39,6 +39,7 @@ type ProcessingState = {
 let exprPosition expr =
     match expr with
     | PostfixName(_, pos, _, _)
+    | GroupedExpr(_, pos, _)
     | SliceRange(_, pos, _, _)
     | BinaryExpr(_, pos, _, _, _)
     | UnaryExpr(_, pos, _, _)

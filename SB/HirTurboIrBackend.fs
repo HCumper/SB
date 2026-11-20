@@ -1756,6 +1756,10 @@ type private Emitter(options: TurboIrOptions, program: HirProgram) =
             if not args.IsEmpty || channel.IsSome then
                 fail pos $"{name} takes no arguments here; a line number or channel argument has no Turbo IR form."
         match name with
+        // SSB record guards print their reason, then STOP with it as a diagnostic for SB's own
+        // runtimes (AstToHir, rec_guard_error); Turbo's STOP (220) takes nothing, so it is dropped.
+        | "STOP" when (match args with [ Literal(ConstString _, _, _) ] -> channel.IsNone | _ -> false) ->
+            op0 Op.progEnd
         | "STOP"
         | "NEW" ->
             noArguments ()

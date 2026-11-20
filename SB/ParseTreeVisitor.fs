@@ -135,11 +135,12 @@ type ASTBuildingVisitor() =
         if not (openBuiltInNames.Contains(normalizeIdentifier name)) then
             args
         else
-            args
-            |> List.map (function
+            let rec normalize = function
+                | GroupedExpr(id, pos, inner) -> GroupedExpr(id, pos, normalize inner)
                 | Identifier(_, pos, value) when this.LooksLikeDeviceLiteral value ->
                     mkStringLiteral pos ("\"" + value + "\"")
-                | other -> other)
+                | other -> other
+            args |> List.map normalize
 
     // Collection helpers collapse parser-specific child lists into the exact AST
     // collections expected by later stages, so the individual Visit* overrides can
@@ -708,7 +709,12 @@ type ASTBuildingVisitor() =
 
     override this.VisitStmtArglist(ctx: SBParser.StmtArglistContext) =
         if not (isNull (ctx.parenthesizedlist())) then
-            ctx.parenthesizedlist().Accept(this)
+            let args = this.CollectParenthesizedArgs(ctx.parenthesizedlist())
+            // A sole parenthesized procedure actual is an expression/value,
+            // even when the grammar consumes its parentheses as an arglist.
+            match args with
+            | [arg] -> [ExprNode(mkGroupedExpr (posOfTree ctx) arg)]
+            | _ -> args |> List.map ExprNode
         else
             ctx.stmtTail().Accept(this)
 
@@ -969,13 +975,31 @@ type ASTBuildingVisitor() =
         selectSelectorStack <- selector :: selectSelectorStack
 
         try
+            // Compact arms collect their body lines in the grammar. Explicit
+            // ON arms expose subsequent lines as select items; attach those to
+            // every match from the preceding header (including comma lists).
+            let groups = ResizeArray<SelectClause list * ResizeArray<Line>>()
+            for item in this.SafeChildren(ctx.selectBodyItem()) do
+                let nodes = item.Accept(this)
+                let clauses = nodes |> List.choose (function ClauseNode clause -> Some clause | _ -> None)
+                if not clauses.IsEmpty then groups.Add(clauses, ResizeArray())
+                elif groups.Count > 0 then
+                    let _, lines = groups[groups.Count - 1]
+                    for node in nodes do
+                        match node with
+                        | LineNode line -> lines.Add line
+                        | _ -> ()
             let clauses =
-                this.SafeChildren(ctx.selectBodyItem())
-                |> Seq.collect (fun si ->
-                    si.Accept(this)
-                    |> Seq.choose (function
-                        | ClauseNode clause -> Some clause
-                        | _ -> None))
+                groups |> Seq.collect (fun (clauses, extraLines) ->
+                    clauses |> List.map (fun (SelectClause(cp, cs, range, body) as clause) ->
+                        if extraLines.Count = 0 then clause
+                        else
+                            let initial =
+                                match body with
+                                | Some(LineBlock lines) -> lines
+                                | Some(StatementBlock stmts) -> [Line(cp, cp.BasicLineNo, stmts)]
+                                | None -> []
+                            SelectClause(cp, cs, range, Some(LineBlock(initial @ List.ofSeq extraLines)))))
                 |> Seq.toList
             single (StmtNode(SelectStmt(p, selector, clauses)))
         finally
@@ -989,6 +1013,7 @@ type ASTBuildingVisitor() =
     override this.VisitSelectItem(ctx: SBParser.SelectItemContext) =
         if not (isNull (ctx.onClause())) then ctx.onClause().Accept(this)
         elif not (isNull (ctx.compactOnClause())) then ctx.compactOnClause().Accept(this)
+        elif not (isNull (ctx.line())) then ctx.line().Accept(this)
         else []
 
     override this.VisitOnClause(ctx: SBParser.OnClauseContext) =
@@ -1166,7 +1191,7 @@ type ASTBuildingVisitor() =
         elif not (isNull (ctx.postfixName())) then
             ctx.postfixName().Accept(this)
         elif not (isNull (ctx.expr())) then
-            ctx.expr().Accept(this)
+            single (ExprNode(mkGroupedExpr p (this.SafeAcceptExpr(ctx.expr()))))
         else
             []
 

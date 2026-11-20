@@ -1052,3 +1052,32 @@ let ``generated c executable reports unsupported turbo statements with a specifi
     Assert.That(exitCode, Is.EqualTo(1))
     Assert.That(stdout.Trim(), Is.EqualTo(String.Empty))
     Assert.That(stderr, Does.Contain("Turbo toolkit built-in statement 'TURBO_TASKN' is not supported by the generated C backend yet."))
+
+
+[<Test>]
+let ``source user function accepts a single string character`` () =
+    let source = "10 w$=\"apple\"\n20 PRINT isvowel(w$(1))\n30 PRINT isvowel(w$(2))\n40 STOP\n50 DEFine FuNction isvowel(c$)\n60 RETurn c$=\"a\"\n70 END DEFine\n"
+    let exitCode, stdout, stderr = generateCompileAndRun source None
+    Assert.That(exitCode, Is.EqualTo(0), stderr)
+    Assert.That(stdout.TrimEnd(), Is.EqualTo("1\n0"))
+
+[<Test>]
+let ``source parenthesized actuals pass values while bare actuals pass references`` () =
+    let source = "10 n=3\n20 s$=\"keep\"\n30 change (n),(s$)\n40 single (n)\n50 PRINT n\n60 PRINT s$\n70 single n\n80 PRINT n\n90 STOP\n100 DEFine PROCedure change(a,b$)\n110 a=99\n120 b$=\"changed\"\n130 END DEFine\n140 DEFine PROCedure single(a)\n150 a=8\n160 END DEFine\n"
+    let exitCode, stdout, stderr = generateCompileAndRun source None
+    Assert.That(exitCode, Is.EqualTo(0), stderr)
+    Assert.That(stdout.TrimEnd(), Is.EqualTo("3\nkeep\n8"))
+
+[<Test>]
+let ``source numeric looking MANIFEST values remain strings`` () =
+    let source = "10 MANIFEST : digits$=\"123\" : real$=\"1.5\" : hex$=\"$ff\"\n20 PRINT digits$ & \"|\" & real$ & \"|\" & hex$\n"
+    let exitCode, stdout, stderr = generateCompileAndRun source None
+    Assert.That(exitCode, Is.EqualTo(0), stderr)
+    Assert.That(stdout.TrimEnd(), Is.EqualTo("123|1.5|$ff"))
+
+[<Test>]
+let ``source SELECT supports exact matching string ranges and REMAINDER`` () =
+    let source = "10 x=2\n20 SELect ON x\n30 =3:PRINT \"wrong\"\n40 =2:PRINT \"number\"\n50 =REMAINDER:PRINT \"wrong\"\n60 END SELect\n70 s$=\"m\"\n80 SELect ON s$\n90 =\"a\" TO \"f\":PRINT \"wrong\"\n100 =\"g\" TO \"z\":PRINT \"string\"\n110 =REMAINDER:PRINT \"wrong\"\n120 END SELect\n130 SELect ON 99\n140 =1:PRINT \"wrong\"\n150 =REMAINDER:PRINT \"remainder\"\n160 END SELect\n"
+    let exitCode, stdout, stderr = generateCompileAndRun source None
+    Assert.That(exitCode, Is.EqualTo(0), stderr)
+    Assert.That(stdout.TrimEnd(), Is.EqualTo("number\nstring\nremainder"))

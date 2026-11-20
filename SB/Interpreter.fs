@@ -156,7 +156,7 @@ type private ControlFlow =
     | GosubToLine of int
     | ReplaceProgram of HirProgram * SyntaxAst.Ast option
     | RestartProgram of HirProgram * SyntaxAst.Ast option * int option
-    | StopExecution
+    | StopExecution of string option
 
 type private BlockContinuation = RuntimeState -> GosubReturn list -> Result<ControlFlow * RuntimeState, RuntimeError>
 
@@ -1191,10 +1191,8 @@ and private callRoutine state (routine: HirRoutine) args pos =
             | TransferredContinue, Some _ -> Result.Ok(IntValue 0, finalState)
             | TransferredContinue, None -> Result.Ok(IntValue 0, finalState)
             | JumpToLine lineNumber, _ when routine.EndLineNumber = Some lineNumber -> Result.Ok(IntValue 0, finalState)
-            | StopExecution, _ ->
-                // A generated guard prints its reason before STOP. Preserve that
-                // diagnostic when an expression-level routine cannot return state.
-                let detail = afterBody.Output |> List.tryLast |> Option.map (fun line -> " Last output: " + line) |> Option.defaultValue ""
+            | StopExecution diagnostic, _ ->
+                let detail = diagnostic |> Option.map (fun message -> " " + message) |> Option.defaultValue ""
                 runtimeError EscapedStop (Some pos) ($"STOP escaped from routine '{routine.Name}'." + detail)
             | JumpToLine lineNumber, _ -> runtimeError MissingGotoTarget (Some pos) $"GOTO target line {lineNumber} does not exist in routine '{routine.Name}'."
             | GosubToLine lineNumber, _ -> runtimeError MissingGosubTarget (Some pos) $"GOSUB target line {lineNumber} does not exist in routine '{routine.Name}'."
@@ -1465,7 +1463,9 @@ and private executeBuiltInCall state kind channel args targets pos =
                                 |> Result.map (fun finalState -> Continue, finalState))))
 
         match normalized with
-        | "STOP" -> Result.Ok(StopExecution, state)
+        | "STOP" ->
+            let diagnostic = match args with [Literal(ConstString message, _, _)] -> Some message | _ -> None
+            Result.Ok(StopExecution diagnostic, state)
         | ("POKE" | "POKE_W" | "POKE_L") ->
             unsupportedChannel ()
             |> Result.bind (fun _ ->
@@ -2454,7 +2454,7 @@ and private handleRuntimeError resolveLine block pc gosubStack state (error: Run
                         match nestedFlow with
                         | Continue -> TransferredContinue, nestedState
                         | _ -> nestedFlow, nestedState)
-            | StopExecution -> Result.Ok(StopExecution, resumedState)
+            | StopExecution diagnostic -> Result.Ok(StopExecution diagnostic, resumedState)
             | JumpToLine _
             | GosubToLine _
             | ReturnFromRoutine _
@@ -2658,7 +2658,7 @@ let rec private executeTopLevelProgram state startLine =
         match flow with
         | Continue
         | TransferredContinue
-        | StopExecution -> Result.Ok { Output = finalState.Output }
+        | StopExecution _ -> Result.Ok { Output = finalState.Output }
         | ReplaceProgram(program, sourceProgram) ->
             let _ = reinitializeProgramState finalState program sourceProgram
             Result.Ok { Output = finalState.Output }

@@ -63,6 +63,7 @@ and Stmt =
     | Remark of SourcePosition * string
 
 and Expr =
+    | GroupedExpr of NodeId * SourcePosition * Expr
     | PostfixName of NodeId * SourcePosition * string * Expr list option
     | SliceRange of NodeId * SourcePosition * Expr * Expr
     | BinaryExpr of NodeId * SourcePosition * string * Expr * Expr
@@ -73,6 +74,7 @@ and Expr =
 
 let nodeIdOfExpr expr =
     match expr with
+    | GroupedExpr(nodeId, _, _)
     | PostfixName(nodeId, _, _, _)
     | SliceRange(nodeId, _, _, _)
     | BinaryExpr(nodeId, _, _, _, _)
@@ -88,3 +90,5 @@ let mkUnaryExpr pos op expr = UnaryExpr(freshNodeId(), pos, op, expr)
 let mkNumberLiteral pos value = NumberLiteral(freshNodeId(), pos, value)
 let mkStringLiteral pos value = StringLiteral(freshNodeId(), pos, value)
 let mkIdentifier pos name = Identifier(freshNodeId(), pos, name)
+
+let mkGroupedExpr pos inner = GroupedExpr(freshNodeId(), pos, inner)

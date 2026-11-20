@@ -21,6 +21,8 @@ type private LoweringContext = {
     CurrentScope: string
     LoopStack: (LoopName * LoopId) list
     NextLoopId: int ref
+    NextGeneratedId: int ref
+    GeneratedStorage: ResizeArray<HirStorage>
 }
 
 let private ok value = Result.Ok value
@@ -384,22 +386,65 @@ let private lowerStorageSlotMap (symTab: SymbolTable) (symbolIds: Map<string * s
           Position = Symbol.position symbol })
     |> Map.ofList
 
-let private lowerSelectClauseCondition pos selector clauseSelector rangeExpr =
-    let lowerBound = Binary(HirBinaryOp.GreaterThanOrEqual, selector, clauseSelector, HirType.Int, pos)
-    let upperBound = Binary(HirBinaryOp.LessThanOrEqual, selector, rangeExpr, HirType.Int, pos)
-    Binary(HirBinaryOp.BitwiseAnd, lowerBound, upperBound, HirType.Int, pos)
+/// A SELECT clause after lowering: its ranges (REMAINDER is Missing), body and position.
+type private LoweredSelectClause = { Ranges: HirExpr list; Body: HirBlock option; Position: SourcePosition }
 
-let rec private lowerSelectClauses selector (clauses: HirSelectClause list) =
+let private lowerSelectRangeCondition pos selector rangeExpr =
+    match rangeExpr with
+    | Binary(HirBinaryOp.SliceRange, low, high, _, _) ->
+        let lowerBound = Binary(HirBinaryOp.GreaterThanOrEqual, selector, low, HirType.Int, pos)
+        let upperBound = Binary(HirBinaryOp.LessThanOrEqual, selector, high, HirType.Int, pos)
+        Binary(HirBinaryOp.BitwiseAnd, lowerBound, upperBound, HirType.Int, pos)
+    | value -> Binary(HirBinaryOp.Equal, selector, value, HirType.Int, pos)
+
+/// ON x = 1, 3 TO 5 matches when any of its ranges does.
+let private lowerSelectClauseCondition pos selector ranges =
+    ranges
+    |> List.map (lowerSelectRangeCondition pos selector)
+    |> List.reduce (fun left right -> Binary(HirBinaryOp.BitwiseOr, left, right, HirType.Int, pos))
+
+let rec private lowerSelectClauses selector (clauses: LoweredSelectClause list) =
     match clauses with
     | [] -> ok []
     | clause :: tail ->
-        let condition = lowerSelectClauseCondition clause.Position selector clause.Selector clause.Range
-        match clause.Body with
-        | Some body ->
-            lowerSelectClauses selector tail
-            |> map (fun elseBranch -> [ If(condition, body, (if List.isEmpty elseBranch then None else Some elseBranch), clause.Position) ])
-        | None ->
-            lowerSelectClauses selector tail
+        match clause.Ranges with
+        | [ Missing _ ] when not tail.IsEmpty -> fail "SELECT" (Some clause.Position) "REMAINDER must be the last SELECT clause."
+        | [ Missing _ ] -> ok (clause.Body |> Option.defaultValue [])
+        | ranges when ranges |> List.exists (function Missing _ -> true | _ -> false) ->
+            fail "SELECT" (Some clause.Position) "REMAINDER cannot share a clause with other ranges."
+        | ranges ->
+            match clause.Body with
+            | Some body ->
+                lowerSelectClauses selector tail
+                |> map (fun rest -> [If(lowerSelectClauseCondition clause.Position selector ranges, body, (if rest.IsEmpty then None else Some rest), clause.Position)])
+            | None -> lowerSelectClauses selector tail
+
+let private captureSelector ctx pos selector =
+    match selector with
+    | Literal _ -> [], selector
+    | _ ->
+        let index = ctx.NextGeneratedId.Value
+        ctx.NextGeneratedId.Value <- index + 1
+        let symbol = SymbolId index
+        let typ =
+            match selector with
+            | ReadVar(_, t, _) | DynamicReadVar(_, t, _) | CallFunc(_, _, t, _)
+            | ReadArrayElem(_, _, t, _) | ReadStringChar(_, _, t, _)
+            | DynamicReadArrayElem(_, _, t, _) | DynamicReadStringChar(_, _, t, _)
+            | Unary(_, _, t, _) | Binary(_, _, _, t, _) -> t
+            | _ -> HirType.Float
+        // The suffix keeps the name's type for backends that type by name (Turbo IR).
+        let suffix =
+            match typ with
+            | HirType.String -> "$"
+            | HirType.Int -> "%"
+            | _ -> ""
+        let storage =
+            { Symbol = symbol; Slot = StorageSlotId index; Name = $"__sb_select_{index}{suffix}"; Type = typ
+              Dimensions = None; Class = if ctx.CurrentScope = globalScope then GlobalStorage else RoutineLocalStorage ctx.CurrentScope
+              Position = pos }
+        ctx.GeneratedStorage.Add storage
+        [Assign(WriteVar(symbol, typ, pos), selector, pos)], ReadVar(symbol, typ, pos)
 
 let private tryParseHexInt (value: string) =
     if value.StartsWith("$") && value.Length > 1 then
@@ -445,6 +490,16 @@ let private tryLookupResolvedSymbol ctx expr =
         |> Option.bind (fun scope -> Map.tryFind resolved.Name scope.Symbols)
     | None -> None
 
+let private isResolvedBuiltIn ctx expr =
+    match tryLookupResolvedSymbol ctx expr with
+    | Some(BuiltInSym _) -> true
+    // Built-ins resolved from BuiltIns are not inserted into the user symbol
+    // table. A declared parameter/variable still takes precedence over them.
+    | None ->
+        getRecordedResolvedSymbol ctx expr
+        |> Option.exists (fun resolved -> BuiltIns.tryFind resolved.Name |> Option.isSome)
+    | _ -> false
+
 let private isSingleStringIndexAccess ctx expr (args: Expr list) =
     args.Length = 1
     &&
@@ -457,6 +512,7 @@ let private isSingleStringIndexAccess ctx expr (args: Expr list) =
 
 let rec private lowerExpr ctx expr =
     match expr with
+    | GroupedExpr(_, _, inner) -> lowerExpr ctx inner
     | NumberLiteral(_, pos, value) -> ok (lowerLiteral pos value)
     | StringLiteral(_, pos, value) -> ok (lowerLiteral pos value)
     | Identifier(_, pos, "")
@@ -465,6 +521,8 @@ let rec private lowerExpr ctx expr =
     | PostfixName(_, pos, _, None)
         when (match tryLookupResolvedSymbol ctx expr with Some(ConstantSym { ValueText = Some _ }) -> true | _ -> false) ->
         match tryLookupResolvedSymbol ctx expr with
+        | Some(ConstantSym { Common = { EvaluatedType = SBType.String }; ValueText = Some value }) ->
+            ok (Literal(ConstString(unquoteString value), HirType.String, pos))
         | Some(ConstantSym { ValueText = Some value }) -> ok (lowerLiteral pos value)
         | _ -> fail ctx.CurrentScope (Some pos) "Missing MANIFEST value."
     | Identifier(_, pos, name) ->
@@ -475,7 +533,7 @@ let rec private lowerExpr ctx expr =
             zip (getRecordedExprType ctx expr) (requireSymbolIdForExpr ctx expr name pos)
             |> bind (fun (hirType, symbolId) ->
                 match getRecordedResolvedSymbol ctx expr with
-                | Some resolved when isCallableBuiltIn resolved.Name -> ok (CallFunc(symbolId, [], hirType, pos))
+                | Some resolved when isCallableBuiltIn resolved.Name && isResolvedBuiltIn ctx expr -> ok (CallFunc(symbolId, [], hirType, pos))
                 | Some resolved ->
                     match Map.tryFind resolved.Scope ctx.State.SymTab with
                     | Some scope ->
@@ -497,7 +555,7 @@ let rec private lowerExpr ctx expr =
             zip (getRecordedExprType ctx expr) (requireSymbolIdForExpr ctx expr name pos)
             |> bind (fun (hirType, symbolId) ->
                 match getRecordedResolvedSymbol ctx expr with
-                | Some resolved when isCallableBuiltIn resolved.Name -> ok (CallFunc(symbolId, [], hirType, pos))
+                | Some resolved when isCallableBuiltIn resolved.Name && isResolvedBuiltIn ctx expr -> ok (CallFunc(symbolId, [], hirType, pos))
                 | Some resolved ->
                     match Map.tryFind resolved.Scope ctx.State.SymTab with
                     | Some scope ->
@@ -552,7 +610,7 @@ let rec private lowerExpr ctx expr =
                 zip (getRecordedExprType ctx expr) (requireSymbolIdForExpr ctx expr name pos)
                 |> bind (fun (hirType, symbolId) ->
                     match getRecordedResolvedSymbol ctx expr with
-                    | Some resolved when isCallableBuiltIn resolved.Name ->
+                    | Some resolved when isCallableBuiltIn resolved.Name && isResolvedBuiltIn ctx expr ->
                         args |> List.map (lowerExpr ctx) |> collectResults
                         |> map (fun loweredArgs -> CallFunc(symbolId, loweredArgs |> List.map ValueArg, hirType, pos))
                     | Some resolved ->
@@ -585,12 +643,12 @@ let rec private lowerExpr ctx expr =
                 // Built-ins and array subscripts still consume values.
                 let lowerArgument =
                     match tryLookupResolvedSymbol ctx expr with
-                    | Some(FunctionSym _) -> lowerCallArg ctx
+                    | Some(FunctionSym _) -> lowerFunctionCallArg ctx
                     | _ -> fun arg -> lowerExpr ctx arg |> map ValueArg
                 zip (getRecordedExprType ctx expr) (zip (requireSymbolIdForExpr ctx expr name pos) (args |> List.map lowerArgument |> collectResults))
                 |> map (fun (hirType, (symbolId, loweredArgs)) ->
                     match getRecordedResolvedSymbol ctx expr with
-                    | Some resolved when isCallableBuiltIn resolved.Name -> CallFunc(symbolId, loweredArgs, hirType, pos)
+                    | Some resolved when isCallableBuiltIn resolved.Name && isResolvedBuiltIn ctx expr -> CallFunc(symbolId, loweredArgs, hirType, pos)
                     | Some resolved ->
                         match Map.tryFind resolved.Scope ctx.State.SymTab with
                         | Some scope ->
@@ -730,6 +788,14 @@ and private lowerCallArg ctx expr =
     | _ ->
         lowerExpr ctx expr |> map ValueArg
 
+and private lowerFunctionCallArg ctx expr =
+    match expr with
+    | PostfixName(_, _, _, Some args) when isSingleStringIndexAccess ctx expr args ->
+        // Function expressions historically consume a string character's value.
+        // It has no reference cell; keep procedure reference semantics intact.
+        lowerExpr ctx expr |> map ValueArg
+    | _ -> lowerCallArg ctx expr
+
 let private lowerCallArgList ctx exprs =
     exprs |> List.map (lowerCallArg ctx) |> collectResults
 
@@ -866,16 +932,27 @@ let rec private lowerStmt ctx stmt =
             lowerBlock ctx thenBody
             |> map (fun loweredThen -> [ If(loweredCond, loweredThen, loweredElseBlock, pos) ]))
     | SelectStmt(pos, selector, clauses) ->
-        let lowerClause (SelectClause(clausePos, clauseSelector, rangeExpr, body)) =
-            zip (zip (lowerExpr ctx clauseSelector) (lowerExpr ctx rangeExpr)) (lowerOptionalBlock ctx body)
-            |> map (fun ((loweredSelector, loweredRange), loweredBody) ->
-                { Selector = loweredSelector
-                  Range = loweredRange
-                  Body = loweredBody
-                  Position = clausePos })
-
-        zip (lowerExpr ctx selector) (clauses |> List.map lowerClause |> collectResults)
-        |> bind (fun (loweredSelector, loweredClauses) -> lowerSelectClauses loweredSelector loweredClauses)
+        // A comma list (ON x = 1, 3 TO 5) arrives as one clause per range sharing one body.
+        // Lower that body once and test its ranges together, so its lines are not duplicated.
+        let groups =
+            (([]: (SourcePosition * Expr list * Block option) list), clauses)
+            ||> List.fold (fun acc (SelectClause(clausePos, _, rangeExpr, body)) ->
+                match acc with
+                | (groupPos, ranges, groupBody) :: rest when groupPos = clausePos && groupBody = body ->
+                    (groupPos, ranges @ [ rangeExpr ], groupBody) :: rest
+                | _ -> (clausePos, [ rangeExpr ], body) :: acc)
+            |> List.rev
+        let lowerRange clausePos rangeExpr =
+            match rangeExpr with
+            | Identifier(_, _, name) when normalizeIdentifier name = "REMAINDER" -> ok (Missing clausePos)
+            | _ -> lowerExpr ctx rangeExpr
+        let lowerClause (clausePos, ranges, body) =
+            zip (ranges |> List.map (lowerRange clausePos) |> collectResults) (lowerOptionalBlock ctx body)
+            |> map (fun (loweredRanges, loweredBody) -> { Ranges = loweredRanges; Body = loweredBody; Position = clausePos })
+        zip (lowerExpr ctx selector) (groups |> List.map lowerClause |> collectResults)
+        |> bind (fun (loweredSelector, loweredClauses) ->
+            let prefix, saved = captureSelector ctx pos loweredSelector
+            lowerSelectClauses saved loweredClauses |> map (fun body -> prefix @ body))
     | WhenStmt(pos, condition, body) ->
         let loweredCondition =
             match condition with
@@ -905,10 +982,18 @@ let rec private lowerStmt ctx stmt =
     | SyntaxAst.Remark(pos, text) -> ok [ HIR.Remark(text, pos) ]
 
 and private lowerStmtList ctx stmts =
-    stmts
-    |> List.map (lowerStmt ctx)
-    |> collectResults
-    |> map List.concat
+    // SSB guard comments annotate only the generated STOP. Ordinary STOP keeps
+    // its original diagnostic and never borrows unrelated console output.
+    let rec lower remaining =
+        match remaining with
+        | ProcedureCall(pos, name, []) :: Remark(_, comment) :: tail
+            when normalizeIdentifier name = "STOP" && comment.Contains("rec_guard_error ") ->
+            let marker = comment.IndexOf("rec_guard_error ", System.StringComparison.Ordinal)
+            let message = comment.Substring(marker + "rec_guard_error ".Length).Trim()
+            lower tail |> map (fun rest -> BuiltInCall(NamedBuiltIn "STOP", None, [Literal(ConstString message, HirType.String, pos)], pos) :: rest)
+        | first :: tail -> zip (lowerStmt ctx first) (lower tail) |> map (fun (head, rest) -> head @ rest)
+        | [] -> ok []
+    lower stmts
 
 and private lowerLine ctx (Line(pos, lineNumber, stmts)) =
     lowerStmtList ctx stmts
@@ -933,7 +1018,7 @@ and private lowerOptionalBlock ctx block =
     | Some body -> lowerBlock ctx body |> map Some
     | None -> ok None
 
-let private lowerRoutine symbolIds state routine =
+let private lowerRoutine symbolIds nextGeneratedId state routine =
     let slotMap = lowerStorageSlotMap state.SymTab symbolIds
     let buildRoutine pos name parameters body returnType endLineNumber =
         let ctx =
@@ -941,7 +1026,9 @@ let private lowerRoutine symbolIds state routine =
               SymbolIds = symbolIds
               CurrentScope = name
               LoopStack = []
-              NextLoopId = ref 0 }
+              NextLoopId = ref 0
+              NextGeneratedId = nextGeneratedId
+              GeneratedStorage = ResizeArray() }
 
         let lowerParameter parameter =
             match Map.tryFind (normalizeIdentifier name, normalizeIdentifier parameter) state.ParameterSymbols with
@@ -986,7 +1073,7 @@ let private lowerRoutine symbolIds state routine =
                         { Name = name
                           Symbol = symbolId
                           Parameters = parameterIds
-                          Locals = locals
+                          Locals = locals @ List.ofSeq ctx.GeneratedStorage
                           Body = loweredBody
                           ReturnType = returnType
                           EndLineNumber = endLineNumber
@@ -1094,12 +1181,15 @@ let private collectDataItems ctx lines =
 
 let lowerToHir (state: ProcessingState) : Result<HirProgram, LoweringError list> =
     let symbolIds = buildSymbolIdMap state.SymTab
+    let nextGeneratedId = ref symbolIds.Count
     let rootCtx =
         { State = state
           SymbolIds = symbolIds
           CurrentScope = globalScope
           LoopStack = []
-          NextLoopId = ref 0 }
+          NextLoopId = ref 0
+          NextGeneratedId = nextGeneratedId
+          GeneratedStorage = ResizeArray() }
 
     let (Program(_, lines)) = state.Ast
 
@@ -1113,7 +1203,7 @@ let lowerToHir (state: ProcessingState) : Result<HirProgram, LoweringError list>
             | ProcedureDef _ as stmt -> Some stmt
             | FunctionDef _ as stmt -> Some stmt
             | _ -> None)
-        |> List.map (lowerRoutine symbolIds state)
+        |> List.map (lowerRoutine symbolIds nextGeneratedId state)
         |> collectResults
 
     let slotMap = lowerStorageSlotMap state.SymTab symbolIds
@@ -1135,8 +1225,10 @@ let lowerToHir (state: ProcessingState) : Result<HirProgram, LoweringError list>
 
     zip (zip routines (collectDataItems rootCtx lines)) (lowerMainLines rootCtx lines)
     |> map (fun ((loweredRoutines, (dataEntries, restorePoints)), loweredMain) ->
-        { SymbolNames = buildSymbolNameMap symbolIds
-          Globals = globals
+        let generated = List.ofSeq rootCtx.GeneratedStorage @ (loweredRoutines |> List.collect (fun r -> r.Locals |> List.filter (fun storage -> storage.Name.StartsWith("__sb_select_"))))
+        let names = generated |> List.fold (fun acc storage -> Map.add storage.Symbol storage.Name acc) (buildSymbolNameMap symbolIds)
+        { SymbolNames = names
+          Globals = globals @ List.ofSeq rootCtx.GeneratedStorage
           Routines = loweredRoutines
           DataEntries = dataEntries
           RestorePoints = restorePoints

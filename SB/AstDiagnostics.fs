@@ -33,6 +33,8 @@ let rec private prettyExpr level expr =
     | Identifier(_, pos, name) -> $"{pad}Identifier {name} @{formatPosition pos}\n"
     | NumberLiteral(_, pos, value) -> $"{pad}NumberLiteral {value} @{formatPosition pos}\n"
     | StringLiteral(_, pos, value) -> $"{pad}StringLiteral {value} @{formatPosition pos}\n"
+    | GroupedExpr(_, pos, inner) ->
+        $"{pad}GroupedExpr @{formatPosition pos}\n{prettyExpr (level + 2) inner}"
     | UnaryExpr(_, pos, op, inner) ->
         $"{pad}UnaryExpr {op} @{formatPosition pos}\n{prettyExpr (level + 2) inner}"
     | BinaryExpr(_, pos, op, left, right) ->
@@ -262,6 +264,12 @@ let rec private writeExpr (writer: Utf8JsonWriter) expr =
         writer.WriteString("value", value)
         writer.WritePropertyName("position")
         writePosition writer pos
+    | GroupedExpr(_, pos, inner) ->
+        writer.WriteString("kind", "GroupedExpr")
+        writer.WritePropertyName("position")
+        writePosition writer pos
+        writer.WritePropertyName("operand")
+        writeExpr writer inner
     | UnaryExpr(_, pos, op, inner) ->
         writer.WriteString("kind", "UnaryExpr")
         writer.WriteString("operator", op)
