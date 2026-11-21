@@ -269,7 +269,7 @@ let main argv =
                 | "turboir"
                 | "turbo-ir"
                 | "ir" ->
-                    match generateTurboIrFromLoweredHir state hirProgram with
+                    match generateTurboIrFromLoweredHirWithNativeRegions settings.TurboHirOptimization settings.TurboNativeRegions state hirProgram with
                     | Result.Ok output ->
                         for warning in output.Warnings do
                             Console.Error.WriteLine($"Turbo IR warning: {warning}")
@@ -288,7 +288,7 @@ let main argv =
                 | "turboexe"
                 | "turbo-exe" ->
                     let taskName = turboTaskName settings.OutputFileName
-                    match generateTurboExecutableFromLoweredHir state taskName hirProgram with
+                    match generateTurboExecutableFromLoweredHirWithRegisterAllocation settings.TurboHirOptimization settings.TurboNativeRegions settings.TurboLocalRegisterAllocation state taskName hirProgram with
                     | Result.Ok(ir, executable) ->
                         for warning in ir.Warnings do
                             Console.Error.WriteLine($"Turbo IR warning: {warning}")

@@ -32,7 +32,7 @@ let private testSettings inputFile =
       ExecutionThrottleTargetStatementsPerSecond = 10000
       ExecutionThrottleMaxRunAheadMilliseconds = 2
       SyntaxChecking = Relaxed
-      AppName = "Test"
+      TurboLocalRegisterAllocation = false; TurboNativeRegions = false; TurboHirOptimization = HirTurboOptimizer.defaultOptions; AppName = "Test"
       Logger = LoggerConfiguration().CreateLogger() }
 
 let private testSettingsWithSyntaxChecking syntaxChecking inputFile =

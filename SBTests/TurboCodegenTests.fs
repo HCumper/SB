@@ -48,7 +48,7 @@ let private testSettings inputFile =
       ExecutionThrottleTargetStatementsPerSecond = 10000
       ExecutionThrottleMaxRunAheadMilliseconds = 2
       SyntaxChecking = Relaxed
-      AppName = "Test"
+      TurboLocalRegisterAllocation = false; TurboNativeRegions = false; TurboHirOptimization = HirTurboOptimizer.defaultOptions; AppName = "Test"
       Logger = LoggerConfiguration().CreateLogger() }
 
 /// The Turbo IR for an SB program.
@@ -432,6 +432,38 @@ let ``the port matches the reference improver on the parser's integer-under-floa
 let ``the port matches the reference code generator on native code`` (name: string) =
     assertSameAsReference (nativeBodyOf (irOf (programs |> List.find (fun (n, _) -> n = name) |> snd)))
 
+let private pressureIr () =
+    irOf "10 a%=1:b%=2:c%=3:d%=4:e%=5:f%=6:g%=7:h%=8\n20 r%=a%+(b%+(c%+(d%+(e%+(f%+(g%+h%))))))\n30 PRINT r%\n40 STOP"
+    |> nativeBodyOf
+
+[<Test>]
+let ``register spill frames reserve matching stack and task dataspace`` () =
+    let ir=pressureIr()
+    let before=generateFromIr portOptions ir |> Result.defaultWith (String.concat "; " >> failwith)
+    let after=generateFromIr {portOptions with LocalRegisterAllocation=true} ir |> Result.defaultWith (String.concat "; " >> failwith)
+    let report=after.NativeAllocation.Value
+    Assert.That(report.StackExtraBytes, Is.GreaterThan(0))
+    Assert.That(after.Dataspace-before.Dataspace, Is.EqualTo(report.StackExtraBytes))
+    Assert.That(before.NativeAllocation.IsNone, Is.True)
+
+[<Test>]
+let ``maximum configured CPU stack falls back instead of overrunning its limit`` () =
+    let ir=pressureIr()
+    let options={portOptions with StackSize=Some 9998}
+    let before=generateFromIr options ir |> Result.defaultWith (String.concat "; " >> failwith)
+    let after=generateFromIr {options with LocalRegisterAllocation=true} ir |> Result.defaultWith (String.concat "; " >> failwith)
+    Assert.That(after.NativeAllocation.Value.StackExtraBytes, Is.Zero)
+    Assert.That(after.Code, Is.EqualTo(box before.Code))
+    Assert.That(after.Dataspace, Is.EqualTo(before.Dataspace))
+
+[<TestCaseSource(nameof programNames)>]
+let ``audited mixed regions match the reference machine code generator`` (name: string) =
+    let bytes = irOf (programs |> List.find (fun (n, _) -> n = name) |> snd)
+    let items = decode bytes |> Result.defaultWith failwith
+    let output = {Items=items; Bytes=bytes; Listing=formatListing items; Warnings=[]}
+    let selected = TurboNativeRegions.select true output |> Result.defaultWith (String.concat "; " >> failwith)
+    assertSameAsReference selected.Bytes
+
 [<TestCase(239, false, false)>]
 [<TestCase(239, false, true)>]
 [<TestCase(239, true, false)>]
@@ -583,7 +615,7 @@ let ``the turbo backend writes the reference executable with a QDOS file header`
         let outputPath = Path.Combine(dir, "scores_exe")
         File.WriteAllText(sourcePath, source program)
 
-        let exitCode = Program.main [| sourcePath; outputPath; "false"; "turbo" |]
+        let exitCode = Program.main [| sourcePath; outputPath; "false"; "turbo"; "--no-hir-opt"; "--no-native-regions" |]
 
         Assert.That(exitCode, Is.EqualTo(0))
         let written = File.ReadAllBytes outputPath

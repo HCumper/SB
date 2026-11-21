@@ -22,6 +22,12 @@
         <Compile Include="HirCBackend.fs" />
         <Compile Include="HirCSharpBackend.fs" />
         <Compile Include="HirTurboIrBackend.fs" />
+        <Compile Include="HirEffects.fs" />
+        <Compile Include="HirControlFlow.fs" />
+        <Compile Include="HirAnalysis.fs" />
+        <Compile Include="HirTurboOptimizer.fs" />
+        <Compile Include="TurboNativeRegions.fs" />
+        <Compile Include="TurboNativeIr.fs" />
         <Compile Include="TurboCodegen.fs" />
         <EmbeddedResource Include="TurboRuntime\lib537.bin" LogicalName="lib537.bin" />
         <Compile Include="SyntaxAst.fs" />

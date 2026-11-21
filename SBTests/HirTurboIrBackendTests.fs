@@ -117,7 +117,7 @@ let private testSettings inputFile =
       ExecutionThrottleTargetStatementsPerSecond = 10000
       ExecutionThrottleMaxRunAheadMilliseconds = 2
       SyntaxChecking = Relaxed
-      AppName = "Test"
+      TurboLocalRegisterAllocation = false; TurboNativeRegions = false; TurboHirOptimization = HirTurboOptimizer.defaultOptions; AppName = "Test"
       Logger = LoggerConfiguration().CreateLogger() }
 
 let private lowerFile (bytes: byte[]) =
@@ -2127,7 +2127,8 @@ let ``an .ir output selects the Turbo IR backend and writes a listing`` () =
         let exitCode = Program.main [| sourcePath; outputPath |]
 
         Assert.That(exitCode, Is.EqualTo(0))
-        Assert.That(toHex (File.ReadAllBytes outputPath), Is.EqualTo(toHex (hexBytes specExampleHex)))
+        let expected = (toHex (hexBytes specExampleHex)).Replace("00 6A 00 2A 00 6A 00 01 00 05", "00 6A 00 2B")
+        Assert.That(toHex (File.ReadAllBytes outputPath), Is.EqualTo(expected))
         Assert.That(File.ReadAllText(listingFileName outputPath), Does.StartWith("999 2 ; vector table")))
 
 [<Test>]
@@ -2140,6 +2141,16 @@ let ``the turboir backend name selects the Turbo IR backend`` () =
         let exitCode = Program.main [| sourcePath; outputPath; "false"; "turboir" |]
 
         Assert.That(exitCode, Is.EqualTo(0))
+        let expected = (toHex (hexBytes specExampleHex)).Replace("00 6A 00 2A 00 6A 00 01 00 05", "00 6A 00 2B")
+        Assert.That(toHex (File.ReadAllBytes outputPath), Is.EqualTo(expected)))
+
+[<Test>]
+let ``disabling HIR optimization preserves the original specification stream`` () =
+    withTempDirectory (fun dir ->
+        let sourcePath = Path.Combine(dir, "example.bas")
+        let outputPath = Path.Combine(dir, "example.ir")
+        File.WriteAllText(sourcePath, exampleSource)
+        Assert.That(Program.main [|sourcePath; outputPath; "--no-hir-opt"; "--no-native-regions"|], Is.Zero)
         Assert.That(toHex (File.ReadAllBytes outputPath), Is.EqualTo(toHex (hexBytes specExampleHex))))
 
 [<Test>]

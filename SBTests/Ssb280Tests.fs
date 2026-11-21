@@ -27,7 +27,7 @@ let private withEnvironment name value action =
 let private settings input =
     { InputFileName = input; OutputFileName = ""; Verbose = false; Backend = "interpret"; RuntimeHost = "console"
       ExecutionThrottleEnabled = false; ExecutionThrottleTargetStatementsPerSecond = 10000
-      ExecutionThrottleMaxRunAheadMilliseconds = 2; SyntaxChecking = Rigorous; AppName = "Test"
+      ExecutionThrottleMaxRunAheadMilliseconds = 2; SyntaxChecking = Rigorous; TurboLocalRegisterAllocation = false; TurboNativeRegions = false; TurboHirOptimization = HirTurboOptimizer.defaultOptions; AppName = "Test"
       Logger = LoggerConfiguration().CreateLogger() }
 
 let private run source =

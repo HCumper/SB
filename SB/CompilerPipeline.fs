@@ -77,6 +77,9 @@ type RuntimeSettings = {
     ExecutionThrottleTargetStatementsPerSecond: int
     ExecutionThrottleMaxRunAheadMilliseconds: int
     SyntaxChecking: SyntaxCheckingMode
+    TurboHirOptimization: HirTurboOptimizer.Options
+    TurboNativeRegions: bool
+    TurboLocalRegisterAllocation: bool
     AppName: string
     Logger: Core.Logger
 }
@@ -135,6 +138,38 @@ let private tryInferBackendFromOutput (output: string) =
 
 let getSettings argv : RuntimeSettings =
     let configSettings = buildConfig ()
+    let mutable turboNativeRegions = configSettings.GetValue<bool>("AppSettings:TurboNativeRegions", true)
+    let mutable turboLocalRegisterAllocation = configSettings.GetValue<bool>("AppSettings:TurboLocalRegisterAllocation", true)
+    let mutable turboHirOptimization =
+        { HirTurboOptimizer.defaultOptions with
+            Enabled = configSettings.GetValue<bool>("AppSettings:TurboHirOptimization", true) }
+    let argv =
+        argv |> Array.filter (fun argument ->
+            match argument with
+            | "--regalloc" ->
+                turboLocalRegisterAllocation <- true
+                false
+            | "--no-regalloc" ->
+                turboLocalRegisterAllocation <- false
+                false
+            | "--native-regions" ->
+                turboNativeRegions <- true
+                false
+            | "--no-native-regions" ->
+                turboNativeRegions <- false
+                false
+            | "--no-hir-opt" ->
+                turboHirOptimization <- { turboHirOptimization with Enabled = false }
+                false
+            | "--hir-opt" ->
+                turboHirOptimization <- { turboHirOptimization with Enabled = true }
+                false
+            | arg when arg.StartsWith("--dump-hir=", StringComparison.Ordinal) ->
+                let prefix = arg.Substring("--dump-hir=".Length)
+                if String.IsNullOrWhiteSpace prefix then invalidArg "argv" "--dump-hir needs a nonempty output prefix."
+                turboHirOptimization <- { turboHirOptimization with DumpPrefix = Some prefix }
+                false
+            | _ -> true)
     let appName = configSettings.GetValue<string>("ApplicationName")
     let inputFileName = configSettings.GetValue<string>("AppSettings:InputFile")
     let outputFileName = configSettings.GetValue<string>("AppSettings:OutputFile")
@@ -165,6 +200,9 @@ let getSettings argv : RuntimeSettings =
               ExecutionThrottleTargetStatementsPerSecond = executionThrottleTargetStatementsPerSecond
               ExecutionThrottleMaxRunAheadMilliseconds = executionThrottleMaxRunAheadMilliseconds
               SyntaxChecking = syntaxChecking
+              TurboHirOptimization = turboHirOptimization
+              TurboNativeRegions = turboNativeRegions
+              TurboLocalRegisterAllocation = turboLocalRegisterAllocation
               AppName = appName
               Logger = logger }
         | None ->
@@ -177,6 +215,9 @@ let getSettings argv : RuntimeSettings =
               ExecutionThrottleTargetStatementsPerSecond = executionThrottleTargetStatementsPerSecond
               ExecutionThrottleMaxRunAheadMilliseconds = executionThrottleMaxRunAheadMilliseconds
               SyntaxChecking = syntaxChecking
+              TurboHirOptimization = turboHirOptimization
+              TurboNativeRegions = turboNativeRegions
+              TurboLocalRegisterAllocation = turboLocalRegisterAllocation
               AppName = appName
               Logger = logger }
     | [| input; output; verbose; backendName; runtimeHostName |] ->
@@ -189,6 +230,9 @@ let getSettings argv : RuntimeSettings =
           ExecutionThrottleTargetStatementsPerSecond = executionThrottleTargetStatementsPerSecond
           ExecutionThrottleMaxRunAheadMilliseconds = executionThrottleMaxRunAheadMilliseconds
           SyntaxChecking = syntaxChecking
+          TurboHirOptimization = turboHirOptimization
+          TurboNativeRegions = turboNativeRegions
+          TurboLocalRegisterAllocation = turboLocalRegisterAllocation
           AppName = appName
           Logger = logger }
     | [| input; output; verbose; backendName |] ->
@@ -201,6 +245,9 @@ let getSettings argv : RuntimeSettings =
           ExecutionThrottleTargetStatementsPerSecond = executionThrottleTargetStatementsPerSecond
           ExecutionThrottleMaxRunAheadMilliseconds = executionThrottleMaxRunAheadMilliseconds
           SyntaxChecking = syntaxChecking
+          TurboHirOptimization = turboHirOptimization
+          TurboNativeRegions = turboNativeRegions
+          TurboLocalRegisterAllocation = turboLocalRegisterAllocation
           AppName = appName
           Logger = logger }
     | [| input; output; verbose |] ->
@@ -213,6 +260,9 @@ let getSettings argv : RuntimeSettings =
           ExecutionThrottleTargetStatementsPerSecond = executionThrottleTargetStatementsPerSecond
           ExecutionThrottleMaxRunAheadMilliseconds = executionThrottleMaxRunAheadMilliseconds
           SyntaxChecking = syntaxChecking
+          TurboHirOptimization = turboHirOptimization
+          TurboNativeRegions = turboNativeRegions
+          TurboLocalRegisterAllocation = turboLocalRegisterAllocation
           AppName = appName
           Logger = logger }
     | [| input |] ->
@@ -225,6 +275,9 @@ let getSettings argv : RuntimeSettings =
           ExecutionThrottleTargetStatementsPerSecond = executionThrottleTargetStatementsPerSecond
           ExecutionThrottleMaxRunAheadMilliseconds = executionThrottleMaxRunAheadMilliseconds
           SyntaxChecking = syntaxChecking
+          TurboHirOptimization = turboHirOptimization
+          TurboNativeRegions = turboNativeRegions
+          TurboLocalRegisterAllocation = turboLocalRegisterAllocation
           AppName = appName
           Logger = logger }
     | _ ->
@@ -237,6 +290,9 @@ let getSettings argv : RuntimeSettings =
           ExecutionThrottleTargetStatementsPerSecond = executionThrottleTargetStatementsPerSecond
           ExecutionThrottleMaxRunAheadMilliseconds = executionThrottleMaxRunAheadMilliseconds
           SyntaxChecking = syntaxChecking
+          TurboHirOptimization = turboHirOptimization
+          TurboNativeRegions = turboNativeRegions
+          TurboLocalRegisterAllocation = turboLocalRegisterAllocation
           AppName = appName
           Logger = logger }
 
@@ -640,8 +696,36 @@ let turboIrOptionsFromState (state: ProcessingState) =
         ImplicitStrings = rule |> Option.map _.Strings |> Option.defaultValue Set.empty
         ManifestConstants = manifests }
 
-let generateTurboIrFromLoweredHir (state: ProcessingState) hirProgram =
-    HirTurboIrBackend.generateTurboIrFromHir (turboIrOptionsFromState state) hirProgram
+let generateTurboIrFromLoweredHirWithNativeRegions optimization nativeRegions (state: ProcessingState) hirProgram =
+    let target = turboIrOptionsFromState state
+    match HirTurboOptimizer.optimize optimization target hirProgram with
+    | Result.Error errors -> Result.Error errors
+    | Result.Ok optimized ->
+        let analysis =
+            if nativeRegions || optimization.DumpPrefix.IsSome then Some(HirAnalysis.analyze target optimized)
+            else None
+        match optimization.DumpPrefix with
+        | Some prefix ->
+            let directory = Path.GetDirectoryName(Path.GetFullPath prefix)
+            Directory.CreateDirectory directory |> ignore
+            File.WriteAllText(prefix + ".before.hir", HIRPrettyPrinter.prettyPrintHir hirProgram)
+            File.WriteAllText(prefix + ".after.hir", HIRPrettyPrinter.prettyPrintHir optimized)
+            analysis |> Option.iter (fun facts -> File.WriteAllText(prefix + ".analysis.txt", HirAnalysis.format facts))
+        | None -> ()
+        let target =
+            match nativeRegions,analysis with
+            | true,Some facts -> {target with SafeIntegerExpressions=facts.SafeIntegerExpressions}
+            | _ -> target
+        HirTurboIrBackend.generateTurboIrFromHir target optimized
+        |> Result.bind (TurboNativeRegions.select nativeRegions)
+
+// Keep the existing programmatic entry points byte compatible. The CLI passes
+// the independent native-region setting explicitly through the new entry point.
+let generateTurboIrFromLoweredHirWithOptions optimization state hirProgram =
+    generateTurboIrFromLoweredHirWithNativeRegions optimization false state hirProgram
+
+let generateTurboIrFromLoweredHir state hirProgram =
+    generateTurboIrFromLoweredHirWithOptions HirTurboOptimizer.defaultOptions state hirProgram
 
 /// A Turbo task name from an output file name: its printable ASCII stem, at most 12 characters.
 let turboTaskName (outputFileName: string) =
@@ -651,14 +735,29 @@ let turboTaskName (outputFileName: string) =
     if stem.Length > 12 then stem.Substring(0, 12) else stem
 
 /// The Turbo IR stream and the QDOS executable Turbo's code generator makes from it.
-let generateTurboExecutableFromLoweredHir (state: ProcessingState) (taskName: string) hirProgram =
-    match generateTurboIrFromLoweredHir state hirProgram with
+let generateTurboExecutableFromLoweredHirWithRegisterAllocation optimization nativeRegions registerAllocation (state: ProcessingState) (taskName: string) hirProgram =
+    match generateTurboIrFromLoweredHirWithNativeRegions optimization nativeRegions state hirProgram with
     | Result.Error errors -> Result.Error errors
     | Result.Ok ir ->
-        let options = { TurboCodegen.defaultCodegenOptions with TaskName = taskName }
+        let options = { TurboCodegen.defaultCodegenOptions with TaskName = taskName; LocalRegisterAllocation = nativeRegions && registerAllocation }
         match TurboCodegen.generateFromIr options ir.Bytes with
-        | Result.Ok executable -> Result.Ok(ir, executable)
+        | Result.Ok executable ->
+            match optimization.DumpPrefix with
+            | Some prefix ->
+                let text=executable.NativeAllocation |> Option.map TurboNativeIr.format |> Option.defaultValue "Local register allocation disabled.\n"
+                File.WriteAllText(prefix + ".native-ir.txt",text)
+            | None -> ()
+            Result.Ok(ir, executable)
         | Result.Error errors -> Result.Error errors
+
+let generateTurboExecutableFromLoweredHirWithNativeRegions optimization nativeRegions state taskName hirProgram =
+    generateTurboExecutableFromLoweredHirWithRegisterAllocation optimization nativeRegions false state taskName hirProgram
+
+let generateTurboExecutableFromLoweredHirWithOptions optimization state taskName hirProgram =
+    generateTurboExecutableFromLoweredHirWithNativeRegions optimization false state taskName hirProgram
+
+let generateTurboExecutableFromLoweredHir state taskName hirProgram =
+    generateTurboExecutableFromLoweredHirWithOptions HirTurboOptimizer.defaultOptions state taskName hirProgram
 
 let private formatHirLoweringErrorForRuntime (error: HirLoweringError) =
     let location =
@@ -912,6 +1011,9 @@ let loadRuntimeProgram syntaxChecking verbose logger inputFileName : Result<Runt
           ExecutionThrottleTargetStatementsPerSecond = 10000
           ExecutionThrottleMaxRunAheadMilliseconds = 2
           SyntaxChecking = syntaxChecking
+          TurboHirOptimization = HirTurboOptimizer.defaultOptions
+          TurboNativeRegions = true
+          TurboLocalRegisterAllocation = true
           AppName = "SB"
           Logger = logger }
 

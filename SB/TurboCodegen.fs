@@ -39,6 +39,9 @@ type TurboCodegenOptions = {
     ReferenceStrings: bool
     /// The <64K code option (intercom P+5 bit 0); not supported.
     SmallCode: bool
+    /// Allocate leaf native integer values in D0/D1 instead of expanding every
+    /// maths-stack template. False preserves the original generator byte for byte.
+    LocalRegisterAllocation: bool
 }
 
 let defaultCodegenOptions = {
@@ -47,6 +50,7 @@ let defaultCodegenOptions = {
     StackSize = None
     ReferenceStrings = false
     SmallCode = false
+    LocalRegisterAllocation = false
 }
 
 type TurboCodegenOutput = {
@@ -54,6 +58,7 @@ type TurboCodegenOutput = {
     Code: byte[]
     /// Dataspace for the QDOS file header, in bytes.
     Dataspace: int
+    NativeAllocation: TurboNativeIr.Report option
 }
 
 /// The 30-byte "]!QDOS File Header" block that QDOS emulators on PC file systems use to keep a
@@ -133,6 +138,8 @@ type private Generator(sourceLibrary: byte[], options: TurboCodegenOptions, sour
     let output = ResizeArray<byte>()
     let symbols = Dictionary<int, int>()
     let records = Dictionary<int, int>()
+    let nativeBlocks = Dictionary<int,TurboNativeIr.CompiledBlock>()
+    let mutable nativeAllocation:TurboNativeIr.Report option = None
 
     let mutable ic = 0 // int_code (A2), a byte index into ir
     let mutable pass = 0 // low word of D6
@@ -728,6 +735,22 @@ type private Generator(sourceLibrary: byte[], options: TurboCodegenOptions, sour
         let size = requested &&& ~~~1
         if size >= minStack && size <= maxStack then setWord lib maxStackOffset size
         setWord lib maxStackOffset ((word lib maxStackOffset + 1) &&& 0xFFFE)
+        let extra=nativeAllocation |> Option.map _.StackExtraBytes |> Option.defaultValue 0
+        setWord lib maxStackOffset (word lib maxStackOffset + extra)
+
+    member private this.PlanNativeRegisters() =
+        if options.LocalRegisterAllocation then
+            let requested=defaultArg options.StackSize 0 &&& ~~~1
+            let stack=if requested>=minStack && requested<=maxStack then requested else (word lib maxStackOffset + 1) &&& ~~~1
+            // Only one leaf spill frame can be live: every opaque template,
+            // call and control-flow boundary releases it. Reserve the maximum
+            // extra stack AND dataspace so existing heap/stack capacity remains.
+            let limit=max 0 (min 128 (maxStack-stack))
+            match TurboNativeIr.plan limit vectTabAd ir with
+            | Error message -> fail $"Native register lowering: {message}"
+            | Ok report ->
+                nativeAllocation<-Some report
+                for block in report.Blocks do nativeBlocks.Add(block.Ir.StartOffset,block)
 
     member private this.PPass0Par(record: int, opcode: int, length: int) =
         if this.CompilationAddress record = 0xFFFF then this.CopyPTemplate(record, length)
@@ -862,32 +885,37 @@ type private Generator(sourceLibrary: byte[], options: TurboCodegenOptions, sour
     member private this.Passes() =
         let mutable running = true
         while running do
-            let token = word ir ic
-            ic <- ic + 2
-            if token = 0 then
-                if pass = 0 then
-                    // end_int: shift every label by the bytes written before the code, then pass 1.
-                    pMode <- false
-                    pass <- 1
-                    let shift = int (int16 (uint16 labInc))
-                    for label in List.ofSeq symbols.Keys do
-                        symbols[label] <- symbols[label] + shift
-                    maxTwoByte <- maxTwoByte + shift
-                    objCode <- objCode + shift
-                    codeSize <- objCode
-                    objCode <- shift
-                    line <- 0
-                    ic <- 4
+            match nativeBlocks.TryGetValue ic with
+            | true,block when not pMode ->
+                if pass<>0 then write block.Code
+                objCode<-objCode+block.Code.Length
+                ic<-block.Ir.EndOffset
+            | _ ->
+                let token = word ir ic
+                ic <- ic + 2
+                if token = 0 then
+                    if pass = 0 then
+                        // Both passes use the same register plan and exact byte lengths.
+                        pMode <- false
+                        pass <- 1
+                        let shift = int (int16 (uint16 labInc))
+                        for label in List.ofSeq symbols.Keys do
+                            symbols[label] <- symbols[label] + shift
+                        maxTwoByte <- maxTwoByte + shift
+                        objCode <- objCode + shift
+                        codeSize <- objCode
+                        objCode <- shift
+                        line <- 0
+                        ic <- 4
+                    else
+                        labInc <- (labInc - entryAd) &&& 0xFFFF
+                        write (wordBytes labInc)
+                        if codeSize <> objCode then fail "Codegen phase error."
+                        running <- false
+                elif token >= lowName then
+                    if pass = 0 then this.Define(token, false)
                 else
-                    // end_pass1: the entry offset word, then the phase check.
-                    labInc <- (labInc - entryAd) &&& 0xFFFF
-                    write (wordBytes labInc)
-                    if codeSize <> objCode then fail "Codegen phase error."
-                    running <- false
-            elif token >= lowName then
-                if pass = 0 then this.Define(token, false)
-            else
-                this.Instruction token
+                    this.Instruction token
 
     member this.Run() : Result<TurboCodegenOutput, string list> =
         try
@@ -895,6 +923,7 @@ type private Generator(sourceLibrary: byte[], options: TurboCodegenOptions, sour
             if options.DataspaceKiB < 0 || options.DataspaceKiB > int UInt16.MaxValue then
                 fail "Dataspace must be between 0 and 65535 KiB."
             this.Improve()
+            this.PlanNativeRegisters()
             pass <- 0
             pMode <- false
             this.Stack()
@@ -902,7 +931,8 @@ type private Generator(sourceLibrary: byte[], options: TurboCodegenOptions, sour
             this.Passes()
             Result.Ok
                 { Code = output.ToArray()
-                  Dataspace = options.DataspaceKiB * 1024 }
+                  Dataspace = options.DataspaceKiB * 1024 + (nativeAllocation |> Option.map _.StackExtraBytes |> Option.defaultValue 0)
+                  NativeAllocation = nativeAllocation }
         with
         | CodegenFailure message -> Result.Error [ $"Code generation failed, {message}" ]
         | :? IndexOutOfRangeException

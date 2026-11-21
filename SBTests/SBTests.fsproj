@@ -13,7 +13,11 @@
         <Compile Include="HirCBackendTests.fs" />
         <Compile Include="HirCSharpBackendTests.fs" />
         <Compile Include="HirTurboIrBackendTests.fs" />
+        <Compile Include="HirTurboOptimizerTests.fs" />
+        <Compile Include="HirAnalysisTests.fs" />
+        <Compile Include="TurboNativeRegionsTests.fs" />
         <Compile Include="M68kEmulator.fs" />
+        <Compile Include="TurboNativeIrTests.fs" />
         <Compile Include="TurboCodegenOracle.fs" />
         <Compile Include="TurboCodegenTests.fs" />
         <Compile Include="TurboExecutionHarness.fs" />

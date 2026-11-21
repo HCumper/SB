@@ -105,6 +105,9 @@ type TurboIrOptions = {
     /// MANIFEST constants by normalized name. HIR drops MANIFEST statements, so the pipeline
     /// passes their values here and the emitter folds them as Turbo's parser does.
     ManifestConstants: Map<string, HirConst>
+    /// Integer arithmetic proven safe at every occurrence by the HIR analyses.
+    /// Empty for legacy/programmatic IR generation without analysis.
+    SafeIntegerExpressions: Set<HirExpr>
 }
 
 type TurboIrOutput = {
@@ -136,7 +139,12 @@ let defaultOptions = {
     ImplicitReals = Set.empty
     ImplicitStrings = Set.empty
     ManifestConstants = Map.empty
+    SafeIntegerExpressions = Set.empty
 }
+
+/// Internal listing annotation consumed by native-region selection. The binary
+/// IR retains the standard Turbo opcode; external generators remain compatible.
+let rangeProvenIntegerComment = "range-proven integer arithmetic"
 
 /// The listing written beside a generated stream.
 let listingFileName (outputFileName: string) = outputFileName + ".lst"
@@ -1137,7 +1145,7 @@ type private Emitter(options: TurboIrOptions, program: HirProgram) =
         | Unary(Negate, inner, _, _) ->
             if this.TypeOf inner = TurboInt then
                 this.EmitAs(scope, TurboInt, inner)
-                op0 Op.minusInt
+                opc Op.minusInt [] (if options.SafeIntegerExpressions.Contains expr then rangeProvenIntegerComment else "")
                 TurboInt
             else
                 this.EmitAs(scope, TurboFloat, inner)
@@ -1165,10 +1173,10 @@ type private Emitter(options: TurboIrOptions, program: HirProgram) =
         | Missing pos ->
             fail pos "an omitted argument can only be passed to a resident routine."
             TurboInt
-        | Binary(binaryOp, lhs, rhs, _, pos) -> this.EmitBinary(scope, binaryOp, lhs, rhs, pos)
+        | Binary(binaryOp, lhs, rhs, _, pos) -> this.EmitBinary(scope, binaryOp, lhs, rhs, pos, expr)
         | CallFunc(symbol, args, _, pos) -> this.EmitFunctionCall(scope, symbol, args, pos)
 
-    member private this.EmitBinary(scope: Scope, binaryOp: HirBinaryOp, lhs: HirExpr, rhs: HirExpr, pos: SourcePosition) =
+    member private this.EmitBinary(scope: Scope, binaryOp: HirBinaryOp, lhs: HirExpr, rhs: HirExpr, pos: SourcePosition, original: HirExpr) =
         let operands turboType =
             this.EmitAs(scope, turboType, lhs)
             this.EmitAs(scope, turboType, rhs)
@@ -1179,7 +1187,11 @@ type private Emitter(options: TurboIrOptions, program: HirProgram) =
         let arithmetic intOpcode floatOpcode =
             let turboType =
                 if this.TypeOf lhs = TurboInt && this.TypeOf rhs = TurboInt then TurboInt else TurboFloat
-            fixedType turboType (if turboType = TurboInt then intOpcode else floatOpcode) turboType
+            operands turboType
+            if turboType = TurboInt then
+                opc intOpcode [] (if options.SafeIntegerExpressions.Contains original then rangeProvenIntegerComment else "")
+            else op0 floatOpcode
+            turboType
         let comparison intOpcode floatOpcode stringOpcode =
             // Comparisons always leave a float 0/1 (spec 5). Two integers compare as integers and
             // two strings as strings; any other mix compares as floats.
