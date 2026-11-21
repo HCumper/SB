@@ -27,6 +27,7 @@
         <Compile Include="HirAnalysis.fs" />
         <Compile Include="HirTurboOptimizer.fs" />
         <Compile Include="TurboNativeRegions.fs" />
+        <Compile Include="TurboNativeArrays.fs" />
         <Compile Include="TurboNativeIr.fs" />
         <Compile Include="TurboCodegen.fs" />
         <EmbeddedResource Include="TurboRuntime\lib537.bin" LogicalName="lib537.bin" />

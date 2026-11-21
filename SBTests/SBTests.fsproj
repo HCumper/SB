@@ -18,6 +18,7 @@
         <Compile Include="TurboNativeRegionsTests.fs" />
         <Compile Include="M68kEmulator.fs" />
         <Compile Include="TurboNativeIrTests.fs" />
+        <Compile Include="TurboNativeArraysTests.fs" />
         <Compile Include="TurboCodegenOracle.fs" />
         <Compile Include="TurboCodegenTests.fs" />
         <Compile Include="TurboExecutionHarness.fs" />

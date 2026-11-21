@@ -42,6 +42,60 @@ let private withCompiledProgramMode enabled extraArguments extension (source: st
 
 let private withCompiledProgram extension source action = withCompiledProgramMode true [] extension source action
 
+let compactArrayPrograms = [|
+    "10 DIM a%(2,3)\n20 a%(0,0)=11:a%(2,3)=23:a%(1,2)=-7\n30 i%=2:j%=3\n40 a%(i%,j%)=a%(i%,j%)+1\n50 PRINT a%(0,0);\":\";a%(2,3);\":\";a%(1,2)\n60 STOP", "11:24:-7\n"
+    "10 DIM a(2,3)\n20 a(0,0)=1.25:a(2,3)=-2.5\n30 i%=2:j%=3:v=a(i%,j%)\n40 a(i%,j%)=v+4\n50 IF a(0,0)=1.25 AND a(2,3)=1.5 THEN PRINT \"float OK\":ELSE PRINT \"wrong\"\n60 STOP", "float OK\n"
+    "10 DIM a%(3)\n20 touch a%,a%\n30 PRINT a%(1);\":\";a%(2)\n40 STOP\n100 DEFine PROCedure touch(p%,q%)\n110 p%(1)=5:q%(1)=q%(1)+2:p%(2)=q%(1)\n120 END DEFine", "7:7\n"
+    "10 DIM a%(2)\n20 a%(1)=7\n30 work\n40 PRINT a%(1)\n50 STOP\n100 DEFine PROCedure work\n110 LOCal a%(3)\n120 a%(1)=11:a%(3)=13\n130 PRINT a%(1);\":\";a%(3)\n140 END DEFine", "11:13\n7\n"
+    "10 n%=2\n20 DIM a%(n%),b%(n%)\n30 a%(2)=5:b%(2)=17\n40 n%=4\n50 DIM a%(n%)\n60 a%(4)=9\n70 PRINT a%(4);\":\";b%(2)\n80 STOP", "9:17\n"
+    "10 DIM a(2,2)\n20 fill a,a\n30 IF a(0,0)=1.25 AND a(2,2)=-2.5 THEN PRINT \"reference OK\":ELSE PRINT \"wrong\"\n40 STOP\n100 DEFine PROCedure fill(p,q)\n110 p(0,0)=1.25:q(2,2)=-2.5\n120 END DEFine", "reference OK\n"
+    "10 WHEN ERROR\n20 count%=count%+1\n30 IF count%<3 THEN RETRY\n40 PRINT ERNUM;\":\";count%;\":\";a%(1)\n50 STOP\n60 END WHEN\n70 DIM a%(2)\n80 a%(1)=7\n90 result%=bad%(2)\n95 PRINT \"wrong\"\n100 DEFine FuNction bad%(n%)\n110 LOCal a%(1)\n120 a%(0)=8:a%(1)=9\n130 RETurn a%(n%)\n140 END DEFine", "-4:3:7\n"
+|]
+
+let compactArrayModes = [|
+    for index in 0..compactArrayPrograms.Length-1 do
+        for hir in [false;true] do
+            for native,registers in [false,false;true,false;true,true] do
+                yield TestCaseData(index,hir,native,registers).SetName($"Compact numeric arrays {index} (HIR {hir}, native {native}, registers {registers})") |]
+
+[<TestCaseSource(nameof compactArrayModes)>]
+let ``compact numeric arrays preserve values binding changes resizing and retries`` (index:int,hir:bool,native:bool,registers:bool) =
+    let source,expected=compactArrayPrograms[index]
+    withCompiledProgramMode hir [(if native then "--native-regions" else "--no-native-regions");(if registers then "--regalloc" else "--no-regalloc")] ".bas" source (fun executable ->
+        let result=run 2000000L executable
+        Assert.That(result.Output, Is.EqualTo(expected))
+        Assert.That(result.ExitCode, Is.Zero))
+
+let compactArrayFailures = [|
+    for opcode in [1111;1112;1143;1144] do
+        for first,last in [-1,0;0,2;2,-1] do
+            for native,registers in [false,false;true,false;true,true] do
+                yield TestCaseData(opcode,first,last,native,registers).SetName($"Checked array failure {opcode} ({first},{last}), native {native}, registers {registers}") |]
+
+[<TestCaseSource(nameof compactArrayFailures)>]
+let ``checked array range errors keep the error number and leave all elements unchanged`` (opcode:int,first:int,last:int,native:bool,registers:bool) =
+    let name=if opcode=1111 || opcode=1112 then "a%" else "a"
+    let access=if opcode=1112 || opcode=1144 then $"{name}(i%%,j%%)=99" else $"result={name}(i%%,j%%)"
+    let source = $"10 WHEN ERROR\n20 IF {name}(0,0)=7 AND {name}(1,1)=8 THEN PRINT ERNUM;\":kept\":ELSE PRINT \"changed\"\n30 STOP\n40 END WHEN\n50 DIM {name}(1,1)\n60 {name}(0,0)=7:{name}(1,1)=8\n70 i%%={first}:j%%={last}\n80 {access}\n90 PRINT \"wrong\""
+    withCompiledProgramMode true [(if native then "--native-regions" else "--no-native-regions");(if registers then "--regalloc" else "--no-regalloc")] ".bas" source (fun executable ->
+        let result=run 2000000L executable
+        Assert.That(result.Output, Is.EqualTo("-4:kept\n"))
+        Assert.That(result.ExitCode, Is.Zero))
+
+[<TestCase(false)>]
+[<TestCase(true)>]
+let ``allocated integer spills are released across checked array stores and loads`` (hir:bool) =
+    let directory=Path.Combine(Path.GetTempPath(),$"array-register-boundary-{Guid.NewGuid():N}")
+    Directory.CreateDirectory directory |> ignore
+    try
+        let prefix=Path.Combine(directory,"arrays")
+        let source="10 DIM cells%(2)\n20 a%=1:b%=2:c%=3:d%=4:e%=5:f%=6:g%=7:h%=8\n30 cells%(1)=a%+(b%+(c%+(d%+(e%+(f%+(g%+h%))))))\n40 result%=cells%(1)+(a%+(b%+(c%+(d%+(e%+(f%+(g%+h%)))))))\n50 PRINT result%\n60 STOP"
+        withCompiledProgramMode hir ["--native-regions";"--regalloc";"--dump-hir="+prefix] ".bas" source (fun executable ->
+            let result=run 2000000L executable
+            Assert.That(result.Output, Is.EqualTo("72\n")))
+        Assert.That(File.ReadAllText(prefix+".native-ir.txt"), Does.Match("spill slots=[1-9]"))
+    finally Directory.Delete(directory,true)
+
 let private samples = [|
     TestCaseData(".bas", "10 PRINT \"Hello from Turbo\"\n20 STOP", "Hello from Turbo\n")
         .SetName("Turbo executable starts, prints, and stops")

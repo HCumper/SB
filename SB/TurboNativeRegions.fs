@@ -19,6 +19,10 @@ let private saving item =
     // operand fetch. The vector contents (including flexible bindings) are used
     // exactly as in P mode; no addresses are cached across instructions.
     | 109 | 118 | 141 | 150 -> Some 3
+    // Shared checked numeric array helpers avoid inlining the dimension loop.
+    // Removing the first multiply-by-one and offset addition also offsets the
+    // wrapper/indexer call overhead. Strings and allocation stay threaded.
+    | 111 | 112 | 143 | 144 -> Some 2
     // Integer DIV/MOD share the same checked template in both modes, including
     // zero and -32768/-1 failures, floor division and divisor-signed remainder.
     // Comparisons keep Turbo's six-byte float Boolean result.
@@ -30,7 +34,7 @@ let private saving item =
 
 let private completesValue opcode =
     match opcode with
-    | 1 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 20 | 118 | 150 | 320 -> true
+    | 1 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 20 | 111 | 112 | 118 | 143 | 144 | 150 | 320 -> true
     | _ -> false
 
 let private regionBenefit (items:IrItem array) =
@@ -82,6 +86,8 @@ let select enabled (output: TurboIrOutput) : Result<TurboIrOutput, string list> 
                     items.AddRange(prefix |> Array.map (function
                         | Instruction((1|5|6|7 as op),args,comment) when comment<>rangeProvenIntegerComment ->
                             Instruction(op+1000,args,"checked native integer arithmetic")
+                        | Instruction((111|112|143|144 as op),args,_) ->
+                            Instruction(op+1000,args,"compact checked native array access")
                         | item -> item))
                     items.Add(Instruction(255, [], "resume threaded code"))
                     items.AddRange(pending |> Seq.skip finish)

@@ -30,8 +30,11 @@ explicit checked records 1001/1005/1006/1007; these select the existing checked
 library bodies even in native mode. The improver preserves them as checked
 increments 1339/1340, whose native expansion commits the wrapped destination
 before trapping, matching the original threaded increment's observable behavior.
-Array and string operations,
-floating arithmetic, allocation, ROM routines, calls, returns, loops, jumps,
+Numeric array loads and stores use shared checked native helpers (1111/1112
+and 1143/1144), with eight-byte call sites. See
+[compact numeric arrays](TURBO-NATIVE-ARRAYS.md) for bounds, alias, stack and error
+semantics. String operations, floating arithmetic, allocation, ROM routines,
+calls, returns, loops, jumps,
 handlers and retry markers also remain threaded pending separate audits.
 Every label stays in its original mode, and every selected run returns to
 threaded execution before a control-flow or unsupported instruction. Startup,
@@ -44,7 +47,7 @@ The estimate accounts for the improver's existing checked increments, retaining
 threaded output for isolated increments whose native bridges would cost more.
 Trailing operand loads remain threaded to avoid incomplete regions. Checked
 increment peepholes remain together within a selected region. Large native
-array/string templates are excluded.
+array/string templates are excluded; numeric accesses use compact helpers.
 
 The explicit checked records use existing library IDs with an SB-defined native
 meaning. Streams containing them require SB's code generator: the original Turbo

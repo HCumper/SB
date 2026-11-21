@@ -31,7 +31,11 @@ Allocation does not remove overflow checks. Range-proven operations retain their
 unchecked form; all other selected arithmetic uses checked forms.
 
 Calls, branches, array/string operations, floating operations and checked DIV/MOD
-remain template boundaries. No allocated value or private frame crosses them.
+remain allocation boundaries. Numeric arrays use
+[compact checked native helpers](TURBO-NATIVE-ARRAYS.md); all pending maths words
+are materialized and private frames released before calling them. Other
+unsupported operations use their existing templates. No allocated value or
+private frame crosses these boundaries.
 Both codegen passes use the same plan, byte lengths and original IR offsets, so
 label addresses and mixed-mode jumps account for the generated instructions.
 

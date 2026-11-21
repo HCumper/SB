@@ -71,14 +71,18 @@ let ``a lone increment retains the cheaper threaded peephole`` () =
     Assert.That(after.Bytes, Is.EqualTo(box before.Bytes))
 
 [<Test>]
-let ``array helpers and routine continuations are never made native`` () =
+let ``checked numeric access becomes compact while array allocation and continuations stay threaded`` () =
     let after = emit "10 DIM a%(2)\n20 n%=1:m%=2:k%=3\n30 a%(n%)=k%\n40 bump n%\n50 PRINT a%(n%)\n60 STOP\n100 DEFine PROCedure bump(x%)\n110 x%=x%+1\n120 END DEFine" |> select
     Assert.That(starts after, Is.GreaterThan(0))
+    Assert.That(after.Items |> List.exists(function Instruction((1111|1112),_,_) -> true | _ -> false), Is.True)
     let mutable native = true
     for item in after.Items do
         match item with
         | Instruction(254,_,_) -> native <- true
         | Instruction(255,_,_) -> native <- false
-        | Instruction((111|112|126|234|236|244|246|294|378),_,_) -> Assert.That(native, Is.False, $"{item}")
+        | Instruction((1111|1112),_,_) -> Assert.That(native, Is.True, $"{item}")
+        | Instruction((126|234|236|244|246|294|378),_,_) -> Assert.That(native, Is.False, $"{item}")
         | LabelDef(label,_) when label>60000 -> Assert.That(native, Is.False, $"Routine {label}")
         | _ -> ()
+    Assert.That(validate after.Bytes, Is.Empty)
+    Assert.That((select after).Bytes, Is.EqualTo(box after.Bytes))

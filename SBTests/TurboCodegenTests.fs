@@ -456,6 +456,47 @@ let ``maximum configured CPU stack falls back instead of overrunning its limit``
     Assert.That(after.Code, Is.EqualTo(box before.Code))
     Assert.That(after.Dataspace, Is.EqualTo(before.Dataspace))
 
+let private numericArrayIr copies compact =
+    let ir=irOf "10 DIM a%(2)\n20 i%=1\n30 a%(i%)=7\n40 r%=a%(i%)\n50 STOP" |> nativeBodyOf
+    let items=decode ir |> Result.defaultWith failwith
+    items |> List.collect(function
+        | Instruction((111|112 as op),args,comment) ->
+            List.replicate copies (Instruction((if compact then op+1000 else op),args,comment))
+        | item -> [item]) |> serialize
+
+[<Test>]
+let ``compact numeric arrays grow by eight bytes per call site`` () =
+    let generate copies compact = generateFromIr portOptions (numericArrayIr copies compact) |> Result.defaultWith(String.concat "; " >> failwith)
+    let once=generate 1 true
+    let many=generate 5001 true
+    Assert.That(many.Code.Length-once.Code.Length, Is.EqualTo(10000*8))
+    Assert.That(many.Code.Length, Is.GreaterThan(65536),"Calls into the prefix must work for a body beyond 64 KiB.")
+    Assert.That(many.Code.Length, Is.LessThan((generate 5001 false).Code.Length))
+
+[<Test>]
+let ``compact array return frames reserve stack and dataspace consistently`` () =
+    let baseline=generateFromIr portOptions (numericArrayIr 1 false) |> Result.defaultWith(String.concat "; " >> failwith)
+    let compact=generateFromIr portOptions (numericArrayIr 1 true) |> Result.defaultWith(String.concat "; " >> failwith)
+    Assert.That(compact.Dataspace-baseline.Dataspace, Is.EqualTo(8))
+
+[<TestCase(9992)>]
+[<TestCase(9998)>]
+let ``compact arrays fall back to checked inline templates when the stack has no headroom`` (stack:int) =
+    let options={portOptions with StackSize=Some stack}
+    let generate compact = generateFromIr options (numericArrayIr 1 compact) |> Result.defaultWith(String.concat "; " >> failwith)
+    let baseline,actual=generate false,generate true
+    Assert.That(actual.Code, Is.EqualTo(box baseline.Code))
+    Assert.That(actual.Dataspace, Is.EqualTo(baseline.Dataspace))
+
+[<Test>]
+let ``a full vector table uses checked inline arrays instead of overflowing the prefix`` () =
+    let generate opcode =
+        serialize [Instruction(999,[Word 8190],"");Instruction(106,[Word 0],"");Instruction(opcode,[Word 1],"");Instruction(0,[],"")]
+        |> generateFromIr portOptions |> Result.defaultWith(String.concat "; " >> failwith)
+    let baseline,actual=generate 111,generate 1111
+    Assert.That(actual.Code, Is.EqualTo(box baseline.Code))
+    Assert.That(actual.Dataspace, Is.EqualTo(baseline.Dataspace))
+
 [<TestCaseSource(nameof programNames)>]
 let ``legacy mixed mode encoding retains the reference machine code layout`` (name: string) =
     let bytes = irOf (programs |> List.find (fun (n, _) -> n = name) |> snd)
@@ -468,7 +509,7 @@ let ``legacy mixed mode encoding retains the reference machine code layout`` (na
     // shared templates. Explicit checked forms have independent CPU/executable
     // tests, including failures, retries and both allocation settings.
     let legacy=selected.Items |> List.map(function
-        | Instruction((1001|1005|1006|1007 as op),args,comment) -> Instruction(op-1000,args,comment)
+        | Instruction((1001|1005|1006|1007|1111|1112|1143|1144 as op),args,comment) -> Instruction(op-1000,args,comment)
         | item -> item)
     assertSameAsReference (serialize legacy)
 

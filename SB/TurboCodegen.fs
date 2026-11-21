@@ -139,6 +139,8 @@ type private Generator(sourceLibrary: byte[], options: TurboCodegenOptions, sour
     let symbols = Dictionary<int, int>()
     let records = Dictionary<int, int>()
     let nativeBlocks = Dictionary<int,TurboNativeIr.CompiledBlock>()
+    let mutable nativeArrayAddresses:Map<int,int> = Map.empty
+    let mutable nativeArrayOperations:Set<int> = Set.empty
     let mutable nativeAllocation:TurboNativeIr.Report option = None
 
     let mutable ic = 0 // int_code (A2), a byte index into ir
@@ -154,6 +156,10 @@ type private Generator(sourceLibrary: byte[], options: TurboCodegenOptions, sour
     let mutable line = 0
     let mutable savedD1 = 0 // process_pars keeps D1/D2 on the stack; patch routines change them
     let mutable savedD2 = 0
+
+    let extraStackBytes () =
+        max (nativeAllocation |> Option.map _.StackExtraBytes |> Option.defaultValue 0)
+            (if nativeArrayOperations.IsEmpty then 0 else 8)
 
     let word (bytes: byte[]) (index: int) = (int bytes[index] <<< 8) ||| int bytes[index + 1]
     let signedWord (bytes: byte[]) (index: int) = int (int16 (uint16 (word bytes index)))
@@ -740,7 +746,7 @@ type private Generator(sourceLibrary: byte[], options: TurboCodegenOptions, sour
         let size = requested &&& ~~~1
         if size >= minStack && size <= maxStack then setWord lib maxStackOffset size
         setWord lib maxStackOffset ((word lib maxStackOffset + 1) &&& 0xFFFE)
-        let extra=nativeAllocation |> Option.map _.StackExtraBytes |> Option.defaultValue 0
+        let extra=extraStackBytes()
         setWord lib maxStackOffset (word lib maxStackOffset + extra)
 
     member private this.PlanNativeRegisters() =
@@ -756,6 +762,35 @@ type private Generator(sourceLibrary: byte[], options: TurboCodegenOptions, sour
             | Ok report ->
                 nativeAllocation<-Some report
                 for block in report.Blocks do nativeBlocks.Add(block.Ir.StartOffset,block)
+
+    member private this.PlanNativeArrays() =
+        // Streams outside SB's decoding catalogue and tight stack limits keep
+        // the existing checked inline array implementation. Shared helpers use
+        // two return addresses and cannot overlap a register-allocation frame.
+        let requested=defaultArg options.StackSize 0 &&& ~~~1
+        let stack=if requested>=minStack && requested<=maxStack then requested else (word lib maxStackOffset + 1) &&& ~~~1
+        if maxStack-stack>=8 then
+            match TurboNativeArrays.required ir with
+            | Error _ -> ()
+            | Ok operations when not operations.IsEmpty ->
+                let poolSize=(TurboNativeArrays.build 0 operations).Code.Length
+                let vectors=word ir 2*4+4
+                let entry=this.Search 999 |> Option.defaultWith(fun () -> fail "Template 999 not found.")
+                let prefix=this.Length entry+vectors+poolSize
+                let baseOffset=int(int16(uint16 initLabInc))
+                // A helper must not make an otherwise addressable vector table
+                // exceed the entry-offset/prefix limits. Inline checked N code
+                // is the fallback and needs neither helper space nor its frame.
+                if vectors+poolSize<=int Int16.MaxValue && prefix+baseOffset<=int Int16.MaxValue then
+                    nativeArrayOperations<-operations
+            | Ok _ -> ()
+
+    member private _.WriteNativeArrays() =
+        let pool=TurboNativeArrays.build labInc nativeArrayOperations
+        checkPrefixSize(output.Count+pool.Code.Length)
+        nativeArrayAddresses<-pool.Addresses
+        write pool.Code
+        labInc<-(labInc+pool.Code.Length) &&& 0xFFFF
 
     member private this.PPass0Par(record: int, opcode: int, length: int) =
         if this.CompilationAddress record = 0xFFFF then this.CopyPTemplate(record, length)
@@ -821,6 +856,12 @@ type private Generator(sourceLibrary: byte[], options: TurboCodegenOptions, sour
     member private this.Instruction(token: int) =
         // int_ins
         if token = 2 || token = 34 then ()
+        elif not pMode && nativeArrayAddresses.ContainsKey token then
+            let address=nativeArrayAddresses[token]
+            let bytes=TurboNativeArrays.call vectTabAd (word ir ic) address
+            if pass<>0 then write bytes
+            objCode<-objCode+bytes.Length
+            ic<-ic+2
         elif not pMode && (token=1339 || token=1340) then
             // The library's P increments read operands through A5, so cannot
             // simply be copied into native code. Commit the word before the
@@ -940,14 +981,16 @@ type private Generator(sourceLibrary: byte[], options: TurboCodegenOptions, sour
                 fail "Dataspace must be between 0 and 65535 KiB."
             this.Improve()
             this.PlanNativeRegisters()
+            this.PlanNativeArrays()
             pass <- 0
             pMode <- false
             this.Stack()
             this.Entry()
+            this.WriteNativeArrays()
             this.Passes()
             Result.Ok
                 { Code = output.ToArray()
-                  Dataspace = options.DataspaceKiB * 1024 + (nativeAllocation |> Option.map _.StackExtraBytes |> Option.defaultValue 0)
+                  Dataspace = options.DataspaceKiB * 1024 + extraStackBytes()
                   NativeAllocation = nativeAllocation }
         with
         | CodegenFailure message -> Result.Error [ $"Code generation failed, {message}" ]
