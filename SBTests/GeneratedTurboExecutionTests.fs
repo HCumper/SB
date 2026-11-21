@@ -320,10 +320,11 @@ let failures =
     [| for expression in ["a%+b%";"a%-(-b%)";"a%*b%";"-a%";"a% DIV b%";"a% MOD b%";"a% DIV 0";"a% MOD 0"] do
            for hir in [false;true] do
                for native in [false;true] do
-                   yield TestCaseData(expression,hir,native).SetName($"Checked failure {expression} (HIR {hir}, native {native})") |]
+                   for registers in [false;true] do
+                       yield TestCaseData(expression,hir,native,registers).SetName($"Checked failure {expression} (HIR {hir}, native {native}, registers {registers})") |]
 
 [<TestCaseSource(nameof failures)>]
-let ``mixed native and threaded regions retain error handlers`` (expression: string, hir: bool, native: bool) =
+let ``mixed native and threaded regions retain error handlers`` (expression: string, hir: bool, native: bool,registers:bool) =
     let a,b =
         if expression="-a%" then -32768,1
         elif expression.Contains("DIV") || expression.Contains("MOD") then -32768,-1
@@ -331,10 +332,68 @@ let ``mixed native and threaded regions retain error handlers`` (expression: str
         else 32767,1
     let source = $"10 WHEN ERROR\n20 PRINT \"caught\"\n30 STOP\n40 END WHEN\n50 a%%={a}:b%%={b}\n60 c%%={expression}\n70 PRINT \"wrong\"\n80 STOP"
     let flag = if native then "--native-regions" else "--no-native-regions"
-    withCompiledProgramMode hir [flag] ".bas" source (fun executable ->
+    withCompiledProgramMode hir [flag;(if registers then "--regalloc" else "--no-regalloc")] ".bas" source (fun executable ->
         let result = run 2000000L executable
         Assert.That(result.Output, Is.EqualTo("caught\n"))
         Assert.That(result.ExitCode, Is.Zero))
+
+let checkedRecoveryCases = [|
+    // Explicit checked increments must preserve the original improver's
+    // store-before-trap behavior, visible to a handler (and through aliases).
+    "10 WHEN ERROR\n20 PRINT ERNUM;\":\";a%\n30 STOP\n40 END WHEN\n50 a%=32767:b%=1:c%=2\n60 a%=a%+1\n70 PRINT \"wrong\"", "-18:-32768\n"
+    "10 WHEN ERROR\n20 PRINT ERNUM;\":\";a%\n30 STOP\n40 END WHEN\n50 a%=-32768:b%=1:c%=2\n60 a%=a%-1\n70 PRINT \"wrong\"", "-18:32767\n"
+    "10 WHEN ERROR\n20 PRINT ERNUM;\":\";x%\n30 STOP\n40 END WHEN\n50 x%=32767\n60 bump x%,x%\n70 PRINT \"wrong\"\n100 DEFine PROCedure bump(p%,q%)\n110 p%=p%+1:q%=2\n120 END DEFine", "-18:-32768\n"
+    // A distinct assignment is not committed on overflow.
+    "10 WHEN ERROR\n20 PRINT ERNUM;\":\";c%\n30 STOP\n40 END WHEN\n50 a%=32767:b%=1:c%=42\n60 c%=a%+b%\n70 PRINT \"wrong\"", "-18:42\n"
+    // Handler arithmetic, maths-stack reset and repeated RETRY must work after
+    // a large expression spills, including unwinding a compiled function.
+    "10 WHEN ERROR\n20 count%=count%+1\n30 IF count%<3 THEN RETRY\n40 PRINT ERNUM;\":\";count%\n50 STOP\n60 END WHEN\n70 a%=1:b%=2:c%=3:d%=4:e%=5:f%=6:g%=32767:h%=1\n80 result%=a%+(b%+(c%+(d%+(e%+(f%+(g%+h%))))))\n90 PRINT \"wrong\"", "-18:3\n"
+    "10 WHEN ERROR\n20 count%=count%+1\n30 IF count%<3 THEN RETRY\n40 PRINT ERNUM;\":\";count%\n50 STOP\n60 END WHEN\n70 answer%=bad%(32767)\n80 PRINT \"wrong\"\n100 DEFine FuNction bad%(n%)\n110 LOCal a%,b%,c%,d%,e%,f%,g%\n120 a%=1:b%=2:c%=3:d%=4:e%=5:f%=6:g%=1\n130 RETurn a%+(b%+(c%+(d%+(e%+(f%+(g%+n%))))))\n140 END DEFine", "-18:3\n"
+|]
+
+let checkedRecoveryModes = [|
+    for index in 0..checkedRecoveryCases.Length-1 do
+        for hir in [false;true] do
+            for native,registers in [false,false;true,false;true,true] do
+                yield TestCaseData(index,hir,native,registers).SetName($"Checked arithmetic recovery {index} (HIR {hir}, native {native}, registers {registers})") |]
+
+[<TestCaseSource(nameof checkedRecoveryModes)>]
+let ``checked arithmetic retains observable stores aliases retries and local unwinding`` (index:int,hir:bool,native:bool,registers:bool) =
+    let source,expected=checkedRecoveryCases[index]
+    withCompiledProgramMode hir [(if native then "--native-regions" else "--no-native-regions");(if registers then "--regalloc" else "--no-regalloc")] ".bas" source (fun executable ->
+        let result=run 2000000L executable
+        Assert.That(result.Output, Is.EqualTo(expected))
+        Assert.That(result.ExitCode, Is.Zero))
+
+[<TestCase(false,false,false)>]
+[<TestCase(true,false,false)>]
+[<TestCase(true,true,false)>]
+[<TestCase(false,false,true)>]
+[<TestCase(true,false,true)>]
+[<TestCase(true,true,true)>]
+let ``checked native overflow CONTINUE retains fatal error propagation`` (native:bool,registers:bool,implicitContinue:bool) =
+    let handler=if implicitContinue then "20 PRINT ERNUM" else "20 PRINT ERNUM:CONTINUE"
+    let source = $"10 WHEN ERROR\n{handler}\n30 END WHEN\n40 a%%=32767:b%%=1:c%%=3:d%%=4\n50 c%%=d%%+(c%%+(a%%+b%%))\n60 PRINT \"wrong\""
+    withCompiledProgramMode true [(if native then "--native-regions" else "--no-native-regions");(if registers then "--regalloc" else "--no-regalloc")] ".bas" source (fun executable ->
+        let error=Assert.Throws<M68kFault>(fun () -> run 2000000L executable |> ignore)
+        Assert.That(error.Message, Does.Contain("Runtime error message:"))
+        Assert.That(error.Message, Does.Contain("output=-18\n")))
+
+[<Test>]
+let ``a selected allocated overflow exit releases a real private frame before RETRY`` () =
+    let directory=Path.Combine(Path.GetTempPath(),$"checked-register-recovery-{Guid.NewGuid():N}")
+    Directory.CreateDirectory directory |> ignore
+    try
+        let prefix=Path.Combine(directory,"checked")
+        let source,expected=checkedRecoveryCases[4]
+        withCompiledProgramMode true ["--native-regions";"--regalloc";"--dump-hir="+prefix] ".bas" source (fun executable ->
+            let result=run 2000000L executable
+            Assert.That(result.Output, Is.EqualTo(expected)))
+        let report=File.ReadAllText(prefix+".native-ir.txt")
+        let checkedFrame=report.Split("Block IR bytes") |> Array.exists(fun block ->
+            block.Contains("virtual: OverflowCheck") && System.Text.RegularExpressions.Regex.IsMatch(block,"spill slots=[1-9]"))
+        Assert.That(checkedFrame, Is.True,report)
+    finally Directory.Delete(directory,true)
 
 [<Test>]
 let ``HIR optimization reduces executable bytes and executed instructions`` () =

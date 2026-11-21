@@ -1,7 +1,8 @@
 module TurboNativeIr
 
 // Leaf integer lowering after Turbo's improver. Values are immutable virtual
-// words. There are no calls, branches or hidden template clobbers in a block.
+// words. There are no calls or hidden template clobbers in a block. Checked
+// operations have explicit non-returning exits to the runtime overflow handler.
 // D0/D1 and A2 are scratch; all other registers are preserved. The maths stack
 // is canonical and the private CPU-stack spill frame is gone at every edge.
 open System
@@ -17,6 +18,9 @@ type Instruction =
     | PopMaths of Value
     | Binary of Value * BinaryOperation * Value * Value
     | Negate of Value * Value
+    // Snapshot in bottom-to-top maths-stack order at the failing P template.
+    // A checked increment also commits its wrapped destination before trapping.
+    | OverflowCheck of product:Value option * stack:Value list * store:(int * Value) option
     | StoreVector of int * Value
     | PushMaths of Value
 
@@ -28,6 +32,7 @@ type Block = {
     LegacyDataWords:int
 }
 
+type RecoveryLocation = RecoveryRegister of int | RecoverySlot of int
 type AllocatedInstruction =
     | Immediate of register:int * value:int
     | Load of register:int * vector:int
@@ -37,6 +42,7 @@ type AllocatedInstruction =
     | Reload of register:int * slot:int
     | Arithmetic of BinaryOperation * destination:int * source:int
     | Negative of register:int
+    | Check of productRegister:int option * stack:RecoveryLocation list * store:(int * RecoveryLocation) option
     | Store of vector:int * register:int
     | Push of register:int
 
@@ -47,20 +53,24 @@ type Report = { Blocks:CompiledBlock list; RejectedBlocks:int; StackExtraBytes:i
 let emptyReport = {Blocks=[];RejectedBlocks=0;StackExtraBytes=0}
 
 let private supported = function
-    | HirTurboIrBackend.Instruction((1|2|5|6|7|263|268),[],_) -> true
+    | HirTurboIrBackend.Instruction((1|2|5|6|7|1001|1005|1006|1007|263|268),[],_) -> true
     | HirTurboIrBackend.Instruction((106|109|118),[Word _],_) -> true
-    | HirTurboIrBackend.Instruction((337|338|339|340),[Word _;Word _],_) -> true
+    | HirTurboIrBackend.Instruction((337|338|339|340|1339|1340),[Word _;Word _],_) -> true
     | _ -> false
 
 let private legacyCost = function
     | HirTurboIrBackend.Instruction((1|268),_,_) -> 2,2
     | HirTurboIrBackend.Instruction(2,_,_) -> 0,0
     | HirTurboIrBackend.Instruction((5|6|7),_,_) -> 8,3
+    | HirTurboIrBackend.Instruction(1001,_,_) -> 8,2
+    | HirTurboIrBackend.Instruction((1005|1006),_,_) -> 14,3
+    | HirTurboIrBackend.Instruction(1007,_,_) -> 28,3
     | HirTurboIrBackend.Instruction(106,_,_) -> 4,1
     | HirTurboIrBackend.Instruction((109|118),_,_) -> 6,4
     | HirTurboIrBackend.Instruction(263,_,_) -> 2,1
     | HirTurboIrBackend.Instruction((337|338),_,_) -> 6,4
     | HirTurboIrBackend.Instruction((339|340),_,_) -> 8,4
+    | HirTurboIrBackend.Instruction((1339|1340),_,_) -> 14,4
     | _ -> invalidArg "items" "An opaque instruction cannot be lowered into a leaf block."
 
 /// Lower a straight-line, native-mode sequence. A store invalidates every cached
@@ -99,16 +109,28 @@ let lower startOffset endOffset items =
         | HirTurboIrBackend.Instruction(109,[Word v],_) -> push(load v)
         | HirTurboIrBackend.Instruction(118,[Word v],_) -> store v (pop())
         | HirTurboIrBackend.Instruction(268,[],_) -> let value=pop() in push value;push value
-        | HirTurboIrBackend.Instruction(1,[],_) -> let source=pop() in let value=fresh() in code.Add(Negate(value,source));push value
-        | HirTurboIrBackend.Instruction((5|6|7 as op),[],_) ->
+        | HirTurboIrBackend.Instruction((1|1001 as op),[],_) ->
+            let source=pop()
+            let value=fresh()
+            code.Add(Negate(value,source))
+            // NEG.W of MIN leaves MIN on the P maths stack on failure.
+            if op=1001 then code.Add(OverflowCheck(None,List.rev(source::stack),None))
+            push value
+        | HirTurboIrBackend.Instruction((5|6|7|1005|1006|1007 as token),[],_) ->
+            let op=token%1000
             let right,left=pop(),pop()
             let value=fresh()
             code.Add(Binary(value,(if op=5 then AddWord elif op=6 then SubtractWord else MultiplyWord),left,right))
+            // The checked P binary template consumes the right operand but
+            // leaves the original left word untouched if it overflows.
+            if token>=1000 then code.Add(OverflowCheck((if op=7 then Some value else None),List.rev(left::stack),None))
             push value
-        | HirTurboIrBackend.Instruction((337|338|339|340 as op),[Word vector;Word amount],_) ->
+        | HirTurboIrBackend.Instruction((337|338|339|340|1339|1340 as token),[Word vector;Word amount],_) ->
+            let op=token%1000
             let source=load vector
             let value=fresh()
             code.Add(Binary(value,(if op=337 || op=339 then AddWord else SubtractWord),source,constant amount))
+            if token>=1000 then code.Add(OverflowCheck(None,List.rev stack,Some(vector,value)))
             store vector value
         | _ -> invalidArg "items" "Only audited leaf integer operations are supported."
     for value in List.rev stack do code.Add(PushMaths value)
@@ -118,6 +140,7 @@ let lower startOffset endOffset items =
 let private sources = function
     | Binary(_,_,a,b) -> [a;b]
     | Negate(_,a) | StoreVector(_,a) | PushMaths a -> [a]
+    | OverflowCheck(product,stack,store) -> (Option.toList product)@stack@(store |> Option.map (snd >> List.singleton) |> Option.defaultValue [])
     | _ -> []
 
 let private destination = function
@@ -216,6 +239,17 @@ let allocate maxFrameBytes (block:Block) : Allocation option =
             | PopMaths value -> code.Add(Pop(define value))
             | StoreVector(vector,value) -> code.Add(Store(vector,ensure value Set.empty))
             | PushMaths value -> code.Add(Push(ensure value Set.empty))
+            | OverflowCheck(product,stack,store) ->
+                // No reloads or spills may be inserted between arithmetic and
+                // its check: MOVE would destroy V. Recovery reads the current
+                // physical locations only on the non-returning failure edge.
+                let recover value =
+                    match locations[value] with
+                    | Register r -> RecoveryRegister r
+                    | Slot slot -> RecoverySlot slot
+                let productRegister=product |> Option.map (fun value ->
+                    match locations[value] with Register r -> r | _ -> invalidArg "block" "Product check must immediately follow its definition.")
+                code.Add(Check(productRegister,List.map recover stack,store |> Option.map(fun (vector,value) -> vector,recover value)))
             | Negate(value,source) ->
                 let register=ensure source Set.empty
                 if live source index && owners.Count<2 then
@@ -247,6 +281,11 @@ let allocate maxFrameBytes (block:Block) : Allocation option =
         Some {Instructions=List.ofSeq code;SpillSlots=slots;Registers=used}
     with AllocationLimit -> None
 
+let private recoveryBytes frame stack store =
+    let size = function RecoveryRegister _ -> 2 | RecoverySlot _ -> 4
+    (stack |> List.sumBy size)+(if frame>0 then 4 else 0)+4+
+    (store |> Option.map(fun (_,location) -> 4+size location) |> Option.defaultValue 0)
+
 /// Only word operations and signed A6-relative vector displacements are emitted.
 /// LEA reserves/releases the spill frame without changing the condition codes.
 let emit vectorTableOffset allocation =
@@ -254,6 +293,9 @@ let emit vectorTableOffset allocation =
     let word n = bytes.Add(byte(n >>> 8));bytes.Add(byte n)
     let displacement vector = word(vectorTableOffset+4*vector)
     let frame=allocation.SpillSlots*2
+    let recover = function
+        | RecoveryRegister r -> word(0x3300 ||| r)
+        | RecoverySlot slot -> word 0x332F;word(slot*2)
     if frame>0 then word 0x4FEF;word(-frame)
     for instruction in allocation.Instructions do
         match instruction with
@@ -268,6 +310,26 @@ let emit vectorTableOffset allocation =
         | Reload(r,slot) -> word(0x302F ||| (r <<< 9));word(slot*2)
         | Negative r -> word(0x4440 ||| r)
         | Arithmetic(op,dst,src) -> word((match op with AddWord -> 0xD040 | SubtractWord -> 0x9040 | MultiplyWord -> 0xC1C0) ||| (dst <<< 9) ||| src)
+        | Check(product,stack,store) ->
+            let failureBytes=recoveryBytes frame stack store
+            if failureBytes+2>32767 then invalidArg "allocation" "Overflow recovery exceeds a 68000 word branch."
+            match product with
+            | None -> word 0x6800;word(failureBytes+2) // BVC.W success
+            | Some r ->
+                // MULS.W produces a long result; V alone cannot detect word
+                // overflow. These comparisons preserve both the product and
+                // every other live register used by recovery.
+                word(0x0C80 ||| r);word 0;word 0x7FFF
+                word 0x6E0A // BGT.S failure (past the lower-bound check)
+                word(0x0C80 ||| r);word 0xFFFF;word 0x8000
+                word 0x6C00;word(failureBytes+2) // BGE.W success
+            match store with
+            | Some(vector,RecoveryRegister r) -> word 0x246E;displacement vector;word(0x3480 ||| r)
+            | Some(vector,RecoverySlot slot) -> word 0x246E;displacement vector;word 0x34AF;word(slot*2)
+            | None -> ()
+            for location in stack do recover location
+            if frame>0 then word 0x4FEF;word frame
+            word 0x4EEE;word 0x8AD8 // JMP overflow(A6), never returns
     if frame>0 then word 0x4FEF;word frame
     bytes.ToArray()
 
@@ -293,15 +355,24 @@ let plan maxFrameBytes vectorTableOffset bytes : Result<Report,string> =
                 match allocate maxFrameBytes ir with
                 | Some allocation ->
                     let code=emit vectorTableOffset allocation
+                    let coldBytes=allocation.Instructions |> List.sumBy(function
+                        | Check(_,stack,store) -> recoveryBytes (allocation.SpillSlots*2) stack store
+                        | _ -> 0)
                     // A bus-word estimate includes instruction fetches and data
                     // traffic. It is not a calibrated MC68008 timing model.
-                    if code.Length/2+dataWords allocation < ir.LegacyBytes/2+ir.LegacyDataWords then
+                    // Failure recovery is cold. Charge every success-path check
+                    // and spill, but not the non-returning error payload.
+                    if (code.Length-coldBytes)/2+dataWords allocation < ir.LegacyBytes/2+ir.LegacyDataWords then
                         blocks.Add {Ir=ir;Allocation=allocation;Code=code}
                     else rejected<-rejected+1
                 | None -> rejected<-rejected+1
                 pending.Clear()
         for item in items do
             if native && supported item then
+                // Bound recovery branch distances even for enormous generated
+                // expressions. Materializing at this boundary preserves the
+                // stack protocol and leaves the next block independently safe.
+                if pending.Count>=256 then flush()
                 if pending.Count=0 then start<-offset
                 pending.Add item
             else flush()

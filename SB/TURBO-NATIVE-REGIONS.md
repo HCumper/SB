@@ -12,9 +12,9 @@ dotnet run --project .\SB\SB.fsproj -- program.bas threaded_exe false turbo --no
 ```
 
 The pass runs after HIR optimization and HIR-to-Turbo-IR lowering, before machine
-code generation. It inserts ordinary Turbo FAST (254) and SLOW (255) records.
-The `.lst` output marks each selected run. It uses the existing library and
-machine code generator; the runtime binary is unchanged.
+code generation. It inserts Turbo FAST (254) and SLOW (255) records and explicit
+checked arithmetic records described below. The `.lst` output marks each selected
+run. The runtime library binary is unchanged.
 
 The first audit covers numeric scalar loads and stores, numeric literals,
 integer logical NOT, integer comparisons, integer DIV/MOD, numeric duplicates,
@@ -23,10 +23,14 @@ time, preserving flexible parameter bindings. Comparisons retain Turbo's float
 Boolean representation. DIV/MOD use the same checked template in both modes,
 including signed rounding, zero divisors and quotient overflow.
 
-Integer add, subtract, multiply and negate can now run natively when the HIR
-control-flow, range, effect and alias analyses prove that every occurrence fits
-a signed QL word. Otherwise they and their increment peepholes retain the
-threaded overflow checks. Array and string operations,
+Integer add, subtract, multiply and negate run natively with overflow checks.
+The HIR control-flow, range, effect and alias analyses may remove checks only
+when every occurrence provably fits a signed QL word. Unproven operations become
+explicit checked records 1001/1005/1006/1007; these select the existing checked
+library bodies even in native mode. The improver preserves them as checked
+increments 1339/1340, whose native expansion commits the wrapped destination
+before trapping, matching the original threaded increment's observable behavior.
+Array and string operations,
 floating arithmetic, allocation, ROM routines, calls, returns, loops, jumps,
 handlers and retry markers also remain threaded pending separate audits.
 Every label stays in its original mode, and every selected run returns to
@@ -36,8 +40,17 @@ DATA, linkage and resident-name records are unchanged.
 Selection requires estimated instruction savings to exceed the six instructions
 in the two mode bridges. This is a conservative dispatch instruction count, not
 a cycle model or a guarantee of elapsed-time improvement on a physical MC68008.
-Trailing operand loads remain threaded so selection preserves the generator's
-checked increment peepholes. Large native array/string templates are excluded.
+The estimate accounts for the improver's existing checked increments, retaining
+threaded output for isolated increments whose native bridges would cost more.
+Trailing operand loads remain threaded to avoid incomplete regions. Checked
+increment peepholes remain together within a selected region. Large native
+array/string templates are excluded.
+
+The explicit checked records use existing library IDs with an SB-defined native
+meaning. Streams containing them require SB's code generator: the original Turbo
+generator normalizes away the +1000 distinction. Use `--no-native-regions` when
+exporting IR to that original generator. Existing raw native opcodes 1/5/6/7 keep
+their unchecked semantics; checks are never silently added or removed there.
 
 Analysis runs on the optimized HIR, before IR emission. `--dump-hir=<prefix>`
 also writes `<prefix>.analysis.txt` with CFG edges, dominators, natural loops,

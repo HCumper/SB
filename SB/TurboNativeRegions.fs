@@ -12,7 +12,9 @@ open HirTurboIrBackend
 let private saving item =
     let opcode = match item with Instruction(op,_,_) -> op | _ -> -1
     match opcode with
-    | 1 | 5 | 6 | 7 when (match item with Instruction(_,_,comment) -> comment=rangeProvenIntegerComment | _ -> false) -> Some 2
+    // Unproven arithmetic uses explicit checked forms when selected below.
+    // The unchecked N templates are still reserved for proven expressions.
+    | 1 | 5 | 6 | 7 -> Some 2
     // Scalar fetch/store: immediate vector displacement replaces the threaded
     // operand fetch. The vector contents (including flexible bindings) are used
     // exactly as in P mode; no addresses are cached across instructions.
@@ -30,6 +32,30 @@ let private completesValue opcode =
     match opcode with
     | 1 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 20 | 118 | 150 | 320 -> true
     | _ -> false
+
+let private regionBenefit (items:IrItem array) =
+    let mutable benefit=0
+    let mutable index=0
+    while index<items.Length do
+        // The improver collapses x%=x%+/-constant to one checked P
+        // increment. Charging four separate dispatches can select tiny native
+        // regions whose bridges cost more than that existing peephole saves.
+        let incrementSaving =
+            if index+3>=items.Length then None
+            else
+                match items[index],items[index+1],items[index+2],items[index+3] with
+                | Instruction(109,[Word source],_), Instruction(106,[Word _],_),
+                  Instruction((5|6),[],proof), Instruction(118,[Word target],_) when source=target ->
+                    Some(if proof=rangeProvenIntegerComment then 5 else 4)
+                | _ -> None
+        match incrementSaving with
+        | Some score ->
+            benefit<-benefit+score
+            index<-index+4
+        | _ ->
+            benefit<-benefit+(saving items[index] |> Option.defaultValue 0)
+            index<-index+1
+    benefit
 
 /// Select audited native runs after HIR optimization and IR lowering. Disabled
 /// selection returns the original output unchanged, including listing comments.
@@ -50,10 +76,13 @@ let select enabled (output: TurboIrOutput) : Result<TurboIrOutput, string list> 
                     |> Seq.choose (function i, Instruction(op, _, _) when completesValue op -> Some(i + 1) | _ -> None)
                     |> Seq.tryLast |> Option.defaultValue 0
                 let prefix = pending |> Seq.take finish |> Seq.toArray
-                let benefit = prefix |> Array.sumBy (fun item -> saving item |> Option.defaultValue 0)
+                let benefit = regionBenefit prefix
                 if benefit > 6 then
                     items.Add(Instruction(254, [], "audited native region"))
-                    items.AddRange prefix
+                    items.AddRange(prefix |> Array.map (function
+                        | Instruction((1|5|6|7 as op),args,comment) when comment<>rangeProvenIntegerComment ->
+                            Instruction(op+1000,args,"checked native integer arithmetic")
+                        | item -> item))
                     items.Add(Instruction(255, [], "resume threaded code"))
                     items.AddRange(pending |> Seq.skip finish)
                 else items.AddRange pending

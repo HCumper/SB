@@ -42,15 +42,17 @@ let ``scalar assignments form a validated native region`` () =
     Assert.That((select after).Bytes, Is.EqualTo(box after.Bytes), "Selection must be idempotent.")
 
 [<Test>]
-let ``unsafe arithmetic and branch targets remain threaded`` () =
+let ``unproven arithmetic becomes explicitly checked while branch targets stay threaded`` () =
     let after = emit "10 a%=1:b%=2:c%=3\n20 FOR i%=1 TO 5\n30 c%=a%+b%:c%=c%*b%:c%=c%-b%:c%=-c%\n40 IF c%>0 THEN GO TO 60\n50 END FOR i%\n60 PRINT c%\n70 STOP" |> select
     Assert.That(starts after, Is.GreaterThan(0))
+    Assert.That(after.Items |> List.exists(function Instruction((1001|1005|1006|1007),_,_) -> true | _ -> false), Is.True)
     let mutable native = true
     for item in after.Items do
         match item with
         | Instruction(254,_,_) -> native <- true
         | Instruction(255,_,_) -> native <- false
-        | Instruction((1|5|6|7|26|230|239|242|312|220),_,_) -> Assert.That(native, Is.False, $"{item}")
+        | Instruction((1001|1005|1006|1007),_,_) -> Assert.That(native, Is.True, $"{item}")
+        | Instruction((26|230|239|242|312|220),_,_) -> Assert.That(native, Is.False, $"{item}")
         | LabelDef(label,_) when label>=20000 || label=TurboIrLabels.body -> Assert.That(native, Is.False, $"Label {label}")
         | _ -> ()
 
@@ -58,10 +60,15 @@ let ``unsafe arithmetic and branch targets remain threaded`` () =
 let ``native selection keeps the checked increment peephole together`` () =
     let after = emit "10 a%=1:b%=2:c%=3:a%=a%+1\n20 STOP" |> select
     Assert.That(starts after, Is.EqualTo(1))
-    let tail = after.Items |> List.skipWhile (function Instruction(255,_,"resume threaded code") -> false | _ -> true) |> List.skip 1
-    match tail with
-    | Instruction(109,_,_)::Instruction(106,_,_)::Instruction(5,_,_)::Instruction(118,_,_)::_ -> ()
-    | _ -> Assert.Fail($"Checked increment was fragmented: {tail}")
+    Assert.That(after.Items |> List.exists(function Instruction(1005,_,_) -> true | _ -> false), Is.True)
+    Assert.That(validate after.Bytes, Is.Empty)
+    Assert.That((select after).Bytes, Is.EqualTo(box after.Bytes))
+
+[<Test>]
+let ``a lone increment retains the cheaper threaded peephole`` () =
+    let before=emit "10 a%=a%+1\n20 STOP"
+    let after=select before
+    Assert.That(after.Bytes, Is.EqualTo(box before.Bytes))
 
 [<Test>]
 let ``array helpers and routine continuations are never made native`` () =

@@ -12,7 +12,7 @@ let private allocation items = allocate 128 (block items) |> Option.defaultWith 
 // This machine runs allocator output directly, independently of the template
 // generator. Vector aliases, incoming maths words and caller registers are
 // explicit so stack/alias/clobber regressions cannot hide behind the old codegen.
-let private execute (allocation:Allocation) aliases incoming =
+let private executeTo (expectOverflow:bool) (allocation:Allocation) aliases incoming =
     let bytes=emit -256 allocation
     let memory=Array.zeroCreate<byte> 0x10000
     let cpu=Cpu(memory)
@@ -28,13 +28,17 @@ let private execute (allocation:Allocation) aliases incoming =
     let savedD=Array.copy cpu.D
     let savedA=Array.copy cpu.A
     let finish=0x1000u+uint32 bytes.Length
-    while cpu.Pc<>finish do
+    let overflow=0x0AD8u // A6 ($8000) plus the library overflow displacement ($8AD8).
+    while cpu.Pc<>finish && cpu.Pc<>overflow do
         if cpu.Steps>=100000L then failwith "Allocated block did not reach its boundary."
         cpu.Step()
+    Assert.That(cpu.Pc=overflow, Is.EqualTo(expectOverflow),"Unexpected overflow outcome.")
     Assert.That(cpu.A[7], Is.EqualTo(savedA[7]),"The CPU spill frame was not released.")
     for r in 2..7 do Assert.That(cpu.D[r], Is.EqualTo(savedD[r]), $"D{r} was clobbered.")
     for r in [0;3;4;5;6] do Assert.That(cpu.A[r], Is.EqualTo(savedA[r]), $"A{r} was clobbered.")
     cpu
+
+let private execute allocation aliases incoming = executeTo false allocation aliases incoming
 
 let private readVector vector (cpu:Cpu) = int(int16(uint16(cpu.ReadWord(uint32(0x6000+vector*8)))))
 
@@ -137,3 +141,89 @@ let ``planning never crosses a label mode switch or opaque template`` () =
 let ``improver increments are lowered with their actual signed amounts`` (opcode:int,amount:int,expected:int) =
     let cpu=execute (allocation [op opcode [1;amount]]) Map.empty []
     Assert.That(readVector 1 cpu, Is.EqualTo(expected))
+
+[<TestCase(1005,32767,1)>]
+[<TestCase(1005,-32768,-1)>]
+[<TestCase(1006,-32768,1)>]
+[<TestCase(1006,32767,-1)>]
+[<TestCase(1007,16384,2)>]
+[<TestCase(1007,-16385,2)>]
+[<TestCase(1007,256,256)>]
+[<TestCase(1007,-32768,-1)>]
+let ``checked binary failures restore the original left maths word and release spills`` (opcode:int,a:int,b:int) =
+    let code=allocation [op opcode [];op 118 [20]]
+    let cpu=executeTo true code Map.empty [b;a;99]
+    Assert.That(cpu.A[1], Is.EqualTo(0x5002u))
+    Assert.That(int(int16(uint16(cpu.ReadWord 0x5002u))), Is.EqualTo(a))
+    Assert.That(cpu.ReadWord 0x5004u, Is.EqualTo(99u))
+    Assert.That(readVector 20 cpu, Is.EqualTo(20),"An overflowing result must not reach its assignment.")
+
+[<TestCase(1005,32766,1,32767)>]
+[<TestCase(1005,-32767,-1,-32768)>]
+[<TestCase(1006,32766,-1,32767)>]
+[<TestCase(1006,-32767,1,-32768)>]
+[<TestCase(1007,-32768,1,-32768)>]
+[<TestCase(1007,32767,1,32767)>]
+[<TestCase(1007,-128,256,-32768)>]
+[<TestCase(1007,-181,-181,32761)>]
+[<TestCase(1007,0,-32768,0)>]
+let ``checked arithmetic accepts signed word boundaries`` (opcode:int,a:int,b:int,expected:int) =
+    let cpu=execute (allocation [op 106 [a];op 106 [b];op opcode [];op 118 [20]]) Map.empty []
+    Assert.That(readVector 20 cpu, Is.EqualTo(expected))
+
+[<Test>]
+let ``checked negation traps on MIN with canonical maths stack`` () =
+    let cpu=executeTo true (allocation [op 1001 [];op 118 [20]]) Map.empty [-32768;99]
+    Assert.That(cpu.A[1], Is.EqualTo(0x5000u))
+    Assert.That(cpu.ReadWord 0x5000u, Is.EqualTo(32768u))
+    Assert.That(cpu.ReadWord 0x5002u, Is.EqualTo(99u))
+
+[<TestCase(-32767,32767)>]
+[<TestCase(32767,-32767)>]
+[<TestCase(0,0)>]
+let ``checked negation succeeds without leaking its recovery frame`` (value:int,expected:int) =
+    let cpu=execute (allocation [op 106 [value];op 1001 [];op 118 [20]]) Map.empty []
+    Assert.That(readVector 20 cpu, Is.EqualTo(expected))
+
+[<Test>]
+let ``overflow with live pressure values reconstructs the complete maths stack`` () =
+    let items=[yield! [for v in 1..8 -> op 109 [v]];op 106 [32767];op 106 [1];op 1005 [];op 118 [20]]
+    let code=allocation items
+    Assert.That(code.SpillSlots, Is.GreaterThan(0))
+    let cpu=executeTo true code Map.empty [99]
+    Assert.That(cpu.A[1], Is.EqualTo(0x5000u-18u))
+    let values=[32767;8;7;6;5;4;3;2;1;99]
+    for index,value in values |> List.indexed do
+        Assert.That(cpu.ReadWord(cpu.A[1]+uint32(index*2)), Is.EqualTo(uint32 value))
+
+[<TestCase(1339,32767,1,-32768)>]
+[<TestCase(1340,-32768,1,32767)>]
+[<TestCase(1339,-32768,-1,32767)>]
+[<TestCase(1340,32767,-1,-32768)>]
+let ``checked increment commits the same wrapped destination as the P improver`` (opcode:int,value:int,amount:int,expected:int) =
+    let items=[op 106 [value];op 118 [1];op 106 [42];op opcode [1;amount]]
+    let cpu=executeTo true (allocation items) Map.empty [99]
+    Assert.That(readVector 1 cpu, Is.EqualTo(expected))
+    Assert.That(cpu.A[1], Is.EqualTo(0x4FFEu))
+    Assert.That(cpu.ReadWord 0x4FFEu, Is.EqualTo(42u))
+    Assert.That(cpu.ReadWord 0x5000u, Is.EqualTo(99u))
+
+[<Test>]
+let ``checked recovery participates in the spill budget`` () =
+    Assert.That((allocate 0 (block [op 1006 [];op 118 [20]])).IsNone, Is.True)
+
+[<Test>]
+let ``huge native sequences have bounded recovery branch distances`` () =
+    let items=[op 999 [3];op 254 [];yield! [for _ in 1..300 -> op 106 [1]];op 1001 [];op 255 [];op 0 []]
+    let report=plan 128 -256 (serialize items) |> Result.defaultWith failwith
+    for compiled in report.Blocks do
+        Assert.That(compiled.Ir.EndOffset-compiled.Ir.StartOffset, Is.LessThanOrEqualTo(1536))
+
+[<Test>]
+let ``checked IDs round trip and validate vector operands`` () =
+    let valid=serialize [op 999 [2];LabelDef(2000,"");op 254 [];op 1001 [];op 1005 [];op 1006 [];op 1007 [];op 1339 [1;1];op 1340 [1;1];LabelDef(2001,"");op 243 [2000];op 358 [2000];op 243 [2001];op 0 []]
+    Assert.That(validate valid, Is.Empty)
+    let roundTrip=decode valid |> Result.defaultWith failwith |> serialize
+    Assert.That(roundTrip, Is.EqualTo(box valid))
+    let invalid=serialize [op 999 [2];op 1340 [2;1];op 0 []]
+    Assert.That(validate invalid, Has.Some.Contains("outside the reserved"))

@@ -539,15 +539,20 @@ type private Generator(sourceLibrary: byte[], options: TurboCodegenOptions, sour
                     let l = word ()
                     let op = word ()
                     if op = 0 then result <- None
-                    elif op <> 5 && op <> 6 then result <- redispatch op
+                    elif op <> 5 && op <> 6 && op <> 1005 && op <> 1006 then result <- redispatch op
                     else
                         let store = word ()
                         if store = 0 then result <- None
                         elif store <> 118 then result <- redispatch store
                         elif word () <> k then result <- this.NextToken()
                         else
-                            let baseOpcode = if op = 5 then 339 else 340
-                            let opcode = if l >= 1 && l <= 8 then baseOpcode - 2 else baseOpcode
+                            let baseOpcode = if op = 5 || op = 1005 then 339 else 340
+                            // Preserve the checked increment's observable store-before-
+                            // overflow behavior, even inside a native region. Explicit
+                            // checked tokens must never become unchecked quick increments.
+                            let opcode =
+                                if op>=1000 then baseOpcode+1000
+                                elif l >= 1 && l <= 8 then baseOpcode - 2 else baseOpcode
                             ic <- ic - 14
                             for value in [ opcode; k; l; 2; 2; 2; 2 ] do
                                 setWord ir ic value
@@ -816,6 +821,16 @@ type private Generator(sourceLibrary: byte[], options: TurboCodegenOptions, sour
     member private this.Instruction(token: int) =
         // int_ins
         if token = 2 || token = 34 then ()
+        elif not pMode && (token=1339 || token=1340) then
+            // The library's P increments read operands through A5, so cannot
+            // simply be copied into native code. Commit the word before the
+            // overflow check, exactly as the original P improver does.
+            let vector,amount=word ir ic,word ir (ic+2)
+            let operation=if token=1339 then 0x0652 else 0x0452
+            let bytes=Array.concat [wordBytes 0x246E;wordBytes(vectTabAd+4*vector);wordBytes operation;wordBytes amount;wordBytes 0x6804;wordBytes 0x4EEE;wordBytes 0x8AD8]
+            if pass<>0 then write bytes
+            objCode<-objCode+bytes.Length
+            ic<-ic+4
         else
             let mutable opcode = if token >= 1000 then token - 1000 else token
             if opcode = opLabel then
@@ -825,8 +840,9 @@ type private Generator(sourceLibrary: byte[], options: TurboCodegenOptions, sour
                 if pass = 0 then this.Define(label, true)
             else
                 if (opcode = opQincInt || opcode = opQdecInt) && pMode then opcode <- opcode + 2
+                let explicitChecked = token=1001 || token=1005 || token=1006 || token=1007
                 let record =
-                    match this.Search opcode with
+                    match this.Search(if explicitChecked then token else opcode) with
                     | Some record -> record
                     | None ->
                         if not pMode then fail $"Template {opcode} not found."
