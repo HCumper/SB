@@ -2,21 +2,26 @@
 
 Audited native regions now include integer and six-byte QL floating-point array
 loads and stores. Each access reloads the current vector and calls a shared
-native helper. There is no threaded dispatch inside the helper, and bounds
-checks are always retained. Enable this with `--native-regions` (the CLI default);
+native helper. There is no threaded dispatch inside the helper. Bounds checks
+are retained unless certified HIR range/shape facts prove every index safe.
+Enable this with `--native-regions` (the CLI default);
 `--no-native-regions` retains the previous threaded body. The helpers work with
 both `--regalloc` and `--no-regalloc`.
 
 ## Representation and size
 
 The selected IR uses explicit IDs 1111/1112 for integer load/store and 1143/1144
-for float load/store, each taking one vector operand. These are SB extensions
+for float load/store, each taking one vector operand. Range-proven accesses use
+1611/1612 and 1643/1644, with the same vector operand and native-only semantics.
+These are SB extensions
 in native mode; SB's generator is required. The original 111/112/143/144 native
 templates and ordinary threaded streams keep their existing implementation.
 
 Code generation emits one indexing routine and only the operation wrappers used
-by that executable. All four wrappers plus indexing total 128 bytes; integer
-load/store together need 82 bytes. Every call site is eight bytes:
+by that executable. All four checked wrappers plus indexing total 128 bytes;
+integer load/store together need 82 bytes. A proven-only pool needs 106 bytes
+for all four operations; a pool containing every checked and proven variant
+needs 234 bytes. Every call site is eight bytes:
 
 ```asm
 MOVEA.L vector(A6),A2
@@ -32,7 +37,9 @@ The runtime binary `lib537.bin` is unchanged.
 
 The descriptor supplies the current data pointer, rank-minus-one and reversed
 dimension lengths. Subscripting consumes the last source subscript first and
-checks negative values before checking the upper bound, matching lib537. The
+checks negative values before checking the upper bound, matching lib537. Proven
+helpers omit these tests after the analysis certifies rank, reaching dimensions
+and nonnegative in-range indexes at every occurrence. The
 first subscript initializes the linear offset directly, removing the multiply
 by one and corresponding addition. Remaining dimensions retain lib537's unsigned
 word-stride multiplications and long offset accumulation. Integer offsets are
@@ -65,7 +72,10 @@ accesses use the original checked inline N templates.
 
 DIM, allocation, string arrays and slicing, routine calls and control transfers
 retain their existing paths. Every label remains in its original mode. This
-work adds numeric access helpers and does not eliminate array bounds checks.
+work retains checked helpers for accesses without complete proofs. See
+[HIR analysis](HIR-ANALYSIS.md) for widening, narrowing, descriptor invalidation
+and uncertain-control restrictions. Stack/prefix fallback may reintroduce the
+original inline checks even for a proven access, preserving correctness.
 
 Tests execute emitted helpers directly on the 68000 CPU with synthetic
 descriptors, then exercise real CLI executables against threaded output. They

@@ -497,6 +497,19 @@ let ``a full vector table uses checked inline arrays instead of overflowing the 
     Assert.That(actual.Code, Is.EqualTo(box baseline.Code))
     Assert.That(actual.Dataspace, Is.EqualTo(baseline.Dataspace))
 
+[<TestCase(9992)>]
+[<TestCase(9998)>]
+let ``range-proven arrays can fall back to checked inline code at the stack limit`` (stack:int) =
+    let checkedIr=numericArrayIr 1 true
+    let provenIr=decode checkedIr |> Result.defaultWith failwith |> List.map(function
+        | Instruction((1111|1112 as op),args,comment) -> Instruction(op+500,args,comment)
+        | item -> item) |> serialize
+    let options={portOptions with StackSize=Some stack}
+    let generate ir=generateFromIr options ir |> Result.defaultWith(String.concat "; " >> failwith)
+    let expected,actual=generate checkedIr,generate provenIr
+    Assert.That(actual.Code, Is.EqualTo(box expected.Code))
+    Assert.That(actual.Dataspace, Is.EqualTo(expected.Dataspace))
+
 [<TestCaseSource(nameof programNames)>]
 let ``legacy mixed mode encoding retains the reference machine code layout`` (name: string) =
     let bytes = irOf (programs |> List.find (fun (n, _) -> n = name) |> snd)

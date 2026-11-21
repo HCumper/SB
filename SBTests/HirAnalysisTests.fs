@@ -27,6 +27,148 @@ let private routine symbol name parameters body = {Symbol=symbol;Name=name;Param
 let private parameter owner symbol name = {Storage=storage symbol name (RoutineParameterStorage owner);Binding=FlexibleBinding}
 
 [<Test>]
+let ``widening thresholds retain a bounded loop invariant that classical widening loses`` () =
+    let plus=binary Add (read x) (number 1)
+    let p=program [assign x (number 0);Repeat(LoopId 1,AnonymousLoop,
+                    [assign y plus;If(binary LessThan (read x) (number 8191),[assign x plus],Some[assign x (number 0)],pos)],pos)]
+    let classical=HirAnalysis.analyzeWithOptions {UseWideningThresholds=false;NarrowingPasses=0} HirTurboIrBackend.defaultOptions p
+    unproven plus classical
+    let refined=analyze p
+    proven plus refined
+    Assert.That(ranges MainScope plus refined |> List.forall(Option.exists(fun r -> r.Lower>=1L && r.Upper<=8192L)), Is.True)
+    Assert.That((main refined).WideningThresholds, Does.Contain(8191L))
+    Assert.That((main refined).Certified, Is.True)
+
+[<Test>]
+let ``narrowing recovers an invariant whose bound is computed before the loop`` () =
+    let plus=binary Add (read x) (number 1)
+    let p=program [assign z (number 16);assign z (binary Multiply (read z) (read z));assign x (number 0)
+                   Repeat(LoopId 1,AnonymousLoop,[assign y plus;If(binary LessThan (read x) (read z),[assign x plus],Some[assign x (number 0)],pos)],pos)]
+    let widened=HirAnalysis.analyzeWithOptions {HirAnalysis.defaultOptions with NarrowingPasses=0} HirTurboIrBackend.defaultOptions p
+    unproven plus widened
+    let refined=analyze p
+    proven plus refined
+    Assert.That(ranges MainScope plus refined |> List.forall(Option.exists(fun r -> r.Lower>=1L && r.Upper<=257L)), Is.True)
+    Assert.That((main refined).NarrowingPasses, Is.GreaterThan(0))
+    Assert.That((main refined).Certified, Is.True)
+
+[<Test>]
+let ``FOR captures both variable endpoint and step before either is changed`` () =
+    let expr=binary Multiply (read i) (number 3)
+    let p=program [assign x (number 10);assign z (number 2)
+                   For(LoopId 1,i,number 1,read x,read z,[assign x (number -100);assign z (number 32767);assign y expr],pos)]
+    let facts=analyze p
+    proven expr facts
+    assertRange 3L 30L expr facts
+
+[<Test>]
+let ``jumping into a FOR body cannot invent captured metadata`` () =
+    let plus=binary Add (read i) (number 1)
+    let facts=program [Goto(number 30,pos);For(LoopId 1,i,number 0,number 100,number 1,[LineNumber(30,pos);assign x plus],pos)] |> analyze
+    unproven plus facts
+    Assert.That(facts.ArithmeticProofsEnabled, Is.False)
+
+[<Test>]
+let ``jumps between FOR bodies cannot reuse another initializer's hidden NEXT address`` () =
+    let plus=binary Add (read i) (number 1)
+    let facts=program [For(LoopId 1,i,number 0,number 5,number 1,[Goto(number 200,pos)],pos)
+                       For(LoopId 2,i,number 0,number 10,number 1,[LineNumber(200,pos);assign x plus],pos)] |> analyze
+    Assert.That(facts.ArithmeticProofsEnabled, Is.False)
+    unproven plus facts
+
+[<Test>]
+let ``a later initializer can overwrite hidden NEXT even when the earlier initializer dominates`` () =
+    let plus=binary Add (read i) (number 1)
+    let facts=program [For(LoopId 1,i,number 0,number 2,number 1,[LineNumber(10,pos);assign x plus],pos)
+                       For(LoopId 2,i,number 0,number 10,number 1,[Goto(number 10,pos)],pos)] |> analyze
+    Assert.That((main facts).ForMetadataTrusted, Is.False)
+    Assert.That(facts.ArithmeticProofsEnabled, Is.False)
+    unproven plus facts
+
+[<Test>]
+let ``counter word assignments preserve captured END and STEP ownership`` () =
+    let plus=binary Add (read i) (number 1)
+    let facts=program [For(LoopId 1,i,number 0,number 10,number 1,[If(read flag,[assign i (number 5)],None,pos);assign x plus],pos)] |> analyze
+    Assert.That((main facts).ForMetadataTrusted, Is.True)
+    proven plus facts
+
+let private arraySymbol=SymbolId 20
+let private arrayProgram body =
+    let p=program body
+    let declared=storage arraySymbol "A%" GlobalStorage
+    {p with Globals=p.Globals@[{declared with Type=Array HirType.Int;Dimensions=Some[10]}]}
+let private arrayRead indexes=ReadArrayElem(arraySymbol,indexes,HirType.Int,pos)
+let private arraySafe indexes facts=Assert.That(facts.SafeArrayAccesses.Contains("A%",indexes), Is.True)
+let private arrayChecked indexes facts=Assert.That(facts.SafeArrayAccesses.Contains("A%",indexes), Is.False)
+
+[<Test>]
+let ``dominating DIM and a bounded loop prove numeric reads and writes`` () =
+    let indexes=[read i]
+    let p=arrayProgram [Dim(arraySymbol,[number 10],pos);For(LoopId 1,i,number 0,number 10,number 1,
+                        [Assign(WriteArrayElem(arraySymbol,indexes,HirType.Int,pos),number 7,pos);assign x (arrayRead indexes)],pos)]
+    arraySafe indexes (analyze p)
+
+[<Test>]
+let ``an access shared with an unbounded occurrence retains all checks`` () =
+    let indexes=[read i]
+    arrayProgram [Dim(arraySymbol,[number 10],pos);For(LoopId 1,i,number 0,number 10,number 1,[assign x (arrayRead indexes)],pos);assign y (arrayRead indexes)]
+    |> analyze |> arrayChecked indexes
+
+[<Test>]
+let ``INPUT and READ targets cannot inherit another occurrence's array proof`` () =
+    let indexes=[read i]
+    let target=WriteArrayElem(arraySymbol,indexes,HirType.Int,pos)
+    arrayProgram [Dim(arraySymbol,[number 10],pos);assign i (number 0);Assign(target,number 1,pos)
+                  Input(None,[],[WriteVar(i,HirType.Int,pos);target],pos);Read([target],pos)]
+    |> analyze |> arrayChecked indexes
+
+[<Test>]
+let ``a jump past DIM cannot use storage declarations as reaching shape facts`` () =
+    arrayProgram [Goto(number 30,pos);Dim(arraySymbol,[number 10],pos);LineNumber(30,pos);assign x (arrayRead [number 0])]
+    |> analyze |> arrayChecked [number 0]
+
+[<Test>]
+let ``resizing on one branch joins the guaranteed minimum shape`` () =
+    let p=arrayProgram [Dim(arraySymbol,[number 10],pos);If(read flag,[Dim(arraySymbol,[number 2],pos)],None,pos)
+                        assign x (arrayRead [number 2]);assign y (arrayRead [number 3])]
+    let facts=analyze p
+    arraySafe [number 2] facts
+    arrayChecked [number 3] facts
+
+[<Test>]
+let ``unknown writes discard array shape facts`` () =
+    arrayProgram [Dim(arraySymbol,[number 10],pos);BuiltInCall(NamedBuiltIn "POKE",None,[number 1;number 0],pos);assign x (arrayRead [number 0])]
+    |> analyze |> arrayChecked [number 0]
+
+[<Test>]
+let ``an effectful sibling cannot borrow pre-call array bounds or index ranges`` () =
+    let proc=SymbolId 100
+    let resize=routine proc "RESIZE%" [] [Dim(arraySymbol,[number 0],pos)]
+    let call=CallFunc(proc,[],HirType.Int,pos)
+    let p=arrayProgram [Dim(arraySymbol,[number 10],pos);assign x (binary Add (arrayRead [number 5]) call)]
+    {p with Routines=[{resize with ReturnType=Some HirType.Int}]} |> analyze |> arrayChecked [number 5]
+
+[<Test>]
+let ``a terminal STOP inside a loop is not an arbitrary metadata mutation`` () =
+    let expr=binary Add (read i) (number 1)
+    let p=program [For(LoopId 1,i,number 0,number 10,number 1,[If(read flag,[BuiltInCall(NamedBuiltIn "STOP",None,[],pos)],None,pos);assign x expr],pos)]
+    let facts=analyze p
+    Assert.That((main facts).Graph.HasUncertainControl, Is.False)
+    proven expr facts
+
+[<Test>]
+let ``safe array facts reach explicit native IR while unproven indexes retain checks`` () =
+    let indexes=[read i]
+    let p=arrayProgram [Dim(arraySymbol,[number 10],pos);For(LoopId 1,i,number 0,number 10,number 1,
+                        [Assign(WriteArrayElem(arraySymbol,indexes,HirType.Int,pos),number 7,pos)
+                         assign x (arrayRead [binary Add (read i) (number 1)])],pos)]
+    let facts=analyze p
+    let options={HirTurboIrBackend.defaultOptions with SafeIntegerExpressions=facts.SafeIntegerExpressions;SafeArrayAccesses=facts.SafeArrayAccesses}
+    let selected=HirTurboIrBackend.generateTurboIrFromHir options p |> Result.bind(TurboNativeRegions.select true) |> Result.defaultWith(String.concat "; " >> failwith)
+    Assert.That(selected.Items |> List.exists(function HirTurboIrBackend.Instruction(1612,_,_) -> true | _ -> false), Is.True)
+    Assert.That(selected.Items |> List.exists(function HirTurboIrBackend.Instruction(1111,_,_) -> true | _ -> false), Is.True)
+
+[<Test>]
 let ``a diamond joins both reaching assignments`` () =
     let expr=binary Add (read x) (number 1)
     let a=program [If(read flag,[assign x (number 10)],Some[assign x (number 20)],pos);assign y expr] |> analyze
@@ -124,7 +266,8 @@ let ``irreducible numbered loops converge without assuming a structured header``
 let ``runtime loop bounds are not reread after the body changes them`` () =
     let expr=binary Multiply (read i) (number 3)
     let a=program [assign x (number 10);For(LoopId 1,i,number 1,read x,number 1,[assign x (number 1);assign y expr],pos)] |> analyze
-    unproven expr a
+    proven expr a
+    assertRange 3L 30L expr a
 
 [<Test>]
 let ``a callee that replaces a FOR vector invalidates its hidden continuation`` () =

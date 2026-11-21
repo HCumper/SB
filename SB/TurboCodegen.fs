@@ -477,7 +477,7 @@ type private Generator(sourceLibrary: byte[], options: TurboCodegenOptions, sour
     /// g_t3/g_t4/g_t2: a word read as a token.
     member private this.Dispatchable(token: int) : (int * int) option =
         if token >= lowName then this.NextToken()
-        else this.Lookup(if token >= 1000 then token - 1000 else token)
+        else this.Lookup(if TurboNativeArrays.isUnchecked token then TurboNativeArrays.baseOpcode token elif token >= 1000 then token - 1000 else token)
 
     /// g_t2 onwards: a token below 1000.
     member private this.Lookup(token: int) : (int * int) option =
@@ -654,7 +654,7 @@ type private Generator(sourceLibrary: byte[], options: TurboCodegenOptions, sour
                         result <- this.NextToken()
                     elif value < lowName then
                         scanning <- false
-                        result <- this.Lookup(if value >= 1000 then value - 1000 else value)
+                        result <- this.Dispatchable value
                 result
         | 106 ->
             // coerc: an integer constant converted under a float operand becomes a float constant.
@@ -873,7 +873,8 @@ type private Generator(sourceLibrary: byte[], options: TurboCodegenOptions, sour
             objCode<-objCode+bytes.Length
             ic<-ic+4
         else
-            let mutable opcode = if token >= 1000 then token - 1000 else token
+            let mutable opcode = if TurboNativeArrays.isUnchecked token then TurboNativeArrays.baseOpcode token elif token >= 1000 then token - 1000 else token
+            if pMode && TurboNativeArrays.isUnchecked token then fail "Range-proven arrays require native mode."
             if opcode = opLabel then
                 let label = word ir ic
                 ic <- ic + 2

@@ -240,6 +240,8 @@ let rec statement context scope stmt =
     | ProcCall(s,ch,args,_) -> combine (channelExpressions ch |> List.map (expression context scope) |> combineAll) (call context scope s args)
     | BuiltInCall(Reference,_,_,_) | Remark _ | LineNumber _ -> evaluated
     | BuiltInCall(Print,_,_,_) -> combine evaluated {empty with InputOutput=true;MayThrow=true;Allocates=true}
+    | BuiltInCall(NamedBuiltIn name,_,_,_) when name.Equals("STOP",StringComparison.OrdinalIgnoreCase) || name.Equals("QUIT",StringComparison.OrdinalIgnoreCase) ->
+        combine evaluated {empty with MayThrow=true;ControlBarrier=true}
     | BuiltInCall _ -> combine evaluated unknown // Resident extensions can mutate arbitrary storage.
     | Input(_,_,targets,_) -> combineAll [evaluated; targets |> List.map (targetWrite context scope) |> combineAll; {empty with InputOutput=true;MayThrow=true}]
     | Read(targets,_) -> combineAll [evaluated; targets |> List.map (targetWrite context scope) |> combineAll; {empty with MayThrow=true;ControlBarrier=true}]

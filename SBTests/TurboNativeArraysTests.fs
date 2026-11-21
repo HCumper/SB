@@ -5,8 +5,8 @@ open HirTurboIrBackend
 open TurboNativeArrays
 open SBTests.M68kEmulator
 
-let private execute (op:int) (dimensions:int list) (indexes:int list) (value:int list) (fails:bool) =
-    let pool=build 0x9000 (Set.singleton op)
+let private executeIn operations (op:int) (dimensions:int list) (indexes:int list) (value:int list) (fails:bool) =
+    let pool=build 0x9000 operations
     let callSite=call -256 1 pool.Addresses[op]
     let memory=Array.zeroCreate<byte> 0x80000
     let cpu=Cpu(memory)
@@ -19,7 +19,7 @@ let private execute (op:int) (dimensions:int list) (indexes:int list) (value:int
     cpu.WriteLong(0x6004u,0x20000u)
     cpu.WriteWord(0x6008u,uint32(dimensions.Length-1))
     for i,bound in List.rev dimensions |> List.indexed do cpu.WriteWord(0x600Au+uint32(i*2),uint32 bound)
-    let elementBytes=if op=1111 || op=1112 then 2 else 6
+    let elementBytes=if baseOpcode op=111 || baseOpcode op=112 then 2 else 6
     let flat=List.zip dimensions indexes |> List.fold(fun offset (bound,index) -> offset*bound+index) 0
     let target=0x10000u+uint32(max 0 flat*elementBytes)
     let payload=if elementBytes=2 then [0xCDEF] else [0x0801;0xFEDC;0xBA98]
@@ -42,12 +42,18 @@ let private execute (op:int) (dimensions:int list) (indexes:int list) (value:int
     if fails then Assert.That(memory[0x10000..0x10100], Is.EqualTo(box before),"A failed store modified the array.")
     cpu,target,payload
 
+let private execute op dimensions indexes value fails = executeIn (Set.singleton op) op dimensions indexes value fails
+
 [<TestCase(1111)>]
 [<TestCase(1112)>]
 [<TestCase(1143)>]
 [<TestCase(1144)>]
+[<TestCase(1611)>]
+[<TestCase(1612)>]
+[<TestCase(1643)>]
+[<TestCase(1644)>]
 let ``numeric helpers use row-major addresses and exact element bits`` (op:int) =
-    let value=if op=1112 then [0xABCD] elif op=1144 then [0x0802;0x1234;0x5678] else []
+    let value=if baseOpcode op=112 then [0xABCD] elif baseOpcode op=144 then [0x0802;0x1234;0x5678] else []
     let cpu,target,payload=execute op [3;4;5] [2;1;3] value false
     let expected=if value.IsEmpty then payload else value
     let actual=if value.IsEmpty then cpu.A[1] else target
@@ -62,8 +68,14 @@ let ``numeric helpers use row-major addresses and exact element bits`` (op:int) 
 [<TestCase(1143,0)>]
 [<TestCase(1143,32767)>]
 [<TestCase(1144,32767)>]
+[<TestCase(1611,0)>]
+[<TestCase(1611,32767)>]
+[<TestCase(1612,32767)>]
+[<TestCase(1643,0)>]
+[<TestCase(1643,32767)>]
+[<TestCase(1644,32767)>]
 let ``one-dimensional bounds of 32768 and long byte offsets remain valid`` (op:int,index:int) =
-    let value=if op=1112 then [42] elif op=1144 then [0x0800;0x4000;0] else []
+    let value=if baseOpcode op=112 then [42] elif baseOpcode op=144 then [0x0800;0x4000;0] else []
     let cpu,target,payload=execute op [32768] [index] value false
     let expected=if value.IsEmpty then payload else value
     let actual=if value.IsEmpty then cpu.A[1] else target
@@ -89,6 +101,26 @@ let ``helpers are emitted once and every call site is eight bytes`` () =
     Assert.That(pool.Addresses.Count, Is.EqualTo(4))
     Assert.That(pool.Code.Length, Is.LessThan(150))
     for op in [1111;1112;1143;1144] do Assert.That((call -256 7 pool.Addresses[op]).Length, Is.EqualTo(8))
+
+[<Test>]
+let ``proven helper skips checks without changing multidimensional addresses or stack effects`` () =
+    let checkedCpu,_,_=execute 1111 [3;4;5] [2;1;3] [] false
+    let provenCpu,_,_=execute 1611 [3;4;5] [2;1;3] [] false
+    Assert.That(provenCpu.A[1], Is.EqualTo(checkedCpu.A[1]))
+    Assert.That(provenCpu.ReadWord provenCpu.A[1], Is.EqualTo(checkedCpu.ReadWord checkedCpu.A[1]))
+    Assert.That(provenCpu.Steps, Is.LessThan(checkedCpu.Steps))
+    Assert.That((build 0x9000 (Set.singleton 1611)).Code.Length, Is.LessThan((build 0x9000 (Set.singleton 1111)).Code.Length))
+
+[<TestCase(1111)>]
+[<TestCase(1611)>]
+[<TestCase(1144)>]
+[<TestCase(1644)>]
+let ``mixed checked and proven helper pools call the correct indexer`` (opcode:int) =
+    let value=if baseOpcode opcode=144 then [0x0801;0x4000;0] else []
+    let cpu,target,payload=executeIn (set[1111;1112;1143;1144;1611;1612;1643;1644]) opcode [2;3] [1;2] value false
+    let expected=if value.IsEmpty then payload else value
+    let location=if value.IsEmpty then cpu.A[1] else target
+    for i,word in expected |> List.indexed do Assert.That(cpu.ReadWord(location+uint32(i*2)), Is.EqualTo(uint32 word))
 
 [<Test>]
 let ``only explicit native checked array operations request shared helpers`` () =

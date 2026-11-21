@@ -42,6 +42,57 @@ let private withCompiledProgramMode enabled extraArguments extension (source: st
 
 let private withCompiledProgram extension source action = withCompiledProgramMode true [] extension source action
 
+let refinedLoopPrograms = [|
+    "10 end%=3:stride%=1:total%=0\n20 FOR i%=1 TO end% STEP stride%\n30 end%=-100:stride%=32767\n40 total%=total%+i%\n50 END FOR i%\n60 PRINT total%\n70 STOP", "6\n"
+    "10 DIM a%(100)\n20 m%=16:m%=m%*m%:x%=0\n30 FOR i%=0 TO 100\n40 a%(i%)=x%\n50 IF x%<m% THEN x%=x%+1:ELSE x%=0\n60 END FOR i%\n70 PRINT a%(0);\":\";a%(100);\":\";x%\n80 STOP", "0:100:101\n"
+    "10 DIM a(2,3)\n20 FOR i%=0 TO 2\n30 FOR j%=0 TO 3\n40 a(i%,j%)=i%*10+j%+0.5\n50 END FOR j%\n60 END FOR i%\n70 IF a(0,0)=0.5 AND a(2,3)=23.5 THEN PRINT \"float bounds OK\":ELSE PRINT \"wrong\"\n80 STOP", "float bounds OK\n"
+    "10 DIM a%(63)\n20 FOR last%=63 TO 1 STEP -1\n30 FOR i%=0 TO last%-1\n40 a%(i%+1)=i%+1\n50 END FOR i%\n60 END FOR last%\n70 PRINT a%(1);\":\";a%(63)\n80 STOP", "1:63\n"
+|]
+
+let refinedLoopModes = [|
+    for index in 0..refinedLoopPrograms.Length-1 do
+        for hir in [false;true] do
+            for native,registers in [false,false;true,false;true,true] do
+                yield TestCaseData(index,hir,native,registers).SetName($"Refined loop {index} (HIR {hir}, native {native}, registers {registers})") |]
+
+[<TestCaseSource(nameof refinedLoopModes)>]
+let ``refined loops preserve captured values integer arithmetic and numeric arrays`` (index:int,hir:bool,native:bool,registers:bool) =
+    let source,expected=refinedLoopPrograms[index]
+    withCompiledProgramMode hir [(if native then "--native-regions" else "--no-native-regions");(if registers then "--regalloc" else "--no-regalloc")] ".bas" source (fun executable ->
+        let result=run 2000000L executable
+        Assert.That(result.Output, Is.EqualTo(expected))
+        Assert.That(result.ExitCode, Is.Zero))
+
+let refinedFailurePrograms = [|
+    "10 DIM a%(10)\n20 FOR i%=0 TO 10\n30 IF i%=5 THEN DIM a%(1)\n40 a%(i%)=i%\n50 END FOR i%\n60 PRINT \"wrong\"\n70 STOP"
+    "10 DIM a%(10)\n20 n%=11\n30 FOR i%=0 TO n%\n40 a%(i%)=i%\n50 END FOR i%\n60 PRINT \"wrong\"\n70 STOP"
+    "10 x%=0\n20 FOR i%=1 TO 1000\n30 x%=x%+100\n40 END FOR i%\n50 PRINT \"wrong\"\n60 STOP"
+    "10 DIM a%(10)\n20 result%=shrink%()+a%(5)\n30 PRINT \"wrong\"\n40 STOP\n100 DEFine FuNction shrink%\n110 DIM a%(1)\n120 RETurn 0\n130 END DEFine"
+|]
+let refinedFailures = [|
+    for index in 0..refinedFailurePrograms.Length-1 do
+        for hir in [false;true] do
+            for native,registers in [false,false;true,false;true,true] do
+                yield TestCaseData(index,hir,native,registers).SetName($"Refined loop failure {index} (HIR {hir}, native {native}, registers {registers})") |]
+
+[<TestCaseSource(nameof refinedFailures)>]
+let ``refinement retains failing arithmetic and bounds checks without an error handler`` (index:int,hir:bool,native:bool,registers:bool) =
+    withCompiledProgramMode hir [(if native then "--native-regions" else "--no-native-regions");(if registers then "--regalloc" else "--no-regalloc")] ".bas" refinedFailurePrograms[index] (fun executable ->
+        let error=Assert.Throws<M68kFault>(fun () -> run 2000000L executable |> ignore)
+        Assert.That(error.Message, Does.Contain("Runtime error message:")))
+
+[<TestCase(false)>]
+[<TestCase(true)>]
+let ``loop proofs remove emitted array checks and improve execution`` (hir:bool) =
+    let source="10 DIM a%(100)\n20 FOR i%=0 TO 100\n30 a%(i%)=i%*2\n40 END FOR i%\n50 PRINT a%(100)\n60 STOP"
+    let capture native = withCompiledProgramMode hir [(if native then "--native-regions" else "--no-native-regions");"--regalloc"] ".bas" source (fun executable -> executable.Length,run 2000000L executable)
+    let _,before=capture false
+    let size,after=capture true
+    Assert.That(after.Output, Is.EqualTo("200\n"))
+    Assert.That(after.Output, Is.EqualTo(before.Output))
+    Assert.That(after.Steps, Is.LessThan(before.Steps))
+    TestContext.WriteLine($"Proven array loop: {before.Steps}->{after.Steps} instructions; {size} bytes.")
+
 let compactArrayPrograms = [|
     "10 DIM a%(2,3)\n20 a%(0,0)=11:a%(2,3)=23:a%(1,2)=-7\n30 i%=2:j%=3\n40 a%(i%,j%)=a%(i%,j%)+1\n50 PRINT a%(0,0);\":\";a%(2,3);\":\";a%(1,2)\n60 STOP", "11:24:-7\n"
     "10 DIM a(2,3)\n20 a(0,0)=1.25:a(2,3)=-2.5\n30 i%=2:j%=3:v=a(i%,j%)\n40 a(i%,j%)=v+4\n50 IF a(0,0)=1.25 AND a(2,3)=1.5 THEN PRINT \"float OK\":ELSE PRINT \"wrong\"\n60 STOP", "float OK\n"
