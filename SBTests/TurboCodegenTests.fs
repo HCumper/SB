@@ -456,6 +456,45 @@ let ``maximum configured CPU stack falls back instead of overrunning its limit``
     Assert.That(after.Code, Is.EqualTo(box before.Code))
     Assert.That(after.Dataspace, Is.EqualTo(before.Dataspace))
 
+[<Test>]
+let ``native FOR loops reserve their full live frame and preserve the original initializer`` () =
+    let ir=irOf "10 total%=0\n20 FOR i%=1 TO 10\n30 total%=total%+i%\n40 END FOR i%\n50 PRINT total%;\":\";i%\n60 STOP"
+    let before=generateFromIr {portOptions with LocalRegisterAllocation=true} ir |> Result.defaultWith(String.concat "; " >> failwith)
+    let after=generateFromIr {portOptions with LocalRegisterAllocation=true;NativeIntegerForLoops=true} ir |> Result.defaultWith(String.concat "; " >> failwith)
+    let report=after.NativeLoops.Value
+    Assert.That(report.Loops.Length, Is.EqualTo(1))
+    let required=max after.NativeAllocation.Value.StackExtraBytes report.StackExtraBytes
+    Assert.That(after.Dataspace-portOptions.DataspaceKiB*1024, Is.EqualTo(required))
+    let oldRun=TurboExecutionHarness.run 2000000L (executableFile before)
+    let newRun=TurboExecutionHarness.run 2000000L (executableFile after)
+    Assert.That(newRun.Output, Is.EqualTo("55:10\n"))
+    Assert.That(newRun.Output, Is.EqualTo(oldRun.Output))
+    Assert.That(newRun.Steps, Is.LessThan(oldRun.Steps))
+
+[<TestCase(9998)>]
+[<TestCase(9990)>]
+let ``native FOR loops fall back exactly when their complete frame cannot fit`` (stack:int) =
+    let ir=irOf "10 FOR i%=1 TO 10\n20 a%=i%\n30 END FOR i%\n40 STOP"
+    let options={portOptions with StackSize=Some stack;LocalRegisterAllocation=true}
+    let before=generateFromIr options ir |> Result.defaultWith(String.concat "; " >> failwith)
+    let after=generateFromIr {options with NativeIntegerForLoops=true} ir |> Result.defaultWith(String.concat "; " >> failwith)
+    Assert.That(after.NativeLoops.Value.Loops, Is.Empty)
+    Assert.That(after.Code, Is.EqualTo(box before.Code))
+    Assert.That(after.Dataspace, Is.EqualTo(before.Dataspace))
+
+[<Test>]
+let ``native FOR layout remains correct when its entry is beyond 64 KiB`` () =
+    let ir=irOf "10 FOR i%=1 TO 10\n20 a%=i%\n30 END FOR i%\n40 PRINT a%\n50 STOP"
+    let items=decode ir |> Result.defaultWith failwith
+    let wide=items |> List.collect(function
+        | LabelDef(label,comment) when label=TurboIrLabels.body ->
+            LabelDef(label,comment)::(List.replicate 18000 [Instruction(106,[Word 0],"");Instruction(118,[Word 1],"")] |> List.concat)
+        | item -> [item]) |> serialize
+    let result=generateFromIr {portOptions with LocalRegisterAllocation=true;NativeIntegerForLoops=true} wide |> Result.defaultWith(String.concat "; " >> failwith)
+    Assert.That(result.NativeLoops.Value.Loops.Length, Is.EqualTo(1))
+    Assert.That(result.Code.Length, Is.GreaterThan(65536))
+    Assert.That((TurboExecutionHarness.run 3000000L (executableFile result)).Output, Is.EqualTo("10\n"))
+
 let private numericArrayIr copies compact =
     let ir=irOf "10 DIM a%(2)\n20 i%=1\n30 a%(i%)=7\n40 r%=a%(i%)\n50 STOP" |> nativeBodyOf
     let items=decode ir |> Result.defaultWith failwith

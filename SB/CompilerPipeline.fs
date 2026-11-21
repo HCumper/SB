@@ -739,12 +739,13 @@ let generateTurboExecutableFromLoweredHirWithRegisterAllocation optimization nat
     match generateTurboIrFromLoweredHirWithNativeRegions optimization nativeRegions state hirProgram with
     | Result.Error errors -> Result.Error errors
     | Result.Ok ir ->
-        let options = { TurboCodegen.defaultCodegenOptions with TaskName = taskName; LocalRegisterAllocation = nativeRegions && registerAllocation }
+        let options = { TurboCodegen.defaultCodegenOptions with TaskName = taskName; LocalRegisterAllocation = nativeRegions && registerAllocation; NativeIntegerForLoops = nativeRegions && registerAllocation }
         match TurboCodegen.generateFromIr options ir.Bytes with
         | Result.Ok executable ->
             match optimization.DumpPrefix with
             | Some prefix ->
-                let text=executable.NativeAllocation |> Option.map TurboNativeIr.format |> Option.defaultValue "Local register allocation disabled.\n"
+                let text=(executable.NativeAllocation |> Option.map TurboNativeIr.format |> Option.defaultValue "Local register allocation disabled.\n") +
+                         (executable.NativeLoops |> Option.map TurboNativeLoops.format |> Option.defaultValue "Native integer FOR loops disabled.\n")
                 File.WriteAllText(prefix + ".native-ir.txt",text)
             | None -> ()
             Result.Ok(ir, executable)

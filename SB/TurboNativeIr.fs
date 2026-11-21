@@ -52,7 +52,7 @@ type Report = { Blocks:CompiledBlock list; RejectedBlocks:int; StackExtraBytes:i
 
 let emptyReport = {Blocks=[];RejectedBlocks=0;StackExtraBytes=0}
 
-let private supported = function
+let supports = function
     | HirTurboIrBackend.Instruction((1|2|5|6|7|1001|1005|1006|1007|263|268),[],_) -> true
     | HirTurboIrBackend.Instruction((106|109|118),[Word _],_) -> true
     | HirTurboIrBackend.Instruction((337|338|339|340|1339|1340),[Word _;Word _],_) -> true
@@ -288,7 +288,7 @@ let private recoveryBytes frame stack store =
 
 /// Only word operations and signed A6-relative vector displacements are emitted.
 /// LEA reserves/releases the spill frame without changing the condition codes.
-let emit vectorTableOffset allocation =
+let emitWithContext vectorTableOffset (vectorRegisters:Map<int,int>) (recoverySuffix:byte[]) allocation =
     let bytes=ResizeArray<byte>()
     let word n = bytes.Add(byte(n >>> 8));bytes.Add(byte n)
     let displacement vector = word(vectorTableOffset+4*vector)
@@ -301,7 +301,10 @@ let emit vectorTableOffset allocation =
         match instruction with
         | Immediate(r,n) when n>= -128 && n<=127 -> word(0x7000 ||| (r <<< 9) ||| (n &&& 255))
         | Immediate(r,n) -> word(0x303C ||| (r <<< 9));word n
-        | Load(r,vector) -> word 0x246E;displacement vector;word(0x3012 ||| (r <<< 9))
+        | Load(r,vector) ->
+            match vectorRegisters.TryFind vector with
+            | Some source -> word(0x3000 ||| (r <<< 9) ||| source)
+            | None -> word 0x246E;displacement vector;word(0x3012 ||| (r <<< 9))
         | Store(vector,r) -> word 0x246E;displacement vector;word(0x3480 ||| r)
         | Pop r -> word(0x3019 ||| (r <<< 9))
         | Push r -> word(0x3300 ||| r)
@@ -311,7 +314,7 @@ let emit vectorTableOffset allocation =
         | Negative r -> word(0x4440 ||| r)
         | Arithmetic(op,dst,src) -> word((match op with AddWord -> 0xD040 | SubtractWord -> 0x9040 | MultiplyWord -> 0xC1C0) ||| (dst <<< 9) ||| src)
         | Check(product,stack,store) ->
-            let failureBytes=recoveryBytes frame stack store
+            let failureBytes=recoveryBytes frame stack store + recoverySuffix.Length
             if failureBytes+2>32767 then invalidArg "allocation" "Overflow recovery exceeds a 68000 word branch."
             match product with
             | None -> word 0x6800;word(failureBytes+2) // BVC.W success
@@ -329,9 +332,12 @@ let emit vectorTableOffset allocation =
             | None -> ()
             for location in stack do recover location
             if frame>0 then word 0x4FEF;word frame
+            bytes.AddRange recoverySuffix
             word 0x4EEE;word 0x8AD8 // JMP overflow(A6), never returns
     if frame>0 then word 0x4FEF;word frame
     bytes.ToArray()
+
+let emit vectorTableOffset allocation = emitWithContext vectorTableOffset Map.empty [||] allocation
 
 let private dataWords allocation =
     allocation.Instructions |> List.sumBy (function Load _ | Store _ -> 3 | Spill _ | Reload _ | Pop _ | Push _ -> 1 | _ -> 0)
@@ -368,7 +374,7 @@ let plan maxFrameBytes vectorTableOffset bytes : Result<Report,string> =
                 | None -> rejected<-rejected+1
                 pending.Clear()
         for item in items do
-            if native && supported item then
+            if native && supports item then
                 // Bound recovery branch distances even for enormous generated
                 // expressions. Materializing at this boundary preserves the
                 // stack protocol and leaves the next block independently safe.

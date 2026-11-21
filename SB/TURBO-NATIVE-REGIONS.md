@@ -66,6 +66,12 @@ register-aware native IR and allocate D0/D1 locally. This defaults on in the CLI
 [local register allocation](TURBO-REGISTER-ALLOCATION.md) for spill, alias and
 runtime-boundary guarantees.
 
+With register allocation enabled, a later machine-code plan also selects
+[simple native integer FOR loops](TURBO-NATIVE-LOOPS.md). It keeps the runtime
+initializer and threaded entry/exit labels, retains counter/END/STEP in registers,
+and replaces per-iteration bridges and NEXT dispatch with a native backedge.
+Unsupported bodies keep the straight-line region behavior described above.
+
 Existing programmatic `generateTurbo*WithOptions` helpers keep their threaded
 behavior for compatibility. Call `generateTurbo*WithNativeRegions` with the HIR
 options and an independent Boolean to select native runs. The low-level pass is

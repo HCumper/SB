@@ -29,6 +29,7 @@
         <Compile Include="TurboNativeRegions.fs" />
         <Compile Include="TurboNativeArrays.fs" />
         <Compile Include="TurboNativeIr.fs" />
+        <Compile Include="TurboNativeLoops.fs" />
         <Compile Include="TurboCodegen.fs" />
         <EmbeddedResource Include="TurboRuntime\lib537.bin" LogicalName="lib537.bin" />
         <Compile Include="SyntaxAst.fs" />

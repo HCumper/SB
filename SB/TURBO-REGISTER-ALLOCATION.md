@@ -30,6 +30,11 @@ too. Explicit checked operations carry a recovery snapshot of the maths stack.
 Allocation does not remove overflow checks. Range-proven operations retain their
 unchecked form; all other selected arithmetic uses checked forms.
 
+Eligible integer FOR bodies can also use [native loops](TURBO-NATIVE-LOOPS.md),
+keeping their counters, captured bounds and steps in D2-D4 across backedges.
+This loop-specific plan saves those registers and restores them on normal and
+overflow exits; ordinary leaf allocation still uses D0/D1.
+
 Calls, branches, array/string operations, floating operations and checked DIV/MOD
 remain allocation boundaries. Numeric arrays use
 [compact checked native helpers](TURBO-NATIVE-ARRAYS.md); all pending maths words
@@ -44,8 +49,9 @@ label addresses and mixed-mode jumps account for the generated instructions.
 D0/D1 and A2 are scratch. A1 retains its maths-stack role; A4, A5 and A6 retain
 their heap, threaded-PC and base roles. All other registers are preserved.
 Condition codes are scratch except between arithmetic and its overflow check.
-No reload or spill can be inserted there. No cross-block register
-allocation or floating-point allocation is performed.
+No reload or spill can be inserted there. General cross-block register
+allocation and floating-point allocation are not performed. Native integer FOR
+plans retain only their explicitly pinned counter/END/STEP registers.
 
 Stores commit immediately and invalidate all cached variable loads. Only the
 value just stored to that same vector can subsequently be reused. This preserves

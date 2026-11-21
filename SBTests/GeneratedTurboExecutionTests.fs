@@ -42,6 +42,32 @@ let private withCompiledProgramMode enabled extraArguments extension (source: st
 
 let private withCompiledProgram extension source action = withCompiledProgramMode true [] extension source action
 
+let nativeForPrograms = [|
+    "10 total%=0\n20 FOR i%=1 TO 10\n30 total%=total%+i%\n40 END FOR i%\n50 PRINT total%;\":\";i%\n60 STOP", "55:10\n"
+    "10 total%=0:limit%=-4:stride%=-3\n20 FOR i%=8 TO limit% STEP stride%\n30 limit%=100:stride%=32767:total%=total%+i%\n40 END FOR i%\n50 PRINT total%;\":\";i%\n60 STOP", "10:-4\n"
+    "10 n%=3:i%=9:total%=0\n20 FOR i%=5 TO n%\n30 total%=total%+i%\n40 END FOR i%\n50 PRINT total%;\":\";i%\n60 FOR i%=-5 TO -3 STEP -1\n70 total%=total%+i%\n80 END FOR i%\n90 PRINT total%;\":\";i%\n100 STOP", "0:5\n0:-5\n"
+    "10 i%=4:total%=0\n20 FOR i%=1 TO i%\n30 total%=total%+i%\n40 END FOR i%\n50 PRINT total%;\":\";i%\n60 STOP", "10:4\n"
+    "10 i%=3:total%=0\n20 FOR i%=1 TO 8 STEP i%\n30 total%=total%+i%\n40 END FOR i%\n50 PRINT total%;\":\";i%\n60 STOP", "12:7\n"
+    "10 total%=0:stride%=0\n20 FOR i%=3 TO 2 STEP stride%\n30 total%=total%+i%\n40 END FOR i%\n50 PRINT total%;\":\";i%\n60 STOP", "0:3\n"
+    "10 total%=0\n20 FOR outer%=1 TO 3\n30 FOR i%=1 TO 5 STEP 2\n40 total%=total%+i%\n50 END FOR i%\n60 END FOR outer%\n70 PRINT total%;\":\";outer%;\":\";i%\n80 STOP", "27:3:5\n"
+    "10 total%=0\n20 FOR i%=1 TO 10\n30 total%=total%+i%:IF i%=3 THEN EXIT i%\n40 END FOR i%\n50 PRINT total%;\":\";i%\n60 STOP", "6:3\n"
+    "10 total%=0\n20 FOR i%=1 TO 3\n30 i%=i%+1:total%=total%+i%\n40 END FOR i%\n50 PRINT total%;\":\";i%\n60 STOP", "6:4\n"
+    "10 a%=1:work a%,a%\n20 PRINT a%\n30 STOP\n100 DEFine PROCedure work(p%,q%)\n110 LOCal i%\n120 FOR i%=1 TO 3\n130 p%=p%+i%:q%=q%+1\n140 END FOR i%\n150 END DEFine", "10\n"
+|]
+let nativeForModes = [|
+    for index in 0..nativeForPrograms.Length-1 do
+        for hir in [false;true] do
+            for native,registers in [false,false;true,false;true,true] do
+                yield TestCaseData(index,hir,native,registers).SetName($"Native FOR {index} (HIR {hir}, native {native}, registers {registers})") |]
+
+[<TestCaseSource(nameof nativeForModes)>]
+let ``native FOR loops preserve captured values empty ranges counter stores and fallbacks`` (index:int,hir:bool,native:bool,registers:bool) =
+    let source,expected=nativeForPrograms[index]
+    withCompiledProgramMode hir [(if native then "--native-regions" else "--no-native-regions");(if registers then "--regalloc" else "--no-regalloc")] ".bas" source (fun executable ->
+        let result=run 2000000L executable
+        Assert.That(result.Output, Is.EqualTo(expected))
+        Assert.That(result.ExitCode, Is.Zero))
+
 let refinedLoopPrograms = [|
     "10 end%=3:stride%=1:total%=0\n20 FOR i%=1 TO end% STEP stride%\n30 end%=-100:stride%=32767\n40 total%=total%+i%\n50 END FOR i%\n60 PRINT total%\n70 STOP", "6\n"
     "10 DIM a%(100)\n20 m%=16:m%=m%*m%:x%=0\n30 FOR i%=0 TO 100\n40 a%(i%)=x%\n50 IF x%<m% THEN x%=x%+1:ELSE x%=0\n60 END FOR i%\n70 PRINT a%(0);\":\";a%(100);\":\";x%\n80 STOP", "0:100:101\n"
@@ -324,7 +350,8 @@ let ``compiled Turbo program produces its expected output`` (extension: string, 
 [<TestCase(false)>]
 [<TestCase(true)>]
 let ``local allocation improves native copy chains`` (hir:bool) =
-    let source="10 FOR i%=1 TO 100\n20 a%=i%:b%=a%:c%=b%:d%=c%\n30 END FOR i%\n40 PRINT d%\n50 STOP"
+    // REPeat isolates leaf allocation from the independent native FOR plan.
+    let source="10 i%=0\n20 REPeat copyloop\n30 i%=i%+1:a%=i%:b%=a%:c%=b%:d%=c%\n40 IF i%=100 THEN EXIT copyloop\n50 END REPeat copyloop\n60 PRINT d%\n70 STOP"
     let capture registers = withCompiledProgramMode hir ["--native-regions";(if registers then "--regalloc" else "--no-regalloc")] ".bas" source (fun executable -> executable.Length,run 2000000L executable)
     let beforeSize,before=capture false
     let afterSize,after=capture true

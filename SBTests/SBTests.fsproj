@@ -18,10 +18,11 @@
         <Compile Include="TurboNativeRegionsTests.fs" />
         <Compile Include="M68kEmulator.fs" />
         <Compile Include="TurboNativeIrTests.fs" />
+        <Compile Include="TurboNativeLoopsTests.fs" />
         <Compile Include="TurboNativeArraysTests.fs" />
         <Compile Include="TurboCodegenOracle.fs" />
-        <Compile Include="TurboCodegenTests.fs" />
         <Compile Include="TurboExecutionHarness.fs" />
+        <Compile Include="TurboCodegenTests.fs" />
         <Compile Include="GeneratedTurboExecutionTests.fs" />
         <Compile Include="UtilityTests.fs" />
         <Compile Include="AstVerificationTests.fs" />

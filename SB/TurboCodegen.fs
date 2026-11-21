@@ -42,6 +42,9 @@ type TurboCodegenOptions = {
     /// Allocate leaf native integer values in D0/D1 instead of expanding every
     /// maths-stack template. False preserves the original generator byte for byte.
     LocalRegisterAllocation: bool
+    /// Lower eligible integer FOR bodies and NEXT into a native loop. Requires
+    /// local allocation; false retains compatibility with the original generator.
+    NativeIntegerForLoops: bool
 }
 
 let defaultCodegenOptions = {
@@ -51,6 +54,7 @@ let defaultCodegenOptions = {
     ReferenceStrings = false
     SmallCode = false
     LocalRegisterAllocation = false
+    NativeIntegerForLoops = false
 }
 
 type TurboCodegenOutput = {
@@ -59,6 +63,7 @@ type TurboCodegenOutput = {
     /// Dataspace for the QDOS file header, in bytes.
     Dataspace: int
     NativeAllocation: TurboNativeIr.Report option
+    NativeLoops: TurboNativeLoops.Report option
 }
 
 /// The 30-byte "]!QDOS File Header" block that QDOS emulators on PC file systems use to keep a
@@ -139,6 +144,8 @@ type private Generator(sourceLibrary: byte[], options: TurboCodegenOptions, sour
     let symbols = Dictionary<int, int>()
     let records = Dictionary<int, int>()
     let nativeBlocks = Dictionary<int,TurboNativeIr.CompiledBlock>()
+    let nativeLoops = Dictionary<int,TurboNativeLoops.CompiledLoop>()
+    let mutable nativeLoopReport:TurboNativeLoops.Report option = None
     let mutable nativeArrayAddresses:Map<int,int> = Map.empty
     let mutable nativeArrayOperations:Set<int> = Set.empty
     let mutable nativeAllocation:TurboNativeIr.Report option = None
@@ -158,8 +165,9 @@ type private Generator(sourceLibrary: byte[], options: TurboCodegenOptions, sour
     let mutable savedD2 = 0
 
     let extraStackBytes () =
-        max (nativeAllocation |> Option.map _.StackExtraBytes |> Option.defaultValue 0)
-            (if nativeArrayOperations.IsEmpty then 0 else 8)
+        [ nativeAllocation |> Option.map _.StackExtraBytes |> Option.defaultValue 0
+          nativeLoopReport |> Option.map _.StackExtraBytes |> Option.defaultValue 0
+          if nativeArrayOperations.IsEmpty then 0 else 8 ] |> List.max
 
     let word (bytes: byte[]) (index: int) = (int bytes[index] <<< 8) ||| int bytes[index + 1]
     let signedWord (bytes: byte[]) (index: int) = int (int16 (uint16 (word bytes index)))
@@ -749,6 +757,16 @@ type private Generator(sourceLibrary: byte[], options: TurboCodegenOptions, sour
         let extra=extraStackBytes()
         setWord lib maxStackOffset (word lib maxStackOffset + extra)
 
+    member private this.PlanNativeLoops() =
+        if options.LocalRegisterAllocation && options.NativeIntegerForLoops then
+            let requested=defaultArg options.StackSize 0 &&& ~~~1
+            let stack=if requested>=minStack && requested<=maxStack then requested else (word lib maxStackOffset + 1) &&& ~~~1
+            match TurboNativeLoops.plan (maxStack-stack) vectTabAd ir with
+            | Error message -> fail $"Native FOR lowering: {message}"
+            | Ok report ->
+                nativeLoopReport<-Some report
+                for loop in report.Loops do nativeLoops.Add(loop.StartOffset,loop)
+
     member private this.PlanNativeRegisters() =
         if options.LocalRegisterAllocation then
             let requested=defaultArg options.StackSize 0 &&& ~~~1
@@ -760,6 +778,9 @@ type private Generator(sourceLibrary: byte[], options: TurboCodegenOptions, sour
             match TurboNativeIr.plan limit vectTabAd ir with
             | Error message -> fail $"Native register lowering: {message}"
             | Ok report ->
+                let blocks=report.Blocks |> List.filter(fun block ->
+                    nativeLoops.Values |> Seq.exists(fun loop -> block.Ir.StartOffset>=loop.StartOffset && block.Ir.StartOffset<loop.EndOffset) |> not)
+                let report={report with Blocks=blocks;StackExtraBytes=blocks |> List.map(fun block -> block.Allocation.SpillSlots*2) |> List.fold max 0}
                 nativeAllocation<-Some report
                 for block in report.Blocks do nativeBlocks.Add(block.Ir.StartOffset,block)
 
@@ -943,8 +964,17 @@ type private Generator(sourceLibrary: byte[], options: TurboCodegenOptions, sour
     member private this.Passes() =
         let mutable running = true
         while running do
-            match nativeBlocks.TryGetValue ic with
-            | true,block when not pMode ->
+            match nativeLoops.TryGetValue ic,nativeBlocks.TryGetValue ic with
+            | (true,loop),_ when pMode ->
+                // FOR's original TOPLOOP label still addresses a threaded FAST
+                // entry. Enter native mode once, take native backedges, and
+                // return to threaded code before the original possible-end label.
+                this.Instruction opFast
+                if pass<>0 then write loop.Code
+                objCode<-objCode+loop.Code.Length
+                ic<-loop.EndOffset
+                this.Instruction opSlow
+            | _,(true,block) when not pMode ->
                 if pass<>0 then write block.Code
                 objCode<-objCode+block.Code.Length
                 ic<-block.Ir.EndOffset
@@ -981,6 +1011,7 @@ type private Generator(sourceLibrary: byte[], options: TurboCodegenOptions, sour
             if options.DataspaceKiB < 0 || options.DataspaceKiB > int UInt16.MaxValue then
                 fail "Dataspace must be between 0 and 65535 KiB."
             this.Improve()
+            this.PlanNativeLoops()
             this.PlanNativeRegisters()
             this.PlanNativeArrays()
             pass <- 0
@@ -992,7 +1023,8 @@ type private Generator(sourceLibrary: byte[], options: TurboCodegenOptions, sour
             Result.Ok
                 { Code = output.ToArray()
                   Dataspace = options.DataspaceKiB * 1024 + extraStackBytes()
-                  NativeAllocation = nativeAllocation }
+                  NativeAllocation = nativeAllocation
+                  NativeLoops = nativeLoopReport }
         with
         | CodegenFailure message -> Result.Error [ $"Code generation failed, {message}" ]
         | :? IndexOutOfRangeException
