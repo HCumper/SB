@@ -102,6 +102,37 @@ let private arraySafe indexes facts=Assert.That(facts.SafeArrayAccesses.Contains
 let private arrayChecked indexes facts=Assert.That(facts.SafeArrayAccesses.Contains("A%",indexes), Is.False)
 
 [<Test>]
+let ``rank-one selection is independent of index range proof`` () =
+    let indexes=[read x]
+    let facts=arrayProgram [Dim(arraySymbol,[number 10],pos);assign y (arrayRead indexes)] |> analyze
+    arrayChecked indexes facts
+    Assert.That(facts.OneDimensionalIntegerAccesses.Contains("A%",indexes), Is.True)
+    let missing=arrayProgram [assign y (arrayRead indexes);Dim(arraySymbol,[number 10],pos)] |> analyze
+    Assert.That(missing.OneDimensionalIntegerAccesses, Is.Empty)
+
+[<Test>]
+let ``rank-one facts require all occurrences to have reaching shape and no sibling mutation`` () =
+    let indexes=[number 0]
+    let facts=arrayProgram [assign y (arrayRead indexes);Dim(arraySymbol,[number 10],pos);assign z (arrayRead indexes)] |> analyze
+    Assert.That(facts.OneDimensionalIntegerAccesses, Is.Empty)
+    let proc=SymbolId 100
+    let resize=routine proc "RESIZE%" [] [Dim(arraySymbol,[number 0;number 0],pos)]
+    let p=arrayProgram [Dim(arraySymbol,[number 10],pos);assign x (binary Add (arrayRead indexes) (CallFunc(proc,[],HirType.Int,pos)))]
+    let effects={p with Routines=[{resize with ReturnType=Some HirType.Int}]} |> analyze
+    Assert.That(effects.OneDimensionalIntegerAccesses, Is.Empty)
+
+[<Test>]
+let ``rank-one facts select distinct checked and proven native integer records`` () =
+    let safeIndexes=[number 0]
+    let checkedIndexes=[read x]
+    let p=arrayProgram [Dim(arraySymbol,[number 10],pos);assign y (arrayRead safeIndexes);assign z (arrayRead checkedIndexes)]
+    let facts=analyze p
+    let options={HirTurboIrBackend.defaultOptions with SafeArrayAccesses=facts.SafeArrayAccesses;OneDimensionalIntegerAccesses=facts.OneDimensionalIntegerAccesses}
+    let ir=HirTurboIrBackend.generateTurboIrFromHir options p |> Result.defaultWith(String.concat "; " >> failwith) |> TurboNativeRegions.select true |> Result.defaultWith(String.concat "; " >> failwith)
+    Assert.That(ir.Items |> List.exists(function HirTurboIrBackend.Instruction(1811,_,_) -> true | _ -> false), Is.True)
+    Assert.That(ir.Items |> List.exists(function HirTurboIrBackend.Instruction(1711,_,_) -> true | _ -> false), Is.True)
+
+[<Test>]
 let ``dominating DIM and a bounded loop prove numeric reads and writes`` () =
     let indexes=[read i]
     let p=arrayProgram [Dim(arraySymbol,[number 10],pos);For(LoopId 1,i,number 0,number 10,number 1,

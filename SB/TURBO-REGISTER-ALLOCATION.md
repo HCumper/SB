@@ -44,6 +44,16 @@ private frame crosses these boundaries.
 Both codegen passes use the same plan, byte lengths and original IR offsets, so
 label addresses and mixed-mode jumps account for the generated instructions.
 
+Certified one-dimensional integer arrays are the exception to the generic
+array boundary: explicit load/store IR operations retain index/value operands
+in registers and use A2 to reload each current descriptor and data pointer.
+Only the index register is overwritten; a shared index/value gets a separate
+copy, and live indexes use the ordinary spill slots. Stores invalidate scalar
+load caches to preserve element/scalar aliases. Checked accesses carry range
+failure snapshots; proven ones omit bounds checks. Both work inside eligible
+native FOR loops without borrowing D2-D4. See
+[one-dimensional arrays](TURBO-NATIVE-ARRAYS.md) for shape and recovery rules.
+
 ## Registers, memory and spills
 
 D0/D1 and A2 are scratch. A1 retains its maths-stack role; A4, A5 and A6 retain

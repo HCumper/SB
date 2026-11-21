@@ -40,7 +40,7 @@ store is deferred and no array address is cached.
 This first implementation requires independent global integer storage. Programs
 with routine/reference/local binding, error handlers or RETRY/CONTINUE, external
 calls, opaque code/memory mutation, or computed transfers retain their existing
-loops. Bodies containing branches, labels, calls, arrays, floating operations,
+loops. Bodies containing branches, labels, calls, generic arrays, floating operations,
 counter assignments or nested loops are rejected. An inner loop may
 still qualify when its enclosing loop does not. A body must have a balanced
 integer maths stack, and the original body label must have only its FOR reference.
@@ -58,6 +58,15 @@ overflow checks, including -32768 MOD -1. Both operand registers are scratch on
 success; live accumulators and reused operands use the ordinary spill slots.
 The pinned counter, END and STEP remain untouched. See
 [register allocation](TURBO-REGISTER-ALLOCATION.md) for recovery and clobber details.
+
+Certified one-dimensional global integer array loads/stores are also eligible.
+Their explicit native IR records retain checked or proven bounds semantics and
+use only D0/D1 and A2, preserving D2-D4 across each access. Scalar caches are
+invalidated after stores; current descriptors are reloaded and no pointer is
+hoisted. A bounds failure reconstructs the consumed-prefix maths state and
+releases the complete spill plus loop-save depth before the existing runtime
+range handler. Unknown-rank, multidimensional and floating accesses remain on
+their previous paths. The native loop dump includes its allocated operations.
 
 ## Registers, stack and errors
 

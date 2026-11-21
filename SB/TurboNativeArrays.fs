@@ -8,21 +8,27 @@ open HirTurboIrBackend
 
 type Pool = { Code:byte[]; Addresses:Map<int,int> }
 
-let isUnchecked = function 1611 | 1612 | 1643 | 1644 -> true | _ -> false
-let isCompact = function 1111 | 1112 | 1143 | 1144 | 1611 | 1612 | 1643 | 1644 -> true | _ -> false
-let baseOpcode op = if isUnchecked op then op-1500 else op%1000
+let isRankOneInteger = function 1711 | 1712 | 1811 | 1812 -> true | _ -> false
+let canonicalOpcode = function 1711 -> 1111 | 1712 -> 1112 | 1811 -> 1611 | 1812 -> 1612 | op -> op
+let isUnchecked op = match canonicalOpcode op with 1611 | 1612 | 1643 | 1644 -> true | _ -> false
+let isCompact op = match canonicalOpcode op with 1111 | 1112 | 1143 | 1144 | 1611 | 1612 | 1643 | 1644 -> true | _ -> false
+let baseOpcode op = let op=canonicalOpcode op in if isUnchecked op then op-1500 else op%1000
 
-let required bytes =
+let requiredExcluding excluded bytes =
     decode bytes |> Result.map(fun items ->
         let mutable native=true
         let mutable operations=Set.empty
+        let mutable offset=0
         for item in items do
             match item with
             | Instruction(254,_,_) -> native<-true
             | Instruction(255,_,_) -> native<-false
-            | Instruction(op,_,_) when native && isCompact op -> operations<-operations.Add op
+            | Instruction(op,_,_) when native && isCompact op && not(excluded |> List.exists(fun (first,last) -> offset>=first && offset<last)) -> operations<-operations.Add(canonicalOpcode op)
             | _ -> ()
+            offset<-offset+(serialize [item]).Length
         operations)
+
+let required bytes = requiredExcluding [] bytes
 
 let private bytes words = words |> Seq.collect(fun n -> [byte(n >>> 8);byte n]) |> Seq.toArray
 

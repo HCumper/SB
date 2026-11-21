@@ -8,6 +8,46 @@ Enable this with `--native-regions` (the CLI default);
 `--no-native-regions` retains the previous threaded body. The helpers work with
 both `--regalloc` and `--no-regalloc`.
 
+## Register-aware one-dimensional integers
+
+With `--regalloc`, certified one-dimensional integer accesses can be lowered
+into native IR and simple native FOR bodies. Checked records 1711/1712 and
+range-proven records 1811/1812 carry one vector operand. They require a reaching
+rank-one shape proof; they are not hints inferred solely from source arity.
+Unknown ranks and dimensions, floats, strings and multidimensional accesses
+retain the generic helper paths. Existing low-level/default IR generation is
+unchanged unless the new shape facts are explicitly supplied.
+
+The native IR keeps the index, stored value and fetched word in allocated
+registers, rather than materializing them at every access. D0/D1 and A2 are the
+only scratch registers; FOR's D2-D4 counter/END/STEP remain intact. The current
+descriptor and data pointer are reloaded on every operation. Scalar load caches
+are invalidated after element stores because a scalar reference can alias the
+same element; already evaluated virtual values remain immutable.
+
+Checked code rejects negative indexes before testing the current upper bound.
+The comparison retains lib537's word-length convention, including a dimension
+length of 32768. Byte offsets are calculated as long values so index 32767
+addresses byte offset 65534. Proven operations omit index checks only when the
+existing certified range/shape proof permits it. Both variants preserve exact
+word bits, evaluation order and immediate stores; no address is cached or hoisted.
+
+On range failure the index has been consumed, and a store's value has been
+consumed first. Pending maths words are reconstructed before the leaf frame and
+any enclosing native FOR save area are released. Execution then jumps to the
+unchanged range-error handler (ERNUM -4). RHS arithmetic errors still precede
+the store's bounds check. Low-level selected-operation tests exercise WHEN ERROR
+and repeated RETRY; uncertain high-level continuation contexts retain generic
+helpers through the conservative shape analysis.
+
+Without allocation, or when a spill/loop budget rejects a plan, the new records
+map to the existing checked/proven compact helpers. Stack/prefix fallback can
+reintroduce the original checked inline templates. Helpers are emitted only for
+accesses not consumed by a successful native IR/loop plan. Inlined accesses add
+no CPU return frames; any actual leaf spill area is still reserved in MAX_STACK
+and QDOS dataspace. Shared helper fetches are included in the allocator's legacy
+cost estimate, separately from actual executable byte counts.
+
 ## Representation and size
 
 The selected IR uses explicit IDs 1111/1112 for integer load/store and 1143/1144
@@ -54,7 +94,7 @@ code. The indexer releases both return addresses before jumping to the unchanged
 range-error handler at A6+$8AE0 (ERNUM -4). WHEN ERROR, RETRY, CONTINUE and routine
 binding unwinding continue through the runtime's normal paths.
 
-Numeric accesses are register-allocation boundaries. All pending words are
+Generic numeric accesses are register-allocation boundaries. All pending words are
 materialized and private spill frames released before the helper call; scalar
 load caches start afresh afterward. Neither element addresses nor descriptors
 are cached across accesses. Aliases, local array rebinding and global resizing

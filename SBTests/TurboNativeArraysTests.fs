@@ -127,3 +127,15 @@ let ``only explicit native checked array operations request shared helpers`` () 
     let op n args=Instruction(n,List.map Word args,"")
     let ir=serialize [op 999 [3];op 255 [];op 1111 [1];op 254 [];op 111 [1];op 1112 [1];LabelDef(2000,"");op 1143 [2];op 255 [];op 1144 [2];op 0 []]
     Assert.That(required ir |> Result.defaultWith failwith, Is.EqualTo(box(set[1112;1143])))
+
+[<Test>]
+let ``rank-one aliases share original helpers only outside allocated spans`` () =
+    let op n args=Instruction(n,List.map Word args,"")
+    let first=[op 999 [3];op 254 []]
+    let a=op 1711 [1]
+    let b=op 1812 [1]
+    let start=(serialize first).Length
+    let stop=start+(serialize [a]).Length
+    let ir=serialize(first@[a;b;op 0 []])
+    Assert.That(required ir |> Result.defaultWith failwith, Is.EqualTo(box(set[1111;1612])))
+    Assert.That(requiredExcluding [start,stop] ir |> Result.defaultWith failwith, Is.EqualTo(box(set[1612])))

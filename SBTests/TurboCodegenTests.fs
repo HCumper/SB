@@ -527,6 +527,49 @@ let ``DIVMOD register clobbers force a template fallback when no spill frame can
     Assert.That(after.Dataspace, Is.EqualTo(before.Dataspace))
     Assert.That((TurboExecutionHarness.run 2000000L (executableFile after)).Output, Is.EqualTo("0:5\n"))
 
+// These low-level tests explicitly certify rank one for their known DIMs,
+// including handler cases where the general HIR proof deliberately falls back.
+let private rankOneIr proven source =
+    let raw=irOf source
+    let items=decode raw |> Result.defaultWith failwith
+    let selected=TurboNativeRegions.select true {Items=items;Bytes=raw;Listing=formatListing items;Warnings=[]} |> Result.defaultWith(String.concat "; " >> failwith)
+    let items=selected.Items |> List.map(function
+        | Instruction(1111,args,comment) -> Instruction((if proven then 1811 else 1711),args,comment)
+        | Instruction(1112,args,comment) -> Instruction((if proven then 1812 else 1712),args,comment)
+        | item -> item)
+    serialize items
+
+[<TestCase(false)>]
+[<TestCase(true)>]
+let ``rank-one records retain original compact bytes when allocation is disabled`` (proven:bool) =
+    let specialized=rankOneIr proven "10 DIM a%(2)\n20 i%=1:a%(i%)=7\n30 result%=a%(i%)\n40 PRINT result%\n50 STOP"
+    let original=decode specialized |> Result.defaultWith failwith |> List.map(function
+        | Instruction(op,args,comment) when TurboNativeArrays.isRankOneInteger op -> Instruction(TurboNativeArrays.canonicalOpcode op,args,comment)
+        | item -> item) |> serialize
+    let before=generateFromIr portOptions original |> Result.defaultWith(String.concat "; " >> failwith)
+    let after=generateFromIr portOptions specialized |> Result.defaultWith(String.concat "; " >> failwith)
+    Assert.That(after.Code, Is.EqualTo(box before.Code))
+    Assert.That(after.Dataspace, Is.EqualTo(before.Dataspace))
+    Assert.That((TurboExecutionHarness.run 2000000L (executableFile after)).Output, Is.EqualTo("7\n"))
+
+[<TestCase(false)>]
+[<TestCase(true)>]
+let ``selected rank-one array bounds errors retain RETRY stores and leaf cleanup`` (store:bool) =
+    let access=if store then "a%(index%)=answer%+1" else "answer%=keep%+a%(index%)"
+    let source = $"10 WHEN ERROR\n20 count%%=count%%+1\n30 IF count%%<3 THEN RETRY\n40 PRINT ERNUM;\":\";count%%;\":\";answer%%;\":\";a%%(0);\":\";a%%(1)\n50 STOP\n60 END WHEN\n70 DIM a%%(1)\n80 a%%(0)=7:a%%(1)=8:index%%=2:answer%%=42:keep%%=9\n90 {access}\n100 PRINT \"wrong\""
+    let ir=rankOneIr false source
+    let result=generateFromIr {portOptions with LocalRegisterAllocation=true} ir |> Result.defaultWith(String.concat "; " >> failwith)
+    let selected=result.NativeAllocation.Value.Blocks |> List.collect(fun block -> block.Allocation.Instructions)
+    Assert.That(selected |> List.exists(function TurboNativeIr.LoadElement(_,true,_,_) | TurboNativeIr.StoreElement(_,true,_,_,_) -> true | _ -> false), Is.True)
+    Assert.That((TurboExecutionHarness.run 2000000L (executableFile result)).Output, Is.EqualTo("-4:3:42:7:8\n"))
+
+[<Test>]
+let ``rank-one array pressure falls back without exceeding configured stack headroom`` () =
+    let ir=rankOneIr false "10 DIM a%(2)\n20 i%=1:p%=7:q%=9:a%(1)=3\n30 r%=p%+(q%+a%(i%))\n40 PRINT r%\n50 STOP"
+    let result=generateFromIr {portOptions with LocalRegisterAllocation=true;StackSize=Some 9998} ir |> Result.defaultWith(String.concat "; " >> failwith)
+    Assert.That(result.NativeAllocation.Value.StackExtraBytes, Is.Zero)
+    Assert.That((TurboExecutionHarness.run 2000000L (executableFile result)).Output, Is.EqualTo("19\n"))
+
 let private numericArrayIr copies compact =
     let ir=irOf "10 DIM a%(2)\n20 i%=1\n30 a%(i%)=7\n40 r%=a%(i%)\n50 STOP" |> nativeBodyOf
     let items=decode ir |> Result.defaultWith failwith

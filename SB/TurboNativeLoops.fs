@@ -76,6 +76,7 @@ let plan maxExtraBytes vectorTableOffset source : Result<Report,string> =
             | Instruction(255,_,_) -> native<-false
             | _ -> ()
         let globals=items |> Array.choose(function Instruction((101|114),[Word v],_) -> Some v | _ -> None) |> Set.ofArray
+        let arrays=items |> Array.choose(function Instruction(126,[_;Word v],_) -> Some v | _ -> None) |> Set.ofArray
         let unsafeProgram = items |> Array.exists(function
             | Instruction((102|110|115|134|142|147|179|224|227|235|236|240|241|244|246|249|269|275|277|278|279|280|293|294|325|327|328|364|366|382|385),_,_) -> true
             | _ -> false)
@@ -116,10 +117,13 @@ let plan maxExtraBytes vectorTableOffset source : Result<Report,string> =
                         | Instruction((5|6|7|8|20|1005|1006|1007),_,_) -> if depth<2 then valid<-false else depth<-depth-1
                         | Instruction((1|1001),_,_) -> if depth<1 then valid<-false
                         | Instruction(118,_,_) -> if depth<1 then valid<-false else depth<-depth-1
+                        | Instruction((1711|1811),_,_) -> if depth<1 then valid<-false
+                        | Instruction((1712|1812),_,_) -> if depth<2 then valid<-false else depth<-depth-2
                         | _ -> ()
                         match normalized with
                         | Instruction((109|118|337|338|339|340|1339|1340 as op),Word v::_,_) ->
                             if not(globals.Contains v) || (op<>109 && v=counter) then valid<-false
+                        | Instruction((1711|1712|1811|1812),[Word v],_) -> if not(arrays.Contains v) then valid<-false
                         | _ -> ()
                         body.Add normalized
                         if body.Count>256 then valid<-false;reading<-false
@@ -145,4 +149,5 @@ let format report =
     lines.Add($"Native integer FOR loops: selected={report.Loops.Length}; rejected={report.RejectedLoops}; extra-stack={report.StackExtraBytes} bytes")
     for loop in report.Loops do
         lines.Add($"Loop IR bytes {loop.StartOffset}..{loop.EndOffset}: counter vector={loop.Counter} in D2; captured END=D3, STEP=D4; native bytes={loop.Code.Length}; spill slots={loop.Allocation.SpillSlots}")
+        for instruction in loop.Allocation.Instructions do lines.Add($"  allocated-loop: {instruction}")
     String.Join(Environment.NewLine,lines)+Environment.NewLine

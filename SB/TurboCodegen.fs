@@ -485,7 +485,7 @@ type private Generator(sourceLibrary: byte[], options: TurboCodegenOptions, sour
     /// g_t3/g_t4/g_t2: a word read as a token.
     member private this.Dispatchable(token: int) : (int * int) option =
         if token >= lowName then this.NextToken()
-        else this.Lookup(if TurboNativeArrays.isUnchecked token then TurboNativeArrays.baseOpcode token elif token >= 1000 then token - 1000 else token)
+        else this.Lookup(if TurboNativeArrays.isCompact token then TurboNativeArrays.baseOpcode token elif token >= 1000 then token - 1000 else token)
 
     /// g_t2 onwards: a token below 1000.
     member private this.Lookup(token: int) : (int * int) option =
@@ -791,7 +791,9 @@ type private Generator(sourceLibrary: byte[], options: TurboCodegenOptions, sour
         let requested=defaultArg options.StackSize 0 &&& ~~~1
         let stack=if requested>=minStack && requested<=maxStack then requested else (word lib maxStackOffset + 1) &&& ~~~1
         if maxStack-stack>=8 then
-            match TurboNativeArrays.required ir with
+            let excluded=[yield! nativeBlocks.Values |> Seq.map(fun block -> block.Ir.StartOffset,block.Ir.EndOffset)
+                          yield! nativeLoops.Values |> Seq.map(fun loop -> loop.StartOffset,loop.EndOffset)]
+            match TurboNativeArrays.requiredExcluding excluded ir with
             | Error _ -> ()
             | Ok operations when not operations.IsEmpty ->
                 let poolSize=(TurboNativeArrays.build 0 operations).Code.Length
@@ -877,8 +879,8 @@ type private Generator(sourceLibrary: byte[], options: TurboCodegenOptions, sour
     member private this.Instruction(token: int) =
         // int_ins
         if token = 2 || token = 34 then ()
-        elif not pMode && nativeArrayAddresses.ContainsKey token then
-            let address=nativeArrayAddresses[token]
+        elif not pMode && nativeArrayAddresses.ContainsKey(TurboNativeArrays.canonicalOpcode token) then
+            let address=nativeArrayAddresses[TurboNativeArrays.canonicalOpcode token]
             let bytes=TurboNativeArrays.call vectTabAd (word ir ic) address
             if pass<>0 then write bytes
             objCode<-objCode+bytes.Length
@@ -894,7 +896,7 @@ type private Generator(sourceLibrary: byte[], options: TurboCodegenOptions, sour
             objCode<-objCode+bytes.Length
             ic<-ic+4
         else
-            let mutable opcode = if TurboNativeArrays.isUnchecked token then TurboNativeArrays.baseOpcode token elif token >= 1000 then token - 1000 else token
+            let mutable opcode = if TurboNativeArrays.isCompact token then TurboNativeArrays.baseOpcode token elif token >= 1000 then token - 1000 else token
             if pMode && TurboNativeArrays.isUnchecked token then fail "Range-proven arrays require native mode."
             if opcode = opLabel then
                 let label = word ir ic

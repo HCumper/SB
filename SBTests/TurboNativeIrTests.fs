@@ -328,3 +328,104 @@ let ``identical zero DIVMOD operands take the runtime error path`` (opcode:int) 
     Assert.That(cpu.A[1], Is.EqualTo(0x4FFEu))
     Assert.That(cpu.ReadWord 0x4FFEu, Is.Zero)
     Assert.That(cpu.ReadWord 0x5000u, Is.EqualTo(99u))
+
+let private arrayExecute items length incoming scalarAlias expectedError =
+    let allocated=allocation items
+    let code=emit -256 allocated
+    let memory=Array.zeroCreate<byte> 0x40000
+    let cpu=Cpu(memory)
+    Array.blit code 0 memory 0x1000 code.Length
+    for r in 0..7 do cpu.D[r]<-0x12340000u+uint32 r;cpu.A[r]<-0x2000u+uint32(r*16)
+    cpu.A[1]<-0x5000u;cpu.A[6]<-0x8000u;cpu.A[7]<-0xF000u;cpu.Pc<-0x1000u
+    for v in 1..32 do
+        cpu.WriteLong(uint32(0x7F00+v*4),uint32(0x6000+v*8))
+        cpu.WriteWord(uint32(0x6000+v*8),uint32 v)
+    cpu.WriteLong(0x7F78u,0x7000u) // vector 30, descriptor
+    cpu.WriteLong(0x7000u,0x10000u);cpu.WriteLong(0x7004u,uint32(length*2))
+    cpu.WriteWord(0x7008u,0u);cpu.WriteWord(0x700Au,uint32 length)
+    for index in 0..length-1 do cpu.WriteWord(0x10000u+uint32(index*2),uint32(0x8000+index))
+    if scalarAlias then cpu.WriteLong(0x7F04u,0x10000u);cpu.WriteWord(0x10000u,7u)
+    let before=Array.copy memory[0x10000..0x1FFFF]
+    for index,value in incoming |> List.indexed do cpu.WriteWord(0x5000u+uint32(index*2),uint32(value &&& 65535))
+    let savedD=Array.copy cpu.D
+    let savedA=Array.copy cpu.A
+    let finish=0x1000u+uint32 code.Length
+    while cpu.Pc<>finish && cpu.Pc<>0xAE0u && cpu.Pc<>0xAD8u do
+        if cpu.Steps>100000L then failwith "Array native IR did not reach its boundary."
+        cpu.Step()
+    Assert.That(cpu.Pc, Is.EqualTo(if expectedError then 0xAE0u else finish))
+    Assert.That(cpu.A[7], Is.EqualTo(savedA[7]))
+    for r in 2..7 do Assert.That(cpu.D[r], Is.EqualTo(savedD[r]),$"D{r} was clobbered.")
+    for r in [0;3;4;5;6] do Assert.That(cpu.A[r], Is.EqualTo(savedA[r]),$"A{r} was clobbered.")
+    if expectedError then Assert.That(memory[0x10000..0x1FFFF], Is.EqualTo(box before),"Failed array operation changed an element.")
+    cpu
+
+[<TestCase(1711,0,1)>]
+[<TestCase(1811,0,1)>]
+[<TestCase(1711,32767,32768)>]
+[<TestCase(1811,32767,32768)>]
+let ``rank-one loads preserve word bits and long offsets without borrowing loop registers`` (opcode:int,index:int,length:int) =
+    let cpu=arrayExecute [op 106 [index];op opcode [30];op 118 [20]] length [99] false false
+    Assert.That(cpu.ReadWord 0x60A0u, Is.EqualTo(uint32(0x8000+index)))
+    Assert.That(cpu.A[1], Is.EqualTo(0x5000u))
+    Assert.That(cpu.ReadWord 0x5000u, Is.EqualTo(99u))
+
+[<TestCase(1712,0,1)>]
+[<TestCase(1812,0,1)>]
+[<TestCase(1712,32767,32768)>]
+[<TestCase(1812,32767,32768)>]
+let ``rank-one stores preserve value bits at the highest valid word index`` (opcode:int,index:int,length:int) =
+    let cpu=arrayExecute [op 106 [index];op 106 [0xA55A];op opcode [30]] length [99] false false
+    Assert.That(cpu.ReadWord(0x10000u+uint32(index*2)), Is.EqualTo(0xA55Au))
+    Assert.That(cpu.A[1], Is.EqualTo(0x5000u))
+
+let arrayFailures = [|
+    for opcode in [1711;1712] do
+        for index,length in [-32768,1;-1,1;1,1;32767,32767] do
+            yield TestCaseData(opcode,index,length).SetName($"Rank-one array failure {opcode}, index {index}, length {length}") |]
+
+[<TestCaseSource(nameof arrayFailures)>]
+let ``rank-one bounds errors consume the index and store value before restoring pending words`` (opcode:int,index:int,length:int) =
+    let items=[op 106 [42];op 106 [index]] @ (if opcode=1712 then [op 106 [9]] else []) @ [op opcode [30]]
+    let cpu=arrayExecute items length [99] false true
+    Assert.That(cpu.A[1], Is.EqualTo(0x4FFEu))
+    Assert.That(cpu.ReadWord 0x4FFEu, Is.EqualTo(42u))
+    Assert.That(cpu.ReadWord 0x5000u, Is.EqualTo(99u))
+
+[<Test>]
+let ``rank-one store invalidates scalar aliases but retains immutable pending values`` () =
+    let items=[op 109 [1];op 106 [0];op 106 [9];op 1712 [30];op 109 [1];op 5 [];op 118 [20]]
+    let cpu=arrayExecute items 2 [] true false
+    Assert.That(cpu.ReadWord 0x10000u, Is.EqualTo(9u))
+    Assert.That(readVector 20 cpu, Is.EqualTo(16))
+
+[<TestCase(1711)>]
+[<TestCase(1811)>]
+let ``a duplicated array index remains live after a load`` (opcode:int) =
+    let cpu=arrayExecute [op 106 [1];op 268 [];op opcode [30];op 118 [20];op 118 [21]] 2 [] false false
+    Assert.That(cpu.ReadWord 0x60A0u, Is.EqualTo(0x8001u))
+    Assert.That(readVector 21 cpu, Is.EqualTo(1))
+
+[<TestCase(1712)>]
+[<TestCase(1812)>]
+let ``shared array index and value use separate physical registers`` (opcode:int) =
+    let cpu=arrayExecute [op 106 [1];op 268 [];op 268 [];op opcode [30];op 118 [20]] 2 [] false false
+    Assert.That(cpu.ReadWord 0x10002u, Is.EqualTo(1u))
+    Assert.That(readVector 20 cpu, Is.EqualTo(1))
+
+[<Test>]
+let ``proven rank-one accesses omit checks while preserving results`` () =
+    let run opcode=arrayExecute [op 106 [1];op opcode [30];op 118 [20]] 2 [] false false
+    let checkedCpu=run 1711
+    let provenCpu=run 1811
+    Assert.That(readVector 20 provenCpu, Is.EqualTo(readVector 20 checkedCpu))
+    Assert.That(provenCpu.Steps, Is.LessThan(checkedCpu.Steps))
+
+[<Test>]
+let ``array RHS overflow precedes bounds failure and retains its pending index`` () =
+    let items=[op 106 [-1];op 106 [32767];op 106 [1];op 1005 [];op 1712 [30]]
+    let cpu=executeTo true (allocation items) Map.empty [99]
+    Assert.That(cpu.A[1], Is.EqualTo(0x4FFCu))
+    Assert.That(cpu.ReadWord 0x4FFCu, Is.EqualTo(32767u))
+    Assert.That(cpu.ReadWord 0x4FFEu, Is.EqualTo(65535u))
+    Assert.That(cpu.ReadWord 0x5000u, Is.EqualTo(99u))

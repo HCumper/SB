@@ -110,6 +110,7 @@ type TurboIrOptions = {
     SafeIntegerExpressions: Set<HirExpr>
     /// Numeric array accesses whose current descriptor and every index are proven safe.
     SafeArrayAccesses: Set<string * HirExpr list>
+    OneDimensionalIntegerAccesses: Set<string * HirExpr list>
 }
 
 type TurboIrOutput = {
@@ -143,12 +144,15 @@ let defaultOptions = {
     ManifestConstants = Map.empty
     SafeIntegerExpressions = Set.empty
     SafeArrayAccesses = Set.empty
+    OneDimensionalIntegerAccesses = Set.empty
 }
 
 /// Internal listing annotation consumed by native-region selection. The binary
 /// IR retains the standard Turbo opcode; external generators remain compatible.
 let rangeProvenIntegerComment = "range-proven integer arithmetic"
 let rangeProvenArrayComment = "range-proven array access"
+let rankOneIntegerArrayComment = "rank-one integer array access"
+let provenRankOneIntegerArrayComment = "range-proven rank-one integer array access"
 
 /// The listing written beside a generated stream.
 let listingFileName (outputFileName: string) = outputFileName + ".lst"
@@ -349,7 +353,8 @@ let private operandShapes =
           290; 291; 310; 312; 317; 320; 322; 324; 325; 326; 333; 334; 335; 336; 345; 346
           351; 352; 353; 354; 355; 359; 361; 362; 363; 364; 365; 371; 372; 373; 379; 380; 383; 384 ]
     let one =
-        [ 1611; 1612; 1643; 1644 // Range-proven native numeric arrays (SB extension).
+        [ 1711; 1712; 1811; 1812 // Rank-one native integer arrays (SB extension).
+          1611; 1612; 1643; 1644 // Range-proven native numeric arrays (SB extension).
           1111; 1112; 1143; 1144 // Compact checked native numeric arrays (SB extension).
           101; 102; 106; 107; 108; 109; 110; 111; 112; 114; 118; 125; 133; 134; 141; 142; 143; 144; 146; 150
           175; 176; 182; 230; 232; 236; 237; 238; 239; 240; 242; 243; 245; 246; 248; 249; 253; 257; 262; 264; 265
@@ -382,7 +387,7 @@ let private vectorOperandPositions =
     let positions = Dictionary<int, int>()
     for opcode in [ 101; 102; 108; 109; 110; 111; 112; 114; 118; 125; 133; 134; 141; 142; 143; 144; 146; 150
                     175; 176; 182; 230; 232; 246; 249; 253; 257; 262; 264; 265; 266; 293; 294; 337; 338; 339; 340
-                    370; 374; 375; 382; 24; 26; 56; 58; 360; 227; 1339; 1340; 1111; 1112; 1143; 1144; 1611; 1612; 1643; 1644 ] do
+                    370; 374; 375; 382; 24; 26; 56; 58; 360; 227; 1339; 1340; 1111; 1112; 1143; 1144; 1611; 1612; 1643; 1644; 1711; 1712; 1811; 1812 ] do
         positions[opcode] <- 0
     for opcode in [ 115; 126; 147; 158; 179; 190; 234; 224; 366 ] do
         positions[opcode] <- 1
@@ -393,7 +398,7 @@ let private threadedOnly = set [ 101; 114; 133; 146; 234; 247; 262; 327; 328; 38
 
 /// Raw data operations that belong in native data sections (spec 3).
 let private nativeDataOnly = set [ 107; 139; 171; 243; 261; 358; 370 ]
-let private rangeProvenNativeOnly = set [1611;1612;1643;1644]
+let private rangeProvenNativeOnly = set [1611;1612;1643;1644;1811;1812]
 
 // ---------------------------------------------------------------------------
 // Binary form, listing and decoding
@@ -1336,7 +1341,10 @@ type private Emitter(options: TurboIrOptions, program: HirProgram) =
             opc Op.extractString [ Word vector.Id ] vector.Name
         | TurboInt ->
             this.EmitIndexes(scope, vector, indexes, pos)
-            opc Op.extractInt [ Word vector.Id ] (if options.SafeArrayAccesses.Contains(normalizeIdentifier name,indexes) then rangeProvenArrayComment else vector.Name)
+            let key=normalizeIdentifier name,indexes
+            let proven=options.SafeArrayAccesses.Contains key
+            let comment=if options.OneDimensionalIntegerAccesses.Contains key then (if proven then provenRankOneIntegerArrayComment else rankOneIntegerArrayComment) elif proven then rangeProvenArrayComment else vector.Name
+            opc Op.extractInt [ Word vector.Id ] comment
         | TurboFloat ->
             this.EmitIndexes(scope, vector, indexes, pos)
             opc Op.extractFloat [ Word vector.Id ] (if options.SafeArrayAccesses.Contains(normalizeIdentifier name,indexes) then rangeProvenArrayComment else vector.Name)
@@ -1744,7 +1752,10 @@ type private Emitter(options: TurboIrOptions, program: HirProgram) =
         | TurboInt ->
             this.EmitIndexes(scope, vector, indexes, pos)
             emitValue TurboInt
-            opc Op.insertInt [ Word vector.Id ] (if options.SafeArrayAccesses.Contains(normalizeIdentifier name,indexes) then rangeProvenArrayComment else vector.Name)
+            let key=normalizeIdentifier name,indexes
+            let proven=options.SafeArrayAccesses.Contains key
+            let comment=if options.OneDimensionalIntegerAccesses.Contains key then (if proven then provenRankOneIntegerArrayComment else rankOneIntegerArrayComment) elif proven then rangeProvenArrayComment else vector.Name
+            opc Op.insertInt [ Word vector.Id ] comment
         | TurboFloat ->
             this.EmitIndexes(scope, vector, indexes, pos)
             emitValue TurboFloat

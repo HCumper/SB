@@ -42,6 +42,62 @@ let private withCompiledProgramMode enabled extraArguments extension (source: st
 
 let private withCompiledProgram extension source action = withCompiledProgramMode true [] extension source action
 
+let rankOnePrograms = [|
+    "10 DIM a%(100):total%=0\n20 FOR i%=0 TO 100\n30 a%(i%)=i%*2:total%=total%+a%(i%)\n40 END FOR i%\n50 PRINT total%;\":\";a%(100);\":\";i%\n60 STOP", "10100:200:100\n"
+    "10 DIM a%(3),indexes%(0)\n20 indexes%(0)=2\n30 a%(indexes%(0))=-32768\n40 result%=a%(indexes%(0))\n50 PRINT result%;\":\";a%(2)\n60 STOP", "-32768:-32768\n"
+    "10 DIM a%(2),indexes%(0)\n20 a%(2)=7:indexes%(0)=4\n30 DIM a%(4)\n40 a%(indexes%(0))=99\n50 PRINT a%(4)\n60 STOP", "99\n"
+    "10 DIM a%(3):last%=3:stride%=-1:total%=0\n20 FOR i%=last% TO 0 STEP stride%\n30 last%=-100:stride%=32767:a%(i%)=i%+1:total%=total%+a%(i%)\n40 END FOR i%\n50 PRINT total%;\":\";i%\n60 STOP", "10:0\n"
+    "10 work\n20 work\n30 STOP\n100 DEFine PROCedure work\n110 LOCal local%(3),index%\n120 index%=2:local%(index%)=7\n130 local%(index%)=local%(index%)+1\n140 PRINT local%(index%)\n150 END DEFine", "8\n8\n"
+    "10 DIM a%(1,1)\n20 a%(0,0)=7:a%(1,1)=9\n30 PRINT a%(0,0);\":\";a%(1,1)\n40 STOP", "7:9\n"
+|]
+let rankOneModes = [|
+    for index in 0..rankOnePrograms.Length-1 do
+        for hir in [false;true] do
+            for native,registers in [false,false;true,false;true,true] do
+                yield TestCaseData(index,hir,native,registers).SetName($"RankOne execution {index} (HIR {hir}, native {native}, registers {registers})") |]
+
+[<TestCaseSource(nameof rankOneModes)>]
+let ``rank-one array native IR preserves values loops resizing and local rebinding`` (index:int,hir:bool,native:bool,registers:bool) =
+    let source,expected=rankOnePrograms[index]
+    withCompiledProgramMode hir [(if native then "--native-regions" else "--no-native-regions");(if registers then "--regalloc" else "--no-regalloc")] ".bas" source (fun executable ->
+        let result=run 2000000L executable
+        Assert.That(result.Output, Is.EqualTo(expected))
+        Assert.That(result.ExitCode, Is.Zero))
+
+let rankOneFailures = [|
+    for store in [false;true] do
+        for negative in [false;true] do
+            for hir in [false;true] do
+                for native,registers in [false,false;true,false;true,true] do
+                    yield TestCaseData(store,negative,hir,native,registers).SetName($"RankOne failure store {store}, negative {negative}, HIR {hir}, native {native}, registers {registers}") |]
+
+[<TestCaseSource(nameof rankOneFailures)>]
+let ``rank-one checked native accesses keep lower and upper errors without a handler`` (store:bool,negative:bool,hir:bool,native:bool,registers:bool) =
+    let index=if negative then -1 else 2
+    let access=if store then "a%(indexes%(0))=99" else "result%=7+a%(indexes%(0))"
+    let source = $"10 DIM a%%(1),indexes%%(0)\n20 indexes%%(0)={index}\n30 {access}\n40 PRINT \"wrong\"\n50 STOP"
+    withCompiledProgramMode hir [(if native then "--native-regions" else "--no-native-regions");(if registers then "--regalloc" else "--no-regalloc")] ".bas" source (fun executable ->
+        let error=Assert.Throws<M68kFault>(fun () -> run 2000000L executable |> ignore)
+        Assert.That(error.Message, Does.Contain("Runtime error message:")))
+
+[<TestCase(false)>]
+[<TestCase(true)>]
+let ``RankOne native FOR plans contain checked and proven accesses`` (hir:bool) =
+    let directory=Path.Combine(Path.GetTempPath(),$"rank-one-report-{Guid.NewGuid():N}")
+    Directory.CreateDirectory directory |> ignore
+    try
+        let prefix=Path.Combine(directory,"array")
+        let source="10 DIM a%(3),indexes%(0):indexes%(0)=2:total%=0\n20 FOR i%=0 TO 3\n30 a%(i%)=i%:total%=total%+a%(indexes%(0))\n40 END FOR i%\n50 PRINT total%\n60 STOP"
+        withCompiledProgramMode hir ["--native-regions";"--regalloc";"--dump-hir="+prefix] ".bas" source (fun executable ->
+            Assert.That((run 2000000L executable).Output, Is.EqualTo("4\n")))
+        let report=File.ReadAllText(prefix+".native-ir.txt")
+        Assert.That(report, Does.Contain("Native integer FOR loops: selected=1"))
+        Assert.That(report, Does.Contain("StoreElement"))
+        Assert.That(report, Does.Contain("LoadElement"))
+        let listing=File.ReadAllText(prefix+".analysis.txt")
+        Assert.That(listing, Does.Match("Rank-one integer array accesses: [1-9]"))
+    finally Directory.Delete(directory,true)
+
 let divmodPrograms = [|
     "10 a%=-7:b%=3\n20 q%=a% DIV b%:r%=a% MOD b%\n30 PRINT q%;\":\";r%;\":\";q%*b%+r%\n40 a%=7:b%=-3\n50 q%=a% DIV b%:r%=a% MOD b%\n60 PRINT q%;\":\";r%;\":\";q%*b%+r%\n70 STOP", "-3:2:-7\n-3:-2:7\n"
     "10 q%=0:r%=0\n20 FOR i%=-7 TO 7 STEP 2\n30 q%=q%+(i% DIV 3):r%=r%+(i% MOD 3)\n40 END FOR i%\n50 PRINT q%;\":\";r%;\":\";i%\n60 STOP", "-3:9:7\n"

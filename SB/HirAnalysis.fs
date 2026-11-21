@@ -36,6 +36,7 @@ type Analysis = {
     SafeIntegerExpressions:Set<HirExpr>
     ArithmeticProofsEnabled:bool
     SafeArrayAccesses:Set<string * HirExpr list>
+    OneDimensionalIntegerAccesses:Set<string * HirExpr list>
 }
 
 let word = {Lower = -32768L; Upper=32767L}
@@ -476,6 +477,12 @@ let analyzeWithOptions options target program =
                     | _ -> [],false
                 let occurrences=Seq.append (reads |> Seq.map(fun (a,b,c) -> a,b,c,true)) (writes |> Seq.map(fun (a,b,c) -> a,b,c,ordinary))
                 for name,indexes,symbol,eligible in occurrences do
+                    let rankOne=
+                        eligible && trusted && nameIsInteger target name && indexes.Length=1 &&
+                        not evaluation.WritesUnknown && evaluation.Writes.IsEmpty &&
+                        (match symbol,bounds with
+                         | Some symbol,Some bounds when named name=[symbol] -> bounds.TryFind symbol |> Option.exists(fun dimensions -> dimensions.Length=1)
+                         | _ -> false)
                     let proven=
                         eligible && trusted && not(name.EndsWith "$" ) && not evaluation.WritesUnknown && evaluation.Writes.IsEmpty &&
                         (match symbol,state,bounds with
@@ -484,9 +491,11 @@ let analyzeWithOptions options target program =
                                  dimensions.Length=indexes.Length && List.forall2(fun index bound ->
                                      evaluate context state index |> fst |> Option.exists(fun range -> range.Lower>=0L && range.Upper<=int64 bound)) indexes dimensions)
                          | _ -> false)
-                    yield (name,indexes),proven]
-    let safeArrays=arrayCandidates |> List.groupBy fst |> List.choose(fun (key,occurrences) -> if occurrences |> List.forall snd then Some key else None) |> Set.ofList
-    {Effects=effects;Scopes=scopes;SafeIntegerExpressions=safe;ArithmeticProofsEnabled=trusted;SafeArrayAccesses=safeArrays}
+                    yield (name,indexes),proven,rankOne]
+    let accesses proof = arrayCandidates |> List.groupBy(fun (key,_,_) -> key) |> List.choose(fun (key,occurrences) -> if occurrences |> List.forall proof then Some key else None) |> Set.ofList
+    let safeArrays=accesses(fun (_,proven,_) -> proven)
+    let rankOneArrays=accesses(fun (_,_,rankOne) -> rankOne)
+    {Effects=effects;Scopes=scopes;SafeIntegerExpressions=safe;ArithmeticProofsEnabled=trusted;SafeArrayAccesses=safeArrays;OneDimensionalIntegerAccesses=rankOneArrays}
 
 let analyze target program = analyzeWithOptions defaultOptions target program
 
@@ -505,6 +514,7 @@ let format (analysis:Analysis) =
     line "HIR control-flow, range, effect and alias analysis (checked QL)"
     line $"Unchecked arithmetic proofs enabled: {analysis.ArithmeticProofsEnabled}; proven expressions: {analysis.SafeIntegerExpressions.Count}"
     line $"Proven numeric array accesses: {analysis.SafeArrayAccesses.Count}"
+    line $"Rank-one integer array accesses: {analysis.OneDimensionalIntegerAccesses.Count}"
     line $"Address taken: [{symbols analysis.Effects.Aliases.AddressTaken}]; escaped to unknown callees: [{symbols analysis.Effects.Aliases.Escaped}]"
     for KeyValue(symbol,summary) in analysis.Effects.Summaries do line $"Routine {symbol}: {effects summary}"
     for KeyValue(scope,data) in analysis.Scopes do

@@ -98,6 +98,15 @@ certification are trusted. The native selector emits 1611/1612/1643/1644 for
 proven integer/float loads/stores. Other accesses retain checked helpers. Calls
 still reload current vectors; this does not cache addresses or hoist accesses.
 
+Rank-one integer accesses are also recorded independently of index-range safety
+in `OneDimensionalIntegerAccesses`. Every occurrence of the access key must have
+a certified reaching one-dimensional descriptor and ordinary numeric access
+semantics. Unknown indexes can therefore use checked register-aware operations;
+fully proven indexes use their unchecked variants. Unknown ranks, ambiguous
+dynamic bindings, sibling writes and uncertain continuation contexts retain the
+generic helpers. Neither source subscript count nor declaration rank alone is
+treated as a reaching shape proof.
+
 ## Effects and aliases
 
 `HirEffects.analyze` computes interprocedural MAY summaries to a fixed point,

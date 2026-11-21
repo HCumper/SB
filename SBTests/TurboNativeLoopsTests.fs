@@ -148,3 +148,55 @@ let ``native FOR DIVMOD spills coexist with its register save frame`` (opcode:in
     Assert.That((plan 12 [] body).Loops, Is.Empty)
     let cpu=execute false -7 -1 3 body
     Assert.That(read 2 cpu, Is.EqualTo(if opcode=8 then 2 else 5))
+
+let private arrayLoop checkedBounds fails =
+    let load=if checkedBounds then 1711 else 1811
+    let store=if checkedBounds then 1712 else 1812
+    let sum=[op 109 [2];op 109 [3];op 109 [1];op load [4];op 1005 [];op 1005 [];op 118 [2]]
+    let body=if fails then sum else [op 109 [1];op 109 [1];op store [4]] @ sum
+    let report=plan 140 [op 126 [0;4]] body
+    Assert.That(report.Loops.Length, Is.EqualTo(1))
+    let loop=report.Loops.Head
+    let memory=Array.zeroCreate<byte> 0x40000
+    let cpu=Cpu(memory)
+    Array.blit loop.Code 0 memory 0x1000 loop.Code.Length
+    for r in 0..7 do cpu.D[r]<-0xABCD0000u+uint32 r;cpu.A[r]<-0x2000u+uint32(r*16)
+    cpu.A[1]<-0x5000u;cpu.A[6]<-0x8000u;cpu.A[7]<-0xF000u;cpu.Pc<-0x1000u
+    for v in 1..3 do cpu.WriteLong(uint32(0x7F00+v*4),uint32(0x6000+v*32))
+    cpu.WriteWord(0x6020u,0u);cpu.WriteWord(0x6026u,1u);cpu.WriteWord(0x6028u,3u)
+    cpu.WriteWord(0x6040u,0u);cpu.WriteWord(0x6060u,0u)
+    cpu.WriteLong(0x7F10u,0x7000u);cpu.WriteLong(0x7000u,0x10000u)
+    cpu.WriteWord(0x7008u,0u);cpu.WriteWord(0x700Au,if fails then 2u else 4u)
+    cpu.WriteWord(0x10000u,1u);cpu.WriteWord(0x10002u,2u)
+    let savedD=Array.copy cpu.D
+    let savedA=Array.copy cpu.A
+    let finish=0x1000u+uint32 loop.Code.Length
+    while cpu.Pc<>finish && cpu.Pc<>0xAE0u && cpu.Pc<>0xAD8u do
+        if cpu.Steps>100000L then failwith "Array FOR did not finish."
+        cpu.Step()
+    Assert.That(cpu.Pc, Is.EqualTo(if fails then 0xAE0u else finish))
+    Assert.That(cpu.A[7], Is.EqualTo(savedA[7]))
+    for r in 2..7 do Assert.That(cpu.D[r], Is.EqualTo(savedD[r]))
+    for r in [0;3;4;5;6] do Assert.That(cpu.A[r], Is.EqualTo(savedA[r]))
+    cpu,loop
+
+[<TestCase(false)>]
+[<TestCase(true)>]
+let ``rank-one arrays keep native FOR metadata and accumulator values intact`` (checkedBounds:bool) =
+    let cpu,loop=arrayLoop checkedBounds false
+    Assert.That(read 1 cpu, Is.EqualTo(3))
+    Assert.That(read 2 cpu, Is.EqualTo(6))
+    Assert.That(loop.StackExtraBytes, Is.GreaterThan(12))
+    for i in 0..3 do Assert.That(cpu.ReadWord(0x10000u+uint32(i*2)), Is.EqualTo(uint32 i))
+
+[<Test>]
+let ``rank-one FOR bounds failure releases spill and loop frames and preserves pending words`` () =
+    let cpu,loop=arrayLoop true true
+    Assert.That(loop.StackExtraBytes, Is.GreaterThan(12))
+    Assert.That(read 1 cpu, Is.EqualTo(2))
+    Assert.That(read 2 cpu, Is.EqualTo(3))
+    Assert.That(cpu.A[1], Is.EqualTo(0x4FFCu))
+    Assert.That(cpu.ReadWord 0x4FFCu, Is.Zero)
+    Assert.That(cpu.ReadWord 0x4FFEu, Is.EqualTo(3u))
+    Assert.That(cpu.ReadWord 0x10000u, Is.EqualTo(1u))
+    Assert.That(cpu.ReadWord 0x10002u, Is.EqualTo(2u))

@@ -714,7 +714,7 @@ let generateTurboIrFromLoweredHirWithNativeRegions optimization nativeRegions (s
         | None -> ()
         let target =
             match nativeRegions,analysis with
-            | true,Some facts -> {target with SafeIntegerExpressions=facts.SafeIntegerExpressions;SafeArrayAccesses=facts.SafeArrayAccesses}
+            | true,Some facts -> {target with SafeIntegerExpressions=facts.SafeIntegerExpressions;SafeArrayAccesses=facts.SafeArrayAccesses;OneDimensionalIntegerAccesses=facts.OneDimensionalIntegerAccesses}
             | _ -> target
         HirTurboIrBackend.generateTurboIrFromHir target optimized
         |> Result.bind (TurboNativeRegions.select nativeRegions)
