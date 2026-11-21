@@ -66,6 +66,11 @@ register-aware native IR and allocate D0/D1 locally. This defaults on in the CLI
 [local register allocation](TURBO-REGISTER-ALLOCATION.md) for spill, alias and
 runtime-boundary guarantees.
 
+Checked integer DIV/MOD now participate in register allocation rather than
+splitting leaf blocks. Both operand clobbers and the original failure maths-stack
+state are explicit in the native IR; QL signed corrections and existing runtime
+errors are preserved. They are also eligible in simple native integer FOR bodies.
+
 With register allocation enabled, a later machine-code plan also selects
 [simple native integer FOR loops](TURBO-NATIVE-LOOPS.md). It keeps the runtime
 initializer and threaded entry/exit labels, retains counter/END/STEP in registers,

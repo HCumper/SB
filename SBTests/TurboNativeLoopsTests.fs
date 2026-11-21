@@ -119,3 +119,32 @@ let ``tight stack headroom retains the original loop`` () =
 [<Test>]
 let ``oversized loop bodies retain the original path`` () =
     Assert.That((plan 140 [] (List.replicate 257 (op 2 []))).Loops, Is.Empty)
+
+[<TestCase(8,-1)>]
+[<TestCase(20,2)>]
+let ``native FOR retains counter bound and step through signed DIVMOD`` (opcode:int,expected:int) =
+    let cpu=execute false -7 -1 3 [op 109 [1];op 106 [3];op opcode [];op 118 [2]]
+    Assert.That(read 1 cpu, Is.EqualTo(-1))
+    Assert.That(read 2 cpu, Is.EqualTo(expected))
+    Assert.That(cpu.A[1], Is.EqualTo(0x5000u))
+
+[<TestCase(8,0)>]
+[<TestCase(20,0)>]
+[<TestCase(8,-1)>]
+[<TestCase(20,-1)>]
+let ``native FOR DIVMOD errors restore pinned registers and leave stores untouched`` (opcode:int,divisor:int) =
+    let first=if divisor=0 then 1 else -32768
+    let cpu=execute true first first 1 [op 106 [17];op 118 [2];op 109 [1];op 106 [divisor];op opcode [];op 118 [2]]
+    Assert.That(read 1 cpu, Is.EqualTo(first))
+    Assert.That(read 2 cpu, Is.EqualTo(17))
+    Assert.That(cpu.A[1], Is.EqualTo(0x4FFEu))
+    Assert.That(cpu.ReadWord 0x4FFEu, Is.EqualTo(uint32(first &&& 65535)))
+
+[<TestCase(8)>]
+[<TestCase(20)>]
+let ``native FOR DIVMOD spills coexist with its register save frame`` (opcode:int) =
+    let body=[op 109 [1];op 106 [3];op opcode [];op 106 [3];op 5 [];op 118 [2]]
+    Assert.That((selected body).StackExtraBytes, Is.GreaterThan(12))
+    Assert.That((plan 12 [] body).Loops, Is.Empty)
+    let cpu=execute false -7 -1 3 body
+    Assert.That(read 2 cpu, Is.EqualTo(if opcode=8 then 2 else 5))

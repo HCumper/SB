@@ -42,6 +42,72 @@ let private withCompiledProgramMode enabled extraArguments extension (source: st
 
 let private withCompiledProgram extension source action = withCompiledProgramMode true [] extension source action
 
+let divmodPrograms = [|
+    "10 a%=-7:b%=3\n20 q%=a% DIV b%:r%=a% MOD b%\n30 PRINT q%;\":\";r%;\":\";q%*b%+r%\n40 a%=7:b%=-3\n50 q%=a% DIV b%:r%=a% MOD b%\n60 PRINT q%;\":\";r%;\":\";q%*b%+r%\n70 STOP", "-3:2:-7\n-3:-2:7\n"
+    "10 q%=0:r%=0\n20 FOR i%=-7 TO 7 STEP 2\n30 q%=q%+(i% DIV 3):r%=r%+(i% MOD 3)\n40 END FOR i%\n50 PRINT q%;\":\";r%;\":\";i%\n60 STOP", "-3:9:7\n"
+    "10 q%=0:r%=0:limit%=-7:stride%=-2:divisor%=-3\n20 FOR i%=7 TO limit% STEP stride%\n30 limit%=100:stride%=1:q%=q%+(i% DIV divisor%):r%=r%+(i% MOD divisor%)\n40 END FOR i%\n50 PRINT q%;\":\";r%;\":\";i%\n60 STOP", "-3:-9:-7\n"
+    "10 a%=-7:work a%,a%\n20 PRINT a%\n30 STOP\n100 DEFine PROCedure work(p%,q%)\n110 p%=p% DIV 3:q%=q% MOD 3\n120 END DEFine", "0\n"
+    "10 a%=1:b%=2:c%=3:d%=4:e%=5:f%=6:g%=-7:h%=3\n20 q%=a%+(b%+(c%+(d%+(e%+(f%+(g% DIV h%))))))\n30 r%=a%+(b%+(c%+(d%+(e%+(f%+(g% MOD h%))))))\n40 PRINT q%;\":\";r%\n50 STOP", "18:23\n"
+    "10 FOR i%=-32768 TO -32766\n20 q%=i% DIV 1:r%=i% MOD 1\n30 END FOR i%\n40 PRINT q%;\":\";r%;\":\";i%\n50 STOP", "-32766:0:-32766\n"
+    "10 WHEN ERROR\n20 PRINT ERNUM;\":\";answer%\n30 STOP\n40 END WHEN\n50 a%=-32768:b%=-1:answer%=42\n60 answer%=a% DIV b%\n70 PRINT \"wrong\"\n80 STOP", "-18:42\n"
+    "10 WHEN ERROR\n20 count%=count%+1\n30 IF count%<3 THEN RETRY\n40 PRINT ERNUM;\":\";count%;\":\";answer%\n50 STOP\n60 END WHEN\n70 a%=1:b%=2:c%=3:d%=4:e%=5:f%=6:g%=7:h%=0:answer%=42\n80 answer%=a%+(b%+(c%+(d%+(e%+(f%+(g% MOD h%))))))\n90 PRINT \"wrong\"", "-18:3:42\n"
+    "10 WHEN ERROR\n20 count%=count%+1\n30 IF count%<3 THEN RETRY\n40 PRINT ERNUM;\":\";count%;\":\";answer%\n50 STOP\n60 END WHEN\n70 answer%=42\n80 answer%=bad%(-32768)\n90 PRINT \"wrong\"\n100 DEFine FuNction bad%(n%)\n110 LOCal a%,b%,c%,d%,e%,f%,den%\n120 a%=1:b%=2:c%=3:d%=4:e%=5:f%=6:den%=-1\n130 RETurn a%+(b%+(c%+(d%+(e%+(f%+(n% DIV den%))))))\n140 END DEFine", "-18:3:42\n"
+|]
+let divmodModes = [|
+    for index in 0..divmodPrograms.Length-1 do
+        for hir in [false;true] do
+            for native,registers in [false,false;true,false;true,true] do
+                yield TestCaseData(index,hir,native,registers).SetName($"DIVMOD execution {index} (HIR {hir}, native {native}, registers {registers})") |]
+
+[<TestCaseSource(nameof divmodModes)>]
+let ``allocated DIVMOD preserves signed results loops aliases retries and local unwinding`` (index:int,hir:bool,native:bool,registers:bool) =
+    let source,expected=divmodPrograms[index]
+    withCompiledProgramMode hir [(if native then "--native-regions" else "--no-native-regions");(if registers then "--regalloc" else "--no-regalloc")] ".bas" source (fun executable ->
+        let result=run 2000000L executable
+        Assert.That(result.Output, Is.EqualTo(expected))
+        Assert.That(result.ExitCode, Is.Zero))
+
+[<TestCase(false)>]
+[<TestCase(true)>]
+let ``DIVMOD snapshots are selected before RETRY`` (hir:bool) =
+    let directory=Path.Combine(Path.GetTempPath(),$"divmod-retry-{Guid.NewGuid():N}")
+    Directory.CreateDirectory directory |> ignore
+    try
+        let prefix=Path.Combine(directory,"checked")
+        let source,expected=divmodPrograms[7]
+        withCompiledProgramMode hir ["--native-regions";"--regalloc";"--dump-hir="+prefix] ".bas" source (fun executable ->
+            Assert.That((run 2000000L executable).Output, Is.EqualTo(expected)))
+        let report=File.ReadAllText(prefix+".native-ir.txt")
+        Assert.That(report, Does.Contain("allocated: Division"))
+        Assert.That(report, Does.Match("spill slots=[1-9]"))
+    finally Directory.Delete(directory,true)
+
+let divmodLoopFailures = [|
+    for expression,first in ["i% DIV 0",1;"i% MOD 0",1;"i% DIV -1",-32768;"i% MOD -1",-32768] do
+        for hir in [false;true] do
+            for native,registers in [false,false;true,false;true,true] do
+                yield TestCaseData(expression,first,hir,native,registers).SetName($"DIVMOD loop failure {expression} (HIR {hir}, native {native}, registers {registers})") |]
+
+[<TestCaseSource(nameof divmodLoopFailures)>]
+let ``native loop DIVMOD failures use the runtime error path after releasing all frames`` (expression:string,first:int,hir:bool,native:bool,registers:bool) =
+    let source = $"10 answer%%=42\n20 FOR i%%={first} TO {first+1}\n30 answer%%={expression}\n40 END FOR i%%\n50 PRINT \"wrong\"\n60 STOP"
+    withCompiledProgramMode hir [(if native then "--native-regions" else "--no-native-regions");(if registers then "--regalloc" else "--no-regalloc")] ".bas" source (fun executable ->
+        let error=Assert.Throws<M68kFault>(fun () -> run 2000000L executable |> ignore)
+        Assert.That(error.Message, Does.Contain("Runtime error message:")))
+
+[<TestCase(8,false)>]
+[<TestCase(8,true)>]
+[<TestCase(20,false)>]
+[<TestCase(20,true)>]
+let ``allocated DIVMOD CONTINUE keeps fatal error propagation`` (opcode:int,implicitContinue:bool) =
+    let handler=if implicitContinue then "20 PRINT ERNUM" else "20 PRINT ERNUM:CONTINUE"
+    let operation=if opcode=8 then "DIV" else "MOD"
+    let source = $"10 WHEN ERROR\n{handler}\n30 END WHEN\n40 a%%=-32768:b%%=-1:c%%=3:d%%=4\n50 c%%=d%%+(c%%+(a%% {operation} b%%))\n60 PRINT \"wrong\""
+    withCompiledProgramMode true ["--native-regions";"--regalloc"] ".bas" source (fun executable ->
+        let error=Assert.Throws<M68kFault>(fun () -> run 2000000L executable |> ignore)
+        Assert.That(error.Message, Does.Contain("Runtime error message:"))
+        Assert.That(error.Message, Does.Contain("output=-18\n")))
+
 let nativeForPrograms = [|
     "10 total%=0\n20 FOR i%=1 TO 10\n30 total%=total%+i%\n40 END FOR i%\n50 PRINT total%;\":\";i%\n60 STOP", "55:10\n"
     "10 total%=0:limit%=-4:stride%=-3\n20 FOR i%=8 TO limit% STEP stride%\n30 limit%=100:stride%=32767:total%=total%+i%\n40 END FOR i%\n50 PRINT total%;\":\";i%\n60 STOP", "10:-4\n"

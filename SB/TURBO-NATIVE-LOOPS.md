@@ -41,7 +41,7 @@ This first implementation requires independent global integer storage. Programs
 with routine/reference/local binding, error handlers or RETRY/CONTINUE, external
 calls, opaque code/memory mutation, or computed transfers retain their existing
 loops. Bodies containing branches, labels, calls, arrays, floating operations,
-DIV/MOD, counter assignments or nested loops are rejected. An inner loop may
+counter assignments or nested loops are rejected. An inner loop may
 still qualify when its enclosing loop does not. A body must have a balanced
 integer maths stack, and the original body label must have only its FOR reference.
 
@@ -51,6 +51,13 @@ change in arithmetic policy or an inability to compile an otherwise valid loop.
 The selector retains checked arithmetic from threaded body segments; range-proven
 unchecked operations remain unchecked only where the preceding audit selected
 them. This is a loop-specific extension, not general allocation across CFG blocks.
+
+Checked integer DIV/MOD are supported in the body through the register-aware IR.
+They retain QL signed rounding and remainder rules, divisor-zero and quotient
+overflow checks, including -32768 MOD -1. Both operand registers are scratch on
+success; live accumulators and reused operands use the ordinary spill slots.
+The pinned counter, END and STEP remain untouched. See
+[register allocation](TURBO-REGISTER-ALLOCATION.md) for recovery and clobber details.
 
 ## Registers, stack and errors
 

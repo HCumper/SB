@@ -495,6 +495,38 @@ let ``native FOR layout remains correct when its entry is beyond 64 KiB`` () =
     Assert.That(result.Code.Length, Is.GreaterThan(65536))
     Assert.That((TurboExecutionHarness.run 3000000L (executableFile result)).Output, Is.EqualTo("10\n"))
 
+[<Test>]
+let ``DIVMOD native loops preserve live accumulators and reserve both frame depths`` () =
+    // Amortize the native loop's one-time register save/setup in a repeated kernel.
+    let raw=irOf "10 q%=0:r%=0\n20 FOR i%=-99 TO 99 STEP 2\n30 q%=q%+(i% DIV 3):r%=r%+(i% MOD 3)\n40 END FOR i%\n50 PRINT q%;\":\";r%;\":\";i%\n60 STOP"
+    let items=decode raw |> Result.defaultWith failwith
+    let ir=TurboNativeRegions.select true {Items=items;Bytes=raw;Listing=formatListing items;Warnings=[]} |> Result.defaultWith(String.concat "; " >> failwith)
+    let options={portOptions with LocalRegisterAllocation=true}
+    let before=generateFromIr options ir.Bytes |> Result.defaultWith(String.concat "; " >> failwith)
+    let after=generateFromIr {options with NativeIntegerForLoops=true} ir.Bytes |> Result.defaultWith(String.concat "; " >> failwith)
+    let report=after.NativeLoops.Value
+    Assert.That(report.Loops.Length, Is.EqualTo(1))
+    Assert.That(report.StackExtraBytes, Is.GreaterThan(12))
+    Assert.That(report.Loops.Head.Allocation.Instructions |> List.filter(function TurboNativeIr.Division _ -> true | _ -> false) |> List.length, Is.EqualTo(2))
+    Assert.That(after.Dataspace-portOptions.DataspaceKiB*1024, Is.EqualTo(max after.NativeAllocation.Value.StackExtraBytes report.StackExtraBytes))
+    let oldRun=TurboExecutionHarness.run 2000000L (executableFile before)
+    let newRun=TurboExecutionHarness.run 2000000L (executableFile after)
+    Assert.That(newRun.Output, Is.EqualTo("-33:99:99\n"))
+    Assert.That(newRun.Output, Is.EqualTo(oldRun.Output))
+    Assert.That(newRun.Steps, Is.LessThan(oldRun.Steps))
+    TestContext.WriteLine($"DIVMOD native FOR instructions: {oldRun.Steps}->{newRun.Steps}")
+
+[<Test>]
+let ``DIVMOD register clobbers force a template fallback when no spill frame can fit`` () =
+    let ir=irOf "10 a%=-7:b%=3\n20 c%=(a% DIV b%)+b%:d%=(a% MOD b%)+b%\n30 PRINT c%;\":\";d%\n40 STOP" |> nativeBodyOf
+    let options={portOptions with StackSize=Some 9998}
+    let before=generateFromIr options ir |> Result.defaultWith(String.concat "; " >> failwith)
+    let after=generateFromIr {options with LocalRegisterAllocation=true} ir |> Result.defaultWith(String.concat "; " >> failwith)
+    Assert.That(after.NativeAllocation.Value.StackExtraBytes, Is.Zero)
+    Assert.That(after.Code, Is.EqualTo(box before.Code))
+    Assert.That(after.Dataspace, Is.EqualTo(before.Dataspace))
+    Assert.That((TurboExecutionHarness.run 2000000L (executableFile after)).Output, Is.EqualTo("0:5\n"))
+
 let private numericArrayIr copies compact =
     let ir=irOf "10 DIM a%(2)\n20 i%=1\n30 a%(i%)=7\n40 r%=a%(i%)\n50 STOP" |> nativeBodyOf
     let items=decode ir |> Result.defaultWith failwith

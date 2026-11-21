@@ -128,7 +128,7 @@ let ``spill slots are reused across separate pressure peaks`` () =
 [<Test>]
 let ``planning never crosses a label mode switch or opaque template`` () =
     let sequence=[op 109 [1];op 118 [2];op 109 [2];op 118 [3]]
-    let items=[op 999 [4];op 255 [];yield! sequence;op 254 [];yield! sequence;LabelDef(2000,"");yield! sequence;op 8 [];yield! sequence;op 255 [];yield! sequence;op 0 []]
+    let items=[op 999 [4];op 255 [];yield! sequence;op 254 [];yield! sequence;LabelDef(2000,"");yield! sequence;op 12 [];yield! sequence;op 255 [];yield! sequence;op 0 []]
     let report=plan 128 -256 (serialize items) |> Result.defaultWith failwith
     Assert.That(report.Blocks.Length, Is.EqualTo(3))
     let boundaries=items |> List.scan (fun offset item -> offset+(serialize [item]).Length) 0
@@ -227,3 +227,104 @@ let ``checked IDs round trip and validate vector operands`` () =
     Assert.That(roundTrip, Is.EqualTo(box valid))
     let invalid=serialize [op 999 [2];op 1340 [2;1];op 0 []]
     Assert.That(validate invalid, Has.Some.Contains("outside the reserved"))
+
+let private qlDivision a b =
+    let quotient,remainder=a/b,a%b
+    if remainder<>0 && ((remainder<0)<>(b<0)) then quotient-1,remainder+b else quotient,remainder
+
+let divisionCases = [|
+    let edges=[-32768;-32767;-32766;-257;-256;-129;-128;-7;-3;-2;-1;0;1;2;3;7;127;128;255;256;32766;32767]
+    for a in edges do
+        for b in [-32768;-32767;-256;-7;-3;-1;1;2;3;7;256;32767] do
+            if not(a= -32768 && b= -1) then
+                for opcode in [8;20] do
+                    yield TestCaseData(opcode,a,b).SetName($"Allocated DIVMOD {opcode}: {a}, {b}")
+|]
+
+[<TestCaseSource(nameof divisionCases)>]
+let ``checked DIVMOD matches QL signed rounding across word boundaries`` (opcode:int,a:int,b:int) =
+    let quotient,remainder=qlDivision a b
+    let expected=if opcode=8 then quotient else remainder
+    // Constants put the dividend in D0; maths inputs put it in D1. Exercise
+    // both register orders independently of the original machine templates.
+    let direct=execute (allocation [op 106 [a];op 106 [b];op opcode [];op 118 [20]]) Map.empty []
+    let inputs=execute (allocation [op opcode [];op 118 [20]]) Map.empty [b;a;99]
+    Assert.That(readVector 20 direct, Is.EqualTo(expected))
+    Assert.That(readVector 20 inputs, Is.EqualTo(expected))
+    Assert.That(direct.A[1], Is.EqualTo(0x5000u))
+    Assert.That(inputs.A[1], Is.EqualTo(0x5004u))
+    Assert.That(inputs.ReadWord 0x5004u, Is.EqualTo(99u))
+
+[<TestCase(8,-7,3,0)>]
+[<TestCase(20,-7,3,5)>]
+[<TestCase(8,7,-3,-6)>]
+[<TestCase(20,7,-3,-5)>]
+let ``DIVMOD preserves a divisor reused after its register is clobbered`` (opcode:int,a:int,b:int,expected:int) =
+    let cpu=execute (allocation [op 106 [a];op 106 [b];op opcode [];op 106 [b];op 5 [];op 118 [20]]) Map.empty []
+    Assert.That(readVector 20 cpu, Is.EqualTo(expected))
+
+[<TestCase(8,-7,3,-10)>]
+[<TestCase(20,-7,3,-5)>]
+let ``DIVMOD preserves a duplicated dividend across the operation`` (opcode:int,a:int,b:int,expected:int) =
+    let cpu=execute (allocation [op 106 [a];op 268 [];op 106 [b];op opcode [];op 5 [];op 118 [20]]) Map.empty []
+    Assert.That(readVector 20 cpu, Is.EqualTo(expected))
+
+[<TestCase(8,7,1)>]
+[<TestCase(8,-7,1)>]
+[<TestCase(8,-32768,1)>]
+[<TestCase(20,7,0)>]
+[<TestCase(20,-7,0)>]
+[<TestCase(20,-32768,0)>]
+let ``identical DIVMOD operands get distinct scratch registers and preserve live values`` (opcode:int,value:int,expected:int) =
+    let cpu=execute (allocation [op 106 [value];op 268 [];op 268 [];op opcode [];op 118 [20];op 118 [21]]) Map.empty []
+    Assert.That(readVector 20 cpu, Is.EqualTo(expected))
+    Assert.That(readVector 21 cpu, Is.EqualTo(value))
+
+let divisionFailures = [|
+    for opcode in [8;20] do
+        for a,b in [0,0;1,0;-1,0;-32768,0;32767,0;-32768,-1] do
+            yield TestCaseData(opcode,a,b).SetName($"Allocated DIVMOD failure {opcode}: {a}, {b}")
+|]
+
+[<TestCaseSource(nameof divisionFailures)>]
+let ``DIVMOD errors retain the original left maths word and never store a result`` (opcode:int,a:int,b:int) =
+    let cpu=executeTo true (allocation [op opcode [];op 118 [20]]) Map.empty [b;a;99]
+    Assert.That(cpu.A[1], Is.EqualTo(0x5002u))
+    Assert.That(cpu.ReadWord 0x5002u, Is.EqualTo(uint32(a &&& 65535)))
+    Assert.That(cpu.ReadWord 0x5004u, Is.EqualTo(99u))
+    Assert.That(readVector 20 cpu, Is.EqualTo(20))
+
+[<TestCase(8)>]
+[<TestCase(20)>]
+let ``DIVMOD errors reconstruct all live pressure values and release the spill frame`` (opcode:int) =
+    let items=[yield! [for v in 1..8 -> op 109 [v]];op 106 [-32768];op 106 [-1];op opcode [];op 118 [20]]
+    let allocated=allocation items
+    Assert.That(allocated.SpillSlots, Is.GreaterThan(0))
+    let cpu=executeTo true allocated Map.empty [99]
+    let values=[-32768;8;7;6;5;4;3;2;1;99]
+    Assert.That(cpu.A[1], Is.EqualTo(0x5000u-18u))
+    for index,value in values |> List.indexed do
+        Assert.That(cpu.ReadWord(cpu.A[1]+uint32(index*2)), Is.EqualTo(uint32(value &&& 65535)))
+    Assert.That(readVector 20 cpu, Is.EqualTo(20))
+
+[<TestCase(8,33)>]
+[<TestCase(20,38)>]
+let ``DIVMOD retains pressure values on its success path`` (opcode:int,expected:int) =
+    let items=[yield! [for v in 1..8 -> op 109 [v]];op 106 [-7];op 106 [3];op opcode [];yield! List.replicate 8 (op 5 []);op 118 [20]]
+    let cpu=execute (allocation items) Map.empty []
+    Assert.That(readVector 20 cpu, Is.EqualTo(expected))
+    Assert.That(cpu.A[1], Is.EqualTo(0x5000u))
+
+[<TestCase(8)>]
+[<TestCase(20)>]
+let ``DIVMOD live values participate in the spill budget`` (opcode:int) =
+    let items=[op 106 [-7];op 106 [3];op opcode [];op 106 [3];op 5 [];op 118 [20]]
+    Assert.That((allocate 0 (block items)).IsNone, Is.True)
+
+[<TestCase(8)>]
+[<TestCase(20)>]
+let ``identical zero DIVMOD operands take the runtime error path`` (opcode:int) =
+    let cpu=executeTo true (allocation [op 106 [0];op 268 [];op opcode [];op 118 [20]]) Map.empty [99]
+    Assert.That(cpu.A[1], Is.EqualTo(0x4FFEu))
+    Assert.That(cpu.ReadWord 0x4FFEu, Is.Zero)
+    Assert.That(cpu.ReadWord 0x5000u, Is.EqualTo(99u))

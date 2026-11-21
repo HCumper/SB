@@ -24,7 +24,7 @@ peephole improver and before either layout/emission pass:
 5. Emit 68000 instructions from the allocated representation.
 
 The virtual IR represents constants, scalar vector loads/stores, maths-stack
-inputs/outputs, negation and integer add/subtract/multiply. Duplicates share a
+inputs/outputs, negation, integer add/subtract/multiply and checked DIV/MOD. Duplicates share a
 virtual value. Increment operations introduced by the old improver are lowered
 too. Explicit checked operations carry a recovery snapshot of the maths stack.
 Allocation does not remove overflow checks. Range-proven operations retain their
@@ -35,7 +35,7 @@ keeping their counters, captured bounds and steps in D2-D4 across backedges.
 This loop-specific plan saves those registers and restores them on normal and
 overflow exits; ordinary leaf allocation still uses D0/D1.
 
-Calls, branches, array/string operations, floating operations and checked DIV/MOD
+Calls, branches, array/string operations and floating operations
 remain allocation boundaries. Numeric arrays use
 [compact checked native helpers](TURBO-NATIVE-ARRAYS.md); all pending maths words
 are materialized and private frames released before calling them. Other
@@ -76,6 +76,30 @@ materializes the exact P-template maths-stack state, releases the entire private
 CPU-stack frame, then jumps to the unchanged library overflow handler at
 A6+$8AD8. No native allocation state survives into WHEN ERROR, RETRY or CONTINUE.
 The runtime restores the saved retry registers and unwinds routine bindings.
+
+DIV/MOD are atomic checked native IR operations with explicit failure snapshots.
+They test the divisor before DIVS and test V immediately afterward, preserving
+zero-divisor and -32768/-1 errors through the same lib537 overflow handler.
+The original left maths word and all pending words are reconstructed on failure;
+an assignment following a failed operation does not commit. Normal leaf error
+handling retains WHEN ERROR, RETRY, CONTINUE and routine-binding unwinding.
+
+Both allocated operand registers are declared clobbered on success. A shared
+dividend/divisor gets a separate scratch copy; values still live after DIV/MOD
+are spilled before the operation and reloaded as needed. No extra data register
+is borrowed from a native loop's pinned counter/END/STEP. The word dividend is
+sign extended for DIVS. A nonzero remainder with a different sign from the
+divisor adjusts the quotient down or adds the divisor to the remainder, retaining
+QL floor division and divisor-signed MOD for every signed-word operand pair.
+MOD retains the quotient-overflow check even when its mathematical remainder
+would fit. There is no truncating-division or bit-mask substitution.
+
+Inside a native FOR, division failure releases the leaf spill frame and restores
+the loop's saved D2-D4 before entering the runtime handler. Recovery storage is
+charged to the existing spill budget, stack reserve and QDOS dataspace; a block
+that cannot fit retains the original checked templates. Selection charges the
+success-path checks, corrections, copies and spills while excluding cold recovery
+payloads, just as for checked add/subtract/multiply.
 
 The original threaded increment peephole updates its variable before checking
 overflow. Checked native increments preserve that wrapped store on failure,
