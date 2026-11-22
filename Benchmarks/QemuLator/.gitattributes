@@ -1,0 +1,3 @@
+Programs/*.bas text eol=lf
+pollclock.asm text eol=lf
+pollclock.hex text eol=lf

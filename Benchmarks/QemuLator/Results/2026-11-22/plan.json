@@ -1,0 +1,140 @@
+{
+  "trials": 3,
+  "warmups": 1,
+  "timerHz": 50,
+  "expectedResults": 72,
+  "benchmarks": [
+    {
+      "name": "integer_arithmetic",
+      "file": "integer_arithmetic.bas",
+      "passes": 20,
+      "expectedChecksum": 6430,
+      "category": "kernel",
+      "description": "Integer arithmetic and MOD in a counted loop",
+      "sourceLines": 16,
+      "reference": "Existing independent Check-ReferenceChecksums.ps1",
+      "tag": "b00",
+      "commonSha256": "4EC595212AB4F630622AB718A50288CF6517E93028E8DE146ACD61659F27678C"
+    },
+    {
+      "name": "sieve",
+      "file": "sieve.bas",
+      "passes": 5,
+      "expectedChecksum": 840,
+      "category": "kernel",
+      "description": "Sieve of Eratosthenes through 1000 with array writes and branches",
+      "sourceLines": 28,
+      "reference": "Existing independent Check-ReferenceChecksums.ps1",
+      "tag": "b01",
+      "commonSha256": "8F3DEAAE3A9B700CE028A286C5826C2FC6253EDDE3E9C239E49F3C82CBEAD2BF"
+    },
+    {
+      "name": "matrix_multiply",
+      "file": "matrix_multiply.bas",
+      "passes": 10,
+      "expectedChecksum": 1094,
+      "category": "kernel",
+      "description": "Eight by eight integer matrix multiplication and weighted checksum",
+      "sourceLines": 33,
+      "reference": "Existing independent Check-ReferenceChecksums.ps1",
+      "tag": "b02",
+      "commonSha256": "C5B70C4AA35585F5E19ECDC0E172AFDFC836031D1AB2F37B201FC60FC9394D61"
+    },
+    {
+      "name": "string_operations",
+      "file": "string_operations.bas",
+      "passes": 80,
+      "expectedChecksum": 880,
+      "category": "kernel",
+      "description": "Build and rotate a 64 character string with concatenation slicing LEN and CODE",
+      "sourceLines": 22,
+      "reference": "Existing independent Check-ReferenceChecksums.ps1",
+      "tag": "b03",
+      "commonSha256": "4B61BDC4E157527F92F61F65CA82F5980544F45DCB8D03DDD7C3C0FA26B44BF0"
+    },
+    {
+      "name": "float_polynomial",
+      "file": "float_polynomial.bas",
+      "passes": 4,
+      "expectedChecksum": 9252,
+      "category": "kernel",
+      "description": "General QDOS floating division multiplication and Horner polynomial",
+      "sourceLines": 20,
+      "reference": "Existing independent Check-ReferenceChecksums.ps1",
+      "tag": "b04",
+      "commonSha256": "36795202B703641BF11DF328744332B64F99175EFE5E000DA316B884FFEC22B7"
+    },
+    {
+      "name": "float_transcendentals",
+      "file": "float_transcendentals.bas",
+      "passes": 5,
+      "expectedChecksum": 1280,
+      "category": "kernel",
+      "description": "ROM SIN COS and SQRT with the trigonometric identity as a numerical check",
+      "sourceLines": 18,
+      "reference": "Existing independent Check-ReferenceChecksums.ps1",
+      "tag": "b05",
+      "commonSha256": "53C033A0B2B41C644D3D2D37216C6AECB191798B1DA94663F904F1A939DA2E09"
+    },
+    {
+      "name": "eight_queens",
+      "file": "eight_queens.bas",
+      "passes": 1,
+      "expectedChecksum": 4962,
+      "category": "application",
+      "description": "Enumerate and validate every eight-queens solution",
+      "sourceLines": 72,
+      "reference": {
+        "solutions": 92,
+        "firstColumnHistogram": {
+          "1": 4,
+          "2": 8,
+          "3": 16,
+          "4": 18,
+          "5": 18,
+          "6": 16,
+          "7": 8,
+          "8": 4
+        },
+        "perPass": 4962
+      },
+      "tag": "b06",
+      "commonSha256": "2257E8456B42BF677F956074B7C02A9CE7CE946D140F5F615CB536B79313C577"
+    },
+    {
+      "name": "route_planner",
+      "file": "route_planner.bas",
+      "passes": 1,
+      "expectedChecksum": 4701,
+      "category": "application",
+      "description": "Build a road network and verify all shortest routes",
+      "sourceLines": 97,
+      "reference": {
+        "towns": 32,
+        "algorithm": "Floyd-Warshall",
+        "perPass": 4701,
+        "largestDistance": 45
+      },
+      "tag": "b07",
+      "commonSha256": "441FB841F0E12509FB064B1B0CC397D08D9AA70EF98ED984EC7EA4D46EFC4A3E"
+    },
+    {
+      "name": "concordance",
+      "file": "concordance.bas",
+      "passes": 4,
+      "expectedChecksum": 7936,
+      "category": "application",
+      "description": "Build sort and verify a text concordance",
+      "sourceLines": 104,
+      "reference": {
+        "algorithm": "Python Counter and sorted",
+        "unique": 97,
+        "words": 147,
+        "perPass": 6984
+      },
+      "tag": "b08",
+      "commonSha256": "65A16DBA29A4DE00FF010FC4A5F796FF61D583A872D797FF9F4E1FB2BDE7EEEA"
+    }
+  ],
+  "scope": "Initialisation, computation, internal verification and checksum; excludes job loading, runtime startup, result writes and shutdown"
+}

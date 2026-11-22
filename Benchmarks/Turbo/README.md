@@ -123,3 +123,9 @@ switches in the configuration. These remain functional instruction counts;
 elapsed QL timings require the full emulator. See
 [the native-region audit](../../SB/Optimization/TURBO-NATIVE-REGIONS.md) for eligibility and
 checked-operation boundaries.
+
+## Full-emulator comparison with Turbo
+
+The [Q-emuLator collection](../QemuLator/README.md) compares genuine Turbo FAST
+native builds with SB using elapsed times under QDOS. It includes three larger
+algorithmic programs, independent reference checks and repeatable timing scripts.

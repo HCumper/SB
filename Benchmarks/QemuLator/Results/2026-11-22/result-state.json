@@ -1,0 +1,13 @@
+{
+  "complete": true,
+  "samples": 72,
+  "expected": 72,
+  "failed": [],
+  "calibration": {
+    "ticks": 101,
+    "expectedPauseTicks": 100,
+    "hostSeconds": 2.0194509029388428
+  },
+  "clockValidated": true,
+  "clockDiscrepancies": []
+}

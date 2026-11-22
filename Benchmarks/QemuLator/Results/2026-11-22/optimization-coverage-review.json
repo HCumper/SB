@@ -1,0 +1,82 @@
+{
+  "ReviewedUtc": "2026-11-22T17:33:27.4401712Z",
+  "SbRevision": "48755e0f686bce440715834f34b9a7bc32c827aa",
+  "CompilerSha256": "8FD71517DEABA205D09F5F7AEB27C529ECF48E3590EFF65C3A09DB2B3E8D67C0",
+  "Finding": "The source-level timer POKE_W/POKE_L result writes trigger TurboNativeLoops.plan unsafeProgram for the complete program. The timings are for instrumented executables and suppress otherwise eligible native FOR loops.",
+  "ControlExperiment": "Removing only the three POKE result writes from timed integer_arithmetic restores one selected native FOR loop, while leaving the timer reads in place.",
+  "Scope": "Compile-time coverage audit only; no corrected elapsed timings are claimed.",
+  "Programs": [
+    {
+      "Benchmark": "integer_arithmetic",
+      "UninstrumentedNativeForLoops": 1,
+      "TimedNativeForLoops": 0,
+      "UninstrumentedArithmeticProofsEnabled": true,
+      "UninstrumentedProvenExpressions": 4,
+      "TimedProvenExpressions": 1
+    },
+    {
+      "Benchmark": "sieve",
+      "UninstrumentedNativeForLoops": 2,
+      "TimedNativeForLoops": 0,
+      "UninstrumentedArithmeticProofsEnabled": true,
+      "UninstrumentedProvenExpressions": 1,
+      "TimedProvenExpressions": 1
+    },
+    {
+      "Benchmark": "matrix_multiply",
+      "UninstrumentedNativeForLoops": 0,
+      "TimedNativeForLoops": 0,
+      "UninstrumentedArithmeticProofsEnabled": true,
+      "UninstrumentedProvenExpressions": 7,
+      "TimedProvenExpressions": 5
+    },
+    {
+      "Benchmark": "string_operations",
+      "UninstrumentedNativeForLoops": 0,
+      "TimedNativeForLoops": 0,
+      "UninstrumentedArithmeticProofsEnabled": false,
+      "UninstrumentedProvenExpressions": 0,
+      "TimedProvenExpressions": 0
+    },
+    {
+      "Benchmark": "float_polynomial",
+      "UninstrumentedNativeForLoops": 0,
+      "TimedNativeForLoops": 0,
+      "UninstrumentedArithmeticProofsEnabled": true,
+      "UninstrumentedProvenExpressions": 0,
+      "TimedProvenExpressions": 0
+    },
+    {
+      "Benchmark": "float_transcendentals",
+      "UninstrumentedNativeForLoops": 0,
+      "TimedNativeForLoops": 0,
+      "UninstrumentedArithmeticProofsEnabled": false,
+      "UninstrumentedProvenExpressions": 0,
+      "TimedProvenExpressions": 0
+    },
+    {
+      "Benchmark": "eight_queens",
+      "UninstrumentedNativeForLoops": 0,
+      "TimedNativeForLoops": 0,
+      "UninstrumentedArithmeticProofsEnabled": false,
+      "UninstrumentedProvenExpressions": 0,
+      "TimedProvenExpressions": 0
+    },
+    {
+      "Benchmark": "route_planner",
+      "UninstrumentedNativeForLoops": 0,
+      "TimedNativeForLoops": 0,
+      "UninstrumentedArithmeticProofsEnabled": false,
+      "UninstrumentedProvenExpressions": 0,
+      "TimedProvenExpressions": 0
+    },
+    {
+      "Benchmark": "concordance",
+      "UninstrumentedNativeForLoops": 0,
+      "TimedNativeForLoops": 0,
+      "UninstrumentedArithmeticProofsEnabled": false,
+      "UninstrumentedProvenExpressions": 0,
+      "TimedProvenExpressions": 0
+    }
+  ]
+}
