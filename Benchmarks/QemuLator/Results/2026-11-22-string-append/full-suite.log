@@ -1,0 +1,21 @@
+  SBRuntime -> C:\Source\SB\SBRuntime\bin\Debug\net10.0\SBRuntime.dll
+  SBLib -> C:\Source\SB\SBLib\bin\Debug\net10.0\SBLib.dll
+  SB.CSharpRuntime -> C:\Source\SB\SB.CSharpRuntime\bin\Debug\net10.0\SB.CSharpRuntime.dll
+  SB.AvaloniaHost -> C:\Source\SB\SB.AvaloniaHost\bin\Debug\net10.0\SB.AvaloniaHost.dll
+  SB -> C:\Source\SB\SB\bin\Debug\net10.0\SB.dll
+  SBTests -> C:\Source\SB\SBTests\bin\Debug\net10.0\SBTests.dll
+Test run for C:\Source\SB\SBTests\bin\Debug\net10.0\SBTests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+  SBRuntimeTests -> C:\Source\SB\SBRuntimeTests\bin\Debug\net10.0\SBRuntimeTests.dll
+Test run for C:\Source\SB\SBRuntimeTests\bin\Debug\net10.0\SBRuntimeTests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Results File: C:\Source\codex-workspace\.scratch\turbo-string-append\full-suite\hcump_HUGH-DESKTOP_2026-11-22_13_45_40_net10.0.trx
+
+Passed!  - Failed:     0, Passed:   248, Skipped:     0, Total:   248, Duration: 15 s - SBRuntimeTests.dll (net10.0)
+Turbo IR generation failed:
+line 10 (1:3): RUN has no Turbo IR equivalent in the specification.
+line 861:25 missing Newline at '<EOF>'
+line 861:25 missing Newline at '<EOF>'
+Results File: C:\Source\codex-workspace\.scratch\turbo-string-append\full-suite\hcump_HUGH-DESKTOP_2026-11-22_13_45_34_net10.0.trx
+
+Passed!  - Failed:     0, Passed:  2841, Skipped:     0, Total:  2841, Duration: 11 m 5 s - SBTests.dll (net10.0)

@@ -283,6 +283,7 @@ module private Op =
     let quickZero = 263
     let storeString = 264
     let fetchString = 265
+    let appendString = 374
     let dimn = 266
     let lastGlobal = 267
     let duplicateInt = 268
@@ -1699,6 +1700,59 @@ type private Emitter(options: TurboIrOptions, program: HirProgram) =
 
     // -- assignment targets -------------------------------------------------
 
+    /// Unlike a general call, these expressions cannot replace the destination's
+    /// descriptor or contents while the suffix is evaluated. Only built-ins
+    /// lowered to fixed runtime operations qualify; resident/compiled calls may
+    /// mutate aliases and must keep the original prefix snapshot.
+    member private this.AppendSuffixIsStable(expr: HirExpr) =
+        let stable = this.AppendSuffixIsStable
+        match expr with
+        | Literal _ | Missing _ | ReadVar _ | DynamicReadVar _ -> true
+        | ReadArrayElem(_, indexes, _, _) | DynamicReadArrayElem(_, indexes, _, _) -> List.forall stable indexes
+        | ReadStringChar(_, index, _, _) | DynamicReadStringChar(_, index, _, _) -> stable index
+        | Unary(_, value, _, _) -> stable value
+        | Binary(_, left, right, _, _) -> stable left && stable right
+        | CallFunc(symbol, args, _, _) when not (routines.ContainsKey symbol) ->
+            let name = normalizeIdentifier (this.SymbolName symbol)
+            let fixedOperation =
+                match name, args with
+                | ("CHR$" | "CODE" | "LEN"), [ValueArg _]
+                | ("FILL$" | "INSTR"), [ValueArg _; ValueArg _]
+                | ("PI" | "ERNUM" | "ERLIN"), [] -> true
+                // These exact forms are the slice operations emitted above,
+                // rather than a call to a replaceable resident MID$/RIGHT$.
+                | "MID$", [ValueArg _; ValueArg start; ValueArg(Binary(Add, Binary(Subtract, _, start2, _, _), one, _, _))] ->
+                    start = start2 && this.TryConstant one = Some(ConstInt 1)
+                | "RIGHT$", [ValueArg baseExpr; ValueArg(Binary(Add, Binary(Subtract, CallFunc(len, [ValueArg base2], _, _), _, _, _), one, _, _))] ->
+                    baseExpr = base2 && this.TryConstant one = Some(ConstInt 1) &&
+                    not (routines.ContainsKey len) && normalizeIdentifier (this.SymbolName len) = "LEN"
+                | _ -> false
+            fixedOperation && (args |> List.forall (function ValueArg value -> stable value | RefArg _ -> false))
+        | CallFunc _ -> false
+
+    member private this.TryEmitStringAppend(scope: Scope, target: HirTarget, value: HirExpr) =
+        let destination =
+            match target with
+            | WriteVar(symbol, _, pos) when (this.ManifestSymbol symbol).IsNone -> Some(this.SymbolName symbol, pos)
+            | DynamicWriteVar(name, _, pos) -> Some(name, pos)
+            | _ -> None
+        match destination, value with
+        | Some(name, pos), Binary(Concat, prefix, suffix, _, _)
+            when this.IsSimpleStringVariable prefix && this.AppendSuffixIsStable suffix &&
+                 (this.NameOf prefix |> Option.exists (fun source -> normalizeIdentifier source = normalizeIdentifier name)) ->
+            let vector = this.NamedVector(name, pos)
+            if vector.Kind <> ScalarVector || vector.Type <> TurboString then false
+            else
+                // Evaluate the whole suffix before modifying the destination,
+                // including when it is already full. P-mode 374 checks missing
+                // strings, truncates to capacity and consumes the suffix exactly
+                // as Turbo's Simple_Concat does. Do not add a concatenated-length
+                // overflow test: Turbo's append does not have one.
+                this.EmitAs(scope, TurboString, suffix)
+                opc Op.appendString [Word vector.Id] vector.Name
+                true
+        | _ -> false
+
     member private this.EmitStore(scope: Scope, target: HirTarget, emitValue: TurboType -> unit) =
         match target with
         | WriteVar(symbol, _, pos) -> this.EmitStoreName(this.SymbolName symbol, emitValue, pos, (this.ManifestSymbol symbol).IsSome)
@@ -2000,7 +2054,8 @@ type private Emitter(options: TurboIrOptions, program: HirProgram) =
     member private this.EmitStmt(scope: Scope, stmt: HirStmt) =
         match stmt with
         | Assign(target, value, _) ->
-            this.EmitStore(scope, target, fun turboType -> this.EmitAs(scope, turboType, value))
+            if not (this.TryEmitStringAppend(scope, target, value)) then
+                this.EmitStore(scope, target, fun turboType -> this.EmitAs(scope, turboType, value))
         | ProcCall(symbol, channel, args, pos) ->
             match routines.TryGetValue symbol with
             | true, routine ->

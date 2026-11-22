@@ -1,6 +1,8 @@
 # Turbo FAST versus SB in Q-emuLator
 
-[Corrected external timings, 22 November 2026](Results/2026-11-22-external/README.md)
+[Latest timings with direct string append, 22 November 2026](Results/2026-11-22-string-append/README.md)
+
+[External-timing baseline before string append](Results/2026-11-22-external/README.md)
 
 This collection times unchanged executable jobs built by genuine Turbo 5.09
 FAST and fully optimized SB, running under QDOS in Q-emuLator. It includes six

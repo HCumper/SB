@@ -42,6 +42,48 @@ let private withCompiledProgramMode enabled extraArguments extension (source: st
 
 let private withCompiledProgram extension source action = withCompiledProgramMode true [] extension source action
 
+let stringAppendPrograms = [|
+    // Turbo rounds the declared odd maximum up to an even byte count.
+    "10 DIM a$(5)\n20 a$=\"AB\":a$=a$ & \"CDEF\":a$=a$ & \"ignored\"\n30 PRINT a$\n40 STOP", "ABCDEF\n"
+    "10 DIM a$(8)\n20 a$=\"AB\":a$=a$ & a$:first%=2:last%=3\n30 a$=a$ & a$(first% TO last%)\n40 PRINT a$\n50 STOP", "ABABBA\n"
+    "10 DIM a$(5)\n20 a$=\"\":a$=a$ & \"\":a$=a$ & CHR$(65):a$=a$ & LEN(a$)\n30 PRINT a$\n40 STOP", "A1\n"
+    "10 DIM a$(8)\n20 a$=\"G\":work a$,a$\n30 PRINT a$\n40 STOP\n100 DEFine PROCedure work(p$,q$)\n110 p$=p$ & q$:q$=q$ & \"!\"\n120 END DEFine", "GG!\n"
+    "10 a$=\"global\":work\n20 PRINT a$\n30 STOP\n100 DEFine PROCedure work\n110 LOCal a$(4)\n120 a$=\"L\":a$=a$ & \"ocal\"\n130 PRINT a$\n140 END DEFine", "Loca\nglobal\n"
+    "10 a$=\"before\":a$=a$ & change$()\n20 PRINT a$\n30 STOP\n100 DEFine FuNction change$\n110 a$=\"after\"\n120 RETurn \"!\"\n130 END DEFine", "before!\n"
+    "10 DIM a$(2)\n20 a$=\"AB\":d%=0\n30 WHEN ERROR\n40 PRINT ERNUM;\":\";a$\n50 STOP\n60 END WHEN\n70 a$=a$ & CHR$(65 DIV d%)\n80 PRINT \"wrong\"", "-18:AB\n"
+    "10 DIM a$(3)\n20 a$=\"AB\":d%=0\n30 WHEN ERROR\n40 attempts%=attempts%+1\n50 IF attempts%<3 THEN RETRY\n60 PRINT ERNUM;\":\";attempts%;\":\";a$:STOP\n70 END WHEN\n80 a$=a$ & CHR$(65 DIV d%)\n90 PRINT \"wrong\"", "-18:3:AB\n"
+    "10 DIM a$(2)\n20 a$=\"AB\"\n30 WHEN ERROR\n40 PRINT ERNUM;\":\";a$\n50 STOP\n60 END WHEN\n70 a$=a$ & a$(3)\n80 PRINT \"wrong\"", "-4:AB\n"
+    "10 DIM a$(1,4)\n20 a$(0)=\"A\":a$(0)=a$(0) & \"BCDEF\"\n30 PRINT a$(0)\n40 STOP", "ABCD\n"
+    "10 WHEN ERROR\n20 PRINT ERNUM:STOP\n30 END WHEN\n40 GO TO 60\n50 DIM a$(4)\n60 a$=a$ & \"x\"\n70 PRINT \"wrong\"", "-7\n"
+|]
+
+let stringAppendModes = [|
+    for index in 0..stringAppendPrograms.Length-1 do
+        for hir in [false;true] do
+            for native,registers in [false,false;true,false;true,true] do
+                yield TestCaseData(index,hir,native,registers).SetName($"String append {index} (HIR {hir}, native {native}, registers {registers})") |]
+
+[<TestCaseSource(nameof stringAppendModes)>]
+let ``direct string append preserves Turbo truncation aliases and error handling`` (index:int,hir:bool,native:bool,registers:bool) =
+    let source,expected = stringAppendPrograms[index]
+    withCompiledProgramMode hir [(if native then "--native-regions" else "--no-native-regions");(if registers then "--regalloc" else "--no-regalloc")] ".bas" source (fun executable ->
+        let result=run 4000000L executable
+        Assert.That(result.ExitCode, Is.Zero)
+        Assert.That(result.Output, Is.EqualTo(expected)))
+
+[<TestCase(false)>]
+[<TestCase(true)>]
+let ``direct string append does not invent a combined length overflow`` (hir:bool) =
+    let source = "10 DIM a$(32760)\n20 a$=FILL$(\"a\",32760)\n30 a$=a$ & FILL$(\"b\",30)\n40 PRINT LEN(a$);\":\";a$(1);\":\";a$(32760)\n50 STOP"
+    withCompiledProgramMode hir [] ".bas" source (fun executable ->
+        // Supply a larger QDOS job allocation for this capacity-limit test.
+        // The CLI's default header requests only 20 KiB. Code is unchanged.
+        let largeJob = Array.copy executable
+        Array.blit [|0uy;2uy;0uy;0uy|] 0 largeJob 22 4 // 128 KiB dataspace.
+        let result=run 4000000L largeJob
+        Assert.That(result.ExitCode, Is.Zero)
+        Assert.That(result.Output, Is.EqualTo("32760:a:a\n")))
+
 let nativeValuePrograms = [|
     "10 a%=3:b%=a%+4:c%=b%*2:d%=-c%\n20 PRINT a%;\":\";b%;\":\";c%;\":\";d%\n30 STOP", "3:7:14:-14\n"
     "10 total%=0\n20 FOR i%=1 TO 10\n30 x%=(i%+1)*(i%+1):total%=total%+x%\n40 END FOR i%\n50 PRINT total%;\":\";x%;\":\";i%\n60 STOP", "505:121:10\n"

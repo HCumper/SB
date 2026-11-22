@@ -1,0 +1,16 @@
+test_clock_failures_block_complete_run (__main__.ExternalResults.test_clock_failures_block_complete_run) ... ok
+test_duplicate_trial_is_rejected (__main__.ExternalResults.test_duplicate_trial_is_rejected) ... ok
+test_instrumented_or_malformed_result_is_rejected (__main__.ExternalResults.test_instrumented_or_malformed_result_is_rejected) ... ok
+test_missing_start_fails (__main__.ExternalResults.test_missing_start_fails) ... ok
+test_no_return_or_zero_ticks_fails (__main__.ExternalResults.test_no_return_or_zero_ticks_fails) ... ok
+test_old_plan_is_rejected (__main__.ExternalResults.test_old_plan_is_rejected) ... ok
+test_ordinary_stdout_and_whole_job_scope (__main__.ExternalResults.test_ordinary_stdout_and_whole_job_scope) ... ok
+test_runtime_error_or_missing_stdout_fails (__main__.ExternalResults.test_runtime_error_or_missing_stdout_fails) ... ok
+test_wrong_checksum_fails (__main__.ExternalResults.test_wrong_checksum_fails) ... ok
+test_wrong_workload_is_rejected (__main__.ExternalResults.test_wrong_workload_is_rejected) ... ok
+test_exact_program_body_without_timer_or_build_launcher (__main__.GuestPreparation.test_exact_program_body_without_timer_or_build_launcher) ... ok
+
+----------------------------------------------------------------------
+Ran 11 tests in 0.690s
+
+OK

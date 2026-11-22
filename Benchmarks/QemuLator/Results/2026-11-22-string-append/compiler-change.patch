@@ -1,0 +1,216 @@
+diff --git a/SB/HirTurboIrBackend.fs b/SB/HirTurboIrBackend.fs
+index 37bd6ce..0876ca0 100644
+--- a/SB/HirTurboIrBackend.fs
++++ b/SB/HirTurboIrBackend.fs
+@@ -283,6 +283,7 @@ module private Op =
+     let quickZero = 263
+     let storeString = 264
+     let fetchString = 265
++    let appendString = 374
+     let dimn = 266
+     let lastGlobal = 267
+     let duplicateInt = 268
+@@ -1699,6 +1700,59 @@ type private Emitter(options: TurboIrOptions, program: HirProgram) =
+ 
+     // -- assignment targets -------------------------------------------------
+ 
++    /// Unlike a general call, these expressions cannot replace the destination's
++    /// descriptor or contents while the suffix is evaluated. Only built-ins
++    /// lowered to fixed runtime operations qualify; resident/compiled calls may
++    /// mutate aliases and must keep the original prefix snapshot.
++    member private this.AppendSuffixIsStable(expr: HirExpr) =
++        let stable = this.AppendSuffixIsStable
++        match expr with
++        | Literal _ | Missing _ | ReadVar _ | DynamicReadVar _ -> true
++        | ReadArrayElem(_, indexes, _, _) | DynamicReadArrayElem(_, indexes, _, _) -> List.forall stable indexes
++        | ReadStringChar(_, index, _, _) | DynamicReadStringChar(_, index, _, _) -> stable index
++        | Unary(_, value, _, _) -> stable value
++        | Binary(_, left, right, _, _) -> stable left && stable right
++        | CallFunc(symbol, args, _, _) when not (routines.ContainsKey symbol) ->
++            let name = normalizeIdentifier (this.SymbolName symbol)
++            let fixedOperation =
++                match name, args with
++                | ("CHR$" | "CODE" | "LEN"), [ValueArg _]
++                | ("FILL$" | "INSTR"), [ValueArg _; ValueArg _]
++                | ("PI" | "ERNUM" | "ERLIN"), [] -> true
++                // These exact forms are the slice operations emitted above,
++                // rather than a call to a replaceable resident MID$/RIGHT$.
++                | "MID$", [ValueArg _; ValueArg start; ValueArg(Binary(Add, Binary(Subtract, _, start2, _, _), one, _, _))] ->
++                    start = start2 && this.TryConstant one = Some(ConstInt 1)
++                | "RIGHT$", [ValueArg baseExpr; ValueArg(Binary(Add, Binary(Subtract, CallFunc(len, [ValueArg base2], _, _), _, _, _), one, _, _))] ->
++                    baseExpr = base2 && this.TryConstant one = Some(ConstInt 1) &&
++                    not (routines.ContainsKey len) && normalizeIdentifier (this.SymbolName len) = "LEN"
++                | _ -> false
++            fixedOperation && (args |> List.forall (function ValueArg value -> stable value | RefArg _ -> false))
++        | CallFunc _ -> false
++
++    member private this.TryEmitStringAppend(scope: Scope, target: HirTarget, value: HirExpr) =
++        let destination =
++            match target with
++            | WriteVar(symbol, _, pos) when (this.ManifestSymbol symbol).IsNone -> Some(this.SymbolName symbol, pos)
++            | DynamicWriteVar(name, _, pos) -> Some(name, pos)
++            | _ -> None
++        match destination, value with
++        | Some(name, pos), Binary(Concat, prefix, suffix, _, _)
++            when this.IsSimpleStringVariable prefix && this.AppendSuffixIsStable suffix &&
++                 (this.NameOf prefix |> Option.exists (fun source -> normalizeIdentifier source = normalizeIdentifier name)) ->
++            let vector = this.NamedVector(name, pos)
++            if vector.Kind <> ScalarVector || vector.Type <> TurboString then false
++            else
++                // Evaluate the whole suffix before modifying the destination,
++                // including when it is already full. P-mode 374 checks missing
++                // strings, truncates to capacity and consumes the suffix exactly
++                // as Turbo's Simple_Concat does. Do not add a concatenated-length
++                // overflow test: Turbo's append does not have one.
++                this.EmitAs(scope, TurboString, suffix)
++                opc Op.appendString [Word vector.Id] vector.Name
++                true
++        | _ -> false
++
+     member private this.EmitStore(scope: Scope, target: HirTarget, emitValue: TurboType -> unit) =
+         match target with
+         | WriteVar(symbol, _, pos) -> this.EmitStoreName(this.SymbolName symbol, emitValue, pos, (this.ManifestSymbol symbol).IsSome)
+@@ -2000,7 +2054,8 @@ type private Emitter(options: TurboIrOptions, program: HirProgram) =
+     member private this.EmitStmt(scope: Scope, stmt: HirStmt) =
+         match stmt with
+         | Assign(target, value, _) ->
+-            this.EmitStore(scope, target, fun turboType -> this.EmitAs(scope, turboType, value))
++            if not (this.TryEmitStringAppend(scope, target, value)) then
++                this.EmitStore(scope, target, fun turboType -> this.EmitAs(scope, turboType, value))
+         | ProcCall(symbol, channel, args, pos) ->
+             match routines.TryGetValue symbol with
+             | true, routine ->
+diff --git a/SBTests/GeneratedTurboExecutionTests.fs b/SBTests/GeneratedTurboExecutionTests.fs
+index 615193f..7f244d6 100644
+--- a/SBTests/GeneratedTurboExecutionTests.fs
++++ b/SBTests/GeneratedTurboExecutionTests.fs
+@@ -42,6 +42,48 @@ let private withCompiledProgramMode enabled extraArguments extension (source: st
+ 
+ let private withCompiledProgram extension source action = withCompiledProgramMode true [] extension source action
+ 
++let stringAppendPrograms = [|
++    // Turbo rounds the declared odd maximum up to an even byte count.
++    "10 DIM a$(5)\n20 a$=\"AB\":a$=a$ & \"CDEF\":a$=a$ & \"ignored\"\n30 PRINT a$\n40 STOP", "ABCDEF\n"
++    "10 DIM a$(8)\n20 a$=\"AB\":a$=a$ & a$:first%=2:last%=3\n30 a$=a$ & a$(first% TO last%)\n40 PRINT a$\n50 STOP", "ABABBA\n"
++    "10 DIM a$(5)\n20 a$=\"\":a$=a$ & \"\":a$=a$ & CHR$(65):a$=a$ & LEN(a$)\n30 PRINT a$\n40 STOP", "A1\n"
++    "10 DIM a$(8)\n20 a$=\"G\":work a$,a$\n30 PRINT a$\n40 STOP\n100 DEFine PROCedure work(p$,q$)\n110 p$=p$ & q$:q$=q$ & \"!\"\n120 END DEFine", "GG!\n"
++    "10 a$=\"global\":work\n20 PRINT a$\n30 STOP\n100 DEFine PROCedure work\n110 LOCal a$(4)\n120 a$=\"L\":a$=a$ & \"ocal\"\n130 PRINT a$\n140 END DEFine", "Loca\nglobal\n"
++    "10 a$=\"before\":a$=a$ & change$()\n20 PRINT a$\n30 STOP\n100 DEFine FuNction change$\n110 a$=\"after\"\n120 RETurn \"!\"\n130 END DEFine", "before!\n"
++    "10 DIM a$(2)\n20 a$=\"AB\":d%=0\n30 WHEN ERROR\n40 PRINT ERNUM;\":\";a$\n50 STOP\n60 END WHEN\n70 a$=a$ & CHR$(65 DIV d%)\n80 PRINT \"wrong\"", "-18:AB\n"
++    "10 DIM a$(3)\n20 a$=\"AB\":d%=0\n30 WHEN ERROR\n40 attempts%=attempts%+1\n50 IF attempts%<3 THEN RETRY\n60 PRINT ERNUM;\":\";attempts%;\":\";a$:STOP\n70 END WHEN\n80 a$=a$ & CHR$(65 DIV d%)\n90 PRINT \"wrong\"", "-18:3:AB\n"
++    "10 DIM a$(2)\n20 a$=\"AB\"\n30 WHEN ERROR\n40 PRINT ERNUM;\":\";a$\n50 STOP\n60 END WHEN\n70 a$=a$ & a$(3)\n80 PRINT \"wrong\"", "-4:AB\n"
++    "10 DIM a$(1,4)\n20 a$(0)=\"A\":a$(0)=a$(0) & \"BCDEF\"\n30 PRINT a$(0)\n40 STOP", "ABCD\n"
++    "10 WHEN ERROR\n20 PRINT ERNUM:STOP\n30 END WHEN\n40 GO TO 60\n50 DIM a$(4)\n60 a$=a$ & \"x\"\n70 PRINT \"wrong\"", "-7\n"
++|]
++
++let stringAppendModes = [|
++    for index in 0..stringAppendPrograms.Length-1 do
++        for hir in [false;true] do
++            for native,registers in [false,false;true,false;true,true] do
++                yield TestCaseData(index,hir,native,registers).SetName($"String append {index} (HIR {hir}, native {native}, registers {registers})") |]
++
++[<TestCaseSource(nameof stringAppendModes)>]
++let ``direct string append preserves Turbo truncation aliases and error handling`` (index:int,hir:bool,native:bool,registers:bool) =
++    let source,expected = stringAppendPrograms[index]
++    withCompiledProgramMode hir [(if native then "--native-regions" else "--no-native-regions");(if registers then "--regalloc" else "--no-regalloc")] ".bas" source (fun executable ->
++        let result=run 4000000L executable
++        Assert.That(result.ExitCode, Is.Zero)
++        Assert.That(result.Output, Is.EqualTo(expected)))
++
++[<TestCase(false)>]
++[<TestCase(true)>]
++let ``direct string append does not invent a combined length overflow`` (hir:bool) =
++    let source = "10 DIM a$(32760)\n20 a$=FILL$(\"a\",32760)\n30 a$=a$ & FILL$(\"b\",30)\n40 PRINT LEN(a$);\":\";a$(1);\":\";a$(32760)\n50 STOP"
++    withCompiledProgramMode hir [] ".bas" source (fun executable ->
++        // Supply a larger QDOS job allocation for this capacity-limit test.
++        // The CLI's default header requests only 20 KiB. Code is unchanged.
++        let largeJob = Array.copy executable
++        Array.blit [|0uy;2uy;0uy;0uy|] 0 largeJob 22 4 // 128 KiB dataspace.
++        let result=run 4000000L largeJob
++        Assert.That(result.ExitCode, Is.Zero)
++        Assert.That(result.Output, Is.EqualTo("32760:a:a\n")))
++
+ let nativeValuePrograms = [|
+     "10 a%=3:b%=a%+4:c%=b%*2:d%=-c%\n20 PRINT a%;\":\";b%;\":\";c%;\":\";d%\n30 STOP", "3:7:14:-14\n"
+     "10 total%=0\n20 FOR i%=1 TO 10\n30 x%=(i%+1)*(i%+1):total%=total%+x%\n40 END FOR i%\n50 PRINT total%;\":\";x%;\":\";i%\n60 STOP", "505:121:10\n"
+diff --git a/SBTests/HirTurboIrBackendTests.fs b/SBTests/HirTurboIrBackendTests.fs
+index d92a77d..67fb170 100644
+--- a/SBTests/HirTurboIrBackendTests.fs
++++ b/SBTests/HirTurboIrBackendTests.fs
+@@ -157,6 +157,76 @@ let private compileWith configure text =
+ 
+ let private compile text = compileWith id text |> expectOk
+ 
++[<Test>]
++let ``direct string append emits only the suffix and Turbo 374`` () =
++    let output = compile (source """
++        10 DIM a$(8),b$(8)
++        20 a$="AB":b$="CD"
++        30 a$=a$ & b$
++        40 STOP
++    """)
++    assertLines """
++        106 8
++        253 1 ; A$
++        106 8
++        253 2 ; B$
++        169 "AB"
++        264 1 ; A$
++        169 "CD"
++        264 2 ; B$
++        265 2 ; B$
++        374 1 ; A$
++        220
++        220
++    """ (body output)
++
++[<TestCase("a$=a$ & a$", 1)>]
++[<TestCase("a$=a$ & CHR$(65)", 1)>]
++[<TestCase("a$=a$ & a$(2 TO 3)", 1)>]
++[<TestCase("a$=a$ & a$(2 TO)", 1)>]
++[<TestCase("a$=a$ & (b$ & \"!\")", 1)>]
++[<TestCase("a$=a$ & LEN(a$)", 1)>]
++[<TestCase("a$=b$ & a$", 0)>]
++[<TestCase("a$(1)=a$ & b$", 0)>]
++[<TestCase("a$=a$ & STR$(1)", 0)>]
++[<TestCase("a$=a$ & b$ & \"!\"", 0)>]
++let ``direct string append selects only a stable suffix and a whole destination`` (assignment:string, expected:int) =
++    let output = compile (source ($"10 DIM a$(8),b$(8)\n20 a$=\"AB\":b$=\"CD\"\n30 {assignment}\n40 STOP"))
++    let appends = output.Items |> List.filter (function Instruction(374,_,_) -> true | _ -> false)
++    Assert.That(appends.Length, Is.EqualTo(expected))
++
++[<Test>]
++let ``direct string append keeps a prefix snapshot across a mutating function`` () =
++    let output = compile (source """
++        10 a$="before"
++        20 a$=a$ & change$()
++        30 STOP
++        100 DEFine FuNction change$
++        110 a$="after"
++        120 RETurn "!"
++        130 END DEFine
++    """)
++    Assert.That(output.Items |> List.exists (function Instruction(374,_,_) -> true | _ -> false), Is.False)
++    Assert.That(String.concat "\n" (body output), Does.Contain("265 1 ; A$\n236"))
++
++[<Test>]
++let ``direct string append does not treat a user-defined CHR function as pure`` () =
++    let output = compile (source """
++        10 a$="before"
++        20 a$=a$ & CHR$(65)
++        30 STOP
++        100 DEFine FuNction CHR$(n%)
++        110 a$="after"
++        120 RETurn "!"
++        130 END DEFine
++    """)
++    Assert.That(output.Items |> List.exists (function Instruction(374,_,_) -> true | _ -> false), Is.False)
++
++[<Test>]
++let ``direct string append follows implicit string typing`` () =
++    let output = compile (source "10 IMPLICIT$ a,b\n20 a=\"A\":b=\"B\":a=a & b\n30 STOP")
++    Assert.That(output.Items |> List.exists (function Instruction(374,_,"A") -> true | _ -> false), Is.True)
++
+ // ---------------------------------------------------------------------------
+ // The specification's examples (section 10)
+ // ---------------------------------------------------------------------------

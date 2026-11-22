@@ -157,6 +157,76 @@ let private compileWith configure text =
 
 let private compile text = compileWith id text |> expectOk
 
+[<Test>]
+let ``direct string append emits only the suffix and Turbo 374`` () =
+    let output = compile (source """
+        10 DIM a$(8),b$(8)
+        20 a$="AB":b$="CD"
+        30 a$=a$ & b$
+        40 STOP
+    """)
+    assertLines """
+        106 8
+        253 1 ; A$
+        106 8
+        253 2 ; B$
+        169 "AB"
+        264 1 ; A$
+        169 "CD"
+        264 2 ; B$
+        265 2 ; B$
+        374 1 ; A$
+        220
+        220
+    """ (body output)
+
+[<TestCase("a$=a$ & a$", 1)>]
+[<TestCase("a$=a$ & CHR$(65)", 1)>]
+[<TestCase("a$=a$ & a$(2 TO 3)", 1)>]
+[<TestCase("a$=a$ & a$(2 TO)", 1)>]
+[<TestCase("a$=a$ & (b$ & \"!\")", 1)>]
+[<TestCase("a$=a$ & LEN(a$)", 1)>]
+[<TestCase("a$=b$ & a$", 0)>]
+[<TestCase("a$(1)=a$ & b$", 0)>]
+[<TestCase("a$=a$ & STR$(1)", 0)>]
+[<TestCase("a$=a$ & b$ & \"!\"", 0)>]
+let ``direct string append selects only a stable suffix and a whole destination`` (assignment:string, expected:int) =
+    let output = compile (source ($"10 DIM a$(8),b$(8)\n20 a$=\"AB\":b$=\"CD\"\n30 {assignment}\n40 STOP"))
+    let appends = output.Items |> List.filter (function Instruction(374,_,_) -> true | _ -> false)
+    Assert.That(appends.Length, Is.EqualTo(expected))
+
+[<Test>]
+let ``direct string append keeps a prefix snapshot across a mutating function`` () =
+    let output = compile (source """
+        10 a$="before"
+        20 a$=a$ & change$()
+        30 STOP
+        100 DEFine FuNction change$
+        110 a$="after"
+        120 RETurn "!"
+        130 END DEFine
+    """)
+    Assert.That(output.Items |> List.exists (function Instruction(374,_,_) -> true | _ -> false), Is.False)
+    Assert.That(String.concat "\n" (body output), Does.Contain("265 1 ; A$\n236"))
+
+[<Test>]
+let ``direct string append does not treat a user-defined CHR function as pure`` () =
+    let output = compile (source """
+        10 a$="before"
+        20 a$=a$ & CHR$(65)
+        30 STOP
+        100 DEFine FuNction CHR$(n%)
+        110 a$="after"
+        120 RETurn "!"
+        130 END DEFine
+    """)
+    Assert.That(output.Items |> List.exists (function Instruction(374,_,_) -> true | _ -> false), Is.False)
+
+[<Test>]
+let ``direct string append follows implicit string typing`` () =
+    let output = compile (source "10 IMPLICIT$ a,b\n20 a=\"A\":b=\"B\":a=a & b\n30 STOP")
+    Assert.That(output.Items |> List.exists (function Instruction(374,_,"A") -> true | _ -> false), Is.True)
+
 // ---------------------------------------------------------------------------
 // The specification's examples (section 10)
 // ---------------------------------------------------------------------------

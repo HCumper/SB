@@ -1,0 +1,16 @@
+[
+  {
+    "assembly": "SBTests.dll",
+    "total": 2841,
+    "passed": 2841,
+    "failed": 0,
+    "skipped": 0
+  },
+  {
+    "assembly": "SBRuntimeTests.dll",
+    "total": 248,
+    "passed": 248,
+    "failed": 0,
+    "skipped": 0
+  }
+]

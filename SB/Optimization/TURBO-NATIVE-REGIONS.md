@@ -40,6 +40,10 @@ Every label stays in its original mode, and every selected run returns to
 threaded execution before a control-flow or unsupported instruction. Startup,
 DATA, linkage and resident-name records are unchanged.
 
+[Direct string append](TURBO-STRING-APPEND.md) uses Turbo's existing checked
+threaded append operation for safe self-concatenating assignments. It avoids
+copying the old prefix without extending native-region eligibility to strings.
+
 Selection requires estimated instruction savings to exceed the six instructions
 in the two mode bridges. This is a conservative dispatch instruction count, not
 a cycle model or a guarantee of elapsed-time improvement on a physical MC68008.

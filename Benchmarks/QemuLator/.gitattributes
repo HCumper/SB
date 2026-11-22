@@ -1,3 +1,6 @@
 Programs/*.bas text eol=lf
 pollclock.asm text eol=lf
 pollclock.hex text eol=lf
+
+# Preserve checksummed unified-diff snapshots, including blank context markers.
+Results/*/compiler-change.patch -text whitespace=-blank-at-eol
