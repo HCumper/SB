@@ -165,6 +165,9 @@ let ``allocated DIVMOD CONTINUE keeps fatal error propagation`` (opcode:int,impl
         Assert.That(error.Message, Does.Contain("output=-18\n")))
 
 let nativeForPrograms = [|
+    "10 total%=0\n20 FOR i%=7 TO -7 STEP -3\n30 total%=total%+i%\n40 END FOR i%\n50 PRINT total%;\":\";i%\n60 STOP", "5:-5\n"
+    "10 last%=99\n20 FOR i%=0 TO -1 STEP -32768\n30 last%=i%\n40 END FOR i%\n50 PRINT last%;\":\";i%\n60 STOP", "0:0\n"
+    "10 total%=0\n20 FOR i%=3 TO 2 STEP 0\n30 total%=total%+i%\n40 END FOR i%\n50 PRINT total%;\":\";i%\n60 STOP", "0:3\n"
     "10 total%=0\n20 FOR i%=1 TO 10\n30 total%=total%+i%\n40 END FOR i%\n50 PRINT total%;\":\";i%\n60 STOP", "55:10\n"
     "10 total%=0:limit%=-4:stride%=-3\n20 FOR i%=8 TO limit% STEP stride%\n30 limit%=100:stride%=32767:total%=total%+i%\n40 END FOR i%\n50 PRINT total%;\":\";i%\n60 STOP", "10:-4\n"
     "10 n%=3:i%=9:total%=0\n20 FOR i%=5 TO n%\n30 total%=total%+i%\n40 END FOR i%\n50 PRINT total%;\":\";i%\n60 FOR i%=-5 TO -3 STEP -1\n70 total%=total%+i%\n80 END FOR i%\n90 PRINT total%;\":\";i%\n100 STOP", "0:5\n0:-5\n"

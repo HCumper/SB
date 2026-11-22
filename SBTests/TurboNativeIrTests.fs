@@ -117,6 +117,79 @@ let ``spill budget exhaustion returns a template fallback`` () =
     Assert.That((allocate 0 (block items)).IsNone, Is.True)
 
 [<Test>]
+let ``constant pressure rematerializes exact words without a spill frame`` () =
+    let values=[-32768;-129;-128;-1;0;1;127;128;32767]
+    let items=[yield! [for n in values -> op 106 [n]];yield! List.replicate (values.Length-1) (op 5 []);op 118 [20]]
+    let allocated=allocate 0 (block items) |> Option.defaultWith(fun () -> failwith "Constants must not require spill storage.")
+    Assert.That(allocated.SpillSlots, Is.Zero)
+    Assert.That(allocated.Instructions |> List.exists(function Spill _ | Reload _ -> true | _ -> false), Is.False)
+    Assert.That(readVector 20 (execute allocated Map.empty []), Is.EqualTo(List.sum values))
+
+let immediateArithmeticCases = [|
+    for opcode in [5;6;7;1005;1006;1007] do
+        for left in [-32768;-32767;-129;-8;-1;0;1;8;127;32767] do
+            for right in [-32768;-129;-8;-1;0;1;8;127;32767] do
+                yield TestCaseData(opcode,left,right).SetName($"Immediate arithmetic {opcode}: {left}, {right}") |]
+
+[<TestCaseSource(nameof immediateArithmeticCases)>]
+let ``immediate arithmetic preserves signed word results overflow flags and recovery`` (opcode:int,left:int,right:int) =
+    let result=match opcode%1000 with 5 -> int64 left+int64 right | 6 -> int64 left-int64 right | _ -> int64 left*int64 right
+    let overflow=opcode>=1000 && (result< -32768L || result>32767L)
+    let allocated=allocation [op 106 [right];op opcode [];op 118 [20]]
+    Assert.That(allocated.Instructions |> List.exists(function ArithmeticImmediate _ -> true | _ -> false), Is.True)
+    let cpu=executeTo overflow allocated Map.empty [left;99]
+    if overflow then
+        Assert.That(readVector 20 cpu, Is.EqualTo(20))
+        Assert.That(cpu.A[1], Is.EqualTo(0x5000u))
+        Assert.That(cpu.ReadWord 0x5000u, Is.EqualTo(uint32(left &&& 65535)))
+    else
+        Assert.That(readVector 20 cpu, Is.EqualTo(int(int16(uint16(result &&& 65535L)))))
+        Assert.That(cpu.A[1], Is.EqualTo(0x5002u))
+    Assert.That(cpu.ReadWord 0x5002u, Is.EqualTo(99u))
+
+[<TestCase(5,9,10)>]
+[<TestCase(6,9,8)>]
+[<TestCase(7,-7,-7)>]
+let ``commuting a literal left operand never reverses subtraction`` (opcode:int,left:int,expected:int) =
+    let cpu=execute (allocation [op 106 [left];op 109 [1];op opcode [];op 118 [20]]) Map.empty []
+    Assert.That(readVector 20 cpu, Is.EqualTo(expected))
+
+[<TestCase(1005,7,9)>]
+[<TestCase(1006,7,-5)>]
+[<TestCase(1007,7,14)>]
+let ``immediate arithmetic also targets D1 with another immutable value live`` (opcode:int,right:int,expected:int) =
+    let allocated=allocation [op 109 [1];op 109 [2];op 106 [right];op opcode [];op 118 [20];op 118 [21]]
+    Assert.That(allocated.Instructions |> List.exists(function ArithmeticImmediate(_,1,_) -> true | _ -> false), Is.True)
+    let cpu=execute allocated Map.empty []
+    Assert.That(readVector 20 cpu, Is.EqualTo(expected))
+    Assert.That(readVector 21 cpu, Is.EqualTo(1))
+
+[<TestCase(8)>]
+[<TestCase(20)>]
+let ``division recovery rematerializes pending literals in exact maths stack order`` (opcode:int) =
+    let pending=[-32768;-129;-128;-1;0;1;127;128;32767]
+    let items=[yield! [for n in pending -> op 106 [n]];op 109 [1];op 106 [0];op opcode [];op 118 [20]]
+    let allocated=allocate 0 (block items) |> Option.defaultWith(fun () -> failwith "Literal recovery must not require spill storage.")
+    Assert.That(allocated.SpillSlots, Is.Zero)
+    let cpu=executeTo true allocated Map.empty [99]
+    let expected=1::(List.rev pending)@[99]
+    Assert.That(cpu.A[1], Is.EqualTo(0x5000u-uint32((pending.Length+1)*2)))
+    for index,n in expected |> List.indexed do Assert.That(cpu.ReadWord(cpu.A[1]+uint32(index*2)), Is.EqualTo(uint32(n &&& 65535)))
+    Assert.That(readVector 20 cpu, Is.EqualTo(20))
+
+[<TestCase(1005,32767,1)>]
+[<TestCase(1006,-32768,1)>]
+[<TestCase(1007,32767,2)>]
+let ``checked arithmetic restores a destroyed literal without spilling or clobbering V`` (opcode:int,left:int,right:int) =
+    let items=[op 106 [left];op 109 [right];op opcode [];op 118 [20]]
+    let allocated=allocate 0 (block items) |> Option.defaultWith(fun () -> failwith "Literal recovery must fit without a spill frame.")
+    Assert.That(allocated.SpillSlots, Is.Zero)
+    let cpu=executeTo true allocated Map.empty [99]
+    Assert.That(cpu.A[1], Is.EqualTo(0x4FFEu))
+    Assert.That(cpu.ReadWord 0x4FFEu, Is.EqualTo(uint32(left &&& 65535)))
+    Assert.That(cpu.ReadWord 0x5000u, Is.EqualTo(99u))
+
+[<Test>]
 let ``spill slots are reused across separate pressure peaks`` () =
     let peak=[yield! [for v in 1..6 -> op 109 [v]];yield! List.replicate 5 (op 5 []);yield op 118 [20]]
     let one=allocation peak
@@ -232,6 +305,81 @@ let private qlDivision a b =
     let quotient,remainder=a/b,a%b
     if remainder<>0 && ((remainder<0)<>(b<0)) then quotient-1,remainder+b else quotient,remainder
 
+let private verifyLiteralDivision opcode divisors =
+    for divisor in divisors do
+        let allocated=allocation [op 106 [divisor];op opcode [];op 118 [20]]
+        Assert.That(allocated.Instructions |> List.exists(function Division _ -> true | _ -> false), Is.False)
+        Assert.That(allocated.SpillSlots, Is.Zero)
+        let code=emit -256 allocated
+        let memory=Array.zeroCreate<byte> 0x10000
+        let cpu=Cpu(memory)
+        Array.blit code 0 memory 0x1000 code.Length
+        cpu.A[6]<-0x8000u;cpu.A[7]<-0xF000u
+        cpu.WriteLong(0x7F50u,0x60A0u)
+        let finish=0x1000u+uint32 code.Length
+        for left in -32768..32767 do
+            cpu.WriteWord(0x5000u,uint32(left &&& 65535))
+            cpu.A[1]<-0x5000u;cpu.Pc<-0x1000u
+            let start=cpu.Steps
+            while cpu.Pc<>finish do
+                if cpu.Steps-start>50L then failwith $"Literal division failed to finish: {opcode}, {left}, {divisor}."
+                cpu.Step()
+            let quotient,remainder=qlDivision left divisor
+            let expected=if opcode=8 then quotient else remainder
+            let actual=readVector 20 cpu
+            if actual<>expected || cpu.A[1]<>0x5002u || cpu.A[7]<>0xF000u then Assert.Fail($"Literal division {opcode}: {left}, {divisor}: expected {expected}, got {actual}.")
+
+[<TestCase(8)>]
+[<TestCase(20)>]
+let ``positive literal power of two DIVMOD matches QL for every signed word`` (opcode:int) = verifyLiteralDivision opcode [for shift in 0..14 -> 1 <<< shift]
+
+[<TestCase(8)>]
+[<TestCase(20)>]
+let ``positive literal DIVMOD corrects all signed words for odd large and boundary divisors`` (opcode:int) =
+    verifyLiteralDivision opcode [3;5;7;10;97;997;10000;16383;16385;32766;32767]
+
+let rawLiteralDivisors = [|
+    for opcode in [8;20] do
+        for raw,left in [65535,-32768;65536,7;32768,-32768;-65533,-7] do
+            yield TestCaseData(opcode,raw,left).SetName($"Word-normalized DIVMOD literal {opcode}: {raw}, dividend {left}") |]
+
+[<TestCaseSource(nameof rawLiteralDivisors)>]
+let ``literal division proofs use the actual signed word rather than the host integer`` (opcode:int,raw:int,left:int) =
+    let dividend,divisor,result=Value 0,Value 1,Value 2
+    let b=int(int16(uint16 raw))
+    let fails=b=0 || (left= -32768 && b= -1)
+    let ir={block [] with Instructions=[Constant(divisor,raw);PopMaths dividend;Divide(result,(if opcode=8 then DivideWord else ModuloWord),dividend,divisor,[dividend]);StoreVector(20,result)]}
+    let cpu=executeTo fails (allocate 128 ir |> Option.get) Map.empty [left;99]
+    if fails then
+        Assert.That(readVector 20 cpu, Is.EqualTo(20))
+        Assert.That(cpu.A[1], Is.EqualTo(0x5000u))
+        Assert.That(cpu.ReadWord 0x5000u, Is.EqualTo(uint32(left &&& 65535)))
+    else
+        let quotient,remainder=qlDivision left b
+        Assert.That(readVector 20 cpu, Is.EqualTo(if opcode=8 then quotient else remainder))
+        Assert.That(cpu.A[1], Is.EqualTo(0x5002u))
+
+[<TestCase(8,-7,8,-8)>]
+[<TestCase(20,-7,8,-6)>]
+[<TestCase(8,7,8,7)>]
+[<TestCase(20,7,8,14)>]
+let ``power of two DIVMOD retains a duplicated dividend`` (opcode:int,left:int,divisor:int,expected:int) =
+    let cpu=execute (allocation [op 106 [left];op 268 [];op 106 [divisor];op opcode [];op 5 [];op 118 [20]]) Map.empty []
+    Assert.That(readVector 20 cpu, Is.EqualTo(expected))
+
+[<Test>]
+let ``scalar stores consume literal and spill operands without requiring a scratch reload`` () =
+    let value,left,right,result=Value 0,Value 1,Value 2,Value 3
+    let ir={block [] with Instructions=[LoadVector(value,1);LoadVector(left,2);LoadVector(right,3);Binary(result,AddWord,left,right);StoreVector(20,value);StoreVector(21,result)]}
+    let allocated=allocate 128 ir |> Option.get
+    Assert.That(allocated.Instructions |> List.exists(function Store(20,RecoverySlot _) -> true | _ -> false), Is.True)
+    let cpu=execute allocated Map.empty []
+    Assert.That(readVector 20 cpu, Is.EqualTo(1))
+    Assert.That(readVector 21 cpu, Is.EqualTo(5))
+    let literal=allocation [op 106 [32767];op 118 [20]]
+    Assert.That(literal.Instructions |> List.exists(function Immediate _ -> true | _ -> false), Is.False)
+    Assert.That(readVector 20 (execute literal Map.empty []), Is.EqualTo(32767))
+
 let divisionCases = [|
     let edges=[-32768;-32767;-32766;-257;-256;-129;-128;-7;-3;-2;-1;0;1;2;3;7;127;128;255;256;32766;32767]
     for a in edges do
@@ -318,8 +466,56 @@ let ``DIVMOD retains pressure values on its success path`` (opcode:int,expected:
 [<TestCase(8)>]
 [<TestCase(20)>]
 let ``DIVMOD live values participate in the spill budget`` (opcode:int) =
-    let items=[op 106 [-7];op 106 [3];op opcode [];op 106 [3];op 5 [];op 118 [20]]
+    let items=[op 106 [-7];op 109 [3];op opcode [];op 109 [3];op 5 [];op 118 [20]]
     Assert.That((allocate 0 (block items)).IsNone, Is.True)
+
+[<TestCase(8,0)>]
+[<TestCase(20,5)>]
+let ``DIVMOD reused literal divisors are recreated without spill storage`` (opcode:int,expected:int) =
+    let items=[op 106 [-7];op 106 [3];op opcode [];op 106 [3];op 5 [];op 118 [20]]
+    let allocated=allocate 0 (block items) |> Option.defaultWith(fun () -> failwith "A reused literal divisor must not require a spill frame.")
+    Assert.That(allocated.SpillSlots, Is.Zero)
+    Assert.That(readVector 20 (execute allocated Map.empty []), Is.EqualTo(expected))
+
+[<TestCase(8,-2)>]
+[<TestCase(20,3)>]
+let ``read-only pinned values are recreated after DIVMOD without spill storage`` (opcode:int,expected:int) =
+    let ir=block [op 106 [-7];op 109 [2];op opcode [];op 109 [2];op 5 [];op 118 [20]]
+    let allocated=allocateWithContext 0 (Map.ofList[2,2]) ir |> Option.defaultWith(fun () -> failwith "Pinned values must not require spill storage.")
+    Assert.That(allocated.SpillSlots, Is.Zero)
+    Assert.That(allocated.Registers |> Set.forall(fun r -> r=0 || r=1), Is.True)
+    Assert.That(readVector 20 (execute allocated Map.empty []), Is.EqualTo(expected))
+
+[<TestCase(8)>]
+[<TestCase(20)>]
+let ``error snapshots can read a preserved pinned register directly`` (opcode:int) =
+    let ir=block [op 109 [2];op 106 [0];op opcode [];op 118 [20]]
+    let allocated=allocateWithContext 0 (Map.ofList[2,2]) ir |> Option.defaultWith(fun () -> failwith "Pinned recovery must not require spill storage.")
+    let cpu=executeTo true allocated Map.empty [99]
+    Assert.That(cpu.A[1], Is.EqualTo(0x4FFEu))
+    Assert.That(cpu.ReadWord 0x4FFEu, Is.EqualTo(2u))
+    Assert.That(cpu.ReadWord 0x5000u, Is.EqualTo(99u))
+
+[<TestCase(5,3)>]
+[<TestCase(6,-1)>]
+[<TestCase(7,2)>]
+let ``read-only pinned arithmetic operands do not need a scratch copy`` (opcode:int,expected:int) =
+    let ir=block [op 109 [1];op 109 [2];op opcode [];op 118 [20]]
+    let allocated=allocateWithContext 0 (Map.ofList[2,2]) ir |> Option.get
+    Assert.That(allocated.Instructions |> List.exists(function Arithmetic(_,_,2) -> true | _ -> false), Is.True)
+    Assert.That(allocated.Instructions |> List.exists(function Copy(_,2) -> true | _ -> false), Is.False)
+    Assert.That(readVector 20 (execute allocated Map.empty []), Is.EqualTo(expected))
+
+[<TestCase(1005,32767)>]
+[<TestCase(1006,-32768)>]
+[<TestCase(1007,16384)>]
+let ``checked pinned operands preserve the original dynamic left word on failure`` (opcode:int,left:int) =
+    let ir=block [op 109 [2];op opcode [];op 118 [20]]
+    let allocated=allocateWithContext 0 (Map.ofList[2,2]) ir |> Option.get
+    let cpu=executeTo true allocated Map.empty [left;99]
+    Assert.That(cpu.A[1], Is.EqualTo(0x5000u))
+    Assert.That(cpu.ReadWord 0x5000u, Is.EqualTo(uint32(left &&& 65535)))
+    Assert.That(cpu.ReadWord 0x5002u, Is.EqualTo(99u))
 
 [<TestCase(8)>]
 [<TestCase(20)>]
@@ -329,8 +525,7 @@ let ``identical zero DIVMOD operands take the runtime error path`` (opcode:int) 
     Assert.That(cpu.ReadWord 0x4FFEu, Is.Zero)
     Assert.That(cpu.ReadWord 0x5000u, Is.EqualTo(99u))
 
-let private arrayExecute items length incoming scalarAlias expectedError =
-    let allocated=allocation items
+let private arrayExecuteAllocation allocated length incoming scalarAlias expectedError =
     let code=emit -256 allocated
     let memory=Array.zeroCreate<byte> 0x40000
     let cpu=Cpu(memory)
@@ -359,6 +554,48 @@ let private arrayExecute items length incoming scalarAlias expectedError =
     for r in [0;3;4;5;6] do Assert.That(cpu.A[r], Is.EqualTo(savedA[r]),$"A{r} was clobbered.")
     if expectedError then Assert.That(memory[0x10000..0x1FFFF], Is.EqualTo(box before),"Failed array operation changed an element.")
     cpu
+
+let private arrayExecute items length incoming scalarAlias expectedError = arrayExecuteAllocation (allocation items) length incoming scalarAlias expectedError
+
+[<TestCase(false)>]
+[<TestCase(true)>]
+let ``an array store reads a spilled word directly without reloading it`` (fails:bool) =
+    let value,left,right,index=Value 0,Value 1,Value 2,Value 3
+    let ir={block [] with Instructions=[LoadVector(value,1);LoadVector(left,2);LoadVector(right,3);Binary(index,AddWord,left,right);StoreArrayWord(30,true,index,value,[])]}
+    let allocated=allocate 128 ir |> Option.get
+    Assert.That(allocated.Instructions |> List.exists(function StoreElement(_,_,_,RecoverySlot _,_) -> true | _ -> false), Is.True)
+    let cpu=arrayExecuteAllocation allocated (if fails then 5 else 8) [] false fails
+    Assert.That(cpu.A[1], Is.EqualTo(0x5000u))
+    if not fails then Assert.That(cpu.ReadWord 0x1000Au, Is.EqualTo(1u))
+
+[<TestCase(1712)>]
+[<TestCase(1812)>]
+let ``array stores retain live indexes and use literal operands without copies or spills`` (opcode:int) =
+    let items=[op 109 [1];op 268 [];op 106 [12345];op opcode [30];op 118 [20]]
+    let allocated=allocation items
+    Assert.That(allocated.SpillSlots, Is.Zero)
+    Assert.That(allocated.Instructions |> List.exists(function StoreElement(_,_,_,RecoveryImmediate 12345,_) -> true | _ -> false), Is.True)
+    let cpu=arrayExecuteAllocation allocated 2 [] false false
+    Assert.That(cpu.ReadWord 0x10002u, Is.EqualTo(12345u))
+    Assert.That(readVector 20 cpu, Is.EqualTo(1))
+
+[<TestCase(1711)>]
+[<TestCase(1811)>]
+let ``array loads use a free result register instead of spilling a live dynamic index`` (opcode:int) =
+    let items=[op 109 [1];op 268 [];op opcode [30];op 118 [20];op 118 [21]]
+    let allocated=allocate 0 (block items) |> Option.get
+    Assert.That(allocated.Instructions |> List.exists(function LoadElement(_,_,index,result,_) -> index<>result | _ -> false), Is.True)
+    let cpu=arrayExecuteAllocation allocated 2 [] false false
+    Assert.That(cpu.ReadWord 0x60A0u, Is.EqualTo(0x8001u))
+    Assert.That(readVector 21 cpu, Is.EqualTo(1))
+
+[<Test>]
+let ``a checked free-result load reconstructs its unchanged dynamic index on failure`` () =
+    let allocated=allocate 0 (block [op 109 [1];op 268 [];op 1711 [30];op 118 [20];op 118 [21]]) |> Option.get
+    let cpu=arrayExecuteAllocation allocated 1 [99] false true
+    Assert.That(cpu.A[1], Is.EqualTo(0x4FFEu))
+    Assert.That(cpu.ReadWord 0x4FFEu, Is.EqualTo(1u))
+    Assert.That(cpu.ReadWord 0x5000u, Is.EqualTo(99u))
 
 [<TestCase(1711,0,1)>]
 [<TestCase(1811,0,1)>]
@@ -408,7 +645,7 @@ let ``a duplicated array index remains live after a load`` (opcode:int) =
 
 [<TestCase(1712)>]
 [<TestCase(1812)>]
-let ``shared array index and value use separate physical registers`` (opcode:int) =
+let ``shared array index and value remain stable while computing the address`` (opcode:int) =
     let cpu=arrayExecute [op 106 [1];op 268 [];op 268 [];op opcode [30];op 118 [20]] 2 [] false false
     Assert.That(cpu.ReadWord 0x10002u, Is.EqualTo(1u))
     Assert.That(readVector 20 cpu, Is.EqualTo(1))

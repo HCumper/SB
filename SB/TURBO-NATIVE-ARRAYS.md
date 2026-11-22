@@ -19,11 +19,19 @@ retain the generic helper paths. Existing low-level/default IR generation is
 unchanged unless the new shape facts are explicitly supplied.
 
 The native IR keeps the index, stored value and fetched word in allocated
-registers, rather than materializing them at every access. D0/D1 and A2 are the
+locations, rather than materializing them at every access. D0/D1 and A2 are the
 only scratch registers; FOR's D2-D4 counter/END/STEP remain intact. The current
 descriptor and data pointer are reloaded on every operation. Scalar load caches
 are invalidated after element stores because a scalar reference can alias the
 same element; already evaluated virtual values remain immutable.
+
+Addressing uses two ADDA.W index,A2 instructions after loading the data pointer.
+Their long address additions preserve the original index and form the full
+65534-byte maximum offset. A load can write a separate result register; a store
+can use its existing register, immediate word or CPU-stack spill slot directly.
+Native FOR accesses can read their pinned D2 index/value without a scratch copy.
+No array operation changes D2-D4. A shared index/value therefore needs no extra
+copy or spill solely for address calculation.
 
 Checked code rejects negative indexes before testing the current upper bound.
 The comparison retains lib537's word-length convention, including a dimension

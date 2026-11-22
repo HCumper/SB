@@ -18,8 +18,7 @@ let private selected body =
 
 // The runtime initializer has already accepted the first counter value. Test
 // native loop code independently, with explicit descriptor/stack/register state.
-let private execute (overflow:bool) first finish step body =
-    let loop=selected body
+let private executeLoop (loop:TurboNativeLoops.CompiledLoop) (overflow:bool) first finish step =
     let memory=Array.zeroCreate<byte> 0x10000
     let cpu=Cpu(memory)
     Array.blit loop.Code 0 memory 0x1000 loop.Code.Length
@@ -40,6 +39,8 @@ let private execute (overflow:bool) first finish step body =
     for r in 2..7 do Assert.That(cpu.D[r], Is.EqualTo(savedD[r]),$"D{r} was clobbered.")
     for r in [0;3;4;5;6] do Assert.That(cpu.A[r], Is.EqualTo(savedA[r]),$"A{r} was clobbered.")
     cpu
+
+let private execute overflow first finish step body = executeLoop (selected body) overflow first finish step
 
 let private read v (cpu:Cpu) = int(int16(uint16(cpu.ReadWord(uint32(0x6000+v*32)))))
 
@@ -64,6 +65,48 @@ let ``native NEXT retains word wrap and commits only valid candidate counters`` 
     Assert.That(read 1 cpu, Is.EqualTo(expected))
     Assert.That(read 2 cpu, Is.EqualTo(expected))
     Assert.That(cpu.A[1], Is.EqualTo(0x5000u))
+
+[<TestCase(1,5,1)>]
+[<TestCase(5,1,-1)>]
+[<TestCase(-7,7,3)>]
+[<TestCase(7,-7,-3)>]
+[<TestCase(-32768,-32760,2)>]
+[<TestCase(32767,32760,-2)>]
+[<TestCase(32760,32765,10)>]
+[<TestCase(-32760,-32765,-10)>]
+[<TestCase(0,-1,-32768)>]
+let ``literal STEP specializes native NEXT without changing wrapped iteration semantics`` (first:int,finish:int,step:int) =
+    let body=[op 109 [1];op 118 [2]]
+    let dynamic=selected body
+    let constant=(plan 140 [op 106 [step]] body).Loops.Head
+    Assert.That(constant.ConstantStep, Is.EqualTo(Some step))
+    let reference=executeLoop dynamic false first finish step
+    let actual=executeLoop constant false first finish step
+    Assert.That(read 1 actual, Is.EqualTo(read 1 reference))
+    Assert.That(read 2 actual, Is.EqualTo(read 2 reference))
+    Assert.That(actual.Steps, Is.LessThan(reference.Steps))
+
+[<Test>]
+let ``literal STEP is not inferred across arithmetic labels or variable captures`` () =
+    let body=[op 109 [1];op 118 [2]]
+    for preceding in [[op 106 [3];op 106 [-1];op 5 []];[op 106 [3];LabelDef(2009,"")];[op 109 [3]]] do
+        Assert.That((plan 140 preceding body).Loops.Head.ConstantStep.IsNone, Is.True)
+
+[<TestCase(8)>]
+[<TestCase(20)>]
+let ``a later DIVMOD failure commits the current counter before restoring registers`` (opcode:int) =
+    let cpu=execute true -1 1 1 [op 106 [20];op 109 [1];op opcode [];op 118 [2]]
+    Assert.That(read 1 cpu, Is.Zero)
+    Assert.That(read 2 cpu, Is.EqualTo(if opcode=8 then -20 else 0))
+    Assert.That(cpu.A[1], Is.EqualTo(0x4FFEu))
+    Assert.That(cpu.ReadWord 0x4FFEu, Is.EqualTo(20u))
+
+[<TestCase(1339,-25536)>]
+[<TestCase(1340,25536)>]
+let ``a later checked increment commits its wrapped store and the current counter`` (opcode:int,expected:int) =
+    let cpu=execute true 1 4 1 [op opcode [2;20000]]
+    Assert.That(read 1 cpu, Is.EqualTo(2))
+    Assert.That(read 2 cpu, Is.EqualTo(expected))
 
 [<Test>]
 let ``overflow restores loop registers releases both frames and keeps committed stores`` () =
@@ -143,13 +186,30 @@ let ``native FOR DIVMOD errors restore pinned registers and leave stores untouch
 [<TestCase(8)>]
 [<TestCase(20)>]
 let ``native FOR DIVMOD spills coexist with its register save frame`` (opcode:int) =
-    let body=[op 109 [1];op 106 [3];op opcode [];op 106 [3];op 5 [];op 118 [2]]
+    let body=[op 106 [3];op 118 [3];op 106 [0];op 118 [2];op 109 [1];op 109 [3];op opcode [];op 109 [3];op 5 [];op 118 [2]]
     Assert.That((selected body).StackExtraBytes, Is.GreaterThan(12))
     Assert.That((plan 12 [] body).Loops, Is.Empty)
     let cpu=execute false -7 -1 3 body
     Assert.That(read 2 cpu, Is.EqualTo(if opcode=8 then 2 else 5))
 
-let private arrayLoop checkedBounds fails =
+[<TestCase(8,-2)>]
+[<TestCase(20,1)>]
+let ``native FOR pinned counters can be reused across DIVMOD without a leaf frame`` (opcode:int,expected:int) =
+    let body=[op 109 [1];op 106 [3];op opcode [];op 109 [1];op 5 [];op 118 [2]]
+    Assert.That((plan 12 [] body).Loops.Length, Is.EqualTo(1))
+    Assert.That((selected body).StackExtraBytes, Is.EqualTo(12))
+    Assert.That(read 2 (execute false -7 -1 3 body), Is.EqualTo(expected))
+
+[<TestCase(8,2)>]
+[<TestCase(20,5)>]
+let ``native FOR recreated divisors avoid an unnecessary leaf frame`` (opcode:int,expected:int) =
+    let body=[op 109 [1];op 106 [3];op opcode [];op 106 [3];op 5 [];op 118 [2]]
+    Assert.That((plan 12 [] body).Loops.Length, Is.EqualTo(1))
+    Assert.That((selected body).StackExtraBytes, Is.EqualTo(12))
+    let cpu=execute false -7 -1 3 body
+    Assert.That(read 2 cpu, Is.EqualTo(expected))
+
+let private arrayLoopFrom first checkedBounds fails =
     let load=if checkedBounds then 1711 else 1811
     let store=if checkedBounds then 1712 else 1812
     let sum=[op 109 [2];op 109 [3];op 109 [1];op load [4];op 1005 [];op 1005 [];op 118 [2]]
@@ -163,7 +223,7 @@ let private arrayLoop checkedBounds fails =
     for r in 0..7 do cpu.D[r]<-0xABCD0000u+uint32 r;cpu.A[r]<-0x2000u+uint32(r*16)
     cpu.A[1]<-0x5000u;cpu.A[6]<-0x8000u;cpu.A[7]<-0xF000u;cpu.Pc<-0x1000u
     for v in 1..3 do cpu.WriteLong(uint32(0x7F00+v*4),uint32(0x6000+v*32))
-    cpu.WriteWord(0x6020u,0u);cpu.WriteWord(0x6026u,1u);cpu.WriteWord(0x6028u,3u)
+    cpu.WriteWord(0x6020u,uint32(first &&& 65535));cpu.WriteWord(0x6026u,1u);cpu.WriteWord(0x6028u,3u)
     cpu.WriteWord(0x6040u,0u);cpu.WriteWord(0x6060u,0u)
     cpu.WriteLong(0x7F10u,0x7000u);cpu.WriteLong(0x7000u,0x10000u)
     cpu.WriteWord(0x7008u,0u);cpu.WriteWord(0x700Au,if fails then 2u else 4u)
@@ -179,6 +239,17 @@ let private arrayLoop checkedBounds fails =
     for r in 2..7 do Assert.That(cpu.D[r], Is.EqualTo(savedD[r]))
     for r in [0;3;4;5;6] do Assert.That(cpu.A[r], Is.EqualTo(savedA[r]))
     cpu,loop
+
+let private arrayLoop checkedBounds fails = arrayLoopFrom 0 checkedBounds fails
+
+[<Test>]
+let ``a negative pinned array index takes the range error path with complete cleanup`` () =
+    let cpu,_=arrayLoopFrom -1 true true
+    Assert.That(read 1 cpu, Is.EqualTo(-1))
+    Assert.That(read 2 cpu, Is.Zero)
+    Assert.That(cpu.A[1], Is.EqualTo(0x4FFCu))
+    Assert.That(cpu.ReadWord 0x4FFCu, Is.Zero)
+    Assert.That(cpu.ReadWord 0x4FFEu, Is.Zero)
 
 [<TestCase(false)>]
 [<TestCase(true)>]

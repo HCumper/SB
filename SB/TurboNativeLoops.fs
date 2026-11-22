@@ -11,6 +11,7 @@ type CompiledLoop = {
     StartOffset:int
     EndOffset:int
     Counter:int
+    ConstantStep:int option
     Body:TurboNativeIr.Block
     Allocation:TurboNativeIr.Allocation
     Code:byte[]
@@ -24,7 +25,7 @@ let private bytes words = words |> Seq.collect(fun n -> [byte(n >>> 8);byte n]) 
 // Save full registers even though the counter/bound/step are words.
 let private restore = bytes [0x281F;0x261F;0x241F] // MOVE.L (SP)+,D4/D3/D2
 
-let private emit vectorTableOffset counter body =
+let private emit vectorTableOffset counter constantStep body =
     let output=ResizeArray<byte>()
     let labels=Dictionary<string,int>()
     let fixups=ResizeArray<int * string>()
@@ -32,24 +33,38 @@ let private emit vectorTableOffset counter body =
     let words values = values |> List.iter word
     let label name = labels[name]<-output.Count
     let branch opcode target = word opcode;fixups.Add(output.Count,target);word 0
+    let commitCounter=bytes [0x246E;vectorTableOffset+4*counter;0x3482]
+    let recover=Array.append commitCounter restore
     words [0x2F02;0x2F03;0x2F04] // save D2-D4 on entry, once per entire loop
     words [0x246E;vectorTableOffset+4*counter;0x3412;0x362A;8;0x382A;6]
     // A2 -> counter; D2 = current word, D3 = captured END, D4 = captured STEP.
     label "body"
-    output.AddRange(TurboNativeIr.emitWithContext vectorTableOffset (Map.ofList[counter,2]) restore body)
-    words [0x3002;0xD044;0x4A44] // candidate = counter + step, with lib537 word wrap
-    branch 0x6A00 "up" // BPL: zero step has the runtime's nonnegative direction
-    words [0xB043] // CMP.W D3,D0
-    branch 0x6D00 "exit" // BLT
-    branch 0x6000 "commit"
-    label "up"
-    words [0xB043]
-    branch 0x6E00 "exit" // BGT
+    output.AddRange(TurboNativeIr.emitWithContext vectorTableOffset (Map.ofList[counter,2]) recover body)
+    words [0x3002] // candidate = counter + step, with lib537 word wrap
+    match constantStep with
+    | Some step ->
+        if step<>0 && step>= -8 && step<=8 then
+            words [(if step<0 then 0x5140 else 0x5040) ||| ((abs step &&& 7) <<< 9)]
+        else words [0x0640;step]
+        words [0xB043]
+        branch (if step<0 then 0x6D00 else 0x6E00) "exit"
+    | None ->
+        words [0xD044;0x4A44]
+        branch 0x6A00 "up" // BPL: zero step has the runtime's nonnegative direction
+        words [0xB043] // CMP.W D3,D0
+        branch 0x6D00 "exit" // BLT
+        branch 0x6000 "commit"
+        label "up"
+        words [0xB043]
+        branch 0x6E00 "exit" // BGT
     label "commit"
     // Only a valid next iteration commits its counter, as the original NEXT does.
-    words [0x3400;0x246E;vectorTableOffset+4*counter;0x3482]
+    // Only independent global counters qualify. Every body read uses D2; no
+    // observer can see the cell until normal exit or a non-returning error.
+    words [0x3400]
     branch 0x6000 "body"
     label "exit"
+    output.AddRange commitCounter
     output.AddRange restore
     for position,target in fixups do
         let displacement=labels[target]-position
@@ -132,12 +147,22 @@ let plan maxExtraBytes vectorTableOffset source : Result<Report,string> =
                 let hasNext = j<items.Length && (match items[j] with Instruction(230,[Word v],_) -> v=counter | _ -> false)
                 let hasEnd = j+1<items.Length && (match items[j+1] with Instruction(378,_,_) -> true | _ -> false)
                 if valid && hasNext && hasEnd && depth=0 then
+                    // An adjacent literal is exactly the last value pushed for
+                    // the initializer's STEP. Do not infer through expressions,
+                    // labels, bridges or captured-variable loads.
+                    let constantStep=
+                        if i>=4 then
+                            match items[i-4],items[i-3] with
+                            | Instruction(106,[Word step],_),Instruction(357,[LabelRef _],_) -> Some(int(int16(uint16 step)))
+                            | Instruction(263,[],_),Instruction(357,[LabelRef _],_) -> Some 0
+                            | _ -> None
+                        else None
                     let ir=TurboNativeIr.lower offsets[i+1] offsets[j+1] (List.ofSeq body)
-                    match TurboNativeIr.allocate (min 128 (maxExtraBytes-12)) ir with
+                    match TurboNativeIr.allocateWithContext (min 128 (maxExtraBytes-12)) (Map.ofList[counter,2]) ir with
                     | Some allocation ->
                         try
-                            let code=emit vectorTableOffset counter allocation
-                            loops.Add {StartOffset=offsets[i+1];EndOffset=offsets[j+1];Counter=counter;Body=ir;Allocation=allocation;Code=code;StackExtraBytes=12+allocation.SpillSlots*2}
+                            let code=emit vectorTableOffset counter constantStep allocation
+                            loops.Add {StartOffset=offsets[i+1];EndOffset=offsets[j+1];Counter=counter;ConstantStep=constantStep;Body=ir;Allocation=allocation;Code=code;StackExtraBytes=12+allocation.SpillSlots*2}
                         with :? ArgumentException -> rejected<-rejected+1
                     | None -> rejected<-rejected+1
                 else rejected<-rejected+1
@@ -148,6 +173,6 @@ let format report =
     let lines=ResizeArray<string>()
     lines.Add($"Native integer FOR loops: selected={report.Loops.Length}; rejected={report.RejectedLoops}; extra-stack={report.StackExtraBytes} bytes")
     for loop in report.Loops do
-        lines.Add($"Loop IR bytes {loop.StartOffset}..{loop.EndOffset}: counter vector={loop.Counter} in D2; captured END=D3, STEP=D4; native bytes={loop.Code.Length}; spill slots={loop.Allocation.SpillSlots}")
+        lines.Add($"Loop IR bytes {loop.StartOffset}..{loop.EndOffset}: counter vector={loop.Counter} in D2; captured END=D3, STEP=D4; literal STEP={loop.ConstantStep}; counter commit=exit/error; native bytes={loop.Code.Length}; spill slots={loop.Allocation.SpillSlots}")
         for instruction in loop.Allocation.Instructions do lines.Add($"  allocated-loop: {instruction}")
     String.Join(Environment.NewLine,lines)+Environment.NewLine

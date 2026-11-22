@@ -2,7 +2,7 @@ module TurboNativeIr
 
 // Leaf integer lowering after Turbo's improver. Values are immutable virtual
 // words. There are no calls or hidden template clobbers in a block. Checked
-// operations have explicit non-returning exits to the runtime overflow handler.
+// operations have explicit non-returning exits to the runtime error handlers.
 // D0/D1 and A2 are scratch; all other registers are preserved. The maths stack
 // is canonical and the private CPU-stack spill frame is gone at every edge.
 open System
@@ -38,7 +38,7 @@ type Block = {
     LegacyDataWords:int
 }
 
-type RecoveryLocation = RecoveryRegister of int | RecoverySlot of int
+type RecoveryLocation = RecoveryRegister of int | RecoverySlot of int | RecoveryImmediate of int
 type AllocatedInstruction =
     | Immediate of register:int * value:int
     | Load of register:int * vector:int
@@ -47,16 +47,23 @@ type AllocatedInstruction =
     | Spill of register:int * slot:int
     | Reload of register:int * slot:int
     | Arithmetic of BinaryOperation * destination:int * source:int
+    | ArithmeticImmediate of BinaryOperation * destination:int * value:int
     // Both operand registers are scratch on success; before either failure,
     // their original low words remain available to the recovery snapshot.
     | Division of DivisionOperation * destination:int * divisor:int * stack:RecoveryLocation list
-    // Rank is certified by lowering. Only the index register is clobbered;
-    // A2 reloads the current descriptor and data pointer on every operation.
-    | LoadElement of vector:int * checkedBounds:bool * indexAndResult:int * stack:RecoveryLocation list
-    | StoreElement of vector:int * checkedBounds:bool * index:int * value:int * stack:RecoveryLocation list
+    // A positive literal 2^shift can neither divide by zero nor overflow a word
+    // quotient. ASR and AND implement QL floor DIV and nonnegative MOD exactly.
+    | PowerOfTwoDivision of DivisionOperation * register:int * shift:int
+    // A positive literal divisor cannot fail for a signed-word dividend. The
+    // hardware quotient/remainder need only the QL negative-remainder correction.
+    | PositiveDivision of DivisionOperation * register:int * divisor:int
+    // Rank is certified by lowering. Addressing preserves the index; only a
+    // load's result is clobbered. A2 reloads the descriptor/data each operation.
+    | LoadElement of vector:int * checkedBounds:bool * index:int * result:int * stack:RecoveryLocation list
+    | StoreElement of vector:int * checkedBounds:bool * index:int * value:RecoveryLocation * stack:RecoveryLocation list
     | Negative of register:int
     | Check of productRegister:int option * stack:RecoveryLocation list * store:(int * RecoveryLocation) option
-    | Store of vector:int * register:int
+    | Store of vector:int * value:RecoveryLocation
     | Push of register:int
 
 type Allocation = { Instructions:AllocatedInstruction list; SpillSlots:int; Registers:Set<int> }
@@ -187,17 +194,23 @@ let private destination = function
     | Constant(v,_) | LoadVector(v,_) | PopMaths v | Binary(v,_,_,_) | Divide(v,_,_,_,_) | LoadArrayWord(v,_,_,_,_) | Negate(v,_) -> Some v
     | _ -> None
 
-type private Location = Register of int | Slot of int
+type private Location = Register of int | Slot of int | Literal of int | Pinned of int
 exception private AllocationLimit
 
 /// Next-use allocation in D0/D1, with two-address destination reuse. Immutable
 /// values retain valid spill copies across reloads. Slots are reused after the
 /// last use; the frame is bounded and never survives a template or call.
-let allocate maxFrameBytes (block:Block) : Allocation option =
+/// The caller certifies mapped vector words are read-only for the whole block,
+/// including indirect aliases. Only whole-loop selection supplies this context.
+let allocateWithContext maxFrameBytes (vectorRegisters:Map<int,int>) (block:Block) : Allocation option =
+    if vectorRegisters |> Map.exists(fun _ r -> r<2 || r>7) then invalidArg "vectorRegisters" "Pinned registers must be outside the D0/D1 scratch set."
+    if block.Instructions |> List.exists(function StoreVector(v,_) -> vectorRegisters.ContainsKey v | _ -> false) then invalidArg "vectorRegisters" "Pinned vectors must not be assigned by the block."
     let code=ResizeArray<AllocatedInstruction>()
     let locations=Dictionary<Value,Location>()
     let owners=Dictionary<int,Value>()
     let backing=Dictionary<Value,int>()
+    let literals=Dictionary<Value,int>()
+    let pinnedValues=Dictionary<Value,int>()
     let uses=Dictionary<Value,Queue<int>>()
     let last=Dictionary<Value,int>()
     let freeSlots=SortedSet<int>()
@@ -224,10 +237,25 @@ let allocate maxFrameBytes (block:Block) : Allocation option =
             code.Add(Spill(register,slot))
             backing[value]<-slot
             slot
+    let preserve value register =
+        match literals.TryGetValue value with
+        | true,n -> Literal n
+        | _ -> match pinnedValues.TryGetValue value with true,r -> Pinned r | _ -> Slot(save value register)
+    let recoveryLocation value =
+        match literals.TryGetValue value with
+        | true,n -> RecoveryImmediate n
+        | _ ->
+            match pinnedValues.TryGetValue value with
+            | true,r -> RecoveryRegister r
+            | _ ->
+                match locations[value] with
+                | Register r | Pinned r -> RecoveryRegister r
+                | Slot slot -> RecoverySlot slot
+                | Literal n -> RecoveryImmediate n
     let evict register =
         match owners.TryGetValue register with
         | true,value ->
-            if uses.ContainsKey value && uses[value].Count>0 then locations[value]<-Slot(save value register)
+            if uses.ContainsKey value && uses[value].Count>0 then locations[value]<-preserve value register
             else locations.Remove value |> ignore
             owners.Remove register |> ignore
         | _ -> ()
@@ -250,13 +278,23 @@ let allocate maxFrameBytes (block:Block) : Allocation option =
             code.Add(Reload(register,slot))
             owners[register]<-value;locations[value]<-Register register
             register
+        | true,Literal n ->
+            let register=choose pinned
+            code.Add(Immediate(register,n))
+            owners[register]<-value;locations[value]<-Register register
+            register
+        | true,Pinned source ->
+            let register=choose pinned
+            code.Add(Copy(register,source))
+            owners[register]<-value;locations[value]<-Register register
+            register
         | _ -> invalidArg "block" "A virtual value was used before its definition."
     let define value =
         let register=choose Set.empty
         owners[register]<-value;locations[value]<-Register register
         register
     let overwrite index old value register =
-        if live old index then locations[old]<-Slot(save old register)
+        if live old index then locations[old]<-preserve old register
         else locations.Remove old |> ignore
         owners[register]<-value;locations[value]<-Register register
     let retire value index =
@@ -274,22 +312,21 @@ let allocate maxFrameBytes (block:Block) : Allocation option =
         for index in 0..instructions.Length-1 do
             let instruction=instructions[index]
             match instruction with
-            | Constant(value,n) -> code.Add(Immediate(define value,n))
-            | LoadVector(value,vector) -> code.Add(Load(define value,vector))
+            | Constant(value,n) -> let n=int(int16(uint16 n)) in literals[value]<-n;locations[value]<-Literal n
+            | LoadVector(value,vector) ->
+                match vectorRegisters.TryFind vector with
+                | Some r -> pinnedValues[value]<-r;locations[value]<-Pinned r
+                | None -> code.Add(Load(define value,vector))
             | PopMaths value -> code.Add(Pop(define value))
-            | StoreVector(vector,value) -> code.Add(Store(vector,ensure value Set.empty))
+            | StoreVector(vector,value) -> code.Add(Store(vector,recoveryLocation value))
             | PushMaths value -> code.Add(Push(ensure value Set.empty))
             | OverflowCheck(product,stack,store) ->
                 // No reloads or spills may be inserted between arithmetic and
                 // its check: MOVE would destroy V. Recovery reads the current
                 // physical locations only on the non-returning failure edge.
-                let recover value =
-                    match locations[value] with
-                    | Register r -> RecoveryRegister r
-                    | Slot slot -> RecoverySlot slot
                 let productRegister=product |> Option.map (fun value ->
                     match locations[value] with Register r -> r | _ -> invalidArg "block" "Product check must immediately follow its definition.")
-                code.Add(Check(productRegister,List.map recover stack,store |> Option.map(fun (vector,value) -> vector,recover value)))
+                code.Add(Check(productRegister,List.map recoveryLocation stack,store |> Option.map(fun (vector,value) -> vector,recoveryLocation value)))
             | Negate(value,source) ->
                 let register=ensure source Set.empty
                 if live source index && owners.Count<2 then
@@ -301,19 +338,56 @@ let allocate maxFrameBytes (block:Block) : Allocation option =
                     overwrite index source value register
                     code.Add(Negative register)
             | Binary(value,op,left,right) ->
-                let lhs=ensure left Set.empty
-                let rhs=ensure right (Set.singleton lhs)
-                if live left index && left<>right && not(live right index) && op<>SubtractWord then
-                    overwrite index right value rhs
-                    code.Add(Arithmetic(op,rhs,lhs))
-                elif live left index && left=right && owners.Count<2 then
-                    let result=choose(Set.singleton lhs)
-                    code.Add(Copy(result,lhs))
-                    owners[result]<-value;locations[value]<-Register result
-                    code.Add(Arithmetic(op,result,lhs))
-                else
-                    overwrite index left value lhs
-                    code.Add(Arithmetic(op,lhs,rhs))
+                let fixedOperand =
+                    match literals.TryGetValue right with
+                    | true,n -> Some(left,Choice1Of2 n)
+                    | _ when op<>SubtractWord && literals.ContainsKey left -> Some(right,Choice1Of2(literals[left]))
+                    | _ when pinnedValues.ContainsKey right -> Some(left,Choice2Of2(pinnedValues[right]))
+                    | _ when op<>SubtractWord && pinnedValues.ContainsKey left -> Some(right,Choice2Of2(pinnedValues[left]))
+                    | _ -> None
+                match fixedOperand with
+                | Some(source,operand) ->
+                    let r=ensure source Set.empty
+                    let result=
+                        if live source index && not(literals.ContainsKey source || pinnedValues.ContainsKey source) && owners.Count<2 then
+                            let copy=choose(Set.singleton r)
+                            code.Add(Copy(copy,r))
+                            owners[copy]<-value;locations[value]<-Register copy
+                            copy
+                        else overwrite index source value r;r
+                    match operand with
+                    | Choice1Of2 n -> code.Add(ArithmeticImmediate(op,result,n))
+                    | Choice2Of2 r -> code.Add(Arithmetic(op,result,r))
+                | None ->
+                    let lhs=ensure left Set.empty
+                    let rhs=ensure right (Set.singleton lhs)
+                    if live left index && left<>right && not(live right index) && op<>SubtractWord then
+                        overwrite index right value rhs
+                        code.Add(Arithmetic(op,rhs,lhs))
+                    elif live left index && left=right && owners.Count<2 then
+                        let result=choose(Set.singleton lhs)
+                        code.Add(Copy(result,lhs))
+                        owners[result]<-value;locations[value]<-Register result
+                        code.Add(Arithmetic(op,result,lhs))
+                    else
+                        overwrite index left value lhs
+                        code.Add(Arithmetic(op,lhs,rhs))
+            | Divide(value,op,left,right,_) when literals.ContainsKey right && literals[right]>0 ->
+                let divisor=literals[right]
+                let source=ensure left Set.empty
+                let result=
+                    if live left index && not(literals.ContainsKey left || pinnedValues.ContainsKey left) && owners.Count<2 then
+                        let copy=choose(Set.singleton source)
+                        code.Add(Copy(copy,source))
+                        owners[copy]<-value;locations[value]<-Register copy
+                        copy
+                    else overwrite index left value source;source
+                if (divisor &&& (divisor-1))=0 then
+                    let mutable remaining=divisor
+                    let mutable shift=0
+                    while remaining>1 do remaining<-remaining >>> 1;shift<-shift+1
+                    code.Add(PowerOfTwoDivision(op,result,shift))
+                else code.Add(PositiveDivision(op,result,divisor))
             | Divide(value,op,left,right,stack) ->
                 let lhs=ensure left Set.empty
                 let source=ensure right (Set.singleton lhs)
@@ -329,10 +403,9 @@ let allocate maxFrameBytes (block:Block) : Allocation option =
                 // still require distinct physical registers.
                 for r in [lhs;rhs] do
                     match owners.TryGetValue r with
-                    | true,old when live old index -> locations[old]<-Slot(save old r)
+                    | true,old when live old index -> locations[old]<-preserve old r
                     | _ -> ()
-                let snapshot=stack |> List.map(fun v ->
-                    match locations[v] with Register r -> RecoveryRegister r | Slot slot -> RecoverySlot slot)
+                let snapshot=stack |> List.map recoveryLocation
                 for r in [lhs;rhs] do
                     match owners.TryGetValue r with
                     | true,old ->
@@ -342,26 +415,25 @@ let allocate maxFrameBytes (block:Block) : Allocation option =
                 owners[lhs]<-value;locations[value]<-Register lhs
                 code.Add(Division(op,lhs,rhs,snapshot))
             | LoadArrayWord(value,vector,checkedBounds,indexValue,stack) ->
-                let r=ensure indexValue Set.empty
-                if live indexValue index then locations[indexValue]<-Slot(save indexValue r)
-                let snapshot=stack |> List.map(fun v -> match locations[v] with Register r -> RecoveryRegister r | Slot slot -> RecoverySlot slot)
-                if not(live indexValue index) then locations.Remove indexValue |> ignore
-                owners[r]<-value;locations[value]<-Register r
-                code.Add(LoadElement(vector,checkedBounds,r,snapshot))
+                let r,result=
+                    match pinnedValues.TryGetValue indexValue with
+                    | true,r -> r,define value
+                    | _ ->
+                        let r=ensure indexValue Set.empty
+                        if live indexValue index && not(literals.ContainsKey indexValue) && owners.Count<2 then
+                            let result=choose(Set.singleton r)
+                            owners[result]<-value;locations[value]<-Register result
+                            r,result
+                        else
+                            overwrite index indexValue value r
+                            r,r
+                let snapshot=stack |> List.map recoveryLocation
+                code.Add(LoadElement(vector,checkedBounds,r,result,snapshot))
             | StoreArrayWord(vector,checkedBounds,indexValue,stored,stack) ->
-                let r=ensure indexValue Set.empty
-                let source=ensure stored (Set.singleton r)
-                let valueRegister=
-                    if source<>r then source
-                    else
-                        let copy=choose(Set.singleton r)
-                        code.Add(Copy(copy,r))
-                        copy
-                if live indexValue index then locations[indexValue]<-Slot(save indexValue r)
-                let snapshot=stack |> List.map(fun v -> match locations[v] with Register r -> RecoveryRegister r | Slot slot -> RecoverySlot slot)
-                if not(live indexValue index) then locations.Remove indexValue |> ignore
-                owners.Remove r |> ignore
-                code.Add(StoreElement(vector,checkedBounds,r,valueRegister,snapshot))
+                let r=match pinnedValues.TryGetValue indexValue with true,r -> r | _ -> ensure indexValue Set.empty
+                let source=recoveryLocation stored
+                let snapshot=stack |> List.map recoveryLocation
+                code.Add(StoreElement(vector,checkedBounds,r,source,snapshot))
             for value in sources instruction |> List.distinct do retire value index
             match destination instruction with
             | Some value when not(last.ContainsKey value) -> retire value index
@@ -369,8 +441,10 @@ let allocate maxFrameBytes (block:Block) : Allocation option =
         Some {Instructions=List.ofSeq code;SpillSlots=slots;Registers=used}
     with AllocationLimit -> None
 
+let allocate maxFrameBytes block = allocateWithContext maxFrameBytes Map.empty block
+
 let private recoveryBytes frame stack store =
-    let size = function RecoveryRegister _ -> 2 | RecoverySlot _ -> 4
+    let size = function RecoveryRegister _ -> 2 | RecoverySlot _ | RecoveryImmediate _ -> 4
     (stack |> List.sumBy size)+(if frame>0 then 4 else 0)+4+
     (store |> Option.map(fun (_,location) -> 4+size location) |> Option.defaultValue 0)
 
@@ -384,10 +458,14 @@ let emitWithContext vectorTableOffset (vectorRegisters:Map<int,int>) (recoverySu
     let recover = function
         | RecoveryRegister r -> word(0x3300 ||| r)
         | RecoverySlot slot -> word 0x332F;word(slot*2)
+        | RecoveryImmediate n -> word 0x333C;word n
+    let writeWord = function
+        | RecoveryRegister r -> word(0x3480 ||| r)
+        | RecoverySlot slot -> word 0x34AF;word(slot*2)
+        | RecoveryImmediate n -> word 0x34BC;word n
     let recovery handler stack store =
         match store with
-        | Some(vector,RecoveryRegister r) -> word 0x246E;displacement vector;word(0x3480 ||| r)
-        | Some(vector,RecoverySlot slot) -> word 0x246E;displacement vector;word 0x34AF;word(slot*2)
+        | Some(vector,value) -> word 0x246E;displacement vector;writeWord value
         | None -> ()
         for location in stack do recover location
         if frame>0 then word 0x4FEF;word frame
@@ -403,9 +481,9 @@ let emitWithContext vectorTableOffset (vectorRegisters:Map<int,int>) (recoverySu
             word 0x6B00;word(failureBytes+2) // BMI.W valid, including a length of 32768
             recovery 0x8AE0 stack None
         word 0x2452 // MOVEA.L (A2),A2: current data pointer, no cached address
-        word(0x48C0 ||| index) // nonnegative signed word -> long
-        word(0xD080 ||| (index <<< 9) ||| index) // ADD.L index,index, up to 65534
-        word(0xD5C0 ||| index) // ADDA.L index,A2
+        // Two sign-extended word additions form the full long offset without
+        // changing the index, including the highest valid byte offset 65534.
+        word(0xD4C0 ||| index);word(0xD4C0 ||| index)
     if frame>0 then word 0x4FEF;word(-frame)
     for instruction in allocation.Instructions do
         match instruction with
@@ -415,7 +493,7 @@ let emitWithContext vectorTableOffset (vectorRegisters:Map<int,int>) (recoverySu
             match vectorRegisters.TryFind vector with
             | Some source -> word(0x3000 ||| (r <<< 9) ||| source)
             | None -> word 0x246E;displacement vector;word(0x3012 ||| (r <<< 9))
-        | Store(vector,r) -> word 0x246E;displacement vector;word(0x3480 ||| r)
+        | Store(vector,value) -> word 0x246E;displacement vector;writeWord value
         | Pop r -> word(0x3019 ||| (r <<< 9))
         | Push r -> word(0x3300 ||| r)
         | Copy(dst,src) -> word(0x3000 ||| (dst <<< 9) ||| src)
@@ -423,6 +501,33 @@ let emitWithContext vectorTableOffset (vectorRegisters:Map<int,int>) (recoverySu
         | Reload(r,slot) -> word(0x302F ||| (r <<< 9));word(slot*2)
         | Negative r -> word(0x4440 ||| r)
         | Arithmetic(op,dst,src) -> word((match op with AddWord -> 0xD040 | SubtractWord -> 0x9040 | MultiplyWord -> 0xC1C0) ||| (dst <<< 9) ||| src)
+        | ArithmeticImmediate(op,r,n) ->
+            match op with
+            | (AddWord|SubtractWord) when n<>0 && n>= -8 && n<=8 ->
+                let subtract=(op=SubtractWord)<>(n<0)
+                word((if subtract then 0x5140 else 0x5040) ||| ((abs n &&& 7) <<< 9) ||| r)
+            | AddWord -> word(0x0640 ||| r);word n
+            | SubtractWord -> word(0x0440 ||| r);word n
+            | MultiplyWord -> word(0xC1FC ||| (r <<< 9));word n
+        | PowerOfTwoDivision(op,r,shift) ->
+            match op with
+            | ModuloWord -> word(0x0240 ||| r);word((1 <<< shift)-1)
+            | DivideWord ->
+                let mutable remaining=shift
+                while remaining>0 do
+                    let count=min 8 remaining
+                    word(0xE040 ||| ((count &&& 7) <<< 9) ||| r)
+                    remaining<-remaining-count
+        | PositiveDivision(op,r,divisor) ->
+            word(0x48C0 ||| r)
+            word(0x81FC ||| (r <<< 9));word divisor
+            match op with
+            | DivideWord ->
+                word(0x4A80 ||| r) // TST.L: sign of the high-word remainder
+                word 0x6A02;word(0x5340 ||| r) // negative remainder -> floor quotient
+            | ModuloWord ->
+                word(0x4840 ||| r);word(0x4A40 ||| r)
+                word 0x6A04;word(0x0640 ||| r);word divisor
         | Division(op,dst,src,stack) ->
             let failureBytes=recoveryBytes frame stack None + recoverySuffix.Length
             if failureBytes+10>32767 then invalidArg "allocation" "Division recovery exceeds a 68000 word branch."
@@ -447,12 +552,12 @@ let emitWithContext vectorTableOffset (vectorRegisters:Map<int,int>) (recoverySu
                 word 0x6708;word xor;word 0x6A04
                 word xor // restore divisor before adding it to the remainder
                 word(0xD040 ||| (dst <<< 9) ||| src)
-        | LoadElement(vector,checkedBounds,r,stack) ->
-            elementAddress vector checkedBounds r stack
-            word(0x3012 ||| (r <<< 9))
+        | LoadElement(vector,checkedBounds,index,result,stack) ->
+            elementAddress vector checkedBounds index stack
+            word(0x3012 ||| (result <<< 9))
         | StoreElement(vector,checkedBounds,index,value,stack) ->
             elementAddress vector checkedBounds index stack
-            word(0x3480 ||| value)
+            writeWord value
         | Check(product,stack,store) ->
             let failureBytes=recoveryBytes frame stack store + recoverySuffix.Length
             if failureBytes+2>32767 then invalidArg "allocation" "Overflow recovery exceeds a 68000 word branch."
@@ -474,8 +579,10 @@ let emit vectorTableOffset allocation = emitWithContext vectorTableOffset Map.em
 
 let private dataWords allocation =
     allocation.Instructions |> List.sumBy (function
-        | Load _ | Store _ -> 3
-        | LoadElement(_,checkedBounds,_,_) | StoreElement(_,checkedBounds,_,_,_) -> if checkedBounds then 6 else 5
+        | Load _ -> 3
+        | Store(_,value) -> 3+(match value with RecoverySlot _ -> 1 | _ -> 0)
+        | LoadElement(_,checkedBounds,_,_,_) -> if checkedBounds then 6 else 5
+        | StoreElement(_,checkedBounds,_,value,_) -> (if checkedBounds then 6 else 5)+(match value with RecoverySlot _ -> 1 | _ -> 0)
         | Spill _ | Reload _ | Pop _ | Push _ -> 1
         | _ -> 0)
 
@@ -501,7 +608,7 @@ let plan maxFrameBytes vectorTableOffset bytes : Result<Report,string> =
                     let coldBytes=allocation.Instructions |> List.sumBy(function
                         | Check(_,stack,store) -> recoveryBytes (allocation.SpillSlots*2) stack store
                         | Division(_,_,_,stack) -> recoveryBytes (allocation.SpillSlots*2) stack None
-                        | LoadElement(_,true,_,stack) | StoreElement(_,true,_,_,stack) -> recoveryBytes (allocation.SpillSlots*2) stack None
+                        | LoadElement(_,true,_,_,stack) | StoreElement(_,true,_,_,stack) -> recoveryBytes (allocation.SpillSlots*2) stack None
                         | _ -> 0)
                     // A bus-word estimate includes instruction fetches and data
                     // traffic. It is not a calibrated MC68008 timing model.

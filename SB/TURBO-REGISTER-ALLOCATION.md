@@ -27,8 +27,9 @@ The virtual IR represents constants, scalar vector loads/stores, maths-stack
 inputs/outputs, negation, integer add/subtract/multiply and checked DIV/MOD. Duplicates share a
 virtual value. Increment operations introduced by the old improver are lowered
 too. Explicit checked operations carry a recovery snapshot of the maths stack.
-Allocation does not remove overflow checks. Range-proven operations retain their
-unchecked form; all other selected arithmetic uses checked forms.
+Range-proven operations retain their unchecked form; other selected arithmetic
+keeps its checks. The local positive-literal division proof described below
+can remove DIV/MOD error exits because every signed-word dividend is safe.
 
 Eligible integer FOR bodies can also use [native loops](TURBO-NATIVE-LOOPS.md),
 keeping their counters, captured bounds and steps in D2-D4 across backedges.
@@ -47,8 +48,11 @@ label addresses and mixed-mode jumps account for the generated instructions.
 Certified one-dimensional integer arrays are the exception to the generic
 array boundary: explicit load/store IR operations retain index/value operands
 in registers and use A2 to reload each current descriptor and data pointer.
-Only the index register is overwritten; a shared index/value gets a separate
-copy, and live indexes use the ordinary spill slots. Stores invalidate scalar
+Addressing preserves the index with two ADDA.W instructions, forming a long
+byte offset without a destructive shift. Loads have a distinct result operand
+and use a free scratch register to retain a live dynamic index when possible.
+Pinned D2 indexes need no scratch copy. Stores can read registers, literal words
+or existing spill slots directly, including a shared index/value. Stores invalidate scalar
 load caches to preserve element/scalar aliases. Checked accesses carry range
 failure snapshots; proven ones omit bounds checks. Both work inside eligible
 native FOR loops without borrowing D2-D4. See
@@ -68,6 +72,8 @@ value just stored to that same vector can subsequently be reused. This preserves
 flexible/reference aliases, including different vectors addressing one cell.
 Vector addresses are reloaded for each actual memory access. Cached values on
 the virtual expression stack remain immutable even when an aliased cell changes.
+Scalar stores accept registers, literal words and existing spill slots directly;
+they still reload the current target vector and commit at the original point.
 
 Register pressure spills word values into reusable CPU-stack slots. A leaf block
 reserves its frame with LEA and releases it before every exit. Maths-stack inputs
@@ -76,6 +82,28 @@ The maximum extra leaf frame is reserved in both the runtime stack setting and
 the QDOS task dataspace, preserving the previous usable stack/heap capacity.
 Frames are capped at 128 bytes and at the configured stack-limit headroom. A
 block that cannot fit falls back to its existing templates.
+
+Literal words are materialized only when required, and rematerialized instead of
+spilled. An evicted constant is
+recreated with MOVEQ or MOVE.W when needed, including after DIV/MOD and array
+index clobbers. Error snapshots can retain an immediate word and write it
+directly to the maths stack on the cold failure path. No materialization is
+inserted between arithmetic and its overflow check. Dynamic values still use
+the ordinary bounded spill frame; this does not introduce memory reloads or
+change alias assumptions.
+
+Eligible native FOR bodies additionally rematerialize their read-only pinned
+counter from D2. Read-only arithmetic operands and error snapshots use its word directly,
+without spilling the counter across DIV/MOD or array indexing. This context is
+used only after whole-loop selection proves independent storage, prohibits
+counter writes and excludes calls and other observers; ordinary leaf allocation
+never treats mutable vector memory as rematerializable.
+
+Add/subtract/multiply with a literal operand use immediate 68000 instructions
+without allocating a second operand register. Add/subtract by signed 1 through 8
+use ADDQ/SUBQ; other words use ADDI/SUBI, and multiply uses MULS.W #word.
+Commuting is limited to add/multiply. Checked forms still immediately test V or
+the full long product, with their original left-word recovery snapshots.
 
 ## Overflow and error recovery
 
@@ -94,7 +122,7 @@ The original left maths word and all pending words are reconstructed on failure;
 an assignment following a failed operation does not commit. Normal leaf error
 handling retains WHEN ERROR, RETRY, CONTINUE and routine-binding unwinding.
 
-Both allocated operand registers are declared clobbered on success. A shared
+For the general checked path, both operand registers are clobbered on success. A shared
 dividend/divisor gets a separate scratch copy; values still live after DIV/MOD
 are spilled before the operation and reloaded as needed. No extra data register
 is borrowed from a native loop's pinned counter/END/STEP. The word dividend is
@@ -102,7 +130,13 @@ sign extended for DIVS. A nonzero remainder with a different sign from the
 divisor adjusts the quotient down or adds the divisor to the remainder, retaining
 QL floor division and divisor-signed MOD for every signed-word operand pair.
 MOD retains the quotient-overflow check even when its mathematical remainder
-would fit. There is no truncating-division or bit-mask substitution.
+would fit. A positive literal divisor cannot fail for any signed-word dividend.
+It uses DIVS.W #word with a correction only for a negative remainder; no second
+scratch register or error snapshot is required. Positive powers of two use
+ASR.W for floor DIV and ANDI.W with divisor-minus-one for MOD instead, including
+negative dividends. These specializations preserve the dividend if it remains
+live. Zero, negative and dynamic divisors retain the full checked path; in
+particular, -32768 MOD -1 still reports quotient overflow.
 
 Inside a native FOR, division failure releases the leaf spill frame and restores
 the loop's saved D2-D4 before entering the runtime handler. Recovery storage is
@@ -116,7 +150,7 @@ overflow. Checked native increments preserve that wrapped store on failure,
 including reference aliases. Ordinary binary assignments commit only after the
 check succeeds. Pending stores before the failed operation remain visible.
 
-Recovery snapshots retain immutable values in registers or spill slots, even
+Recovery snapshots retain immutable values in registers, spill slots or literal words, even
 when a destructive arithmetic instruction overwrites its left operand. Blocks
 are limited to 256 source IR records so all inline recovery branches fit the
 68000 word displacement. Spill-budget or cost rejection falls back to checked

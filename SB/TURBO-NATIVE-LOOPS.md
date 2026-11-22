@@ -26,9 +26,17 @@ native loop that saves D2-D4, loads the counter into D2 and the captured END/STE
 into D3/D4. Leaf integer operations use the existing register-aware IR and
 D0/D1 allocator; counter loads read D2 directly. Every native backedge advances
 a candidate with unchecked word wrap, tests it using STEP's captured direction,
-and commits the counter only if the next iteration is valid. Its store remains
-visible before the next body execution. A failed candidate leaves the last
-counter intact. SLOW resumes threading once after the loop finishes.
+and updates D2 only if the next iteration is valid. The independent global
+counter's cell is written once on normal exit, or before any runtime error.
+Every body counter read uses D2, and no permitted body operation can observe its
+cell indirectly. A failed candidate leaves the last counter intact. SLOW resumes
+threading once after the loop finishes.
+
+When the last STEP value pushed immediately before the initializer is an integer
+literal, NEXT uses that captured literal and its known direction. Small signed
+steps use ADDQ/SUBQ; other words use ADDI. Word wrap, empty-loop initialization,
+and zero STEP retain the runtime rules. Expressions, variable loads, intervening
+labels or mode bridges keep the generic captured-D4 direction test.
 
 Assignments to the variables from which END and STEP were computed cannot change
 their captured register values. Other scalar stores still commit immediately;
@@ -78,7 +86,9 @@ Normal exit releases both frames and preserves the previous register ABI.
 
 On arithmetic overflow, the leaf recovery snapshot first reconstructs the exact
 maths-stack and store state required by the original operation. It then releases
-the leaf frame, restores D2-D4, and jumps to the unchanged library error handler.
+the leaf frame, writes the current D2 counter to its cell, restores D2-D4, and
+jumps to the unchanged library error handler. This writeback also occurs for
+range errors, divisor zero and quotient overflow.
 Checked increments retain their store-before-trap behavior. Error continuation
 programs are excluded because their resumption points need a wider CFG model.
 

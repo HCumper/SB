@@ -497,8 +497,9 @@ let ``native FOR layout remains correct when its entry is beyond 64 KiB`` () =
 
 [<Test>]
 let ``DIVMOD native loops preserve live accumulators and reserve both frame depths`` () =
-    // Amortize the native loop's one-time register save/setup in a repeated kernel.
-    let raw=irOf "10 q%=0:r%=0\n20 FOR i%=-99 TO 99 STEP 2\n30 q%=q%+(i% DIV 3):r%=r%+(i% MOD 3)\n40 END FOR i%\n50 PRINT q%;\":\";r%;\":\";i%\n60 STOP"
+    // A dynamic divisor keeps the checked two-register clobber and spill path;
+    // positive literals are now infallible single-register operations.
+    let raw=irOf "10 q%=0:r%=0:divisor%=3\n20 FOR i%=-99 TO 99 STEP 2\n30 q%=q%+(i% DIV divisor%):r%=r%+(i% MOD divisor%)\n40 END FOR i%\n50 PRINT q%;\":\";r%;\":\";i%\n60 STOP"
     let items=decode raw |> Result.defaultWith failwith
     let ir=TurboNativeRegions.select true {Items=items;Bytes=raw;Listing=formatListing items;Warnings=[]} |> Result.defaultWith(String.concat "; " >> failwith)
     let options={portOptions with LocalRegisterAllocation=true}
@@ -560,7 +561,7 @@ let ``selected rank-one array bounds errors retain RETRY stores and leaf cleanup
     let ir=rankOneIr false source
     let result=generateFromIr {portOptions with LocalRegisterAllocation=true} ir |> Result.defaultWith(String.concat "; " >> failwith)
     let selected=result.NativeAllocation.Value.Blocks |> List.collect(fun block -> block.Allocation.Instructions)
-    Assert.That(selected |> List.exists(function TurboNativeIr.LoadElement(_,true,_,_) | TurboNativeIr.StoreElement(_,true,_,_,_) -> true | _ -> false), Is.True)
+    Assert.That(selected |> List.exists(function TurboNativeIr.LoadElement(_,true,_,_,_) | TurboNativeIr.StoreElement(_,true,_,_,_) -> true | _ -> false), Is.True)
     Assert.That((TurboExecutionHarness.run 2000000L (executableFile result)).Output, Is.EqualTo("-4:3:42:7:8\n"))
 
 [<Test>]
