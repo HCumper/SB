@@ -19,9 +19,10 @@ peephole improver and before either layout/emission pass:
 
 1. Split native code at labels, mode switches and unsupported operations.
 2. Lower leaf integer sequences into immutable virtual word values.
-3. Allocate D0/D1 using next-use information and two-address destination reuse.
-4. Record overflow recovery locations without inserting flag-clobbering moves.
-5. Emit 68000 instructions from the allocated representation.
+3. Propagate constant word values and reuse successful arithmetic results locally.
+4. Allocate D0/D1 using next-use information and two-address destination reuse.
+5. Record overflow recovery locations without inserting flag-clobbering moves.
+6. Emit 68000 instructions from the allocated representation.
 
 The virtual IR represents constants, scalar vector loads/stores, maths-stack
 inputs/outputs, negation, integer add/subtract/multiply and checked DIV/MOD. Duplicates share a
@@ -30,6 +31,26 @@ too. Explicit checked operations carry a recovery snapshot of the maths stack.
 Range-proven operations retain their unchecked form; other selected arithmetic
 keeps its checks. The local positive-literal division proof described below
 can remove DIV/MOD error exits because every signed-word dividend is safe.
+
+`TurboNativeIr.optimize` performs local value numbering before allocation in both
+leaf regions and native FOR bodies. It folds successful word add/subtract/multiply,
+negation and QL floor DIV/divisor-signed MOD, normalizing literal operands to their
+actual signed 16-bit values. Folded results can propagate through assignments via
+the lowerer's existing immutable-value cache; all stores remain at their original
+positions. Known overflow, negation of -32768, zero division and -32768 DIV/MOD -1
+stay executable with their original recovery paths. Unchecked overflowing word
+arithmetic is also left in place, preserving its wrapping behaviour.
+
+Arithmetic and its adjacent overflow check are optimized together. Checked and
+unchecked forms have different value-numbering keys. Identical successful checked
+operations, including DIV/MOD, can reuse an earlier result because the first check
+dominates the later occurrence within the straight-line block. Add/multiply keys
+are commutative; subtraction and division keys preserve operand order. Every
+surviving use and recovery snapshot is rewritten to its canonical immutable value.
+No memory load, maths-stack input, scalar/array store or array bounds check is
+removed or reordered, and existing conservative alias invalidation is unchanged.
+No value is cached across block boundaries or native FOR iterations. The pass runs
+with register allocation; `--no-regalloc` disables it independently of HIR rewriting.
 
 Eligible integer FOR bodies can also use [native loops](TURBO-NATIVE-LOOPS.md),
 keeping their counters, captured bounds and steps in D2-D4 across backedges.

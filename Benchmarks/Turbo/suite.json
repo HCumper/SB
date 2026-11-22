@@ -23,6 +23,26 @@
       "requiresRom": false
     },
     {
+      "name": "native_constant_chain",
+      "file": "native_constant_chain.bas",
+      "description": "Native-value microbenchmark: constant results across scalar assignments; report separately from applications",
+      "passes": 20,
+      "quickPasses": 1,
+      "expectedChecksum": 490,
+      "quickChecksum": 1015,
+      "requiresRom": false
+    },
+    {
+      "name": "native_repeated_expression",
+      "file": "native_repeated_expression.bas",
+      "description": "Native-value microbenchmark: repeated immutable DIVMOD and integer arithmetic; report separately from applications",
+      "passes": 20,
+      "quickPasses": 1,
+      "expectedChecksum": 9430,
+      "quickChecksum": 962,
+      "requiresRom": false
+    },
+    {
       "name": "integer_arithmetic",
       "file": "integer_arithmetic.bas",
       "description": "Integer arithmetic and MOD in a counted loop",

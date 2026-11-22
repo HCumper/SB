@@ -14,6 +14,7 @@ type ExecutionResult = {
     Output: string
     ExitCode: int
     Steps: int64
+    InstructionWordsFetched: int64
 }
 
 let run (maxSteps: int64) (executable: byte[]) =
@@ -134,6 +135,7 @@ let run (maxSteps: int64) (executable: byte[]) =
             cpu.Step()
         { Output = output.ToString()
           ExitCode = exitCode |> Option.defaultWith (fun () -> failwith "Job halted without MT.FRJOB.")
-          Steps = cpu.Steps }
+          Steps = cpu.Steps
+          InstructionWordsFetched = cpu.InstructionWordsFetched }
     with M68kFault message ->
         raise (M68kFault $"{message} PC=${cpu.Pc:X6}, steps={cpu.Steps}, output={output}")

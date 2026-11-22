@@ -38,6 +38,14 @@ steps use ADDQ/SUBQ; other words use ADDI. Word wrap, empty-loop initialization,
 and zero STEP retain the runtime rules. Expressions, variable loads, intervening
 labels or mode bridges keep the generic captured-D4 direction test.
 
+The native NEXT wrapper uses byte branches when the final displacement fits
+the 68000 signed-byte range and is nonzero. It starts with word branches and
+relaxes them to a fixed point, accounting for each shortened forward branch's
+own extension word. Larger backedges retain word branches; displacements beyond
+the signed-word range retain the ordinary loop path. The embedded leaf body and
+its error-recovery branches are unchanged. Both codegen passes use the same
+completed byte layout.
+
 Assignments to the variables from which END and STEP were computed cannot change
 their captured register values. Other scalar stores still commit immediately;
 their existing conservative load-cache invalidation is retained. No accumulator
@@ -106,3 +114,8 @@ nested loops and unsupported control flow/bindings. Codegen tests cover tight
 stack fallback and loop entry beyond 64 KiB. Comparative benchmarks use
 `Benchmarks/Turbo/Run-Benchmarks.ps1 -CompareRegisters`; functional instruction
 counts are reported separately from QL elapsed timings.
+Boundary tests execute backedges at -128 and -130 bytes, including layouts that
+only fit after forward branches shrink. Benchmark reports also count consumed
+opcode and extension words, exposing fetch reductions when instruction counts
+are unchanged. These counts exclude data reads, host hooks and speculative
+prefetch; they do not model hardware bus cycles or elapsed QL time.

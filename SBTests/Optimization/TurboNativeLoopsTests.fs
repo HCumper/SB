@@ -44,6 +44,65 @@ let private execute overflow first finish step body = executeLoop (selected body
 
 let private read v (cpu:Cpu) = int(int16(uint16(cpu.ReadWord(uint32(0x6000+v*32)))))
 
+let private codeWord (code:byte[]) offset = (int code[offset] <<< 8) ||| int code[offset+1]
+
+[<TestCase(false,15,2)>]
+[<TestCase(true,18,1)>]
+let ``native FOR backedges use the inclusive minus 128 byte limit`` (literalStep:bool,copies:int,literals:int) =
+    // Stores remain observable and give exact body lengths: six bytes from D2,
+    // eight from an immediate. The shorter exit branches must be considered
+    // before the backedge fits; an all-word layout would exceed byte range.
+    let body=(List.replicate copies [op 109 [1];op 118 [2]] @
+              List.replicate literals [op 106 [7];op 118 [3]]) |> List.concat
+    let loop=(plan 140 (if literalStep then [op 106 [1]] else []) body).Loops.Head
+    let backedge=loop.Code.Length-12-2 // counter commit and register restore follow it
+    Assert.That(codeWord loop.Code backedge, Is.EqualTo(0x6080),"BRA.S -128 must fit after relaxation.")
+    let cpu=executeLoop loop false 1 3 1
+    Assert.That(read 1 cpu, Is.EqualTo(3))
+    Assert.That(read 2 cpu, Is.EqualTo(3))
+
+[<TestCase(false,18,0)>]
+[<TestCase(true,17,2)>]
+let ``native FOR backedges beyond byte range retain their word extension`` (literalStep:bool,copies:int,literals:int) =
+    let body=(List.replicate copies [op 109 [1];op 118 [2]] @
+              List.replicate literals [op 106 [7];op 118 [3]]) |> List.concat
+    let loop=(plan 140 (if literalStep then [op 106 [1]] else []) body).Loops.Head
+    let backedge=loop.Code.Length-12-4
+    Assert.That(codeWord loop.Code backedge, Is.EqualTo(0x6000))
+    Assert.That(int(int16(uint16(codeWord loop.Code (backedge+2)))), Is.EqualTo(-130))
+    let cpu=executeLoop loop false 1 3 1
+    Assert.That(read 1 cpu, Is.EqualTo(3))
+    Assert.That(read 2 cpu, Is.EqualTo(3))
+
+[<TestCase(1,0x6E04)>]
+[<TestCase(-1,0x6D04)>]
+let ``literal NEXT uses a short exit branch with the correct direction`` (step:int,opcode:int) =
+    let loop=(plan 140 [op 106 [step]] [op 109 [1];op 118 [2]]).Loops.Head
+    Assert.That(loop.Code.Length, Is.EqualTo(50))
+    Assert.That(codeWord loop.Code 32, Is.EqualTo(opcode))
+    Assert.That(codeWord loop.Code 36, Is.EqualTo(0x60EE)) // body at byte 20
+    let first,finish=if step>0 then 1,3 else 3,1
+    Assert.That(read 2 (executeLoop loop false first finish step), Is.EqualTo(finish))
+
+[<TestCase(false,6L,9L)>]
+[<TestCase(true,8L,11L)>]
+let ``fetch counts include opcode and extension words but exclude data and hooks`` (zero:bool,steps:int64,words:int64) =
+    let cpu=Cpu(Array.zeroCreate 0x1000)
+    let code=[0x203C;0x1234;0x5678;0x2080;0x2210;0x6602;0x4E71;0x6600;0x0004;0x4E71;0x4E71]
+    code |> List.iteri(fun i word -> cpu.WriteWord(uint32(i*2),uint32 word))
+    cpu.A[0]<-0x200u;cpu.A[7]<-0xF00u
+    while cpu.Pc<22u do
+        if cpu.Pc=10u then cpu.Ccr<-(if zero then 4u else 0u)
+        cpu.Step()
+    Assert.That(cpu.D[1], Is.EqualTo(0x12345678u))
+    Assert.That(cpu.Steps, Is.EqualTo(steps))
+    Assert.That(cpu.InstructionWordsFetched, Is.EqualTo(words))
+    cpu.Push 24u
+    cpu.Hooks[22u]<-fun _ -> ()
+    cpu.Step()
+    Assert.That(cpu.Steps, Is.EqualTo(steps+1L))
+    Assert.That(cpu.InstructionWordsFetched, Is.EqualTo(words))
+
 [<TestCase(1,5,1)>]
 [<TestCase(5,1,-1)>]
 [<TestCase(-7,7,3)>]
@@ -271,3 +330,27 @@ let ``rank-one FOR bounds failure releases spill and loop frames and preserves p
     Assert.That(cpu.ReadWord 0x4FFEu, Is.EqualTo(3u))
     Assert.That(cpu.ReadWord 0x10000u, Is.EqualTo(1u))
     Assert.That(cpu.ReadWord 0x10002u, Is.EqualTo(2u))
+
+[<Test>]
+let ``native FOR reuses checked arithmetic within each iteration without caching its counter`` () =
+    let loop=selected [op 109 [1];op 106 [1];op 1005 [];op 109 [1];op 106 [1];op 1005 [];op 1007 [];op 118 [2]]
+    Assert.That(loop.Body.Instructions |> List.filter(function TurboNativeIr.Binary _ -> true | _ -> false) |> List.length, Is.EqualTo(2))
+    Assert.That(read 2 (executeLoop loop false 1 3 1), Is.EqualTo(16))
+
+[<Test>]
+let ``native FOR propagates successful constant results while retaining all stores`` () =
+    let loop=selected [op 106 [3];op 118 [2];op 109 [2];op 106 [4];op 1005 [];op 118 [3];op 109 [3];op 109 [1];op 1005 [];op 118 [2]]
+    Assert.That(loop.Body.Instructions |> List.filter(function TurboNativeIr.Binary _ -> true | _ -> false) |> List.length, Is.EqualTo(1))
+    let cpu=executeLoop loop false 1 3 1
+    Assert.That(read 2 cpu, Is.EqualTo(10))
+    Assert.That(read 3 cpu, Is.EqualTo(7))
+
+[<Test>]
+let ``a reused division in native FOR still fails on a later zero counter`` () =
+    let loop=selected [op 106 [20];op 109 [1];op 8 [];op 106 [20];op 109 [1];op 8 [];op 1005 [];op 118 [2]]
+    Assert.That(loop.Body.Instructions |> List.filter(function TurboNativeIr.Divide _ -> true | _ -> false) |> List.length, Is.EqualTo(1))
+    let cpu=executeLoop loop true -1 1 1
+    Assert.That(read 1 cpu, Is.Zero)
+    Assert.That(read 2 cpu, Is.EqualTo(-40))
+    Assert.That(cpu.A[1], Is.EqualTo(0x4FFEu))
+    Assert.That(cpu.ReadWord 0x4FFEu, Is.EqualTo(20u))

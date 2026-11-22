@@ -65,6 +65,7 @@ type Cpu(memory: byte[]) =
     let mutable statusUpper = 0u
     let mutable halted = false
     let mutable steps = 0L
+    let mutable instructionWordsFetched = 0L
     let mutable opcodePc = 0u
 
     member _.D = d
@@ -72,6 +73,9 @@ type Cpu(memory: byte[]) =
     member _.Memory = memory
     member _.Hooks = hooks
     member _.Steps = steps
+    /// Opcode and extension words consumed by the interpreter, excluding data reads
+    /// and host hooks. This is not a bus/prefetch or MC68008 cycle model.
+    member _.InstructionWordsFetched = instructionWordsFetched
     member _.Halted = halted
     member _.Halt() = halted <- true
 
@@ -153,11 +157,13 @@ type Cpu(memory: byte[]) =
 
     member private this.Fetch16() =
         let value = this.ReadWord pc
+        instructionWordsFetched <- instructionWordsFetched + 1L
         pc <- pc + 2u
         value
 
     member private this.Fetch32() =
         let value = this.ReadLong pc
+        instructionWordsFetched <- instructionWordsFetched + 2L
         pc <- pc + 4u
         value
 

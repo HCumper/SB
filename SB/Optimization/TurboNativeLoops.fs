@@ -66,12 +66,40 @@ let private emit vectorTableOffset counter constantStep body =
     label "exit"
     output.AddRange commitCounter
     output.AddRange restore
+    // Relax only this wrapper's branches; the leaf body and its recovery paths
+    // are opaque bytes. Start with word branches and shorten to a fixed point,
+    // since shrinking a forward branch can bring the backedge into byte range.
+    let shortBranches=HashSet<int>()
+    let relocated position =
+        position - 2*(fixups |> Seq.filter(fun (extension,_) -> extension<position && shortBranches.Contains extension) |> Seq.length)
+    let mutable changed=true
+    while changed do
+        changed<-false
+        for position,target in fixups do
+            if not(shortBranches.Contains position) then
+                let destination=labels[target]
+                // A forward target also moves over this branch's own removed
+                // extension word. PC-relative displacements use opcode PC+2.
+                let displacement=relocated destination-relocated position-(if destination>position then 2 else 0)
+                // Zero in the opcode selects a word extension on the 68000.
+                if displacement<>0 && displacement>= -128 && displacement<=127 then
+                    shortBranches.Add position |> ignore
+                    changed<-true
+    let result=ResizeArray<byte>()
+    let mutable cursor=0
     for position,target in fixups do
-        let displacement=labels[target]-position
+        result.AddRange(output.GetRange(cursor,position-2-cursor))
+        let displacement=relocated labels[target]-relocated position
         if displacement<int Int16.MinValue || displacement>int Int16.MaxValue then
             invalidArg "body" "Native FOR branch exceeds a 68000 word displacement."
-        output[position]<-byte(displacement >>> 8);output[position+1]<-byte displacement
-    output.ToArray()
+        result.Add output[position-2] // condition/opcode byte
+        if shortBranches.Contains position then result.Add(byte displacement)
+        else
+            result.Add 0uy
+            result.Add(byte(displacement >>> 8));result.Add(byte displacement)
+        cursor<-position+2
+    result.AddRange(output.GetRange(cursor,output.Count-cursor))
+    result.ToArray()
 
 /// Selection is deliberately restricted to programs without reference/local
 /// binding, error continuation or opaque memory mutation. A body may contain
@@ -157,7 +185,7 @@ let plan maxExtraBytes vectorTableOffset source : Result<Report,string> =
                             | Instruction(263,[],_),Instruction(357,[LabelRef _],_) -> Some 0
                             | _ -> None
                         else None
-                    let ir=TurboNativeIr.lower offsets[i+1] offsets[j+1] (List.ofSeq body)
+                    let ir=TurboNativeIr.lower offsets[i+1] offsets[j+1] (List.ofSeq body) |> TurboNativeIr.optimize
                     match TurboNativeIr.allocateWithContext (min 128 (maxExtraBytes-12)) (Map.ofList[counter,2]) ir with
                     | Some allocation ->
                         try

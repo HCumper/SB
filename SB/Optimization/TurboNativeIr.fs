@@ -194,6 +194,108 @@ let private destination = function
     | Constant(v,_) | LoadVector(v,_) | PopMaths v | Binary(v,_,_,_) | Divide(v,_,_,_,_) | LoadArrayWord(v,_,_,_,_) | Negate(v,_) -> Some v
     | _ -> None
 
+type private ExpressionKey =
+    | BinaryKey of BinaryOperation * checkedArithmetic:bool * Value * Value
+    | NegateKey of checkedArithmetic:bool * Value
+    | DivideKey of DivisionOperation * Value * Value
+
+/// Local value numbering over immutable words, before physical allocation.
+/// Arithmetic and its following overflow check are one unit. Only successful
+/// constant computations are folded; checked and unchecked expressions have
+/// distinct identities. Reusing a checked result is safe because its earlier
+/// successful check dominates this straight-line occurrence. Loads, stores,
+/// maths inputs and array checks are never removed or reordered.
+let optimize (block:Block) =
+    let instructions=List.toArray block.Instructions
+    // A bare/mismatched flag check is outside the lowered IR contract. Leave
+    // such a block intact rather than fold an operation that could feed it.
+    let paired arithmetic check =
+        match arithmetic,check with
+        | Binary(value,MultiplyWord,_,_),OverflowCheck(Some product,_,_) -> value=product
+        | Binary(_,(AddWord|SubtractWord),_,_),OverflowCheck(None,_,_)
+        | Negate(_,_),OverflowCheck(None,_,_) -> true
+        | _ -> false
+    let validChecks =
+        instructions |> Array.mapi(fun i instruction ->
+            match instruction with
+            | OverflowCheck _ -> i>0 && paired instructions[i-1] instruction
+            | _ -> true) |> Array.forall id
+    if not validChecks then block
+    else
+        let code=ResizeArray<Instruction>()
+        let aliases=Dictionary<Value,Value>()
+        let constants=Dictionary<Value,int>()
+        let constantValues=Dictionary<int,Value>()
+        let expressions=Dictionary<ExpressionKey,Value>()
+        let rec resolve value =
+            match aliases.TryGetValue value with true,original -> resolve original | _ -> value
+        let known value = match constants.TryGetValue(resolve value) with true,n -> Some n | _ -> None
+        let constant value raw =
+            let n=int(int16(uint16 raw))
+            match constantValues.TryGetValue n with
+            | true,original -> aliases[value]<-original
+            | _ ->
+                constants[value]<-n;constantValues[n]<-value
+                code.Add(Constant(value,n))
+        let rewrite = function
+            | Binary(v,op,a,b) -> Binary(v,op,resolve a,resolve b)
+            | Negate(v,a) -> Negate(v,resolve a)
+            | Divide(v,op,a,b,stack) -> Divide(v,op,resolve a,resolve b,List.map resolve stack)
+            | LoadArrayWord(v,vector,checkedBounds,index,stack) -> LoadArrayWord(v,vector,checkedBounds,resolve index,List.map resolve stack)
+            | StoreArrayWord(vector,checkedBounds,index,value,stack) -> StoreArrayWord(vector,checkedBounds,resolve index,resolve value,List.map resolve stack)
+            | OverflowCheck(product,stack,store) -> OverflowCheck(Option.map resolve product,List.map resolve stack,store |> Option.map(fun (vector,value) -> vector,resolve value))
+            | StoreVector(vector,value) -> StoreVector(vector,resolve value)
+            | PushMaths value -> PushMaths(resolve value)
+            | instruction -> instruction
+        let fitsWord n = n>= -32768L && n<=32767L
+        let mutable index=0
+        while index<instructions.Length do
+            let instruction=rewrite instructions[index]
+            let check=
+                if index+1<instructions.Length && paired instructions[index] instructions[index+1] then Some instructions[index+1]
+                else None
+            let checkedArithmetic=check.IsSome
+            let candidate =
+                match instruction with
+                | Binary(value,op,a,b) ->
+                    let left,right=if op<>SubtractWord && a>b then b,a else a,b
+                    let folded=
+                        match known a,known b with
+                        | Some a,Some b ->
+                            let result=match op with AddWord -> int64 a+int64 b | SubtractWord -> int64 a-int64 b | MultiplyWord -> int64 a*int64 b
+                            if fitsWord result then Some(int result) else None
+                        | _ -> None
+                    // Keep known overflowing arithmetic executable, including
+                    // unchecked wrap and a checked increment's store-before-trap.
+                    Some(value,BinaryKey(op,checkedArithmetic,left,right),folded,(known a).IsSome && (known b).IsSome && folded.IsNone)
+                | Negate(value,source) ->
+                    let folded=known source |> Option.bind(fun n -> if n= -32768 then None else Some(-n))
+                    Some(value,NegateKey(checkedArithmetic,source),folded,known source=Some -32768)
+                | Divide(value,op,a,b,_) ->
+                    let folded=
+                        match known a,known b with
+                        | Some a,Some b when b<>0 && not(a= -32768 && b= -1) ->
+                            let quotient,remainder=a/b,a%b
+                            let correct=remainder<>0 && ((remainder<0)<>(b<0))
+                            Some(if op=DivideWord then quotient-(if correct then 1 else 0) else remainder+(if correct then b else 0))
+                        | _ -> None
+                    let fails=known b=Some 0 || (known a=Some -32768 && known b=Some -1)
+                    Some(value,DivideKey(op,a,b),folded,fails)
+                | _ -> None
+            match instruction,candidate with
+            | Constant(value,n),_ -> constant value n
+            | _,Some(value,key,folded,keep) ->
+                match folded,expressions.TryGetValue key with
+                | Some n,_ -> constant value n;expressions[key]<-resolve value
+                | None,(true,original) when not keep -> aliases[value]<-original
+                | _ ->
+                    code.Add instruction
+                    check |> Option.iter (rewrite >> code.Add)
+                    if not keep then expressions[key]<-value
+            | _ -> code.Add instruction
+            index<-index+(if checkedArithmetic then 2 else 1)
+        {block with Instructions=List.ofSeq code}
+
 type private Location = Register of int | Slot of int | Literal of int | Pinned of int
 exception private AllocationLimit
 
@@ -601,7 +703,7 @@ let plan maxFrameBytes vectorTableOffset bytes : Result<Report,string> =
         let mutable rejected=0
         let flush () =
             if pending.Count>0 then
-                let ir=lower start offset (List.ofSeq pending)
+                let ir=lower start offset (List.ofSeq pending) |> optimize
                 match allocate maxFrameBytes ir with
                 | Some allocation ->
                     let code=emit vectorTableOffset allocation

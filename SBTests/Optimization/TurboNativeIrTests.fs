@@ -666,3 +666,126 @@ let ``array RHS overflow precedes bounds failure and retains its pending index``
     Assert.That(cpu.ReadWord 0x4FFCu, Is.EqualTo(32767u))
     Assert.That(cpu.ReadWord 0x4FFEu, Is.EqualTo(65535u))
     Assert.That(cpu.ReadWord 0x5000u, Is.EqualTo(99u))
+
+let private allocateBlock ir = allocate 128 ir |> Option.defaultWith(fun () -> failwith "Unexpected value-optimization allocation fallback.")
+let private compareOptimized overflow ir aliases incoming =
+    let before=executeTo overflow (allocateBlock ir) aliases incoming
+    let after=executeTo overflow (allocateBlock (optimize ir)) aliases incoming
+    for vector in 1..32 do Assert.That(readVector vector after, Is.EqualTo(readVector vector before),$"Vector {vector}")
+    Assert.That(after.A[1], Is.EqualTo(before.A[1]),"Maths-stack position changed.")
+    let mutable address=before.A[1]
+    while address<0x5000u+uint32(incoming.Length*2) do
+        Assert.That(after.ReadWord address, Is.EqualTo(before.ReadWord address),$"Maths word at {address:X}")
+        address<-address+2u
+    after
+
+[<Test>]
+let ``value optimization folds assignment chains without removing stores`` () =
+    let ir=block [op 106 [3];op 118 [1];op 109 [1];op 106 [4];op 1005 [];op 118 [2];op 109 [2];op 106 [2];op 1007 [];op 118 [3];op 109 [3];op 1001 [];op 118 [4]]
+    let optimized=optimize ir
+    Assert.That(optimized.Instructions |> List.filter(function StoreVector _ -> true | _ -> false) |> List.length, Is.EqualTo(4))
+    Assert.That(optimized.Instructions |> List.exists(function Binary _ | Negate _ | OverflowCheck _ -> true | _ -> false), Is.False)
+    Assert.That(optimize optimized, Is.EqualTo(optimized),"The pass must be idempotent.")
+    let cpu=compareOptimized false ir Map.empty []
+    Assert.That([for vector in 1..4 -> readVector vector cpu], Is.EqualTo(box [3;7;14;-14]))
+
+[<TestCase(65535,1,0)>]
+[<TestCase(65536,1,1)>]
+[<TestCase(-65533,4,7)>]
+let ``value optimization normalizes raw host constants before folding`` (raw:int,right:int,expected:int) =
+    let a,b,result=Value 0,Value 1,Value 2
+    let ir={block [] with Instructions=[Constant(a,raw);Constant(b,right);Binary(result,AddWord,a,b);OverflowCheck(None,[a],None);StoreVector(20,result)]}
+    Assert.That(optimize ir |> _.Instructions |> List.exists(function Binary _ | OverflowCheck _ -> true | _ -> false), Is.False)
+    Assert.That(readVector 20 (compareOptimized false ir Map.empty []), Is.EqualTo(expected))
+
+[<Test>]
+let ``folded constants match unoptimized word arithmetic and checked boundaries`` () =
+    let values=[-32768;-32767;-129;-1;0;1;2;127;128;16384;32766;32767]
+    for opcode in [5;6;7;1005;1006;1007] do
+        for a in values do
+            for b in values do
+                let result=match opcode%1000 with 5 -> int64 a+int64 b | 6 -> int64 a-int64 b | _ -> int64 a*int64 b
+                let fails=opcode>=1000 && (result< -32768L || result>32767L)
+                compareOptimized fails (block [op 106 [a];op 106 [b];op opcode [];op 118 [20]]) Map.empty [99] |> ignore
+    for opcode in [1;1001] do
+        for value in values do
+            compareOptimized (opcode=1001 && value= -32768) (block [op 106 [value];op opcode [];op 118 [20]]) Map.empty [99] |> ignore
+
+[<Test>]
+let ``folded DIVMOD matches QL floor rounding and retains quotient errors`` () =
+    let values=[-32768;-32767;-7;-3;-1;0;1;2;3;7;32767]
+    for opcode in [8;20] do
+        for a in values do
+            for b in values do
+                let fails=b=0 || (a= -32768 && b= -1)
+                let ir=block [op 106 [a];op 106 [b];op opcode [];op 118 [20]]
+                let optimized=optimize ir
+                Assert.That(optimized.Instructions |> List.exists(function Divide _ -> true | _ -> false), Is.EqualTo(fails))
+                compareOptimized fails ir Map.empty [99] |> ignore
+
+[<TestCase(1005,32767,1)>]
+[<TestCase(1006,-32768,1)>]
+[<TestCase(1007,16384,2)>]
+[<TestCase(8,-32768,-1)>]
+[<TestCase(20,-32768,-1)>]
+[<TestCase(8,7,0)>]
+[<TestCase(20,7,0)>]
+let ``a later failure reconstructs folded pending values in the original order`` (opcode:int,a:int,b:int) =
+    let ir=block [op 106 [10];op 106 [20];op 1005 [];op 106 [a];op 106 [b];op opcode [];op 118 [20]]
+    let cpu=compareOptimized true ir Map.empty [99]
+    Assert.That(cpu.A[1], Is.EqualTo(0x4FFCu))
+    Assert.That(cpu.ReadWord 0x4FFCu, Is.EqualTo(uint32(a &&& 65535)))
+    Assert.That(cpu.ReadWord 0x4FFEu, Is.EqualTo(30u))
+    Assert.That(cpu.ReadWord 0x5000u, Is.EqualTo(99u))
+
+[<TestCase(1339,32760,20,-32756)>]
+[<TestCase(1340,-32760,20,32756)>]
+let ``constant overflow retains an increment's wrapped store before trapping`` (opcode:int,value:int,amount:int,expected:int) =
+    let ir=block [op 106 [value];op 118 [1];op opcode [1;amount]]
+    Assert.That(readVector 1 (compareOptimized true ir Map.empty [99]), Is.EqualTo(expected))
+
+[<TestCase(1005,1007,9)>]
+[<TestCase(1007,1005,4)>]
+[<TestCase(1006,1007,-1)>]
+let ``value numbering reuses commutative results without reversing subtraction`` (opcode:int,combine:int,expected:int) =
+    let ir=block [op 109 [1];op 109 [2];op opcode [];op 109 [2];op 109 [1];op opcode [];op combine [];op 118 [20]]
+    let count=optimize ir |> _.Instructions |> List.filter(function Binary _ -> true | _ -> false) |> List.length
+    Assert.That(count, Is.EqualTo(if opcode=1006 then 3 else 2))
+    Assert.That(readVector 20 (compareOptimized false ir Map.empty []), Is.EqualTo(expected))
+
+[<TestCase(8,0)>]
+[<TestCase(20,2)>]
+let ``a checked DIVMOD result is reused only after the first successful execution`` (opcode:int,expected:int) =
+    let ir=block [op 109 [1];op 109 [2];op opcode [];op 109 [1];op 109 [2];op opcode [];op 1005 [];op 118 [20]]
+    Assert.That(optimize ir |> _.Instructions |> List.filter(function Divide _ -> true | _ -> false) |> List.length, Is.EqualTo(1))
+    Assert.That(readVector 20 (compareOptimized false ir Map.empty []), Is.EqualTo(expected))
+    compareOptimized true ir (Map.ofList[2,0]) [] |> ignore // Uninitialized owner zero supplies a zero divisor.
+
+[<Test>]
+let ``a repeated checked negation keeps its original failure point`` () =
+    let ir=block [op 109 [1];op 1001 [];op 109 [1];op 1001 [];op 1005 [];op 118 [20]]
+    Assert.That(optimize ir |> _.Instructions |> List.filter(function Negate _ -> true | _ -> false) |> List.length, Is.EqualTo(1))
+    Assert.That(readVector 20 (compareOptimized false ir Map.empty []), Is.EqualTo(-2))
+
+[<TestCase(5,32767,1)>]
+[<TestCase(6,-32768,1)>]
+[<TestCase(7,16384,2)>]
+let ``an unchecked result cannot suppress a later checked overflow`` (opcode:int,a:int,b:int) =
+    let left,right,first,second=Value 0,Value 1,Value 2,Value 3
+    let operation=match opcode with 5 -> AddWord | 6 -> SubtractWord | _ -> MultiplyWord
+    let ir={block [] with Instructions=[PopMaths right;PopMaths left;Binary(first,operation,left,right);StoreVector(20,first);Binary(second,operation,left,right);OverflowCheck((if opcode=7 then Some second else None),[left],None);StoreVector(21,second)]}
+    Assert.That(optimize ir |> _.Instructions |> List.filter(function Binary _ -> true | _ -> false) |> List.length, Is.EqualTo(2))
+    compareOptimized true ir Map.empty [b;a;99] |> ignore
+
+[<Test>]
+let ``value propagation respects scalar aliases and keeps both memory reads`` () =
+    let ir=block [op 106 [3];op 118 [1];op 106 [7];op 118 [2];op 109 [1];op 106 [4];op 1005 [];op 118 [20]]
+    Assert.That(readVector 20 (compareOptimized false ir (Map.ofList[2,1]) []), Is.EqualTo(11))
+    let arrays=block [op 106 [0];op 1711 [30];op 106 [0];op 106 [9];op 1712 [30];op 106 [0];op 1711 [30];op 1005 [];op 118 [20]]
+    Assert.That(optimize arrays |> _.Instructions |> List.filter(function LoadArrayWord _ -> true | _ -> false) |> List.length, Is.EqualTo(2))
+    Assert.That(optimize arrays |> _.Instructions |> List.filter(function StoreArrayWord _ -> true | _ -> false) |> List.length, Is.EqualTo(1))
+
+[<Test>]
+let ``unsupported flag-check relationships are left intact`` () =
+    let ir={block [] with Instructions=[Constant(Value 0,3);OverflowCheck(None,[],None);PushMaths(Value 0)]}
+    Assert.That(optimize ir, Is.EqualTo(ir))

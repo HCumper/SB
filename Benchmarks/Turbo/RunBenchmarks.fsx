@@ -39,6 +39,7 @@ type Row = {
     Status: string
     ExecutableBytes: int
     Instructions: Nullable<int64>
+    InstructionWordsFetched: Nullable<int64>
     Output: string
     Detail: string
 }
@@ -121,7 +122,7 @@ for benchmark in benchmarks do
             if benchmark.requiresRom then
                 results.Add {
                     Benchmark=benchmark.name; HirOptimization=mode; NativeRegions=nativeMode; RegisterAllocation=registerMode; Passes=passes; ExpectedChecksum=expected
-                    Status="compiled-only"; ExecutableBytes=size; Instructions=Nullable(); Output=""
+                    Status="compiled-only"; ExecutableBytes=size; Instructions=Nullable(); InstructionWordsFetched=Nullable(); Output=""
                     Detail="Requires a full QL ROM; execution and timing remain unverified." }
                 printfn "COMPILED %s [%s]: %d bytes, full QL ROM required" benchmark.name modeDirectory size
             else
@@ -133,20 +134,22 @@ for benchmark in benchmarks do
                 results.Add {
                     Benchmark=benchmark.name; HirOptimization=mode; NativeRegions=nativeMode; RegisterAllocation=registerMode; Passes=passes; ExpectedChecksum=expected
                     Status="passed"; ExecutableBytes=size; Instructions=Nullable executed.Steps
+                    InstructionWordsFetched=Nullable executed.InstructionWordsFetched
                     Output=text; Detail="Functional 68000 instruction count includes startup and final output; it is not MC68008 timing." }
-                printfn "PASS %s [%s]: checksum %d, %d bytes, %d instructions" benchmark.name modeDirectory expected size executed.Steps
+                printfn "PASS %s [%s]: checksum %d, %d bytes, %d instructions, %d instruction words fetched" benchmark.name modeDirectory expected size executed.Steps executed.InstructionWordsFetched
         with error ->
             results.Add {
                 Benchmark=benchmark.name; HirOptimization=mode; NativeRegions=nativeMode; RegisterAllocation=registerMode; Passes=passes; ExpectedChecksum=expected
-                Status="failed"; ExecutableBytes=size; Instructions=Nullable(); Output=""; Detail=error.Message }
+                Status="failed"; ExecutableBytes=size; Instructions=Nullable(); InstructionWordsFetched=Nullable(); Output=""; Detail=error.Message }
             printfn "FAIL %s [%s]: %s" benchmark.name modeDirectory error.Message
 
 let quote (value: string) = "\"" + value.Replace("\"", "\"\"") + "\""
 let csv =
-    [| yield "Benchmark,HirOptimization,NativeRegions,RegisterAllocation,Passes,ExpectedChecksum,Status,ExecutableBytes,Instructions,Output,Detail"
+    [| yield "Benchmark,HirOptimization,NativeRegions,RegisterAllocation,Passes,ExpectedChecksum,Status,ExecutableBytes,Instructions,InstructionWordsFetched,Output,Detail"
        for row in results do
            yield [ row.Benchmark; row.HirOptimization; row.NativeRegions; row.RegisterAllocation; string row.Passes; string row.ExpectedChecksum; row.Status
                    string row.ExecutableBytes; (if row.Instructions.HasValue then string row.Instructions.Value else "")
+                   (if row.InstructionWordsFetched.HasValue then string row.InstructionWordsFetched.Value else "")
                    row.Output.TrimEnd(); row.Detail ] |> List.map quote |> String.concat "," |]
 File.WriteAllLines(Path.Combine(runDirectory, "results.csv"), csv)
 File.WriteAllText(Path.Combine(runDirectory, "results.json"), JsonSerializer.Serialize(results.ToArray(), jsonOptions))
@@ -164,6 +167,7 @@ let configuration = {|
     TemplateLibrary = "lib537"
     CodeMode = if compareRegisters then "Threaded, native templates, allocated native IR" elif compareNative then "Threaded and audited native regions" else "Threaded executable body"
     TimingModel = "Functional MC68000 instruction counts; no calibrated MC68008 cycle model"
+    FetchModel = "16-bit opcode and extension words consumed; excludes data reads, host hooks and speculative prefetch"
     HirModes = [| "--no-hir-opt"; "--hir-opt" |]
     NativeModes = if compareNative then [|"--no-native-regions";"--native-regions"|] else [|"--no-native-regions"|]
     RegisterModes = if compareRegisters then [|"--no-regalloc";"--regalloc"|] else [|"--no-regalloc"|]

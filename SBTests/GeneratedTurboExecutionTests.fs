@@ -42,6 +42,27 @@ let private withCompiledProgramMode enabled extraArguments extension (source: st
 
 let private withCompiledProgram extension source action = withCompiledProgramMode true [] extension source action
 
+let nativeValuePrograms = [|
+    "10 a%=3:b%=a%+4:c%=b%*2:d%=-c%\n20 PRINT a%;\":\";b%;\":\";c%;\":\";d%\n30 STOP", "3:7:14:-14\n"
+    "10 total%=0\n20 FOR i%=1 TO 10\n30 x%=(i%+1)*(i%+1):total%=total%+x%\n40 END FOR i%\n50 PRINT total%;\":\";x%;\":\";i%\n60 STOP", "505:121:10\n"
+    "10 a%=3:work a%,a%\n20 PRINT a%\n30 STOP\n100 DEFine PROCedure work(p%,q%)\n110 p%=3:q%=7:answer%=p%+4\n120 PRINT answer%\n130 END DEFine", "11\n7\n"
+    "10 WHEN ERROR\n20 retries%=retries%+1\n30 IF retries%<3 THEN RETRY\n40 PRINT ERNUM;\":\";retries%;\":\";answer%\n50 STOP\n60 END WHEN\n70 a%=3:b%=a%+4:answer%=42\n80 answer%=(b%*2)+(32767+1)\n90 PRINT \"wrong\"", "-18:3:42\n"
+    "10 DIM a%(1)\n20 i%=1:a%(i%)=7:a%(i%)=a%(i%)+a%(i%)\n30 PRINT a%(i%)\n40 STOP", "14\n"
+|]
+let nativeValueModes = [|
+    for index in 0..nativeValuePrograms.Length-1 do
+        for hir in [false;true] do
+            for native,registers in [false,false;true,false;true,true] do
+                yield TestCaseData(index,hir,native,registers).SetName($"Native values {index} (HIR {hir}, native {native}, registers {registers})") |]
+
+[<TestCaseSource(nameof nativeValueModes)>]
+let ``native value optimization preserves constants repeated results aliases retries and arrays`` (index:int,hir:bool,native:bool,registers:bool) =
+    let source,expected=nativeValuePrograms[index]
+    withCompiledProgramMode hir [(if native then "--native-regions" else "--no-native-regions");(if registers then "--regalloc" else "--no-regalloc")] ".bas" source (fun executable ->
+        let result=run 2000000L executable
+        Assert.That(result.Output, Is.EqualTo(expected))
+        Assert.That(result.ExitCode, Is.Zero))
+
 let rankOnePrograms = [|
     "10 DIM a%(100):total%=0\n20 FOR i%=0 TO 100\n30 a%(i%)=i%*2:total%=total%+a%(i%)\n40 END FOR i%\n50 PRINT total%;\":\";a%(100);\":\";i%\n60 STOP", "10100:200:100\n"
     "10 DIM a%(3),indexes%(0)\n20 indexes%(0)=2\n30 a%(indexes%(0))=-32768\n40 result%=a%(indexes%(0))\n50 PRINT result%;\":\";a%(2)\n60 STOP", "-32768:-32768\n"

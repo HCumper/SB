@@ -15,6 +15,14 @@ function Get-Checksum([string]$Name, [int]$Passes) {
             # Final -d = 3*1000+7-2 = 3005, independently of the copy chain.
             $check = (3005 * $Passes + $Passes * ($Passes + 1) / 2) % 10000
         }
+        'native_constant_chain' {
+            # At the final i=1000, c=14 and the value is 1014.
+            $check = (1014 * $Passes + $Passes * ($Passes + 1) / 2) % 10000
+        }
+        'native_repeated_expression' {
+            # (1000 MOD 97 + 1)^2 = 31^2 = 961 at the end of every pass.
+            $check = (961 * $Passes + $Passes * ($Passes + 1) / 2) % 10000
+        }
         'integer_arithmetic' {
             for ($pass = 1; $pass -le $Passes; $pass++) {
                 [long]$value = $pass
