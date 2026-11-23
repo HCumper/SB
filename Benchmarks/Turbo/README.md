@@ -1,5 +1,7 @@
 # SuperBASIC Turbo benchmarks
 
+[Precise procedure/array effects: route-planner comparison and validation](Results/2026-11-22-procedure-effects/README.md)
+
 Use `-CompareRegisters` to compare all six combinations of HIR rewriting and
 threaded/native-template/register-allocated output. Native comparison alone
 (`-CompareNative`) explicitly disables register allocation to preserve its

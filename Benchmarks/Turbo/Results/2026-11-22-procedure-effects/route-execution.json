@@ -1,0 +1,12 @@
+{
+  "AfterBytes": 9238,
+  "AfterFetchWords": 10194445,
+  "AfterInstructions": 7945035,
+  "BeforeBytes": 9282,
+  "BeforeFetchWords": 10212991,
+  "BeforeInstructions": 7961541,
+  "Benchmark": "route_planner",
+  "Checksum": 4701,
+  "FetchReductionPercent": 0.1815922485391419,
+  "InstructionReductionPercent": 0.20732167302787152
+}

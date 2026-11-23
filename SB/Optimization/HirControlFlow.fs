@@ -49,7 +49,7 @@ let nodeEffects context scope = function
     | Statement stmt -> statement context scope stmt
     | Test expr -> expression context scope expr
     | ForInitialise(s,values,_) ->
-        combine (values |> List.map (expression context scope) |> combineAll) {empty with Writes=Set.singleton s;MayThrow=true}
+        combine (values |> List.map (expression context scope) |> combineAll) {loopInitialisation context scope s with MayThrow=true}
     | ForCheck(s,_,_) -> {empty with Reads=Set.singleton s}
     | ForAdvance(s,_) -> {empty with Reads=Set.singleton s;Writes=Set.singleton s}
     | _ -> empty
@@ -57,16 +57,9 @@ let nodeEffects context scope = function
 let private targetLine = function Literal(ConstInt n,_,_) -> Some n | _ -> None
 
 let private loopMetadataMayChange context scope counter body =
-    let mutation effects = effects.WritesUnknown || (expand context.Aliases scope effects.Writes).Contains counter
     let bodyEffects=body |> List.map (statement context scope) |> combineAll
-    bodyEffects.WritesUnknown ||
-    (statements body |> Seq.exists (fun stmt ->
-        let nestedCounter=match stmt with
-                          | For(_,s,_,_,_,_,_) | ForSequence(_,s,_,_,_,_,_,_,_) -> mayAlias context.Aliases scope counter s
-                          | _ -> false
-        let procedure=match stmt with ProcCall(s,_,args,_) -> mutation (call context scope s args) | _ -> false
-        let functions=statementExpressions stmt |> Seq.collect expressions |> Seq.exists (function CallFunc(s,args,_,_) -> mutation(call context scope s args) | _ -> false)
-        nestedCounter || procedure || functions))
+    bodyEffects.LoopMetadataWritesUnknown ||
+    (expand context.Aliases scope bodyEffects.LoopMetadataWrites).Contains counter
 
 /// One elementary HIR operation per block. Keeping source anchors as blocks
 /// permits jumps into structured bodies without pretending they enter at IF/FOR.

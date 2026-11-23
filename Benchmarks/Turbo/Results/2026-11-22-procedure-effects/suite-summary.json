@@ -1,0 +1,23 @@
+{
+  "Command": "dotnet test SB.sln --no-build --no-restore",
+  "FreshBuild": "SBTests and compiler freshly built by the focused tests",
+  "TotalPassed": 3248.0,
+  "Assemblies": [
+    {
+      "Assembly": "SBRuntimeTests.dll",
+      "Failed": 0,
+      "Passed": 248,
+      "Skipped": 0,
+      "Total": 248,
+      "Duration": "13 s"
+    },
+    {
+      "Assembly": "SBTests.dll",
+      "Failed": 0,
+      "Passed": 3000,
+      "Skipped": 0,
+      "Total": 3000,
+      "Duration": "9 m 38 s"
+    }
+  ]
+}

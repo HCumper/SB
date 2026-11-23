@@ -126,10 +126,30 @@ without assuming dimensions are constants or caching descriptor pointers.
 
 `HirEffects.analyze` computes interprocedural MAY summaries to a fixed point,
 including recursion. Summaries distinguish scalar/array roots read and written,
-unknown memory, possible exceptions, I/O, allocation, control barriers and calls.
+descriptor writes, captured FOR metadata writes, unknown memory, possible
+exceptions, I/O, allocation, control barriers and calls.
 Unknown residents remain full memory/effect barriers. Known calls map formal
 effects to actual references. Scalar `ValueArg` temporaries do not write their
 caller's variable; array references and element writes retain their owner root.
+
+Array-element stores invalidate affected values but preserve descriptor and
+captured FOR metadata. Scalar stores conservatively invalidate affected
+descriptor facts, while ordinary counter-word assignments leave END/STEP/NEXT
+intact. DIM and FOR initialization invalidate both metadata categories. Unknown
+residents and memory operations retain all barriers. Calls project each category
+independently: an element-only array formal cannot resize its actual array, and
+a scalar reference to one element changes its owner's contents rather than its
+descriptor. Calls in subscripts/RHS expressions retain their own metadata effects.
+
+Named accesses resolve to the routine's own formal/LOCAL binding when present.
+A free name resolves to a unique global only if no declared formal or LOCAL in
+the program can shadow it. Otherwise its memory effects remain unknown. This
+closed-program check avoids assuming lexical binding for QL's dynamic names.
+Private formal/LOCAL effects are removed at a normal return, with reference
+effects mapped onto the actual arguments. Same-named private vectors do not
+automatically become writes to a caller's vector; bindings are restored by the
+existing runtime. Recursive summaries and reference escape tracking use the
+same conservative resolution rules.
 
 Alias queries are scope-aware. Same-named storage is conservative because Turbo
 uses dynamically rebound vectors. A parameter may alias another parameter or
@@ -142,9 +162,43 @@ recorded separately.
 Writes invalidate every possible alias before range facts are reused. A strong
 update adds a fact only for the assigned scalar, leaving possible aliases
 unknown. A call's MAY writes never become definite kills in liveness analysis.
-Unknown calls, dynamic writes and unmodeled mutations discard affected facts.
+Unknown calls, unresolved dynamic writes and unmodeled mutations discard
+affected value facts. Descriptor and loop facts are killed independently by
+their corresponding metadata effects.
 String/coercion/allocation effects are classified conservatively, so some safe
 operations intentionally remain barriers.
 
 STOP/QUIT retain their evaluated argument effects and terminate control flow;
 they do not represent arbitrary writes to loop metadata.
+
+## Global-array shapes at call entry
+
+Known procedures and functions can inherit guaranteed bounds and exact shapes
+from their call sites. Only uniquely named global arrays qualify: any declared
+formal or LOCAL with the same name prevents propagation for that array. Scalar
+values, formal/LOCAL array shapes and captured FOR metadata are not imported.
+All statically known reachable call sites contribute, including calls in other
+routine bodies. Uncalled routine bodies are also considered conservatively.
+
+Joins retain a common rank and the minimum guaranteed bounds. Exact dimensions
+survive only when every caller agrees; differing lengths use the live descriptor
+stride. A call before allocation, a possible descriptor mutation or a rank
+mismatch removes the corresponding entry fact. Argument/channel evaluation and
+sibling expression effects are applied before passing facts. For calls inside
+expressions this conservatively includes the callee's own MAY effects, so a
+mutating function may receive fewer facts than a standalone procedure.
+
+The outer solver starts every routine with no imported facts and reanalyzes
+only scopes whose entry facts change. Recursive calls cannot bootstrap assumed
+shapes. Each scope still requires its normal range/CFG certification, and the
+outer solution must satisfy all call-entry equations. Uncertain continuations
+withhold propagation. The pass is bounded to 64 rounds; nonconvergence or a
+failed certificate discards all imported facts and retains the original scope
+analysis. `--dump-hir` reports call-entry rounds and certification status.
+
+Procedure entry bindings cannot shadow propagated globals, while body aliases
+and DIM continue to invalidate shapes through the precise effect categories.
+The existing native array operations reload descriptors/data pointers, preserve
+checked accesses for unknown indexes and retain generic fallback. This analysis
+does not expand native FOR eligibility to local/branching loops or allocate
+registers across calls.

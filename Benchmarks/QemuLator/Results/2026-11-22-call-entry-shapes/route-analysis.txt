@@ -1,0 +1,8 @@
+HIR control-flow, range, effect and alias analysis (checked QL)
+Unchecked arithmetic proofs enabled: True; proven expressions: 6
+Proven numeric array accesses: 15
+Rank-one integer array accesses: 15
+Rank-two integer array accesses: 5
+Global array call-entry analysis: passes=3; certified=True
+Address taken: []; escaped to unknown callees: []
+Routine SymbolId 20: reads=[OTHER_I,TOWN_I,WEIGHT_I] writes=[OTHER_I,TOWN_I,WEIGHT_I,ROAD_I] descriptors=[OTHER_I,TOWN_I,WEIGHT_I] loop-metadata=[OTHER_I,TOWN_I] unknown-read=False unknown-write=False unknown-descriptors=False unknown-loop-metadata=False throw=True io=False allocate=True control=True

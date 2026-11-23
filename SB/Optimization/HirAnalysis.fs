@@ -39,6 +39,8 @@ type Analysis = {
     SafeArrayAccesses:Set<string * HirExpr list>
     OneDimensionalIntegerAccesses:Set<string * HirExpr list>
     TwoDimensionalIntegerAccesses:Map<string * HirExpr list,RankTwoIntegerAccess>
+    EntryShapePasses:int
+    EntryShapesCertified:bool
 }
 
 let word = {Lower = -32768L; Upper=32767L}
@@ -218,12 +220,11 @@ let rec private refine context scope expr truth state =
 let private unknownFlow = {Ranges=Map.empty;Bounds=Map.empty;ExactBounds=Map.empty;Loops=Map.empty}
 
 let private killMetadata context scope effects state =
-    if effects.WritesUnknown then {state with Bounds=Map.empty;ExactBounds=Map.empty;Loops=Map.empty}
-    else
-        let killed=expand context.Effects.Aliases scope effects.Writes
-        {state with Bounds=state.Bounds |> Map.filter(fun s _ -> not(killed.Contains s))
-                    ExactBounds=state.ExactBounds |> Map.filter(fun s _ -> not(killed.Contains s))
-                    Loops=state.Loops |> Map.filter(fun s _ -> not(killed.Contains s))}
+    let descriptors=expand context.Effects.Aliases scope effects.DescriptorWrites
+    let loops=expand context.Effects.Aliases scope effects.LoopMetadataWrites
+    {state with Bounds=state.Bounds |> Map.filter(fun s _ -> not effects.DescriptorWritesUnknown && not(descriptors.Contains s))
+                ExactBounds=state.ExactBounds |> Map.filter(fun s _ -> not effects.DescriptorWritesUnknown && not(descriptors.Contains s))
+                Loops=state.Loops |> Map.filter(fun s _ -> not effects.LoopMetadataWritesUnknown && not(loops.Contains s))}
 
 let private transfer context scope (node:Node) state =
     let evaluation=nodeEvaluation context.Effects scope node.Kind
@@ -234,17 +235,6 @@ let private transfer context scope (node:Node) state =
     let mutable loops=after.Loops
     let range expr=evaluate context (kill context scope evaluation state.Ranges) expr |> fst |> Option.defaultValue word
     match node.Kind with
-    | Statement(Assign((WriteArrayElem _|DynamicWriteArrayElem _),_,_)) ->
-        // An element store changes contents, not the descriptor. Calls in its
-        // value/subscripts have already invalidated descriptor facts above.
-        bounds<-evaluated.Bounds
-        exactBounds<-evaluated.ExactBounds
-    | Statement(Assign(WriteVar(symbol,_,_),_,_)) when context.Integers.Contains symbol ->
-        // Its own word store changes only the counter, not END/STEP/NEXT.
-        // Keep invalidations of other potentially aliased metadata conservative.
-        match evaluated.Loops.TryFind symbol with
-        | Some captured -> loops<-loops.Add(symbol,captured)
-        | None -> ()
     | Statement(Dim(symbol,dimensions,_)) ->
         let values=dimensions |> List.map range
         if not values.IsEmpty && (values |> List.forall(fun r -> r.Lower>=0L && r.Upper<=word.Upper)) then
@@ -253,7 +243,6 @@ let private transfer context scope (node:Node) state =
                 exactBounds<-exactBounds.Add(symbol,values |> List.map(fun r -> int r.Lower))
     | ForInitialise(symbol,[first;last;step],_) ->
         loops<-loops.Add(symbol,{Owner=node.Id;Finish=range last;Step=range step})
-    | ForAdvance(_,Some _) -> loops<-evaluated.Loops // ADD.W changes the counter, not END/STEP.
     | _ -> ()
     {Ranges=transferRanges context scope node state.Ranges evaluated.Loops;Bounds=bounds;ExactBounds=exactBounds;Loops=loops}
 
@@ -335,7 +324,7 @@ let private covers old candidate =
         (old.ExactBounds |> Map.forall(fun s bounds -> candidate.ExactBounds.TryFind s = Some bounds)) &&
         (old.Loops |> Map.forall(fun s loop -> candidate.Loops.TryFind s |> Option.exists(fun actual -> loop.Owner=actual.Owner && interval loop.Finish actual.Finish && interval loop.Step actual.Step)))
 
-let private solve options context graph =
+let private solve options context graph globalEntry =
     let incoming=Dictionary<int,FlowState option>()
     let outgoing=Dictionary<int,FlowState option>()
     let changes=Dictionary<int,int>()
@@ -347,7 +336,8 @@ let private solve options context graph =
             match storage.Type,storage.Dimensions with
             | Array _,Some dims when local && not(dimmed.Contains s) && not dims.IsEmpty && List.forall(fun n -> n>=0 && n<=32767) dims -> Some(s,dims)
             | _ -> None) |> Map.ofSeq
-    let initial={unknownFlow with Bounds=initialBounds;ExactBounds=initialBounds}
+    let addFacts initial facts = Map.fold(fun state symbol shape -> Map.add symbol shape state) initial facts
+    let initial={unknownFlow with Bounds=addFacts initialBounds globalEntry.Bounds;ExactBounds=addFacts initialBounds globalEntry.ExactBounds}
     incoming[graph.Entry]<-Some initial
     let edges=graph.Edges |> List.groupBy _.Source |> Map.ofList
     let predecessors=graph.Edges |> List.groupBy _.Target |> Map.ofList
@@ -432,6 +422,68 @@ let private solve options context graph =
      EntryLoops=incoming |> Seq.map(fun p -> p.Key,p.Value |> Option.map _.Loops) |> Map.ofSeq
      WideningThresholds=limits;NarrowingPasses=passes;Certified=certified;ForMetadataTrusted=metadataTrusted}
 
+// Incoming shapes are MUST facts from every statically known call site. No
+// scalar values, parameters, caller LOCALs or FOR captures cross the boundary.
+// Starting with no facts avoids bootstrapping assumptions around recursion.
+let private solveCallEntries options context (graphs:(Scope*Graph) list) =
+    let globalArrays =
+        context.Effects.Program.Globals
+        |> List.choose(fun storage ->
+            let sameName=context.Effects.Aliases.Storages |> Map.toList |> List.filter(fun (_,other) -> String.Equals(storage.Name,other.Name,StringComparison.OrdinalIgnoreCase))
+            match storage.Type,sameName with
+            | Array _,[(symbol,_)] when symbol=storage.Symbol -> Some symbol
+            | _ -> None)
+        |> Set.ofList
+    let emptyEntries=graphs |> List.map(fun (scope,_) -> scope,unknownFlow) |> Map.ofList
+    let original=graphs |> List.map(fun (scope,graph) -> scope,solve options context graph unknownFlow) |> Map.ofList
+    let trusted (scopes:Map<Scope,ScopeAnalysis>)=graphs |> List.forall(fun (scope,graph) -> not graph.HasUncertainControl && scopes[scope].Certified && scopes[scope].ForMetadataTrusted)
+    let infer (scopes:Map<Scope,ScopeAnalysis>) =
+        let inputs=Dictionary<Scope,FlowState option>()
+        for scope,_ in graphs do inputs[scope]<-None
+        for scope,graph in graphs do
+            let data=scopes[scope]
+            for KeyValue(id,node) in graph.Nodes do
+                match data.EntryBounds[id],data.EntryExactBounds[id] with
+                | Some bounds,Some exact ->
+                    // Arguments and sibling calls may change descriptors before
+                    // entry. For expression calls this also includes the callee's
+                    // MAY effects, deliberately withholding some safe facts.
+                    let before={unknownFlow with Bounds=bounds;ExactBounds=exact}
+                    let evaluated=killMetadata context scope (nodeEvaluation context.Effects scope node.Kind) before
+                    let passed={unknownFlow with Bounds=evaluated.Bounds |> Map.filter(fun s _ -> globalArrays.Contains s)
+                                                 ExactBounds=evaluated.ExactBounds |> Map.filter(fun s _ -> globalArrays.Contains s)}
+                    let callees=seq {
+                        match node.Kind with Statement(ProcCall(s,_,_,_)) -> yield s | _ -> ()
+                        for expr in nodeExpressions node.Kind |> Seq.collect HirEffects.expressions do
+                            match expr with CallFunc(s,_,_,_) -> yield s | _ -> () } |> Seq.distinct
+                    for callee in callees do
+                        let target=RoutineScope callee
+                        if inputs.ContainsKey target then inputs[target]<-joinFlows inputs[target] (Some passed)
+                | _ -> () // Unreachable sites contribute no entry states.
+        emptyEntries |> Map.map(fun scope _ -> inputs[scope] |> Option.defaultValue unknownFlow)
+    if globalArrays.IsEmpty || graphs.Length=1 || not(trusted original) then original,0,true
+    else
+        let mutable entries=emptyEntries
+        let mutable scopes=original
+        let mutable passes=0
+        let mutable stable=false
+        let mutable certified=true
+        // Bound compile time for unusually deep call graphs. Failure to reach
+        // a certified fixed point discards all imported facts, not any checks.
+        let limit=min 64 graphs.Length
+        while not stable && certified && passes<limit do
+            passes<-passes+1
+            let next=infer scopes
+            certified<-Map.forall(fun scope facts -> covers (Some entries[scope]) (Some facts)) next
+            if next=entries then stable<-true
+            elif certified then
+                for scope,graph in graphs do
+                    if next[scope]<>entries[scope] then scopes<-scopes.Add(scope,solve options context graph next[scope])
+                entries<-next
+                certified<-trusted scopes
+        if stable && certified && infer scopes=entries then scopes,passes,true
+        else original,passes,false
+
 let private arithmetic = function Unary(Negate,_,_,_) | Binary((Add|Subtract|Multiply),_,_,_,_) -> true | _ -> false
 
 /// Analyzes immutable HIR. No facts are assumptions about caller values, QL
@@ -444,7 +496,7 @@ let analyzeWithOptions options target program =
     let graphs = (MainScope,build effects MainScope program.Main) :: (program.Routines |> List.map (fun r -> RoutineScope r.Symbol,build effects (RoutineScope r.Symbol) r.Body))
     // Unknown continuations can enter another scope or resume past a guard.
     // Model their edges, but withhold unchecked-arithmetic proofs program-wide.
-    let scopes=graphs |> List.map (fun (scope,graph) -> scope,solve options context graph) |> Map.ofList
+    let scopes,entryShapePasses,entryShapesCertified=solveCallEntries options context graphs
     let trusted=(graphs |> List.forall (fun (_,g) -> not g.HasUncertainControl)) && (scopes |> Map.forall(fun _ data -> data.Certified && data.ForMetadataTrusted))
     let candidates = [
         for KeyValue(scope,analysis) in scopes do
@@ -526,7 +578,8 @@ let analyzeWithOptions options target program =
             let exact=facts.Head.ExactLengths
             Some(key,{ProvenRows=facts |> List.forall _.ProvenRows;ProvenColumns=facts |> List.forall _.ProvenColumns
                       ExactLengths=if facts |> List.forall(fun fact -> fact.ExactLengths=exact) then exact else None})) |> Map.ofList
-    {Effects=effects;Scopes=scopes;SafeIntegerExpressions=safe;ArithmeticProofsEnabled=trusted;SafeArrayAccesses=safeArrays;OneDimensionalIntegerAccesses=rankOneArrays;TwoDimensionalIntegerAccesses=rankTwoArrays}
+    {Effects=effects;Scopes=scopes;SafeIntegerExpressions=safe;ArithmeticProofsEnabled=trusted;SafeArrayAccesses=safeArrays;OneDimensionalIntegerAccesses=rankOneArrays;TwoDimensionalIntegerAccesses=rankTwoArrays
+     EntryShapePasses=entryShapePasses;EntryShapesCertified=entryShapesCertified}
 
 let analyze target program = analyzeWithOptions defaultOptions target program
 
@@ -536,7 +589,7 @@ let format (analysis:Analysis) =
     let text=StringBuilder()
     let line value = text.AppendLine(value:string) |> ignore
     let symbols set = set |> Seq.map (fun s -> analysis.Effects.Aliases.Storages.TryFind s |> Option.map _.Name |> Option.defaultValue (string s)) |> String.concat ","
-    let effects e = $"reads=[{symbols e.Reads}] writes=[{symbols e.Writes}] unknown-read={e.ReadsUnknown} unknown-write={e.WritesUnknown} throw={e.MayThrow} io={e.InputOutput} allocate={e.Allocates} control={e.ControlBarrier}"
+    let effects e = $"reads=[{symbols e.Reads}] writes=[{symbols e.Writes}] descriptors=[{symbols e.DescriptorWrites}] loop-metadata=[{symbols e.LoopMetadataWrites}] unknown-read={e.ReadsUnknown} unknown-write={e.WritesUnknown} unknown-descriptors={e.DescriptorWritesUnknown} unknown-loop-metadata={e.LoopMetadataWritesUnknown} throw={e.MayThrow} io={e.InputOutput} allocate={e.Allocates} control={e.ControlBarrier}"
     let ranges (state:RangeState option) =
         match state with
         | None -> "unreachable"
@@ -547,6 +600,7 @@ let format (analysis:Analysis) =
     line $"Proven numeric array accesses: {analysis.SafeArrayAccesses.Count}"
     line $"Rank-one integer array accesses: {analysis.OneDimensionalIntegerAccesses.Count}"
     line $"Rank-two integer array accesses: {analysis.TwoDimensionalIntegerAccesses.Count}"
+    line $"Global array call-entry analysis: passes={analysis.EntryShapePasses}; certified={analysis.EntryShapesCertified}"
     line $"Address taken: [{symbols analysis.Effects.Aliases.AddressTaken}]; escaped to unknown callees: [{symbols analysis.Effects.Aliases.Escaped}]"
     for KeyValue(symbol,summary) in analysis.Effects.Summaries do line $"Routine {symbol}: {effects summary}"
     for KeyValue(scope,data) in analysis.Scopes do

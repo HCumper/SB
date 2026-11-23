@@ -492,11 +492,319 @@ let ``effects expose failures allocation IO and dynamic memory writes`` () =
     let io=HirEffects.statement a.Effects MainScope (print(number 1))
     Assert.That(io.InputOutput && io.MayThrow && io.Allocates, Is.True)
     let dynamic=HirEffects.statement a.Effects MainScope (Assign(DynamicWriteVar("X%",Int,pos),number 1,pos))
-    Assert.That(dynamic.WritesUnknown, Is.True)
+    Assert.That(dynamic.WritesUnknown, Is.False)
+    Assert.That(dynamic.Writes, Is.EqualTo(box(Set.singleton x)))
+    let unresolved=HirEffects.statement a.Effects MainScope (Assign(DynamicWriteVar("UNDECLARED%",Int,pos),number 1,pos))
+    Assert.That(unresolved.WritesUnknown && unresolved.DescriptorWritesUnknown, Is.True)
     let arithmetic=HirEffects.expression a.Effects MainScope (binary Add (read x) (read y))
     Assert.That(arithmetic.MayThrow, Is.True)
     let text=HirEffects.expression a.Effects MainScope (Literal(ConstString "x",String,pos))
     Assert.That(text.MayThrow && text.Allocates, Is.True)
+
+[<Test>]
+let ``procedure array effects resolve an unshadowed global and preserve exact bounds`` () =
+    let proc=SymbolId 100
+    let indexes=[read i;number 2]
+    let writer=routine proc "PUT" [] [Assign(DynamicWriteArrayElem("a%",[number 0;number 2],Int,pos),number 7,pos)]
+    let p=arrayProgram [Dim(arraySymbol,[number 3;number 7],pos)
+                        For(LoopId 1,i,number 0,number 3,number 1,[ProcCall(proc,None,[],pos);assign y (arrayRead indexes)],pos)]
+    let facts={p with Routines=[writer]} |> analyze
+    let effect=HirEffects.call facts.Effects MainScope proc []
+    Assert.That(effect.Writes, Is.EqualTo(box(Set.singleton arraySymbol)))
+    Assert.That(effect.WritesUnknown || effect.DescriptorWritesUnknown || effect.LoopMetadataWritesUnknown, Is.False)
+    Assert.That(effect.DescriptorWrites.IsEmpty && effect.LoopMetadataWrites.IsEmpty, Is.True)
+    Assert.That(facts.ArithmeticProofsEnabled, Is.True)
+    arraySafe indexes facts
+    Assert.That(facts.TwoDimensionalIntegerAccesses["A%",indexes].ExactLengths, Is.EqualTo(Some(4,8)))
+    let readEffect=HirEffects.expression facts.Effects (RoutineScope proc) (DynamicReadArrayElem("A%",indexes,Int,pos))
+    Assert.That(readEffect.Reads.Contains arraySymbol, Is.True)
+    Assert.That(readEffect.ReadsUnknown, Is.False)
+
+[<TestCase(false)>]
+[<TestCase(true)>]
+let ``procedure array formal element writes preserve the actual descriptor`` (valueArgument:bool) =
+    let proc,p=SymbolId 100,SymbolId 101
+    let formal={parameter "PUT" p "P%" with Storage={storage p "P%" (RoutineParameterStorage "PUT") with Type=Array Int}}
+    let writer=routine proc "PUT" [formal] [Assign(WriteArrayElem(p,[number 0],Int,pos),number 7,pos)]
+    let arg=if valueArgument then ValueArg(ReadVar(arraySymbol,Array Int,pos)) else RefArg(WriteVar(arraySymbol,Array Int,pos))
+    let source=arrayProgram [Dim(arraySymbol,[number 10],pos);ProcCall(proc,None,[arg],pos);assign y (arrayRead [number 10])]
+    let facts={source with Routines=[writer]} |> analyze
+    let effect=HirEffects.call facts.Effects MainScope proc [arg]
+    Assert.That(effect.Writes.Contains arraySymbol, Is.True)
+    Assert.That(effect.DescriptorWrites.IsEmpty && effect.LoopMetadataWrites.IsEmpty, Is.True)
+    arraySafe [number 10] facts
+
+[<Test>]
+let ``procedure indexed formals forward arrays even when HIR gives them advisory scalar types`` () =
+    let outer,inner,p,q=SymbolId 100,SymbolId 101,SymbolId 102,SymbolId 103
+    let put=routine inner "PUT" [parameter "PUT" q "Q%"] [Assign(WriteArrayElem(q,[number 0],Int,pos),number 7,pos)]
+    let forward=routine outer "FORWARD" [parameter "FORWARD" p "P%"] [Assign(WriteArrayElem(p,[number 0],Int,pos),number 1,pos);ProcCall(inner,None,[ValueArg(read p)],pos)]
+    let source=arrayProgram [Dim(arraySymbol,[number 10],pos);ProcCall(outer,None,[RefArg(WriteVar(arraySymbol,Array Int,pos))],pos);assign y (arrayRead [number 10])]
+    let facts={source with Routines=[put;forward]} |> analyze
+    Assert.That(facts.Effects.Aliases.ArrayStorages.Contains p && facts.Effects.Aliases.ArrayStorages.Contains q, Is.True)
+    let forwarded=HirEffects.call facts.Effects (RoutineScope outer) inner [ValueArg(read p)]
+    Assert.That(forwarded.Writes.Contains p, Is.True)
+    Assert.That(forwarded.DescriptorWrites.IsEmpty && forwarded.LoopMetadataWrites.IsEmpty, Is.True)
+    arraySafe [number 10] facts
+
+[<Test>]
+let ``procedure array resizing through a formal discards minimum and exact bounds`` () =
+    let proc,p=SymbolId 100,SymbolId 101
+    let formal={parameter "RESIZE" p "P%" with Storage={storage p "P%" (RoutineParameterStorage "RESIZE") with Type=Array Int}}
+    let writer=routine proc "RESIZE" [formal] [Dim(p,[number 0;number 0],pos)]
+    let arg=RefArg(WriteVar(arraySymbol,Array Int,pos))
+    let source=arrayProgram [Dim(arraySymbol,[number 3;number 7],pos);ProcCall(proc,None,[arg],pos);assign y (arrayRead [number 1;number 2])]
+    let facts={source with Routines=[writer]} |> analyze
+    let effect=HirEffects.call facts.Effects MainScope proc [arg]
+    Assert.That(effect.DescriptorWrites.Contains arraySymbol, Is.True)
+    arrayChecked [number 1;number 2] facts
+    Assert.That(facts.TwoDimensionalIntegerAccesses, Is.Empty)
+
+[<Test>]
+let ``procedure element references change contents without resizing the owning array`` () =
+    let proc,p=SymbolId 100,SymbolId 101
+    let setter=routine proc "SET" [parameter "SET" p "P%"] [assign p (number 7)]
+    let arg=RefArg(WriteArrayElem(arraySymbol,[number 0],Int,pos))
+    let source=arrayProgram [Dim(arraySymbol,[number 10],pos);ProcCall(proc,None,[arg],pos);assign y (arrayRead [number 10])]
+    let facts={source with Routines=[setter]} |> analyze
+    let effect=HirEffects.call facts.Effects MainScope proc [arg]
+    Assert.That(effect.Writes.Contains arraySymbol, Is.True)
+    Assert.That(effect.DescriptorWrites.IsEmpty && effect.LoopMetadataWrites.IsEmpty, Is.True)
+    arraySafe [number 10] facts
+
+[<TestCase(false)>]
+[<TestCase(true)>]
+let ``procedure scalar writes preserve FOR control but invalidate the referenced counter value`` (byReference:bool) =
+    let proc,p=SymbolId 100,SymbolId 101
+    let setter=routine proc "SET" [parameter "SET" p "P%"] [assign p (number 32767)]
+    let arg=if byReference then RefArg(target i) else ValueArg(read i)
+    let expr=binary Multiply (read i) (number 3)
+    let source=program [For(LoopId 1,i,number 1,number 3,number 1,[ProcCall(proc,None,[arg],pos);assign y expr],pos)]
+    let facts={source with Routines=[setter]} |> analyze
+    Assert.That(facts.ArithmeticProofsEnabled && (main facts).ForMetadataTrusted, Is.True)
+    let effect=HirEffects.call facts.Effects MainScope proc [arg]
+    Assert.That(effect.LoopMetadataWrites.IsEmpty && not effect.LoopMetadataWritesUnknown, Is.True)
+    if byReference then unproven expr facts else proven expr facts
+
+[<TestCase(false)>]
+[<TestCase(true)>]
+let ``procedure FOR initialization maps hidden metadata writes to references only`` (byReference:bool) =
+    let proc,p=SymbolId 100,SymbolId 101
+    let setter=routine proc "LOOP" [parameter "LOOP" p "P%"] [For(LoopId 2,p,number 1,number 2,number 1,[],pos)]
+    let arg=if byReference then RefArg(target i) else ValueArg(read i)
+    let source=program [For(LoopId 1,i,number 1,number 3,number 1,[ProcCall(proc,None,[arg],pos)],pos)]
+    let facts={source with Routines=[setter]} |> analyze
+    let effect=HirEffects.call facts.Effects MainScope proc [arg]
+    Assert.That(effect.LoopMetadataWrites.Contains i, Is.EqualTo(byReference))
+    Assert.That(facts.ArithmeticProofsEnabled, Is.EqualTo(not byReference))
+
+[<Test>]
+let ``procedure private LOCAL bindings do not leak metadata writes to a caller's same-named vector`` () =
+    let proc,localI,localA=SymbolId 100,SymbolId 101,SymbolId 102
+    let localCounter=storage localI "I%" (RoutineLocalStorage "PRIVATE")
+    let localArray={storage localA "A%" (RoutineLocalStorage "PRIVATE") with Type=Array Int;Dimensions=Some[1]}
+    let worker={routine proc "PRIVATE" [] [Dim(localA,[number 1],pos);For(LoopId 2,localI,number 1,number 2,number 1,[],pos)] with Locals=[localCounter;localArray]}
+    let expr=binary Multiply (read i) (number 3)
+    let source=arrayProgram [Dim(arraySymbol,[number 10],pos);For(LoopId 1,i,number 1,number 3,number 1,[ProcCall(proc,None,[],pos);assign y expr;assign z (arrayRead [number 10])],pos)]
+    let facts={source with Routines=[worker]} |> analyze
+    let effect=HirEffects.call facts.Effects MainScope proc []
+    Assert.That(effect.Writes.IsEmpty && effect.DescriptorWrites.IsEmpty && effect.LoopMetadataWrites.IsEmpty, Is.True)
+    Assert.That(facts.ArithmeticProofsEnabled, Is.True)
+    proven expr facts
+    arraySafe [number 10] facts
+
+[<Test>]
+let ``procedure free names that a caller LOCAL can shadow remain conservative`` () =
+    let proc,caller,localA=SymbolId 100,SymbolId 101,SymbolId 102
+    let localArray={storage localA "A%" (RoutineLocalStorage "CALLER") with Type=Array Int;Dimensions=Some[1]}
+    let writer=routine proc "RESIZE" [] [Dim(arraySymbol,[number 0],pos)]
+    let callerRoutine={routine caller "CALLER" [] [ProcCall(proc,None,[],pos)] with Locals=[localArray]}
+    let source=arrayProgram [Dim(arraySymbol,[number 10],pos);ProcCall(proc,None,[],pos);assign y (arrayRead [number 10])]
+    let facts={source with Routines=[writer;callerRoutine]} |> analyze
+    let effect=HirEffects.call facts.Effects MainScope proc []
+    Assert.That(effect.DescriptorWritesUnknown && effect.LoopMetadataWritesUnknown, Is.True)
+    arrayChecked [number 10] facts
+
+[<Test>]
+let ``procedure unresolved array content writes retain unknown value effects without inventing metadata changes`` () =
+    let proc,caller,localA=SymbolId 100,SymbolId 101,SymbolId 102
+    let localArray={storage localA "A%" (RoutineLocalStorage "CALLER") with Type=Array Int;Dimensions=Some[1]}
+    let writer=routine proc "PUT" [] [Assign(DynamicWriteArrayElem("A%",[number 0],Int,pos),number 7,pos)]
+    let callerRoutine={routine caller "CALLER" [] [] with Locals=[localArray]}
+    let facts={arrayProgram [] with Routines=[writer;callerRoutine]} |> analyze
+    let effect=HirEffects.call facts.Effects MainScope proc []
+    Assert.That(effect.WritesUnknown, Is.True)
+    Assert.That(effect.DescriptorWritesUnknown || effect.LoopMetadataWritesUnknown, Is.False)
+
+[<Test>]
+let ``procedure recursive array summaries converge without losing content-only precision`` () =
+    let first,second=SymbolId 100,SymbolId 101
+    let a=routine first "A" [] [ProcCall(second,None,[],pos)]
+    let b=routine second "B" [] [Assign(DynamicWriteArrayElem("A%",[number 0],Int,pos),number 7,pos);If(read flag,[ProcCall(first,None,[],pos)],None,pos)]
+    let source=arrayProgram [Dim(arraySymbol,[number 10],pos);ProcCall(first,None,[],pos);assign y (arrayRead [number 10])]
+    let facts={source with Routines=[a;b]} |> analyze
+    Assert.That(facts.Effects.Summaries[first].Writes.Contains arraySymbol, Is.True)
+    Assert.That(facts.Effects.Summaries[first].DescriptorWrites.IsEmpty && facts.Effects.Summaries[first].LoopMetadataWrites.IsEmpty, Is.True)
+    arraySafe [number 10] facts
+
+[<Test>]
+let ``procedure dynamic reference arguments retain escape tracking`` () =
+    let source=program [ProcCall(SymbolId 999,None,[RefArg(DynamicWriteVar("X%",Int,pos))],pos)]
+    let facts=analyze source
+    Assert.That(facts.Effects.Aliases.AddressTaken.Contains x && facts.Effects.Aliases.Escaped.Contains x, Is.True)
+
+[<Test>]
+let ``procedure unknown residents retain all memory and metadata barriers`` () =
+    let proc=SymbolId 100
+    let worker=routine proc "OPAQUE" [] [BuiltInCall(NamedBuiltIn "POKE",None,[number 1;number 2],pos)]
+    let facts={program [] with Routines=[worker]} |> analyze
+    let effect=HirEffects.call facts.Effects MainScope proc []
+    Assert.That(effect.WritesUnknown && effect.DescriptorWritesUnknown && effect.LoopMetadataWritesUnknown, Is.True)
+
+[<Test>]
+let ``call-entry shapes reach a procedure through all known callers`` () =
+    let outer,inner=SymbolId 110,SymbolId 111
+    let indexes=[number 1;number 2]
+    let first=routine outer "OUTER" [] [ProcCall(inner,None,[],pos)]
+    let second=routine inner "INNER" [] [assign y (arrayRead indexes)]
+    let source=arrayProgram [Dim(arraySymbol,[number 3;number 7],pos);ProcCall(outer,None,[],pos)]
+    let facts={source with Routines=[first;second]} |> analyze
+    Assert.That(facts.EntryShapesCertified, Is.True)
+    Assert.That(facts.EntryShapePasses, Is.GreaterThan(1))
+    arraySafe indexes facts
+    Assert.That(facts.TwoDimensionalIntegerAccesses["A%",indexes].ExactLengths, Is.EqualTo(Some(4,8)))
+
+[<Test>]
+let ``call-entry shapes intersect differing caller lengths without inventing a stride`` () =
+    let proc=SymbolId 110
+    let indexes=[number 1;number 2]
+    let reader=routine proc "READ" [] [assign y (arrayRead indexes)]
+    let source=arrayProgram [Dim(arraySymbol,[number 3;number 7],pos);ProcCall(proc,None,[],pos);
+                            Dim(arraySymbol,[number 3;number 15],pos);ProcCall(proc,None,[],pos)]
+    let facts={source with Routines=[reader]} |> analyze
+    arraySafe indexes facts
+    Assert.That(facts.TwoDimensionalIntegerAccesses["A%",indexes].ExactLengths, Is.EqualTo(None))
+    let scope=facts.Scopes[RoutineScope proc]
+    Assert.That(scope.EntryBounds[scope.Graph.Entry].Value[arraySymbol], Is.EqualTo(box [3;7]))
+    Assert.That(scope.EntryExactBounds[scope.Graph.Entry].Value.ContainsKey arraySymbol, Is.False)
+
+[<Test>]
+let ``call-entry shapes require every reaching call to have an allocated array`` () =
+    let proc=SymbolId 110
+    let indexes=[number 1;number 2]
+    let reader=routine proc "READ" [] [assign y (arrayRead indexes)]
+    let source=arrayProgram [ProcCall(proc,None,[],pos);Dim(arraySymbol,[number 3;number 7],pos);ProcCall(proc,None,[],pos)]
+    let facts={source with Routines=[reader]} |> analyze
+    arrayChecked indexes facts
+    Assert.That(facts.TwoDimensionalIntegerAccesses, Is.Empty)
+
+[<Test>]
+let ``call-entry shapes reject incompatible ranks at different calls`` () =
+    let proc=SymbolId 110
+    let indexes=[number 0;number 0]
+    let reader=routine proc "READ" [] [assign y (arrayRead indexes)]
+    let source=arrayProgram [Dim(arraySymbol,[number 3],pos);ProcCall(proc,None,[],pos);
+                            Dim(arraySymbol,[number 3;number 7],pos);ProcCall(proc,None,[],pos)]
+    let facts={source with Routines=[reader]} |> analyze
+    Assert.That(facts.TwoDimensionalIntegerAccesses, Is.Empty)
+
+[<Test>]
+let ``call-entry shapes are killed by descriptor mutations in arguments`` () =
+    let proc,resize,p=SymbolId 110,SymbolId 111,SymbolId 112
+    let indexes=[number 1;number 2]
+    let reader=routine proc "READ" [parameter "READ" p "P%"] [assign y (arrayRead indexes)]
+    let mutator={routine resize "RESIZE%" [] [Dim(arraySymbol,[number 0;number 0],pos);Return(Some(number 1),pos)] with ReturnType=Some Int}
+    let source=arrayProgram [Dim(arraySymbol,[number 3;number 7],pos);ProcCall(proc,None,[ValueArg(CallFunc(resize,[],Int,pos))],pos)]
+    let facts={source with Routines=[reader;mutator]} |> analyze
+    arrayChecked indexes facts
+    Assert.That(facts.TwoDimensionalIntegerAccesses, Is.Empty)
+
+[<Test>]
+let ``call-entry shapes conservatively include sibling function effects`` () =
+    let proc,resize=SymbolId 110,SymbolId 111
+    let indexes=[number 1;number 2]
+    let reader={routine proc "READ%" [] [Return(Some(arrayRead indexes),pos)] with ReturnType=Some Int}
+    let mutator={routine resize "RESIZE%" [] [Dim(arraySymbol,[number 0;number 0],pos);Return(Some(number 1),pos)] with ReturnType=Some Int}
+    let expression=binary Add (CallFunc(proc,[],Int,pos)) (CallFunc(resize,[],Int,pos))
+    let source=arrayProgram [Dim(arraySymbol,[number 3;number 7],pos);assign y expression]
+    let facts={source with Routines=[reader;mutator]} |> analyze
+    arrayChecked indexes facts
+    Assert.That(facts.TwoDimensionalIntegerAccesses, Is.Empty)
+
+[<Test>]
+let ``call-entry shapes also reach pure function bodies`` () =
+    let proc=SymbolId 110
+    let indexes=[number 1;number 2]
+    let reader={routine proc "READ%" [] [Return(Some(arrayRead indexes),pos)] with ReturnType=Some Int}
+    let source=arrayProgram [Dim(arraySymbol,[number 3;number 7],pos);assign y (CallFunc(proc,[],Int,pos))]
+    let facts={source with Routines=[reader]} |> analyze
+    arraySafe indexes facts
+    Assert.That(facts.TwoDimensionalIntegerAccesses["A%",indexes].ExactLengths, Is.EqualTo(Some(4,8)))
+
+[<Test>]
+let ``call-entry shapes remain invalid after opaque memory writes`` () =
+    let proc=SymbolId 110
+    let indexes=[number 1;number 2]
+    let reader=routine proc "READ" [] [assign y (arrayRead indexes)]
+    let source=arrayProgram [Dim(arraySymbol,[number 3;number 7],pos);BuiltInCall(NamedBuiltIn "POKE",None,[number 1;number 2],pos);ProcCall(proc,None,[],pos)]
+    let facts={source with Routines=[reader]} |> analyze
+    arrayChecked indexes facts
+    Assert.That(facts.TwoDimensionalIntegerAccesses, Is.Empty)
+
+[<Test>]
+let ``call-entry shapes do not cross possible dynamic LOCAL rebinding`` () =
+    let proc,shadow,localA=SymbolId 110,SymbolId 111,SymbolId 112
+    let indexes=[number 1;number 2]
+    let reader=routine proc "READ" [] [assign y (arrayRead indexes)]
+    let localArray={storage localA "A%" (RoutineLocalStorage "SHADOW") with Type=Array Int;Dimensions=Some[0;0]}
+    let owner={routine shadow "SHADOW" [] [ProcCall(proc,None,[],pos)] with Locals=[localArray]}
+    let source=arrayProgram [Dim(arraySymbol,[number 3;number 7],pos);ProcCall(proc,None,[],pos)]
+    let facts={source with Routines=[reader;owner]} |> analyze
+    Assert.That(facts.TwoDimensionalIntegerAccesses, Is.Empty)
+
+[<Test>]
+let ``call-entry shapes are discarded after an aliased formal can resize the global`` () =
+    let proc,p=SymbolId 110,SymbolId 111
+    let indexes=[number 1;number 2]
+    let formal={parameter "RESIZE" p "P%" with Storage={storage p "P%" (RoutineParameterStorage "RESIZE") with Type=Array Int}}
+    let worker=routine proc "RESIZE" [formal] [Dim(p,[number 0;number 0],pos);assign y (arrayRead indexes)]
+    let source=arrayProgram [Dim(arraySymbol,[number 3;number 7],pos);ProcCall(proc,None,[RefArg(WriteVar(arraySymbol,Array Int,pos))],pos)]
+    let facts={source with Routines=[worker]} |> analyze
+    arrayChecked indexes facts
+    Assert.That(facts.TwoDimensionalIntegerAccesses, Is.Empty)
+
+[<Test>]
+let ``call-entry shapes cannot bootstrap a recursive entry assumption`` () =
+    let proc=SymbolId 110
+    let indexes=[number 1;number 2]
+    let worker=routine proc "RECURSE" [] [assign y (arrayRead indexes);If(read flag,[ProcCall(proc,None,[],pos)],None,pos)]
+    let source=arrayProgram [Dim(arraySymbol,[number 3;number 7],pos);ProcCall(proc,None,[],pos)]
+    let facts={source with Routines=[worker]} |> analyze
+    Assert.That(facts.EntryShapesCertified, Is.True)
+    Assert.That(facts.TwoDimensionalIntegerAccesses, Is.Empty)
+
+[<Test>]
+let ``call-entry shapes may join a known recursive allocation with the real caller`` () =
+    let proc=SymbolId 110
+    let indexes=[number 1;number 2]
+    let worker=routine proc "RECURSE" [] [assign y (arrayRead indexes);Dim(arraySymbol,[number 3;number 15],pos);If(read flag,[ProcCall(proc,None,[],pos)],None,pos)]
+    let source=arrayProgram [Dim(arraySymbol,[number 3;number 7],pos);ProcCall(proc,None,[],pos)]
+    let facts={source with Routines=[worker]} |> analyze
+    arraySafe indexes facts
+    Assert.That(facts.TwoDimensionalIntegerAccesses["A%",indexes].ExactLengths, Is.EqualTo(None))
+
+[<Test>]
+let ``call-entry shapes fall back completely when the bounded solver cannot converge`` () =
+    let symbols=[for n in 0..64 -> SymbolId(200+n)]
+    let indexes=[number 0]
+    let routines=symbols |> List.mapi(fun index symbol -> routine symbol ($"P{index}") [] (if index=64 then [assign y (arrayRead indexes)] else [ProcCall(symbols[index+1],None,[],pos)]))
+    let expression=binary Add (read x) (number 1)
+    let source=arrayProgram [Dim(arraySymbol,[number 10],pos);assign x (number 1);assign z expression;ProcCall(symbols.Head,None,[],pos)]
+    let facts={source with Routines=routines} |> analyze
+    Assert.That(facts.EntryShapePasses, Is.EqualTo(64))
+    Assert.That(facts.EntryShapesCertified, Is.False)
+    Assert.That(facts.OneDimensionalIntegerAccesses, Is.Empty)
+    proven expression facts
 
 [<Test>]
 let ``analysis reports are deterministic and include reusable facts`` () =

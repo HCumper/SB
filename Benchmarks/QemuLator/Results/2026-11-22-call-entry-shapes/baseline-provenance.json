@@ -1,0 +1,7 @@
+{
+  "Baseline": "C:\\Source\\codex-workspace\\.scratch\\turbo-procedure-effects\\qemulator",
+  "BaselineCompilerSha256": "966F8917AF889C47A6DE3800151A62403B17A7245326F82F7335E4C37CF7D773",
+  "SameCanonicalSources": true,
+  "SameTurboInputs": true,
+  "TurboReusedFromVerifiedBuild": true
+}

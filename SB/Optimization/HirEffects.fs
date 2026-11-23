@@ -13,6 +13,12 @@ type Effects = {
     Writes: Set<SymbolId>
     ReadsUnknown: bool
     WritesUnknown: bool
+    // Content writes still invalidate scalar/alias values. Only these separate
+    // effects can replace an array descriptor or captured FOR END/STEP/NEXT.
+    DescriptorWrites: Set<SymbolId>
+    LoopMetadataWrites: Set<SymbolId>
+    DescriptorWritesUnknown: bool
+    LoopMetadataWritesUnknown: bool
     MayThrow: bool
     InputOutput: bool
     Allocates: bool
@@ -22,13 +28,18 @@ type Effects = {
 
 let empty = {
     Reads=Set.empty; Writes=Set.empty; ReadsUnknown=false; WritesUnknown=false
+    DescriptorWrites=Set.empty;LoopMetadataWrites=Set.empty
+    DescriptorWritesUnknown=false;LoopMetadataWritesUnknown=false
     MayThrow=false; InputOutput=false; Allocates=false; ControlBarrier=false; Calls=Set.empty }
 
-let unknown = { empty with ReadsUnknown=true; WritesUnknown=true; MayThrow=true; InputOutput=true; Allocates=true; ControlBarrier=true }
+let unknown = { empty with ReadsUnknown=true; WritesUnknown=true; DescriptorWritesUnknown=true;LoopMetadataWritesUnknown=true; MayThrow=true; InputOutput=true; Allocates=true; ControlBarrier=true }
 
 let combine a b = {
     Reads=Set.union a.Reads b.Reads; Writes=Set.union a.Writes b.Writes
     ReadsUnknown=a.ReadsUnknown || b.ReadsUnknown; WritesUnknown=a.WritesUnknown || b.WritesUnknown
+    DescriptorWrites=Set.union a.DescriptorWrites b.DescriptorWrites;LoopMetadataWrites=Set.union a.LoopMetadataWrites b.LoopMetadataWrites
+    DescriptorWritesUnknown=a.DescriptorWritesUnknown || b.DescriptorWritesUnknown
+    LoopMetadataWritesUnknown=a.LoopMetadataWritesUnknown || b.LoopMetadataWritesUnknown
     MayThrow=a.MayThrow || b.MayThrow; InputOutput=a.InputOutput || b.InputOutput
     Allocates=a.Allocates || b.Allocates; ControlBarrier=a.ControlBarrier || b.ControlBarrier
     Calls=Set.union a.Calls b.Calls }
@@ -37,6 +48,7 @@ let combineAll effects = Seq.fold combine empty effects
 
 type AliasInfo = {
     Storages: Map<SymbolId,HirStorage>
+    ArrayStorages: Set<SymbolId>
     Visible: Map<Scope,Set<SymbolId>>
     Parameters: Map<Scope,Set<SymbolId>>
     AddressTaken: Set<SymbolId>
@@ -92,30 +104,68 @@ let rec statements body = seq {
         | Repeat(_,_,body,_) | WhenError(body,_) -> yield! statements body
         | _ -> () }
 
-let private actualRoot (storages:Map<SymbolId,HirStorage>) = function
-    | RefArg t -> targetRoot t
-    | ValueArg(ReadVar(s,Array _,_)) -> Some s
-    | ValueArg(ReadVar(s,_,_)) when storages.TryFind s |> Option.exists (fun s -> match s.Type with Array _ -> true | _ -> false) -> Some s
+// A free name in a procedure can refer to a caller's dynamic binding. Resolve
+// it only if no parameter/local anywhere can shadow the unique global. A
+// procedure's own binding takes precedence and is private across normal calls.
+let private namedRoot (program:HirProgram) (storages:Map<SymbolId,HirStorage>) scope name =
+    let same (storage:HirStorage)=String.Equals(storage.Name,name,StringComparison.OrdinalIgnoreCase)
+    let single (matches:HirStorage list) = match matches with [storage] -> Some storage.Symbol | _ -> None
+    match scope with
+    | MainScope -> program.Globals |> List.filter same |> single
+    | RoutineScope symbol ->
+        let own=program.Routines |> List.tryFind(fun r -> r.Symbol=symbol) |> Option.map(fun r -> List.map _.Storage r.Parameters @ r.Locals |> List.filter same) |> Option.defaultValue []
+        if not own.IsEmpty then single own
+        else
+            let matches=storages |> Map.toList |> List.map snd |> List.filter same
+            if matches |> List.forall(fun storage -> storage.Class=GlobalStorage) then single matches else None
+
+let private storageRoot program (storages:Map<SymbolId,HirStorage>) scope symbol =
+    storages.TryFind symbol |> Option.bind(fun storage -> namedRoot program storages scope storage.Name)
+
+let private targetStorageRoot program storages scope = function
+    | WriteVar(s,_,_) | WriteArrayElem(s,_,_,_) | WriteStringChar(s,_,_,_) -> storageRoot program storages scope s
+    | DynamicWriteVar(name,_,_) | DynamicWriteArrayElem(name,_,_,_) | DynamicWriteStringChar(name,_,_,_) -> namedRoot program storages scope name
+
+let private arrayStorages (program:HirProgram) (storages:Map<SymbolId,HirStorage>) =
+    let declared=storages |> Map.toSeq |> Seq.choose(fun (s,storage) -> match storage.Type with Array _ -> Some s | _ -> None) |> Set.ofSeq
+    program.Routines |> List.fold(fun roots routine ->
+        let formals=routine.Parameters |> List.map(fun p -> p.Storage.Symbol,p.Storage) |> Map.ofList
+        let indexed symbol indexes =
+            formals.TryFind symbol |> Option.exists(fun storage -> not(storage.Name.EndsWith("$",StringComparison.Ordinal) && List.length indexes=1))
+        statements routine.Body |> Seq.fold(fun roots stmt ->
+            let reads=statementExpressions stmt |> Seq.collect expressions |> Seq.choose(function ReadArrayElem(s,xs,_,_) when indexed s xs -> Some s | _ -> None)
+            let targets=match stmt with Assign(t,_,_) -> [t] | Read(ts,_) | Input(_,_,ts,_) -> ts | _ -> []
+            let writes=targets |> Seq.choose(function WriteArrayElem(s,xs,_,_) when indexed s xs -> Some s | _ -> None)
+            Set.union roots (Seq.append reads writes |> Set.ofSeq)) roots) declared
+
+let private actualRoot program (storages:Map<SymbolId,HirStorage>) arrays scope = function
+    | RefArg t -> targetStorageRoot program storages scope t
+    | ValueArg(ReadVar(s,Array _,_)) -> storageRoot program storages scope s
+    | ValueArg(ReadVar(s,_,_)) when Set.contains s arrays -> storageRoot program storages scope s
+    | ValueArg(DynamicReadVar(name,hirType,_)) ->
+        namedRoot program storages scope name |> Option.filter(fun s -> match hirType with Array _ -> true | _ -> Set.contains s arrays)
     | _ -> None
 
 let analyzeAliases (program: HirProgram) =
     let storages = program.Globals @ (program.Routines |> List.collect (fun r -> List.map _.Storage r.Parameters @ r.Locals))
     let storageMap=storages |> List.map (fun s -> s.Symbol,s) |> Map.ofList
+    let arrays=arrayStorages program storageMap
     let globals = program.Globals |> List.map _.Symbol |> Set.ofList
     let known = program.Routines |> List.map _.Symbol |> Set.ofList
     let roots = ResizeArray<SymbolId>()
     let escaped = ResizeArray<SymbolId>()
-    let sites=ResizeArray<SymbolId * HirCallArg list>()
-    let call callee args =
-        sites.Add(callee,args)
+    let sites=ResizeArray<Scope * SymbolId * HirCallArg list>()
+    let call scope callee args =
+        sites.Add(scope,callee,args)
         for arg in args do
-            match actualRoot storageMap arg with
+            match actualRoot program storageMap arrays scope arg with
             | Some s -> roots.Add s; if not (known.Contains callee) then escaped.Add s
             | None -> ()
-    for stmt in statements (program.Main @ (program.Routines |> List.collect _.Body)) do
-        match stmt with ProcCall(s,_,args,_) -> call s args | _ -> ()
-        for expr in statementExpressions stmt |> Seq.collect expressions do
-            match expr with CallFunc(s,args,_,_) -> call s args | _ -> ()
+    for scope,body in (MainScope,program.Main)::(program.Routines |> List.map(fun r -> RoutineScope r.Symbol,r.Body)) do
+        for stmt in statements body do
+            match stmt with ProcCall(s,_,args,_) -> call scope s args | _ -> ()
+            for expr in statementExpressions stmt |> Seq.collect expressions do
+                match expr with CallFunc(s,args,_,_) -> call scope s args | _ -> ()
     // A known forwarding routine can let an actual reference escape through
     // several calls (including recursion). Scalar ValueArgs remain private.
     let escapedRoots=System.Collections.Generic.HashSet<SymbolId>(escaped)
@@ -123,16 +173,16 @@ let analyzeAliases (program: HirProgram) =
     let mutable changed=true
     while changed do
         changed<-false
-        for callee,args in sites do
+        for scope,callee,args in sites do
             match routines.TryFind callee with
             | Some routine ->
                 for index in 0..min routine.Parameters.Length args.Length-1 do
                     if escapedRoots.Contains routine.Parameters[index].Storage.Symbol then
-                        match actualRoot storageMap args[index] with
+                        match actualRoot program storageMap arrays scope args[index] with
                         | Some actual -> if escapedRoots.Add actual then changed<-true
                         | _ -> ()
             | _ -> ()
-    { Storages=storageMap
+    { Storages=storageMap;ArrayStorages=arrays
       Visible=Map.ofList ((MainScope,globals) :: (program.Routines |> List.map (fun r -> RoutineScope r.Symbol, Set.union globals (List.map _.Storage r.Parameters @ r.Locals |> List.map _.Symbol |> Set.ofList))))
       Parameters=program.Routines |> List.map (fun r -> RoutineScope r.Symbol, r.Parameters |> List.map (fun p -> p.Storage.Symbol) |> Set.ofList) |> Map.ofList
       AddressTaken=Set.ofSeq roots; Escaped=Set.ofSeq escapedRoots }
@@ -164,20 +214,30 @@ type Context = {
 let private read s = {empty with Reads=Set.singleton s}
 let private write s = {empty with Writes=Set.singleton s}
 
+let private resolve context scope symbol = storageRoot context.Program context.Aliases.Storages scope symbol
+let private named context scope name = namedRoot context.Program context.Aliases.Storages scope name
+let private readRoot = function Some s -> read s | None -> {empty with ReadsUnknown=true}
+
+let loopInitialisation context scope symbol =
+    match resolve context scope symbol with
+    | Some s -> {write s with DescriptorWrites=Set.singleton s;LoopMetadataWrites=Set.singleton s}
+    | None -> {empty with WritesUnknown=true;DescriptorWritesUnknown=true;LoopMetadataWritesUnknown=true}
+
 let rec expression (context: Context) scope expr =
     let children xs = xs |> List.map (expression context scope) |> combineAll
     match expr with
     | Literal(ConstString _,_,_) -> {empty with MayThrow=true;Allocates=true}
     | Literal _ | Missing _ -> empty
     | ReadVar(s,_,_) ->
+        let effect=readRoot(resolve context scope s)
         match context.Aliases.Storages.TryFind s with
-        | Some storage when storage.Type=String || not (storage.Name.EndsWith("%",StringComparison.Ordinal)) -> {read s with MayThrow=true;Allocates=true}
-        | _ -> read s
-    | DynamicReadVar _ -> {empty with ReadsUnknown=true;MayThrow=true;Allocates=true}
-    | ReadArrayElem(s,xs,_,_) -> combine (children xs) {read s with MayThrow=true}
-    | ReadStringChar(s,x,_,_) -> combine (expression context scope x) {read s with MayThrow=true;Allocates=true}
-    | DynamicReadArrayElem(_,xs,_,_) -> combine (children xs) {empty with ReadsUnknown=true;MayThrow=true}
-    | DynamicReadStringChar(_,x,_,_) -> combine (expression context scope x) {empty with ReadsUnknown=true;MayThrow=true;Allocates=true}
+        | Some storage when storage.Type=String || not (storage.Name.EndsWith("%",StringComparison.Ordinal)) -> {effect with MayThrow=true;Allocates=true}
+        | _ -> effect
+    | DynamicReadVar(name,_,_) -> {readRoot(named context scope name) with MayThrow=true;Allocates=true}
+    | ReadArrayElem(s,xs,_,_) -> combine (children xs) {readRoot(resolve context scope s) with MayThrow=true}
+    | ReadStringChar(s,x,_,_) -> combine (expression context scope x) {readRoot(resolve context scope s) with MayThrow=true;Allocates=true}
+    | DynamicReadArrayElem(name,xs,_,_) -> combine (children xs) {readRoot(named context scope name) with MayThrow=true}
+    | DynamicReadStringChar(name,x,_,_) -> combine (expression context scope x) {readRoot(named context scope name) with MayThrow=true;Allocates=true}
     | Unary((Identity|Hash),x,_,_) -> expression context scope x
     | Unary(_,x,_,_) -> combine (expression context scope x) {empty with MayThrow=true}
     | Binary(op,a,b,_,_) ->
@@ -190,7 +250,11 @@ let rec expression (context: Context) scope expr =
     | CallFunc(s,args,_,_) -> call context scope s args
 and targetEvaluation context scope target = targetIndexes target |> List.map (expression context scope) |> combineAll
 and targetWrite context scope target =
-    let root = match targetRoot target with Some s -> write s | None -> {empty with WritesUnknown=true}
+    let element = match target with WriteArrayElem _ | DynamicWriteArrayElem _ -> true | _ -> false
+    let root =
+        match targetStorageRoot context.Program context.Aliases.Storages scope target with
+        | Some s -> if element then write s else {write s with DescriptorWrites=Set.singleton s}
+        | None -> {empty with WritesUnknown=true;DescriptorWritesUnknown=not element}
     let extra =
         match target with
         | WriteVar(s,_,_) ->
@@ -202,7 +266,7 @@ and targetWrite context scope target =
 and call context scope symbol args =
     let evaluated = args |> List.map (function
         | ValueArg e -> expression context scope e
-        | RefArg t -> combine (targetEvaluation context scope t) (match targetRoot t with Some s -> read s | None -> {empty with ReadsUnknown=true})) |> combineAll
+        | RefArg t -> combine (targetEvaluation context scope t) (readRoot(targetStorageRoot context.Program context.Aliases.Storages scope t))) |> combineAll
     let known = context.Program.Routines |> List.tryFind (fun r -> r.Symbol=symbol)
     match known,context.Summaries.TryFind symbol with
     | Some routine,Some summary ->
@@ -210,23 +274,34 @@ and call context scope symbol args =
         let formals = Set.ofList parameters
         let locals = routine.Locals |> List.map _.Symbol |> Set.ofList
         let externalSymbols symbols = Set.difference symbols (Set.union formals locals)
-        let mutable reads,writes = externalSymbols summary.Reads,externalSymbols summary.Writes
-        let mutable readsUnknown,writesUnknown = summary.ReadsUnknown,summary.WritesUnknown
-        for index in 0..min parameters.Length args.Length-1 do
-            let formal = parameters[index]
-            match actualRoot context.Aliases.Storages args[index] with
-            | Some actual ->
-                if summary.Reads.Contains formal then reads <- reads.Add actual
-                if summary.Writes.Contains formal then writes <- writes.Add actual
-            | None ->
-                match args[index] with
-                | RefArg _ ->
-                    readsUnknown <- readsUnknown || summary.Reads.Contains formal
-                    writesUnknown <- writesUnknown || summary.Writes.Contains formal
-                | _ -> () // A scalar ValueArg is a private temporary, including (x%).
+        let arrayValue = function
+            | ReadVar(s,hirType,_) -> match hirType with Array _ -> true | _ -> context.Aliases.ArrayStorages.Contains s
+            | DynamicReadVar(name,hirType,_) ->
+                match hirType with Array _ -> true | _ -> context.Aliases.Storages |> Map.exists(fun s storage -> String.Equals(storage.Name,name,StringComparison.OrdinalIgnoreCase) && context.Aliases.ArrayStorages.Contains s)
+            | _ -> false
+        let project symbols unknown descriptor =
+            let mutable roots,unresolved=externalSymbols symbols,unknown
+            for index in 0..min parameters.Length args.Length-1 do
+                if symbols.Contains parameters[index] then
+                    let element=match args[index] with RefArg(WriteArrayElem _ | DynamicWriteArrayElem _ | WriteStringChar _ | DynamicWriteStringChar _) -> true | _ -> false
+                    match actualRoot context.Program context.Aliases.Storages context.Aliases.ArrayStorages scope args[index] with
+                    | Some actual when not(descriptor && element) -> roots<-roots.Add actual
+                    | Some _ -> () // A scalar reference to an element cannot resize its owner.
+                    | None ->
+                        match args[index] with
+                        | RefArg _ -> unresolved<-true
+                        | ValueArg value when arrayValue value -> unresolved<-true
+                        | _ -> () // Scalar ValueArgs are private, including parenthesized variables.
+            roots,unresolved
+        let reads,readsUnknown=project summary.Reads summary.ReadsUnknown false
+        let writes,writesUnknown=project summary.Writes summary.WritesUnknown false
+        let descriptors,descriptorsUnknown=project summary.DescriptorWrites summary.DescriptorWritesUnknown true
+        let loops,loopsUnknown=project summary.LoopMetadataWrites summary.LoopMetadataWritesUnknown false
         // Even a total, empty body can fail while bindings/call-frame storage
         // are created. These protocol effects belong to the call itself.
-        combine evaluated {summary with Reads=reads;Writes=writes;ReadsUnknown=readsUnknown;WritesUnknown=writesUnknown;MayThrow=true;Allocates=true;ControlBarrier=true;Calls=summary.Calls.Add symbol}
+        combine evaluated {summary with Reads=reads;Writes=writes;ReadsUnknown=readsUnknown;WritesUnknown=writesUnknown
+                                        DescriptorWrites=descriptors;DescriptorWritesUnknown=descriptorsUnknown;LoopMetadataWrites=loops;LoopMetadataWritesUnknown=loopsUnknown
+                                        MayThrow=true;Allocates=true;ControlBarrier=true;Calls=summary.Calls.Add symbol}
     | _ -> combine evaluated {unknown with Calls=Set.singleton symbol}
 
 let evaluation context scope stmt =
@@ -245,9 +320,9 @@ let rec statement context scope stmt =
     | BuiltInCall _ -> combine evaluated unknown // Resident extensions can mutate arbitrary storage.
     | Input(_,_,targets,_) -> combineAll [evaluated; targets |> List.map (targetWrite context scope) |> combineAll; {empty with InputOutput=true;MayThrow=true}]
     | Read(targets,_) -> combineAll [evaluated; targets |> List.map (targetWrite context scope) |> combineAll; {empty with MayThrow=true;ControlBarrier=true}]
-    | Dim(s,_,_) -> combine evaluated {write s with MayThrow=true;Allocates=true}
+    | Dim(s,_,_) -> combine evaluated {loopInitialisation context scope s with MayThrow=true;Allocates=true}
     | If(_,yes,no,_) -> combineAll [evaluated;nested yes;nested (Option.defaultValue [] no)]
-    | For(_,s,_,_,_,body,_) | ForSequence(_,s,_,_,_,_,_,body,_) -> combineAll [evaluated;read s;write s;nested body;{empty with MayThrow=true;ControlBarrier=true}]
+    | For(_,s,_,_,_,body,_) | ForSequence(_,s,_,_,_,_,_,body,_) -> combineAll [evaluated;readRoot(resolve context scope s);loopInitialisation context scope s;nested body;{empty with MayThrow=true;ControlBarrier=true}]
     | Repeat(_,_,body,_) | WhenError(body,_) -> combine (nested body) {empty with ControlBarrier=true}
     | Gosub _ | OnGosub _ -> combine evaluated unknown
     | Goto _ | OnGoto _ | Exit _ | Next _ | Return _ | Restore _ -> {evaluated with ControlBarrier=true}
@@ -262,12 +337,8 @@ let analyze program =
         let context = {Program=program;Aliases=aliases;Summaries=summaries}
         let next = program.Routines |> List.map (fun r ->
             let effects = r.Body |> List.map (statement context (RoutineScope r.Symbol)) |> combineAll
-            // Turbo names share vectors, including dynamically rebound locals.
-            let sameNames symbols =
-                aliases.Storages |> Map.toSeq |> Seq.choose (fun (s,storage) ->
-                    if symbols |> Set.exists (fun root ->
-                        aliases.Storages.TryFind root |> Option.exists (fun original -> String.Equals(original.Name,storage.Name,StringComparison.OrdinalIgnoreCase))) then Some s else None) |> Set.ofSeq
-            let effects = {effects with Reads=sameNames effects.Reads;Writes=sameNames effects.Writes}
+            // Own LOCAL/formal bindings are projected out at a normal return.
+            // Free names that could be rebound remain explicitly unknown.
             r.Symbol,combine summaries[r.Symbol] effects) |> Map.ofList
         changed <- next<>summaries
         summaries <- next

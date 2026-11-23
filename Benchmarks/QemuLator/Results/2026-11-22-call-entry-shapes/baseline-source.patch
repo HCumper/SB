@@ -1,0 +1,1584 @@
+diff --git a/SB/CompilerPipeline.fs b/SB/CompilerPipeline.fs
+index d38833d..ff6fa42 100644
+--- a/SB/CompilerPipeline.fs
++++ b/SB/CompilerPipeline.fs
+@@ -714,7 +714,7 @@ let generateTurboIrFromLoweredHirWithNativeRegions optimization nativeRegions (s
+         | None -> ()
+         let target =
+             match nativeRegions,analysis with
+-            | true,Some facts -> {target with SafeIntegerExpressions=facts.SafeIntegerExpressions;SafeArrayAccesses=facts.SafeArrayAccesses;OneDimensionalIntegerAccesses=facts.OneDimensionalIntegerAccesses}
++            | true,Some facts -> {target with SafeIntegerExpressions=facts.SafeIntegerExpressions;SafeArrayAccesses=facts.SafeArrayAccesses;OneDimensionalIntegerAccesses=facts.OneDimensionalIntegerAccesses;TwoDimensionalIntegerAccesses=facts.TwoDimensionalIntegerAccesses}
+             | _ -> target
+         HirTurboIrBackend.generateTurboIrFromHir target optimized
+         |> Result.bind (TurboNativeRegions.select nativeRegions)
+diff --git a/SB/HirTurboIrBackend.fs b/SB/HirTurboIrBackend.fs
+index 0876ca0..eec64eb 100644
+--- a/SB/HirTurboIrBackend.fs
++++ b/SB/HirTurboIrBackend.fs
+@@ -89,6 +89,13 @@ type TurboIrWindow = {
+     Y: int
+ }
+ 
++type RankTwoIntegerAccess = {
++    ProvenRows: bool
++    ProvenColumns: bool
++    /// Actual lengths, not guaranteed minimum upper bounds; None reads the descriptor.
++    ExactLengths: (int * int) option
++}
++
+ type TurboIrOptions = {
+     /// Startup windows to open, as Turbo's windows% setting (0-3). TURBO_windo n overrides it.
+     WindowCount: int
+@@ -111,6 +118,7 @@ type TurboIrOptions = {
+     /// Numeric array accesses whose current descriptor and every index are proven safe.
+     SafeArrayAccesses: Set<string * HirExpr list>
+     OneDimensionalIntegerAccesses: Set<string * HirExpr list>
++    TwoDimensionalIntegerAccesses: Map<string * HirExpr list, RankTwoIntegerAccess>
+ }
+ 
+ type TurboIrOutput = {
+@@ -145,6 +153,7 @@ let defaultOptions = {
+     SafeIntegerExpressions = Set.empty
+     SafeArrayAccesses = Set.empty
+     OneDimensionalIntegerAccesses = Set.empty
++    TwoDimensionalIntegerAccesses = Map.empty
+ }
+ 
+ /// Internal listing annotation consumed by native-region selection. The binary
+@@ -154,6 +163,19 @@ let rangeProvenArrayComment = "range-proven array access"
+ let rankOneIntegerArrayComment = "rank-one integer array access"
+ let provenRankOneIntegerArrayComment = "range-proven rank-one integer array access"
+ 
++let rankTwoIntegerArrayComment facts =
++    let checks=(if facts.ProvenRows then 0 else 1) ||| (if facts.ProvenColumns then 0 else 2)
++    let columns=facts.ExactLengths |> Option.map snd |> Option.defaultValue 0
++    $"rank-two integer array access:{checks}:{columns}"
++
++let tryRankTwoIntegerArrayComment (comment:string) =
++    match comment.Split(':') with
++    | [|"rank-two integer array access";checks;columns|] ->
++        match Int32.TryParse checks,Int32.TryParse columns with
++        | (true,mask),(true,stride) when mask>=0 && mask<=3 && stride>=0 && stride<=32768 -> Some(mask,stride)
++        | _ -> None
++    | _ -> None
++
+ /// The listing written beside a generated stream.
+ let listingFileName (outputFileName: string) = outputFileName + ".lst"
+ 
+@@ -367,6 +389,8 @@ let private operandShapes =
+     for opcode in two do shapes[opcode] <- FixedWords 2
+     shapes[138] <- FixedWords 3
+     shapes[139] <- FixedWords 3
++    shapes[1911] <- FixedWords 3 // vector, checked-dimension mask, exact column length (0 = dynamic).
++    shapes[1912] <- FixedWords 3
+     shapes[247] <- FixedWords 9
+     shapes[169] <- TextShape
+     shapes[170] <- TextShape
+@@ -390,6 +414,8 @@ let private vectorOperandPositions =
+                     175; 176; 182; 230; 232; 246; 249; 253; 257; 262; 264; 265; 266; 293; 294; 337; 338; 339; 340
+                     370; 374; 375; 382; 24; 26; 56; 58; 360; 227; 1339; 1340; 1111; 1112; 1143; 1144; 1611; 1612; 1643; 1644; 1711; 1712; 1811; 1812 ] do
+         positions[opcode] <- 0
++    positions[1911] <- 0
++    positions[1912] <- 0
+     for opcode in [ 115; 126; 147; 158; 179; 190; 234; 224; 366 ] do
+         positions[opcode] <- 1
+     positions
+@@ -399,7 +425,7 @@ let private threadedOnly = set [ 101; 114; 133; 146; 234; 247; 262; 327; 328; 38
+ 
+ /// Raw data operations that belong in native data sections (spec 3).
+ let private nativeDataOnly = set [ 107; 139; 171; 243; 261; 358; 370 ]
+-let private rangeProvenNativeOnly = set [1611;1612;1643;1644;1811;1812]
++let private rangeProvenNativeOnly = set [1611;1612;1643;1644;1811;1812;1911;1912]
+ 
+ // ---------------------------------------------------------------------------
+ // Binary form, listing and decoding
+@@ -597,6 +623,10 @@ let validate (bytes: byte[]) : string list =
+                 if not native && rangeProvenNativeOnly.Contains opcode then
+                     problems.Add $"Range-proven array opcode {opcode} requires native mode (record {index})."
+                 let operandArray = List.toArray operands
++                match opcode,operands with
++                | (1911|1912),[_;Word mask;Word columns] when mask>3 || columns>32768 ->
++                    problems.Add $"Invalid rank-two array metadata (record {index})."
++                | _ -> ()
+                 match labelOperandPositions.TryGetValue opcode with
+                 | true, labelIndex when labelIndex < operandArray.Length ->
+                     match operandArray[labelIndex] with
+@@ -1344,7 +1374,7 @@ type private Emitter(options: TurboIrOptions, program: HirProgram) =
+             this.EmitIndexes(scope, vector, indexes, pos)
+             let key=normalizeIdentifier name,indexes
+             let proven=options.SafeArrayAccesses.Contains key
+-            let comment=if options.OneDimensionalIntegerAccesses.Contains key then (if proven then provenRankOneIntegerArrayComment else rankOneIntegerArrayComment) elif proven then rangeProvenArrayComment else vector.Name
++            let comment=match options.TwoDimensionalIntegerAccesses.TryFind key with Some facts -> rankTwoIntegerArrayComment facts | None -> if options.OneDimensionalIntegerAccesses.Contains key then (if proven then provenRankOneIntegerArrayComment else rankOneIntegerArrayComment) elif proven then rangeProvenArrayComment else vector.Name
+             opc Op.extractInt [ Word vector.Id ] comment
+         | TurboFloat ->
+             this.EmitIndexes(scope, vector, indexes, pos)
+@@ -1808,7 +1838,7 @@ type private Emitter(options: TurboIrOptions, program: HirProgram) =
+             emitValue TurboInt
+             let key=normalizeIdentifier name,indexes
+             let proven=options.SafeArrayAccesses.Contains key
+-            let comment=if options.OneDimensionalIntegerAccesses.Contains key then (if proven then provenRankOneIntegerArrayComment else rankOneIntegerArrayComment) elif proven then rangeProvenArrayComment else vector.Name
++            let comment=match options.TwoDimensionalIntegerAccesses.TryFind key with Some facts -> rankTwoIntegerArrayComment facts | None -> if options.OneDimensionalIntegerAccesses.Contains key then (if proven then provenRankOneIntegerArrayComment else rankOneIntegerArrayComment) elif proven then rangeProvenArrayComment else vector.Name
+             opc Op.insertInt [ Word vector.Id ] comment
+         | TurboFloat ->
+             this.EmitIndexes(scope, vector, indexes, pos)
+diff --git a/SB/Optimization/HIR-ANALYSIS.md b/SB/Optimization/HIR-ANALYSIS.md
+index 48341f6..6040f4e 100644
+--- a/SB/Optimization/HIR-ANALYSIS.md
++++ b/SB/Optimization/HIR-ANALYSIS.md
+@@ -85,6 +85,13 @@ are nonnegative. Joins retain the common rank and minimum upper bounds from
+ every path. Storage declarations alone do not establish reaching facts when a
+ DIM exists; implicit entry allocations follow the backend's explicit rules.
+ 
++Exact shape is tracked separately in `EntryExactBounds`. A DIM supplies exact
++bounds only when each evaluated dimension has a singleton interval. Joins keep
++an exact shape only when every incoming path agrees; an elementwise minimum is
++only a bounds guarantee. The same effect/alias invalidations kill both maps.
++This prevents a branch selecting different row strides, or a later DIM, from
++turning a safe minimum bound into an incorrect address calculation.
++
+ Element stores preserve descriptor facts. Calls, unknown memory writes, scalar
+ aliases and DIM/rebinding invalidate affected descriptor facts before reuse.
+ Routine parameters have no assumed entry shape. Effects in sibling expressions
+@@ -107,15 +114,43 @@ dynamic bindings, sibling writes and uncertain continuation contexts retain the
+ generic helpers. Neither source subscript count nor declaration rank alone is
+ treated as a reaching shape proof.
+ 
++`TwoDimensionalIntegerAccesses` records reaching rank-two facts, separate row
++and column safety, and optional exact lengths. Every occurrence must have a
++trusted shape; range proofs are intersected and exact shapes must agree across
++all occurrences. Native IR uses the live descriptor column length otherwise.
++Unknown ranks, sibling mutation, ambiguous bindings and uncertain continuation
++contexts retain the generic path. This enables fixed-rank native FOR accesses
++without assuming dimensions are constants or caching descriptor pointers.
++
+ ## Effects and aliases
+ 
+ `HirEffects.analyze` computes interprocedural MAY summaries to a fixed point,
+ including recursion. Summaries distinguish scalar/array roots read and written,
+-unknown memory, possible exceptions, I/O, allocation, control barriers and calls.
++descriptor writes, captured FOR metadata writes, unknown memory, possible
++exceptions, I/O, allocation, control barriers and calls.
+ Unknown residents remain full memory/effect barriers. Known calls map formal
+ effects to actual references. Scalar `ValueArg` temporaries do not write their
+ caller's variable; array references and element writes retain their owner root.
+ 
++Array-element stores invalidate affected values but preserve descriptor and
++captured FOR metadata. Scalar stores conservatively invalidate affected
++descriptor facts, while ordinary counter-word assignments leave END/STEP/NEXT
++intact. DIM and FOR initialization invalidate both metadata categories. Unknown
++residents and memory operations retain all barriers. Calls project each category
++independently: an element-only array formal cannot resize its actual array, and
++a scalar reference to one element changes its owner's contents rather than its
++descriptor. Calls in subscripts/RHS expressions retain their own metadata effects.
++
++Named accesses resolve to the routine's own formal/LOCAL binding when present.
++A free name resolves to a unique global only if no declared formal or LOCAL in
++the program can shadow it. Otherwise its memory effects remain unknown. This
++closed-program check avoids assuming lexical binding for QL's dynamic names.
++Private formal/LOCAL effects are removed at a normal return, with reference
++effects mapped onto the actual arguments. Same-named private vectors do not
++automatically become writes to a caller's vector; bindings are restored by the
++existing runtime. Recursive summaries and reference escape tracking use the
++same conservative resolution rules.
++
+ Alias queries are scope-aware. Same-named storage is conservative because Turbo
+ uses dynamically rebound vectors. A parameter may alias another parameter or
+ visible storage. Independent global variables are not made aliases merely
+@@ -127,9 +162,15 @@ recorded separately.
+ Writes invalidate every possible alias before range facts are reused. A strong
+ update adds a fact only for the assigned scalar, leaving possible aliases
+ unknown. A call's MAY writes never become definite kills in liveness analysis.
+-Unknown calls, dynamic writes and unmodeled mutations discard affected facts.
++Unknown calls, unresolved dynamic writes and unmodeled mutations discard
++affected value facts. Descriptor and loop facts are killed independently by
++their corresponding metadata effects.
+ String/coercion/allocation effects are classified conservatively, so some safe
+ operations intentionally remain barriers.
+ 
+ STOP/QUIT retain their evaluated argument effects and terminate control flow;
+ they do not represent arbitrary writes to loop metadata.
++
++This precision does not infer incoming global-array shapes for procedure
++bodies, expand native FOR eligibility to local/branching loops, or allocate
++registers across calls. Each of those needs a separate proof and lowering change.
+diff --git a/SB/Optimization/HirAnalysis.fs b/SB/Optimization/HirAnalysis.fs
+index d7307a7..cff5e4a 100644
+--- a/SB/Optimization/HirAnalysis.fs
++++ b/SB/Optimization/HirAnalysis.fs
+@@ -16,7 +16,7 @@ type RangeState = Map<SymbolId,Interval>
+ type CapturedLoop = { Owner:int; Finish:Interval; Step:Interval }
+ type Options = { UseWideningThresholds:bool; NarrowingPasses:int }
+ let defaultOptions = {UseWideningThresholds=true;NarrowingPasses=8}
+-type private FlowState = { Ranges:RangeState; Bounds:Map<SymbolId,int list>; Loops:Map<SymbolId,CapturedLoop> }
++type private FlowState = { Ranges:RangeState; Bounds:Map<SymbolId,int list>; ExactBounds:Map<SymbolId,int list>; Loops:Map<SymbolId,CapturedLoop> }
+ type ScopeAnalysis = {
+     Graph:Graph
+     Liveness:Liveness
+@@ -24,6 +24,7 @@ type ScopeAnalysis = {
+     ExitRanges:Map<int,RangeState option>
+     ExpressionRanges:Map<int * HirExpr,Interval option>
+     EntryBounds:Map<int,Map<SymbolId,int list> option>
++    EntryExactBounds:Map<int,Map<SymbolId,int list> option>
+     EntryLoops:Map<int,Map<SymbolId,CapturedLoop> option>
+     WideningThresholds:int64 list
+     NarrowingPasses:int
+@@ -37,6 +38,7 @@ type Analysis = {
+     ArithmeticProofsEnabled:bool
+     SafeArrayAccesses:Set<string * HirExpr list>
+     OneDimensionalIntegerAccesses:Set<string * HirExpr list>
++    TwoDimensionalIntegerAccesses:Map<string * HirExpr list,RankTwoIntegerAccess>
+ }
+ 
+ let word = {Lower = -32768L; Upper=32767L}
+@@ -213,42 +215,34 @@ let rec private refine context scope expr truth state =
+             | _ -> compareRange s (if truth then reverse op else invert(reverse op)) value
+         | _ -> Some state
+ 
+-let private unknownFlow = {Ranges=Map.empty;Bounds=Map.empty;Loops=Map.empty}
++let private unknownFlow = {Ranges=Map.empty;Bounds=Map.empty;ExactBounds=Map.empty;Loops=Map.empty}
+ 
+ let private killMetadata context scope effects state =
+-    if effects.WritesUnknown then {state with Bounds=Map.empty;Loops=Map.empty}
+-    else
+-        let killed=expand context.Effects.Aliases scope effects.Writes
+-        {state with Bounds=state.Bounds |> Map.filter(fun s _ -> not(killed.Contains s))
+-                    Loops=state.Loops |> Map.filter(fun s _ -> not(killed.Contains s))}
++    let descriptors=expand context.Effects.Aliases scope effects.DescriptorWrites
++    let loops=expand context.Effects.Aliases scope effects.LoopMetadataWrites
++    {state with Bounds=state.Bounds |> Map.filter(fun s _ -> not effects.DescriptorWritesUnknown && not(descriptors.Contains s))
++                ExactBounds=state.ExactBounds |> Map.filter(fun s _ -> not effects.DescriptorWritesUnknown && not(descriptors.Contains s))
++                Loops=state.Loops |> Map.filter(fun s _ -> not effects.LoopMetadataWritesUnknown && not(loops.Contains s))}
+ 
+ let private transfer context scope (node:Node) state =
+     let evaluation=nodeEvaluation context.Effects scope node.Kind
+     let evaluated=killMetadata context scope evaluation state
+     let after=killMetadata context scope (nodeEffects context.Effects scope node.Kind) evaluated
+     let mutable bounds=after.Bounds
++    let mutable exactBounds=after.ExactBounds
+     let mutable loops=after.Loops
+     let range expr=evaluate context (kill context scope evaluation state.Ranges) expr |> fst |> Option.defaultValue word
+     match node.Kind with
+-    | Statement(Assign((WriteArrayElem _|DynamicWriteArrayElem _),_,_)) ->
+-        // An element store changes contents, not the descriptor. Calls in its
+-        // value/subscripts have already invalidated descriptor facts above.
+-        bounds<-evaluated.Bounds
+-    | Statement(Assign(WriteVar(symbol,_,_),_,_)) when context.Integers.Contains symbol ->
+-        // Its own word store changes only the counter, not END/STEP/NEXT.
+-        // Keep invalidations of other potentially aliased metadata conservative.
+-        match evaluated.Loops.TryFind symbol with
+-        | Some captured -> loops<-loops.Add(symbol,captured)
+-        | None -> ()
+     | Statement(Dim(symbol,dimensions,_)) ->
+         let values=dimensions |> List.map range
+         if not values.IsEmpty && (values |> List.forall(fun r -> r.Lower>=0L && r.Upper<=word.Upper)) then
+             bounds<-bounds.Add(symbol,values |> List.map(fun r -> int r.Lower))
++            if values |> List.forall(fun r -> r.Lower=r.Upper) then
++                exactBounds<-exactBounds.Add(symbol,values |> List.map(fun r -> int r.Lower))
+     | ForInitialise(symbol,[first;last;step],_) ->
+         loops<-loops.Add(symbol,{Owner=node.Id;Finish=range last;Step=range step})
+-    | ForAdvance(_,Some _) -> loops<-evaluated.Loops // ADD.W changes the counter, not END/STEP.
+     | _ -> ()
+-    {Ranges=transferRanges context scope node state.Ranges evaluated.Loops;Bounds=bounds;Loops=loops}
++    {Ranges=transferRanges context scope node state.Ranges evaluated.Loops;Bounds=bounds;ExactBounds=exactBounds;Loops=loops}
+ 
+ let private edgeState context scope edge state =
+     let initial=if edge.Havoc then unknownFlow else state
+@@ -283,6 +277,7 @@ let private joinFlows a b =
+         let shared (first:Map<_,_>) (second:Map<_,_>) combine = first |> Map.toSeq |> Seq.choose(fun (key,value) -> second.TryFind key |> Option.bind(fun other -> combine value other |> Option.map(fun joined -> key,joined))) |> Map.ofSeq
+         Some {Ranges=(joinStates (Some a.Ranges) (Some b.Ranges)).Value
+               Bounds=shared a.Bounds b.Bounds (fun a b -> if List.length a=List.length b then Some(List.map2 min a b) else None)
++              ExactBounds=shared a.ExactBounds b.ExactBounds (fun a b -> if a=b then Some a else None)
+               Loops=shared a.Loops b.Loops (fun a b -> if a.Owner=b.Owner then Some {Owner=a.Owner;Finish=join a.Finish b.Finish;Step=join a.Step b.Step} else None)}
+ 
+ let private thresholds context graph =
+@@ -324,6 +319,7 @@ let private covers old candidate =
+     | Some old,Some candidate ->
+         (old.Ranges |> Map.forall(fun s range -> interval range (get candidate.Ranges s))) &&
+         (old.Bounds |> Map.forall(fun s bounds -> candidate.Bounds.TryFind s |> Option.exists(fun actual -> actual.Length=bounds.Length && List.forall2 (<=) bounds actual))) &&
++        (old.ExactBounds |> Map.forall(fun s bounds -> candidate.ExactBounds.TryFind s = Some bounds)) &&
+         (old.Loops |> Map.forall(fun s loop -> candidate.Loops.TryFind s |> Option.exists(fun actual -> loop.Owner=actual.Owner && interval loop.Finish actual.Finish && interval loop.Step actual.Step)))
+ 
+ let private solve options context graph =
+@@ -338,7 +334,7 @@ let private solve options context graph =
+             match storage.Type,storage.Dimensions with
+             | Array _,Some dims when local && not(dimmed.Contains s) && not dims.IsEmpty && List.forall(fun n -> n>=0 && n<=32767) dims -> Some(s,dims)
+             | _ -> None) |> Map.ofSeq
+-    let initial={unknownFlow with Bounds=initialBounds}
++    let initial={unknownFlow with Bounds=initialBounds;ExactBounds=initialBounds}
+     incoming[graph.Entry]<-Some initial
+     let edges=graph.Edges |> List.groupBy _.Source |> Map.ofList
+     let predecessors=graph.Edges |> List.groupBy _.Target |> Map.ofList
+@@ -419,6 +415,7 @@ let private solve options context graph =
+         | _ -> true)
+     {Graph=graph;Liveness=liveness context.Effects graph;EntryRanges=entryRanges;ExitRanges=exitRanges;ExpressionRanges=expressions
+      EntryBounds=incoming |> Seq.map(fun p -> p.Key,p.Value |> Option.map _.Bounds) |> Map.ofSeq
++     EntryExactBounds=incoming |> Seq.map(fun p -> p.Key,p.Value |> Option.map _.ExactBounds) |> Map.ofSeq
+      EntryLoops=incoming |> Seq.map(fun p -> p.Key,p.Value |> Option.map _.Loops) |> Map.ofSeq
+      WideningThresholds=limits;NarrowingPasses=passes;Certified=certified;ForMetadataTrusted=metadataTrusted}
+ 
+@@ -458,6 +455,7 @@ let analyzeWithOptions options target program =
+                 let evaluation=nodeEvaluation effects scope node.Kind
+                 let state=analysis.EntryRanges[id] |> Option.map(kill context scope evaluation)
+                 let bounds=analysis.EntryBounds[id]
++                let exactBounds=analysis.EntryExactBounds[id]
+                 let reads=nodeExpressions node.Kind |> Seq.collect HirEffects.expressions |> Seq.choose(function
+                     | ReadArrayElem(s,indexes,_,_) -> access s indexes
+                     | DynamicReadArrayElem(name,indexes,_,_) ->
+@@ -491,11 +489,31 @@ let analyzeWithOptions options target program =
+                                  dimensions.Length=indexes.Length && List.forall2(fun index bound ->
+                                      evaluate context state index |> fst |> Option.exists(fun range -> range.Lower>=0L && range.Upper<=int64 bound)) indexes dimensions)
+                          | _ -> false)
+-                    yield (name,indexes),proven,rankOne]
+-    let accesses proof = arrayCandidates |> List.groupBy(fun (key,_,_) -> key) |> List.choose(fun (key,occurrences) -> if occurrences |> List.forall proof then Some key else None) |> Set.ofList
+-    let safeArrays=accesses(fun (_,proven,_) -> proven)
+-    let rankOneArrays=accesses(fun (_,_,rankOne) -> rankOne)
+-    {Effects=effects;Scopes=scopes;SafeIntegerExpressions=safe;ArithmeticProofsEnabled=trusted;SafeArrayAccesses=safeArrays;OneDimensionalIntegerAccesses=rankOneArrays}
++                    let rankTwo=
++                        if eligible && trusted && nameIsInteger target name && indexes.Length=2 &&
++                           not evaluation.WritesUnknown && evaluation.Writes.IsEmpty then
++                            match symbol,bounds with
++                            | Some symbol,Some bounds when named name=[symbol] ->
++                                match bounds.TryFind symbol with
++                                | Some [row;column] ->
++                                    let safe index bound=state |> Option.bind(fun state -> evaluate context state index |> fst) |> Option.exists(fun range -> range.Lower>=0L && range.Upper<=int64 bound)
++                                    let exact=exactBounds |> Option.bind(Map.tryFind symbol) |> Option.bind(function [a;b] -> Some(a+1,b+1) | _ -> None)
++                                    Some {ProvenRows=safe indexes[0] row;ProvenColumns=safe indexes[1] column;ExactLengths=exact}
++                                | _ -> None
++                            | _ -> None
++                        else None
++                    yield (name,indexes),proven,rankOne,rankTwo]
++    let accesses proof = arrayCandidates |> List.groupBy(fun (key,_,_,_) -> key) |> List.choose(fun (key,occurrences) -> if occurrences |> List.forall proof then Some key else None) |> Set.ofList
++    let safeArrays=accesses(fun (_,proven,_,_) -> proven)
++    let rankOneArrays=accesses(fun (_,_,rankOne,_) -> rankOne)
++    let rankTwoArrays=arrayCandidates |> List.groupBy(fun (key,_,_,_) -> key) |> List.choose(fun (key,occurrences) ->
++        let facts=occurrences |> List.choose(fun (_,_,_,fact) -> fact)
++        if facts.Length<>occurrences.Length then None
++        else
++            let exact=facts.Head.ExactLengths
++            Some(key,{ProvenRows=facts |> List.forall _.ProvenRows;ProvenColumns=facts |> List.forall _.ProvenColumns
++                      ExactLengths=if facts |> List.forall(fun fact -> fact.ExactLengths=exact) then exact else None})) |> Map.ofList
++    {Effects=effects;Scopes=scopes;SafeIntegerExpressions=safe;ArithmeticProofsEnabled=trusted;SafeArrayAccesses=safeArrays;OneDimensionalIntegerAccesses=rankOneArrays;TwoDimensionalIntegerAccesses=rankTwoArrays}
+ 
+ let analyze target program = analyzeWithOptions defaultOptions target program
+ 
+@@ -505,7 +523,7 @@ let format (analysis:Analysis) =
+     let text=StringBuilder()
+     let line value = text.AppendLine(value:string) |> ignore
+     let symbols set = set |> Seq.map (fun s -> analysis.Effects.Aliases.Storages.TryFind s |> Option.map _.Name |> Option.defaultValue (string s)) |> String.concat ","
+-    let effects e = $"reads=[{symbols e.Reads}] writes=[{symbols e.Writes}] unknown-read={e.ReadsUnknown} unknown-write={e.WritesUnknown} throw={e.MayThrow} io={e.InputOutput} allocate={e.Allocates} control={e.ControlBarrier}"
++    let effects e = $"reads=[{symbols e.Reads}] writes=[{symbols e.Writes}] descriptors=[{symbols e.DescriptorWrites}] loop-metadata=[{symbols e.LoopMetadataWrites}] unknown-read={e.ReadsUnknown} unknown-write={e.WritesUnknown} unknown-descriptors={e.DescriptorWritesUnknown} unknown-loop-metadata={e.LoopMetadataWritesUnknown} throw={e.MayThrow} io={e.InputOutput} allocate={e.Allocates} control={e.ControlBarrier}"
+     let ranges (state:RangeState option) =
+         match state with
+         | None -> "unreachable"
+@@ -515,6 +533,7 @@ let format (analysis:Analysis) =
+     line $"Unchecked arithmetic proofs enabled: {analysis.ArithmeticProofsEnabled}; proven expressions: {analysis.SafeIntegerExpressions.Count}"
+     line $"Proven numeric array accesses: {analysis.SafeArrayAccesses.Count}"
+     line $"Rank-one integer array accesses: {analysis.OneDimensionalIntegerAccesses.Count}"
++    line $"Rank-two integer array accesses: {analysis.TwoDimensionalIntegerAccesses.Count}"
+     line $"Address taken: [{symbols analysis.Effects.Aliases.AddressTaken}]; escaped to unknown callees: [{symbols analysis.Effects.Aliases.Escaped}]"
+     for KeyValue(symbol,summary) in analysis.Effects.Summaries do line $"Routine {symbol}: {effects summary}"
+     for KeyValue(scope,data) in analysis.Scopes do
+@@ -527,6 +546,8 @@ let format (analysis:Analysis) =
+             line $"    out: {ranges data.ExitRanges[id]}"
+             data.EntryBounds[id] |> Option.iter(fun bounds ->
+                 for KeyValue(symbol,dimensions) in bounds do line $"    array {symbols(Set.singleton symbol)} guaranteed-upper-bounds={dimensions}")
++            data.EntryExactBounds[id] |> Option.iter(fun bounds ->
++                for KeyValue(symbol,dimensions) in bounds do line $"    array {symbols(Set.singleton symbol)} exact-upper-bounds={dimensions}")
+             data.EntryLoops[id] |> Option.iter(fun loops ->
+                 for KeyValue(symbol,captured) in loops do line $"    captured FOR {symbols(Set.singleton symbol)} owner={captured.Owner} end=[{captured.Finish.Lower},{captured.Finish.Upper}] step=[{captured.Step.Lower},{captured.Step.Upper}]")
+             line $"    {effects (nodeEffects analysis.Effects scope node.Kind)}"
+diff --git a/SB/Optimization/HirControlFlow.fs b/SB/Optimization/HirControlFlow.fs
+index 0d91974..57b1ba8 100644
+--- a/SB/Optimization/HirControlFlow.fs
++++ b/SB/Optimization/HirControlFlow.fs
+@@ -49,7 +49,7 @@ let nodeEffects context scope = function
+     | Statement stmt -> statement context scope stmt
+     | Test expr -> expression context scope expr
+     | ForInitialise(s,values,_) ->
+-        combine (values |> List.map (expression context scope) |> combineAll) {empty with Writes=Set.singleton s;MayThrow=true}
++        combine (values |> List.map (expression context scope) |> combineAll) {loopInitialisation context scope s with MayThrow=true}
+     | ForCheck(s,_,_) -> {empty with Reads=Set.singleton s}
+     | ForAdvance(s,_) -> {empty with Reads=Set.singleton s;Writes=Set.singleton s}
+     | _ -> empty
+@@ -57,16 +57,9 @@ let nodeEffects context scope = function
+ let private targetLine = function Literal(ConstInt n,_,_) -> Some n | _ -> None
+ 
+ let private loopMetadataMayChange context scope counter body =
+-    let mutation effects = effects.WritesUnknown || (expand context.Aliases scope effects.Writes).Contains counter
+     let bodyEffects=body |> List.map (statement context scope) |> combineAll
+-    bodyEffects.WritesUnknown ||
+-    (statements body |> Seq.exists (fun stmt ->
+-        let nestedCounter=match stmt with
+-                          | For(_,s,_,_,_,_,_) | ForSequence(_,s,_,_,_,_,_,_,_) -> mayAlias context.Aliases scope counter s
+-                          | _ -> false
+-        let procedure=match stmt with ProcCall(s,_,args,_) -> mutation (call context scope s args) | _ -> false
+-        let functions=statementExpressions stmt |> Seq.collect expressions |> Seq.exists (function CallFunc(s,args,_,_) -> mutation(call context scope s args) | _ -> false)
+-        nestedCounter || procedure || functions))
++    bodyEffects.LoopMetadataWritesUnknown ||
++    (expand context.Aliases scope bodyEffects.LoopMetadataWrites).Contains counter
+ 
+ /// One elementary HIR operation per block. Keeping source anchors as blocks
+ /// permits jumps into structured bodies without pretending they enter at IF/FOR.
+diff --git a/SB/Optimization/HirEffects.fs b/SB/Optimization/HirEffects.fs
+index 0f9a152..975925a 100644
+--- a/SB/Optimization/HirEffects.fs
++++ b/SB/Optimization/HirEffects.fs
+@@ -13,6 +13,12 @@ type Effects = {
+     Writes: Set<SymbolId>
+     ReadsUnknown: bool
+     WritesUnknown: bool
++    // Content writes still invalidate scalar/alias values. Only these separate
++    // effects can replace an array descriptor or captured FOR END/STEP/NEXT.
++    DescriptorWrites: Set<SymbolId>
++    LoopMetadataWrites: Set<SymbolId>
++    DescriptorWritesUnknown: bool
++    LoopMetadataWritesUnknown: bool
+     MayThrow: bool
+     InputOutput: bool
+     Allocates: bool
+@@ -22,13 +28,18 @@ type Effects = {
+ 
+ let empty = {
+     Reads=Set.empty; Writes=Set.empty; ReadsUnknown=false; WritesUnknown=false
++    DescriptorWrites=Set.empty;LoopMetadataWrites=Set.empty
++    DescriptorWritesUnknown=false;LoopMetadataWritesUnknown=false
+     MayThrow=false; InputOutput=false; Allocates=false; ControlBarrier=false; Calls=Set.empty }
+ 
+-let unknown = { empty with ReadsUnknown=true; WritesUnknown=true; MayThrow=true; InputOutput=true; Allocates=true; ControlBarrier=true }
++let unknown = { empty with ReadsUnknown=true; WritesUnknown=true; DescriptorWritesUnknown=true;LoopMetadataWritesUnknown=true; MayThrow=true; InputOutput=true; Allocates=true; ControlBarrier=true }
+ 
+ let combine a b = {
+     Reads=Set.union a.Reads b.Reads; Writes=Set.union a.Writes b.Writes
+     ReadsUnknown=a.ReadsUnknown || b.ReadsUnknown; WritesUnknown=a.WritesUnknown || b.WritesUnknown
++    DescriptorWrites=Set.union a.DescriptorWrites b.DescriptorWrites;LoopMetadataWrites=Set.union a.LoopMetadataWrites b.LoopMetadataWrites
++    DescriptorWritesUnknown=a.DescriptorWritesUnknown || b.DescriptorWritesUnknown
++    LoopMetadataWritesUnknown=a.LoopMetadataWritesUnknown || b.LoopMetadataWritesUnknown
+     MayThrow=a.MayThrow || b.MayThrow; InputOutput=a.InputOutput || b.InputOutput
+     Allocates=a.Allocates || b.Allocates; ControlBarrier=a.ControlBarrier || b.ControlBarrier
+     Calls=Set.union a.Calls b.Calls }
+@@ -37,6 +48,7 @@ let combineAll effects = Seq.fold combine empty effects
+ 
+ type AliasInfo = {
+     Storages: Map<SymbolId,HirStorage>
++    ArrayStorages: Set<SymbolId>
+     Visible: Map<Scope,Set<SymbolId>>
+     Parameters: Map<Scope,Set<SymbolId>>
+     AddressTaken: Set<SymbolId>
+@@ -92,30 +104,68 @@ let rec statements body = seq {
+         | Repeat(_,_,body,_) | WhenError(body,_) -> yield! statements body
+         | _ -> () }
+ 
+-let private actualRoot (storages:Map<SymbolId,HirStorage>) = function
+-    | RefArg t -> targetRoot t
+-    | ValueArg(ReadVar(s,Array _,_)) -> Some s
+-    | ValueArg(ReadVar(s,_,_)) when storages.TryFind s |> Option.exists (fun s -> match s.Type with Array _ -> true | _ -> false) -> Some s
++// A free name in a procedure can refer to a caller's dynamic binding. Resolve
++// it only if no parameter/local anywhere can shadow the unique global. A
++// procedure's own binding takes precedence and is private across normal calls.
++let private namedRoot (program:HirProgram) (storages:Map<SymbolId,HirStorage>) scope name =
++    let same (storage:HirStorage)=String.Equals(storage.Name,name,StringComparison.OrdinalIgnoreCase)
++    let single (matches:HirStorage list) = match matches with [storage] -> Some storage.Symbol | _ -> None
++    match scope with
++    | MainScope -> program.Globals |> List.filter same |> single
++    | RoutineScope symbol ->
++        let own=program.Routines |> List.tryFind(fun r -> r.Symbol=symbol) |> Option.map(fun r -> List.map _.Storage r.Parameters @ r.Locals |> List.filter same) |> Option.defaultValue []
++        if not own.IsEmpty then single own
++        else
++            let matches=storages |> Map.toList |> List.map snd |> List.filter same
++            if matches |> List.forall(fun storage -> storage.Class=GlobalStorage) then single matches else None
++
++let private storageRoot program (storages:Map<SymbolId,HirStorage>) scope symbol =
++    storages.TryFind symbol |> Option.bind(fun storage -> namedRoot program storages scope storage.Name)
++
++let private targetStorageRoot program storages scope = function
++    | WriteVar(s,_,_) | WriteArrayElem(s,_,_,_) | WriteStringChar(s,_,_,_) -> storageRoot program storages scope s
++    | DynamicWriteVar(name,_,_) | DynamicWriteArrayElem(name,_,_,_) | DynamicWriteStringChar(name,_,_,_) -> namedRoot program storages scope name
++
++let private arrayStorages (program:HirProgram) (storages:Map<SymbolId,HirStorage>) =
++    let declared=storages |> Map.toSeq |> Seq.choose(fun (s,storage) -> match storage.Type with Array _ -> Some s | _ -> None) |> Set.ofSeq
++    program.Routines |> List.fold(fun roots routine ->
++        let formals=routine.Parameters |> List.map(fun p -> p.Storage.Symbol,p.Storage) |> Map.ofList
++        let indexed symbol indexes =
++            formals.TryFind symbol |> Option.exists(fun storage -> not(storage.Name.EndsWith("$",StringComparison.Ordinal) && List.length indexes=1))
++        statements routine.Body |> Seq.fold(fun roots stmt ->
++            let reads=statementExpressions stmt |> Seq.collect expressions |> Seq.choose(function ReadArrayElem(s,xs,_,_) when indexed s xs -> Some s | _ -> None)
++            let targets=match stmt with Assign(t,_,_) -> [t] | Read(ts,_) | Input(_,_,ts,_) -> ts | _ -> []
++            let writes=targets |> Seq.choose(function WriteArrayElem(s,xs,_,_) when indexed s xs -> Some s | _ -> None)
++            Set.union roots (Seq.append reads writes |> Set.ofSeq)) roots) declared
++
++let private actualRoot program (storages:Map<SymbolId,HirStorage>) arrays scope = function
++    | RefArg t -> targetStorageRoot program storages scope t
++    | ValueArg(ReadVar(s,Array _,_)) -> storageRoot program storages scope s
++    | ValueArg(ReadVar(s,_,_)) when Set.contains s arrays -> storageRoot program storages scope s
++    | ValueArg(DynamicReadVar(name,hirType,_)) ->
++        namedRoot program storages scope name |> Option.filter(fun s -> match hirType with Array _ -> true | _ -> Set.contains s arrays)
+     | _ -> None
+ 
+ let analyzeAliases (program: HirProgram) =
+     let storages = program.Globals @ (program.Routines |> List.collect (fun r -> List.map _.Storage r.Parameters @ r.Locals))
+     let storageMap=storages |> List.map (fun s -> s.Symbol,s) |> Map.ofList
++    let arrays=arrayStorages program storageMap
+     let globals = program.Globals |> List.map _.Symbol |> Set.ofList
+     let known = program.Routines |> List.map _.Symbol |> Set.ofList
+     let roots = ResizeArray<SymbolId>()
+     let escaped = ResizeArray<SymbolId>()
+-    let sites=ResizeArray<SymbolId * HirCallArg list>()
+-    let call callee args =
+-        sites.Add(callee,args)
++    let sites=ResizeArray<Scope * SymbolId * HirCallArg list>()
++    let call scope callee args =
++        sites.Add(scope,callee,args)
+         for arg in args do
+-            match actualRoot storageMap arg with
++            match actualRoot program storageMap arrays scope arg with
+             | Some s -> roots.Add s; if not (known.Contains callee) then escaped.Add s
+             | None -> ()
+-    for stmt in statements (program.Main @ (program.Routines |> List.collect _.Body)) do
+-        match stmt with ProcCall(s,_,args,_) -> call s args | _ -> ()
+-        for expr in statementExpressions stmt |> Seq.collect expressions do
+-            match expr with CallFunc(s,args,_,_) -> call s args | _ -> ()
++    for scope,body in (MainScope,program.Main)::(program.Routines |> List.map(fun r -> RoutineScope r.Symbol,r.Body)) do
++        for stmt in statements body do
++            match stmt with ProcCall(s,_,args,_) -> call scope s args | _ -> ()
++            for expr in statementExpressions stmt |> Seq.collect expressions do
++                match expr with CallFunc(s,args,_,_) -> call scope s args | _ -> ()
+     // A known forwarding routine can let an actual reference escape through
+     // several calls (including recursion). Scalar ValueArgs remain private.
+     let escapedRoots=System.Collections.Generic.HashSet<SymbolId>(escaped)
+@@ -123,16 +173,16 @@ let analyzeAliases (program: HirProgram) =
+     let mutable changed=true
+     while changed do
+         changed<-false
+-        for callee,args in sites do
++        for scope,callee,args in sites do
+             match routines.TryFind callee with
+             | Some routine ->
+                 for index in 0..min routine.Parameters.Length args.Length-1 do
+                     if escapedRoots.Contains routine.Parameters[index].Storage.Symbol then
+-                        match actualRoot storageMap args[index] with
++                        match actualRoot program storageMap arrays scope args[index] with
+                         | Some actual -> if escapedRoots.Add actual then changed<-true
+                         | _ -> ()
+             | _ -> ()
+-    { Storages=storageMap
++    { Storages=storageMap;ArrayStorages=arrays
+       Visible=Map.ofList ((MainScope,globals) :: (program.Routines |> List.map (fun r -> RoutineScope r.Symbol, Set.union globals (List.map _.Storage r.Parameters @ r.Locals |> List.map _.Symbol |> Set.ofList))))
+       Parameters=program.Routines |> List.map (fun r -> RoutineScope r.Symbol, r.Parameters |> List.map (fun p -> p.Storage.Symbol) |> Set.ofList) |> Map.ofList
+       AddressTaken=Set.ofSeq roots; Escaped=Set.ofSeq escapedRoots }
+@@ -164,20 +214,30 @@ type Context = {
+ let private read s = {empty with Reads=Set.singleton s}
+ let private write s = {empty with Writes=Set.singleton s}
+ 
++let private resolve context scope symbol = storageRoot context.Program context.Aliases.Storages scope symbol
++let private named context scope name = namedRoot context.Program context.Aliases.Storages scope name
++let private readRoot = function Some s -> read s | None -> {empty with ReadsUnknown=true}
++
++let loopInitialisation context scope symbol =
++    match resolve context scope symbol with
++    | Some s -> {write s with DescriptorWrites=Set.singleton s;LoopMetadataWrites=Set.singleton s}
++    | None -> {empty with WritesUnknown=true;DescriptorWritesUnknown=true;LoopMetadataWritesUnknown=true}
++
+ let rec expression (context: Context) scope expr =
+     let children xs = xs |> List.map (expression context scope) |> combineAll
+     match expr with
+     | Literal(ConstString _,_,_) -> {empty with MayThrow=true;Allocates=true}
+     | Literal _ | Missing _ -> empty
+     | ReadVar(s,_,_) ->
++        let effect=readRoot(resolve context scope s)
+         match context.Aliases.Storages.TryFind s with
+-        | Some storage when storage.Type=String || not (storage.Name.EndsWith("%",StringComparison.Ordinal)) -> {read s with MayThrow=true;Allocates=true}
+-        | _ -> read s
+-    | DynamicReadVar _ -> {empty with ReadsUnknown=true;MayThrow=true;Allocates=true}
+-    | ReadArrayElem(s,xs,_,_) -> combine (children xs) {read s with MayThrow=true}
+-    | ReadStringChar(s,x,_,_) -> combine (expression context scope x) {read s with MayThrow=true;Allocates=true}
+-    | DynamicReadArrayElem(_,xs,_,_) -> combine (children xs) {empty with ReadsUnknown=true;MayThrow=true}
+-    | DynamicReadStringChar(_,x,_,_) -> combine (expression context scope x) {empty with ReadsUnknown=true;MayThrow=true;Allocates=true}
++        | Some storage when storage.Type=String || not (storage.Name.EndsWith("%",StringComparison.Ordinal)) -> {effect with MayThrow=true;Allocates=true}
++        | _ -> effect
++    | DynamicReadVar(name,_,_) -> {readRoot(named context scope name) with MayThrow=true;Allocates=true}
++    | ReadArrayElem(s,xs,_,_) -> combine (children xs) {readRoot(resolve context scope s) with MayThrow=true}
++    | ReadStringChar(s,x,_,_) -> combine (expression context scope x) {readRoot(resolve context scope s) with MayThrow=true;Allocates=true}
++    | DynamicReadArrayElem(name,xs,_,_) -> combine (children xs) {readRoot(named context scope name) with MayThrow=true}
++    | DynamicReadStringChar(name,x,_,_) -> combine (expression context scope x) {readRoot(named context scope name) with MayThrow=true;Allocates=true}
+     | Unary((Identity|Hash),x,_,_) -> expression context scope x
+     | Unary(_,x,_,_) -> combine (expression context scope x) {empty with MayThrow=true}
+     | Binary(op,a,b,_,_) ->
+@@ -190,7 +250,11 @@ let rec expression (context: Context) scope expr =
+     | CallFunc(s,args,_,_) -> call context scope s args
+ and targetEvaluation context scope target = targetIndexes target |> List.map (expression context scope) |> combineAll
+ and targetWrite context scope target =
+-    let root = match targetRoot target with Some s -> write s | None -> {empty with WritesUnknown=true}
++    let element = match target with WriteArrayElem _ | DynamicWriteArrayElem _ -> true | _ -> false
++    let root =
++        match targetStorageRoot context.Program context.Aliases.Storages scope target with
++        | Some s -> if element then write s else {write s with DescriptorWrites=Set.singleton s}
++        | None -> {empty with WritesUnknown=true;DescriptorWritesUnknown=not element}
+     let extra =
+         match target with
+         | WriteVar(s,_,_) ->
+@@ -202,7 +266,7 @@ and targetWrite context scope target =
+ and call context scope symbol args =
+     let evaluated = args |> List.map (function
+         | ValueArg e -> expression context scope e
+-        | RefArg t -> combine (targetEvaluation context scope t) (match targetRoot t with Some s -> read s | None -> {empty with ReadsUnknown=true})) |> combineAll
++        | RefArg t -> combine (targetEvaluation context scope t) (readRoot(targetStorageRoot context.Program context.Aliases.Storages scope t))) |> combineAll
+     let known = context.Program.Routines |> List.tryFind (fun r -> r.Symbol=symbol)
+     match known,context.Summaries.TryFind symbol with
+     | Some routine,Some summary ->
+@@ -210,23 +274,34 @@ and call context scope symbol args =
+         let formals = Set.ofList parameters
+         let locals = routine.Locals |> List.map _.Symbol |> Set.ofList
+         let externalSymbols symbols = Set.difference symbols (Set.union formals locals)
+-        let mutable reads,writes = externalSymbols summary.Reads,externalSymbols summary.Writes
+-        let mutable readsUnknown,writesUnknown = summary.ReadsUnknown,summary.WritesUnknown
+-        for index in 0..min parameters.Length args.Length-1 do
+-            let formal = parameters[index]
+-            match actualRoot context.Aliases.Storages args[index] with
+-            | Some actual ->
+-                if summary.Reads.Contains formal then reads <- reads.Add actual
+-                if summary.Writes.Contains formal then writes <- writes.Add actual
+-            | None ->
+-                match args[index] with
+-                | RefArg _ ->
+-                    readsUnknown <- readsUnknown || summary.Reads.Contains formal
+-                    writesUnknown <- writesUnknown || summary.Writes.Contains formal
+-                | _ -> () // A scalar ValueArg is a private temporary, including (x%).
++        let arrayValue = function
++            | ReadVar(s,hirType,_) -> match hirType with Array _ -> true | _ -> context.Aliases.ArrayStorages.Contains s
++            | DynamicReadVar(name,hirType,_) ->
++                match hirType with Array _ -> true | _ -> context.Aliases.Storages |> Map.exists(fun s storage -> String.Equals(storage.Name,name,StringComparison.OrdinalIgnoreCase) && context.Aliases.ArrayStorages.Contains s)
++            | _ -> false
++        let project symbols unknown descriptor =
++            let mutable roots,unresolved=externalSymbols symbols,unknown
++            for index in 0..min parameters.Length args.Length-1 do
++                if symbols.Contains parameters[index] then
++                    let element=match args[index] with RefArg(WriteArrayElem _ | DynamicWriteArrayElem _ | WriteStringChar _ | DynamicWriteStringChar _) -> true | _ -> false
++                    match actualRoot context.Program context.Aliases.Storages context.Aliases.ArrayStorages scope args[index] with
++                    | Some actual when not(descriptor && element) -> roots<-roots.Add actual
++                    | Some _ -> () // A scalar reference to an element cannot resize its owner.
++                    | None ->
++                        match args[index] with
++                        | RefArg _ -> unresolved<-true
++                        | ValueArg value when arrayValue value -> unresolved<-true
++                        | _ -> () // Scalar ValueArgs are private, including parenthesized variables.
++            roots,unresolved
++        let reads,readsUnknown=project summary.Reads summary.ReadsUnknown false
++        let writes,writesUnknown=project summary.Writes summary.WritesUnknown false
++        let descriptors,descriptorsUnknown=project summary.DescriptorWrites summary.DescriptorWritesUnknown true
++        let loops,loopsUnknown=project summary.LoopMetadataWrites summary.LoopMetadataWritesUnknown false
+         // Even a total, empty body can fail while bindings/call-frame storage
+         // are created. These protocol effects belong to the call itself.
+-        combine evaluated {summary with Reads=reads;Writes=writes;ReadsUnknown=readsUnknown;WritesUnknown=writesUnknown;MayThrow=true;Allocates=true;ControlBarrier=true;Calls=summary.Calls.Add symbol}
++        combine evaluated {summary with Reads=reads;Writes=writes;ReadsUnknown=readsUnknown;WritesUnknown=writesUnknown
++                                        DescriptorWrites=descriptors;DescriptorWritesUnknown=descriptorsUnknown;LoopMetadataWrites=loops;LoopMetadataWritesUnknown=loopsUnknown
++                                        MayThrow=true;Allocates=true;ControlBarrier=true;Calls=summary.Calls.Add symbol}
+     | _ -> combine evaluated {unknown with Calls=Set.singleton symbol}
+ 
+ let evaluation context scope stmt =
+@@ -245,9 +320,9 @@ let rec statement context scope stmt =
+     | BuiltInCall _ -> combine evaluated unknown // Resident extensions can mutate arbitrary storage.
+     | Input(_,_,targets,_) -> combineAll [evaluated; targets |> List.map (targetWrite context scope) |> combineAll; {empty with InputOutput=true;MayThrow=true}]
+     | Read(targets,_) -> combineAll [evaluated; targets |> List.map (targetWrite context scope) |> combineAll; {empty with MayThrow=true;ControlBarrier=true}]
+-    | Dim(s,_,_) -> combine evaluated {write s with MayThrow=true;Allocates=true}
++    | Dim(s,_,_) -> combine evaluated {loopInitialisation context scope s with MayThrow=true;Allocates=true}
+     | If(_,yes,no,_) -> combineAll [evaluated;nested yes;nested (Option.defaultValue [] no)]
+-    | For(_,s,_,_,_,body,_) | ForSequence(_,s,_,_,_,_,_,body,_) -> combineAll [evaluated;read s;write s;nested body;{empty with MayThrow=true;ControlBarrier=true}]
++    | For(_,s,_,_,_,body,_) | ForSequence(_,s,_,_,_,_,_,body,_) -> combineAll [evaluated;readRoot(resolve context scope s);loopInitialisation context scope s;nested body;{empty with MayThrow=true;ControlBarrier=true}]
+     | Repeat(_,_,body,_) | WhenError(body,_) -> combine (nested body) {empty with ControlBarrier=true}
+     | Gosub _ | OnGosub _ -> combine evaluated unknown
+     | Goto _ | OnGoto _ | Exit _ | Next _ | Return _ | Restore _ -> {evaluated with ControlBarrier=true}
+@@ -262,12 +337,8 @@ let analyze program =
+         let context = {Program=program;Aliases=aliases;Summaries=summaries}
+         let next = program.Routines |> List.map (fun r ->
+             let effects = r.Body |> List.map (statement context (RoutineScope r.Symbol)) |> combineAll
+-            // Turbo names share vectors, including dynamically rebound locals.
+-            let sameNames symbols =
+-                aliases.Storages |> Map.toSeq |> Seq.choose (fun (s,storage) ->
+-                    if symbols |> Set.exists (fun root ->
+-                        aliases.Storages.TryFind root |> Option.exists (fun original -> String.Equals(original.Name,storage.Name,StringComparison.OrdinalIgnoreCase))) then Some s else None) |> Set.ofSeq
+-            let effects = {effects with Reads=sameNames effects.Reads;Writes=sameNames effects.Writes}
++            // Own LOCAL/formal bindings are projected out at a normal return.
++            // Free names that could be rebound remain explicitly unknown.
+             r.Symbol,combine summaries[r.Symbol] effects) |> Map.ofList
+         changed <- next<>summaries
+         summaries <- next
+diff --git a/SB/Optimization/TURBO-NATIVE-ARRAYS.md b/SB/Optimization/TURBO-NATIVE-ARRAYS.md
+index 05641de..6b8f5b4 100644
+--- a/SB/Optimization/TURBO-NATIVE-ARRAYS.md
++++ b/SB/Optimization/TURBO-NATIVE-ARRAYS.md
+@@ -14,7 +14,7 @@ With `--regalloc`, certified one-dimensional integer accesses can be lowered
+ into native IR and simple native FOR bodies. Checked records 1711/1712 and
+ range-proven records 1811/1812 carry one vector operand. They require a reaching
+ rank-one shape proof; they are not hints inferred solely from source arity.
+-Unknown ranks and dimensions, floats, strings and multidimensional accesses
++Unknown ranks and dimensions, floats, strings and higher-rank accesses
+ retain the generic helper paths. Existing low-level/default IR generation is
+ unchanged unless the new shape facts are explicitly supplied.
+ 
+@@ -56,6 +56,35 @@ no CPU return frames; any actual leaf spill area is still reserved in MAX_STACK
+ and QDOS dataspace. Shared helper fetches are included in the allocator's legacy
+ cost estimate, separately from actual executable byte counts.
+ 
++## Register-aware two-dimensional integers
++
++Certified rank-two integer accesses use native IR records 1911/1912. Their three
++word operands are the vector, a check mask (bit 0 checks the row, bit 1 checks
++the column), and an exact column length or zero for the live descriptor length.
++These records require a reaching rank proof. Each dimension can independently
++retain or omit its bounds check. Source arity alone is insufficient.
++
++The address operation computes `2 * (row * columnLength + column)` with unsigned
++word multiplication and long address additions. It preserves Turbo's address
++wrap behavior and introduces no arithmetic-overflow trap. This internal address
++calculation is separate from checked, word-valued BASIC arithmetic. The column
++length is read at descriptor offset 10 unless every reaching shape proves the
++same exact lengths. Guaranteed minimum bounds are never used as exact strides.
++
++Inputs, stored values and recovery snapshots may occupy registers, immediates
++or spill slots. One D0/D1 accumulator and A2 are scratch; the other registers,
++including FOR's D2-D4, remain intact. Column checks precede row checks, matching
++lib537's consumed subscript prefix. A failed store changes no element. Pending
++words and the current loop counter are restored before the original range-error
++handler runs. Descriptors and data pointers are reloaded for each operation;
++there is no row-pointer caching, pointer increment or loop address hoisting.
++
++When allocation is disabled or rejected, these records use the existing checked
++generic helper, or the original checked inline template if helper headroom is
++unavailable. Metadata operands are skipped consistently by the improver and
++both codegen passes. Higher ranks and noninteger elements keep their generic
++paths. The ordinary Turbo peephole pass remains enabled in every mode.
++
+ ## Representation and size
+ 
+ The selected IR uses explicit IDs 1111/1112 for integer load/store and 1143/1144
+diff --git a/SB/Optimization/TURBO-NATIVE-LOOPS.md b/SB/Optimization/TURBO-NATIVE-LOOPS.md
+index fe00315..1f404e7 100644
+--- a/SB/Optimization/TURBO-NATIVE-LOOPS.md
++++ b/SB/Optimization/TURBO-NATIVE-LOOPS.md
+@@ -75,13 +75,16 @@ success; live accumulators and reused operands use the ordinary spill slots.
+ The pinned counter, END and STEP remain untouched. See
+ [register allocation](TURBO-REGISTER-ALLOCATION.md) for recovery and clobber details.
+ 
+-Certified one-dimensional global integer array loads/stores are also eligible.
++Certified one- and two-dimensional global integer array loads/stores are also eligible.
+ Their explicit native IR records retain checked or proven bounds semantics and
+ use only D0/D1 and A2, preserving D2-D4 across each access. Scalar caches are
+ invalidated after stores; current descriptors are reloaded and no pointer is
+ hoisted. A bounds failure reconstructs the consumed-prefix maths state and
+ releases the complete spill plus loop-save depth before the existing runtime
+-range handler. Unknown-rank, multidimensional and floating accesses remain on
++range handler. Rank-two accesses check columns before rows and use either an
++exact proven column length or the current descriptor length for long offset
++arithmetic. Minimum bounds never stand in for exact strides. Unknown-rank,
++higher-dimensional and floating accesses remain on
+ their previous paths. The native loop dump includes its allocated operations.
+ 
+ ## Registers, stack and errors
+diff --git a/SB/Optimization/TurboNativeArrays.fs b/SB/Optimization/TurboNativeArrays.fs
+index 10a8d45..962868f 100644
+--- a/SB/Optimization/TurboNativeArrays.fs
++++ b/SB/Optimization/TurboNativeArrays.fs
+@@ -9,7 +9,7 @@ open HirTurboIrBackend
+ type Pool = { Code:byte[]; Addresses:Map<int,int> }
+ 
+ let isRankOneInteger = function 1711 | 1712 | 1811 | 1812 -> true | _ -> false
+-let canonicalOpcode = function 1711 -> 1111 | 1712 -> 1112 | 1811 -> 1611 | 1812 -> 1612 | op -> op
++let canonicalOpcode = function 1711 | 1911 -> 1111 | 1712 | 1912 -> 1112 | 1811 -> 1611 | 1812 -> 1612 | op -> op
+ let isUnchecked op = match canonicalOpcode op with 1611 | 1612 | 1643 | 1644 -> true | _ -> false
+ let isCompact op = match canonicalOpcode op with 1111 | 1112 | 1143 | 1144 | 1611 | 1612 | 1643 | 1644 -> true | _ -> false
+ let baseOpcode op = let op=canonicalOpcode op in if isUnchecked op then op-1500 else op%1000
+diff --git a/SB/Optimization/TurboNativeIr.fs b/SB/Optimization/TurboNativeIr.fs
+index 51c31a1..4b8d763 100644
+--- a/SB/Optimization/TurboNativeIr.fs
++++ b/SB/Optimization/TurboNativeIr.fs
+@@ -23,6 +23,8 @@ type Instruction =
+     | Divide of Value * DivisionOperation * Value * Value * stack:Value list
+     | LoadArrayWord of Value * vector:int * checkedBounds:bool * index:Value * stack:Value list
+     | StoreArrayWord of vector:int * checkedBounds:bool * index:Value * value:Value * stack:Value list
++    | LoadArrayWord2 of Value * vector:int * checks:int * columns:int * row:Value * column:Value * stack:Value list
++    | StoreArrayWord2 of vector:int * checks:int * columns:int * row:Value * column:Value * value:Value * stack:Value list
+     | Negate of Value * Value
+     // Snapshot in bottom-to-top maths-stack order at the failing P template.
+     // A checked increment also commits its wrapped destination before trapping.
+@@ -61,6 +63,10 @@ type AllocatedInstruction =
+     // load's result is clobbered. A2 reloads the descriptor/data each operation.
+     | LoadElement of vector:int * checkedBounds:bool * index:int * result:int * stack:RecoveryLocation list
+     | StoreElement of vector:int * checkedBounds:bool * index:int * value:RecoveryLocation * stack:RecoveryLocation list
++    // The accumulator is scratch; inputs/recovery locations never refer to it.
++    // A long MULU/ADDA address is internal, not a word-valued BASIC expression.
++    | LoadElement2 of vector:int * checks:int * columns:int * row:RecoveryLocation * column:RecoveryLocation * accumulator:int * stack:RecoveryLocation list
++    | StoreElement2 of vector:int * checks:int * columns:int * row:RecoveryLocation * column:RecoveryLocation * value:RecoveryLocation * accumulator:int * stack:RecoveryLocation list
+     | Negative of register:int
+     | Check of productRegister:int option * stack:RecoveryLocation list * store:(int * RecoveryLocation) option
+     | Store of vector:int * value:RecoveryLocation
+@@ -76,6 +82,7 @@ let supports = function
+     | HirTurboIrBackend.Instruction((1|2|5|6|7|8|20|1001|1005|1006|1007|263|268),[],_) -> true
+     | HirTurboIrBackend.Instruction((106|109|118),[Word _],_) -> true
+     | HirTurboIrBackend.Instruction((1711|1712|1811|1812),[Word _],_) -> true
++    | HirTurboIrBackend.Instruction((1911|1912),[Word _;Word mask;Word columns],_) when mask>=0 && mask<=3 && columns>=0 && columns<=32768 -> true
+     | HirTurboIrBackend.Instruction((337|338|339|340|1339|1340),[Word _;Word _],_) -> true
+     | _ -> false
+ 
+@@ -92,6 +99,8 @@ let private legacyCost = function
+     // compact helper. Shared helper bytes are not replicated in the executable.
+     | HirTurboIrBackend.Instruction((1711|1712),_,_) -> 46,18
+     | HirTurboIrBackend.Instruction((1811|1812),_,_) -> 40,17
++    | HirTurboIrBackend.Instruction((1911|1912),[_;Word 0;_],_) -> 56,25
++    | HirTurboIrBackend.Instruction((1911|1912),_,_) -> 72,29
+     | HirTurboIrBackend.Instruction(106,_,_) -> 4,1
+     | HirTurboIrBackend.Instruction((109|118),_,_) -> 6,4
+     | HirTurboIrBackend.Instruction(263,_,_) -> 2,1
+@@ -176,6 +185,15 @@ let lower startOffset endOffset items =
+             // A scalar parameter may point at an element of this same array.
+             // Immutable pending values survive, but scalar loads must be fresh.
+             variables.Clear()
++        | HirTurboIrBackend.Instruction(1911,[Word vector;Word mask;Word columns],_) ->
++            let column,row=pop(),pop()
++            let value=fresh()
++            code.Add(LoadArrayWord2(value,vector,mask,columns,row,column,(if mask<>0 then List.rev stack else [])))
++            push value
++        | HirTurboIrBackend.Instruction(1912,[Word vector;Word mask;Word columns],_) ->
++            let value,column,row=pop(),pop(),pop()
++            code.Add(StoreArrayWord2(vector,mask,columns,row,column,value,(if mask<>0 then List.rev stack else [])))
++            variables.Clear()
+         | _ -> invalidArg "items" "Only audited leaf integer operations are supported."
+     for value in List.rev stack do code.Add(PushMaths value)
+     let bytes,words=items |> List.map legacyCost |> List.fold (fun (bytes,words) (b,w) -> bytes+b,words+w) (0,0)
+@@ -186,12 +204,14 @@ let private sources = function
+     | Divide(_,_,a,b,stack) -> a::b::stack
+     | LoadArrayWord(_,_,_,index,stack) -> index::stack
+     | StoreArrayWord(_,_,index,value,stack) -> index::value::stack
++    | LoadArrayWord2(_,_,_,_,row,column,stack) -> row::column::stack
++    | StoreArrayWord2(_,_,_,row,column,value,stack) -> row::column::value::stack
+     | Negate(_,a) | StoreVector(_,a) | PushMaths a -> [a]
+     | OverflowCheck(product,stack,store) -> (Option.toList product)@stack@(store |> Option.map (snd >> List.singleton) |> Option.defaultValue [])
+     | _ -> []
+ 
+ let private destination = function
+-    | Constant(v,_) | LoadVector(v,_) | PopMaths v | Binary(v,_,_,_) | Divide(v,_,_,_,_) | LoadArrayWord(v,_,_,_,_) | Negate(v,_) -> Some v
++    | Constant(v,_) | LoadVector(v,_) | PopMaths v | Binary(v,_,_,_) | Divide(v,_,_,_,_) | LoadArrayWord(v,_,_,_,_) | LoadArrayWord2(v,_,_,_,_,_,_) | Negate(v,_) -> Some v
+     | _ -> None
+ 
+ type private ExpressionKey =
+@@ -243,6 +263,8 @@ let optimize (block:Block) =
+             | Divide(v,op,a,b,stack) -> Divide(v,op,resolve a,resolve b,List.map resolve stack)
+             | LoadArrayWord(v,vector,checkedBounds,index,stack) -> LoadArrayWord(v,vector,checkedBounds,resolve index,List.map resolve stack)
+             | StoreArrayWord(vector,checkedBounds,index,value,stack) -> StoreArrayWord(vector,checkedBounds,resolve index,resolve value,List.map resolve stack)
++            | LoadArrayWord2(v,vector,mask,columns,row,column,stack) -> LoadArrayWord2(v,vector,mask,columns,resolve row,resolve column,List.map resolve stack)
++            | StoreArrayWord2(vector,mask,columns,row,column,value,stack) -> StoreArrayWord2(vector,mask,columns,resolve row,resolve column,resolve value,List.map resolve stack)
+             | OverflowCheck(product,stack,store) -> OverflowCheck(Option.map resolve product,List.map resolve stack,store |> Option.map(fun (vector,value) -> vector,resolve value))
+             | StoreVector(vector,value) -> StoreVector(vector,resolve value)
+             | PushMaths value -> PushMaths(resolve value)
+@@ -536,6 +558,18 @@ let allocateWithContext maxFrameBytes (vectorRegisters:Map<int,int>) (block:Bloc
+                 let source=recoveryLocation stored
+                 let snapshot=stack |> List.map recoveryLocation
+                 code.Add(StoreElement(vector,checkedBounds,r,source,snapshot))
++            | LoadArrayWord2(value,vector,mask,columns,row,column,stack) ->
++                // Evict one scratch owner before capturing locations, even if
++                // it is an input used only here. Checks may use the accumulator
++                // before the address multiplication. D2-D4 stay read-only.
++                let accumulator=choose Set.empty
++                let row,column=recoveryLocation row,recoveryLocation column
++                let snapshot=stack |> List.map recoveryLocation
++                owners[accumulator]<-value;locations[value]<-Register accumulator
++                code.Add(LoadElement2(vector,mask,columns,row,column,accumulator,snapshot))
++            | StoreArrayWord2(vector,mask,columns,row,column,value,stack) ->
++                let accumulator=choose Set.empty
++                code.Add(StoreElement2(vector,mask,columns,recoveryLocation row,recoveryLocation column,recoveryLocation value,accumulator,List.map recoveryLocation stack))
+             for value in sources instruction |> List.distinct do retire value index
+             match destination instruction with
+             | Some value when not(last.ContainsKey value) -> retire value index
+@@ -586,6 +620,37 @@ let emitWithContext vectorTableOffset (vectorRegisters:Map<int,int>) (recoverySu
+         // Two sign-extended word additions form the full long offset without
+         // changing the index, including the highest valid byte offset 65534.
+         word(0xD4C0 ||| index);word(0xD4C0 ||| index)
++    let moveWord r = function
++        | RecoveryRegister source -> word(0x3000 ||| (r <<< 9) ||| source)
++        | RecoverySlot slot -> word(0x302F ||| (r <<< 9));word(slot*2)
++        | RecoveryImmediate n -> word(0x303C ||| (r <<< 9));word n
++    let elementAddress2 vector mask columns row column accumulator stack =
++        word 0x246E;displacement vector
++        let check location bound snapshot =
++            let r=match location with RecoveryRegister r -> r | _ -> moveWord accumulator location;accumulator
++            let failureBytes=recoveryBytes frame snapshot None + recoverySuffix.Length
++            if failureBytes+2>32767 then invalidArg "allocation" "Rank-two array recovery exceeds a 68000 word branch."
++            word(0x4A40 ||| r);word 0x6B00;word 10
++            word(0xB06A ||| (r <<< 9));word bound
++            word 0x6B00;word(failureBytes+2)
++            recovery 0x8AE0 snapshot None
++        // lib537 consumes/checks the last source subscript first. On a column
++        // failure the row is still on the maths stack; the value is consumed.
++        if mask &&& 2<>0 then check column 10 (stack@[row])
++        if mask &&& 1<>0 then check row 12 stack
++        moveWord accumulator row
++        if columns=0 then word(0xC0EA ||| (accumulator <<< 9));word 10
++        else word(0xC0FC ||| (accumulator <<< 9));word columns
++        word 0x2452 // reload current data pointer after descriptor accesses
++        // Long address additions reproduce Turbo's modulo-32-bit offset rules.
++        // They are not checked BASIC arithmetic, and do not truncate at 16 bits.
++        word(0xD5C0 ||| accumulator);word(0xD5C0 ||| accumulator)
++        let addColumn () =
++            match column with
++            | RecoveryRegister r -> word(0xD4C0 ||| r)
++            | RecoverySlot slot -> word 0xD4EF;word(slot*2)
++            | RecoveryImmediate n -> word 0xD4FC;word n
++        addColumn();addColumn()
+     if frame>0 then word 0x4FEF;word(-frame)
+     for instruction in allocation.Instructions do
+         match instruction with
+@@ -660,6 +725,12 @@ let emitWithContext vectorTableOffset (vectorRegisters:Map<int,int>) (recoverySu
+         | StoreElement(vector,checkedBounds,index,value,stack) ->
+             elementAddress vector checkedBounds index stack
+             writeWord value
++        | LoadElement2(vector,mask,columns,row,column,accumulator,stack) ->
++            elementAddress2 vector mask columns row column accumulator stack
++            word(0x3012 ||| (accumulator <<< 9))
++        | StoreElement2(vector,mask,columns,row,column,value,accumulator,stack) ->
++            elementAddress2 vector mask columns row column accumulator stack
++            writeWord value
+         | Check(product,stack,store) ->
+             let failureBytes=recoveryBytes frame stack store + recoverySuffix.Length
+             if failureBytes+2>32767 then invalidArg "allocation" "Overflow recovery exceeds a 68000 word branch."
+@@ -685,6 +756,9 @@ let private dataWords allocation =
+         | Store(_,value) -> 3+(match value with RecoverySlot _ -> 1 | _ -> 0)
+         | LoadElement(_,checkedBounds,_,_,_) -> if checkedBounds then 6 else 5
+         | StoreElement(_,checkedBounds,_,value,_) -> (if checkedBounds then 6 else 5)+(match value with RecoverySlot _ -> 1 | _ -> 0)
++        | LoadElement2(_,mask,columns,row,column,_,_) | StoreElement2(_,mask,columns,row,column,_,_,_) ->
++            6+(if columns=0 then 1 else 0)+(if mask &&& 1<>0 then 2 else 0)+(if mask &&& 2<>0 then 2 else 0)+
++            ([row;column] |> List.sumBy(function RecoverySlot _ -> 1 | _ -> 0))
+         | Spill _ | Reload _ | Pop _ | Push _ -> 1
+         | _ -> 0)
+ 
+@@ -711,6 +785,9 @@ let plan maxFrameBytes vectorTableOffset bytes : Result<Report,string> =
+                         | Check(_,stack,store) -> recoveryBytes (allocation.SpillSlots*2) stack store
+                         | Division(_,_,_,stack) -> recoveryBytes (allocation.SpillSlots*2) stack None
+                         | LoadElement(_,true,_,_,stack) | StoreElement(_,true,_,_,stack) -> recoveryBytes (allocation.SpillSlots*2) stack None
++                        | LoadElement2(_,mask,_,row,_,_,stack) | StoreElement2(_,mask,_,row,_,_,_,stack) ->
++                            (if mask &&& 2<>0 then recoveryBytes (allocation.SpillSlots*2) (stack@[row]) None else 0)+
++                            (if mask &&& 1<>0 then recoveryBytes (allocation.SpillSlots*2) stack None else 0)
+                         | _ -> 0)
+                     // A bus-word estimate includes instruction fetches and data
+                     // traffic. It is not a calibrated MC68008 timing model.
+diff --git a/SB/Optimization/TurboNativeLoops.fs b/SB/Optimization/TurboNativeLoops.fs
+index ff9c4b6..3752946 100644
+--- a/SB/Optimization/TurboNativeLoops.fs
++++ b/SB/Optimization/TurboNativeLoops.fs
+@@ -104,7 +104,7 @@ let private emit vectorTableOffset counter constantStep body =
+ /// Selection is deliberately restricted to programs without reference/local
+ /// binding, error continuation or opaque memory mutation. A body may contain
+ /// only balanced integer leaf operations and may never write its counter.
+-/// Labels, calls, arrays, comparisons and nested loops remain ordinary code.
++/// Labels, calls, generic arrays, comparisons and nested loops remain ordinary code.
+ let plan maxExtraBytes vectorTableOffset source : Result<Report,string> =
+     decode source |> Result.map(fun decoded ->
+         let items=List.toArray decoded
+@@ -162,11 +162,14 @@ let plan maxExtraBytes vectorTableOffset source : Result<Report,string> =
+                         | Instruction(118,_,_) -> if depth<1 then valid<-false else depth<-depth-1
+                         | Instruction((1711|1811),_,_) -> if depth<1 then valid<-false
+                         | Instruction((1712|1812),_,_) -> if depth<2 then valid<-false else depth<-depth-2
++                        | Instruction(1911,_,_) -> if depth<2 then valid<-false else depth<-depth-1
++                        | Instruction(1912,_,_) -> if depth<3 then valid<-false else depth<-depth-3
+                         | _ -> ()
+                         match normalized with
+                         | Instruction((109|118|337|338|339|340|1339|1340 as op),Word v::_,_) ->
+                             if not(globals.Contains v) || (op<>109 && v=counter) then valid<-false
+                         | Instruction((1711|1712|1811|1812),[Word v],_) -> if not(arrays.Contains v) then valid<-false
++                        | Instruction((1911|1912),Word v::_,_) -> if not(arrays.Contains v) then valid<-false
+                         | _ -> ()
+                         body.Add normalized
+                         if body.Count>256 then valid<-false;reading<-false
+diff --git a/SB/Optimization/TurboNativeRegions.fs b/SB/Optimization/TurboNativeRegions.fs
+index 3d74b1d..a259d2a 100644
+--- a/SB/Optimization/TurboNativeRegions.fs
++++ b/SB/Optimization/TurboNativeRegions.fs
+@@ -23,7 +23,7 @@ let private saving item =
+     // Removing the first multiply-by-one and offset addition also offsets the
+     // wrapper/indexer call overhead. Strings and allocation stay threaded.
+     | 111 | 112 | 143 | 144 ->
+-        Some(if (match item with Instruction(_,_,comment) -> comment=rangeProvenArrayComment || comment=provenRankOneIntegerArrayComment | _ -> false) then 5 else 2)
++        Some(if (match item with Instruction(_,_,comment) -> comment=rangeProvenArrayComment || comment=provenRankOneIntegerArrayComment || tryRankTwoIntegerArrayComment comment |> Option.exists(fun (mask,_) -> mask=0) | _ -> false) then 5 else 2)
+     // Integer DIV/MOD share the same checked template in both modes, including
+     // zero and -32768/-1 failures, floor division and divisor-signed remainder.
+     // Comparisons keep Turbo's six-byte float Boolean result.
+@@ -85,6 +85,9 @@ let select enabled (output: TurboIrOutput) : Result<TurboIrOutput, string list>
+                 if benefit > 6 then
+                     items.Add(Instruction(254, [], "audited native region"))
+                     items.AddRange(prefix |> Array.map (function
++                        | Instruction((111|112 as op),[Word vector],comment) when (tryRankTwoIntegerArrayComment comment).IsSome ->
++                            let checks,columns=(tryRankTwoIntegerArrayComment comment).Value
++                            Instruction(op+1800,[Word vector;Word checks;Word columns],comment)
+                         | Instruction((1|5|6|7 as op),args,comment) when comment<>rangeProvenIntegerComment ->
+                             Instruction(op+1000,args,"checked native integer arithmetic")
+                         | Instruction((111|112 as op),args,comment) when comment=provenRankOneIntegerArrayComment ->
+diff --git a/SB/TurboCodegen.fs b/SB/TurboCodegen.fs
+index a0df0fe..d956b6f 100644
+--- a/SB/TurboCodegen.fs
++++ b/SB/TurboCodegen.fs
+@@ -485,6 +485,8 @@ type private Generator(sourceLibrary: byte[], options: TurboCodegenOptions, sour
+     /// g_t3/g_t4/g_t2: a word read as a token.
+     member private this.Dispatchable(token: int) : (int * int) option =
+         if token >= lowName then this.NextToken()
++        elif token=1911 || token=1912 then
++            this.Lookup(TurboNativeArrays.baseOpcode token) |> Option.map(fun (_,record) -> token,record)
+         else this.Lookup(if TurboNativeArrays.isCompact token then TurboNativeArrays.baseOpcode token elif token >= 1000 then token - 1000 else token)
+ 
+     /// g_t2 onwards: a token below 1000.
+@@ -500,7 +502,8 @@ type private Generator(sourceLibrary: byte[], options: TurboCodegenOptions, sour
+ 
+     /// Skips a token's operands (the "Now skip parameters" code after klim).
+     member private this.SkipOperands(token: int, record: int) =
+-        if this.IsParameterised record then
++        if token=1911 || token=1912 then ic<-ic+6
++        elif this.IsParameterised record then
+             let _, header, _ = this.GetBytes record
+             if header &&& 0x80 = 0 then
+                 ic <- ic + (header &&& 0x1F)
+@@ -879,6 +882,19 @@ type private Generator(sourceLibrary: byte[], options: TurboCodegenOptions, sour
+     member private this.Instruction(token: int) =
+         // int_ins
+         if token = 2 || token = 34 then ()
++        elif token=1911 || token=1912 then
++            if pMode then fail "Rank-two native arrays require native mode."
++            match nativeArrayAddresses.TryFind(TurboNativeArrays.canonicalOpcode token) with
++            | Some address ->
++                let bytes=TurboNativeArrays.call vectTabAd (word ir ic) address
++                if pass<>0 then write bytes
++                objCode<-objCode+bytes.Length
++                ic<-ic+6
++            | None ->
++                // A rejected allocation/stack budget keeps the exact original
++                // checked array template; metadata operands have no template.
++                this.Instruction(TurboNativeArrays.baseOpcode token)
++                ic<-ic+4
+         elif not pMode && nativeArrayAddresses.ContainsKey(TurboNativeArrays.canonicalOpcode token) then
+             let address=nativeArrayAddresses[TurboNativeArrays.canonicalOpcode token]
+             let bytes=TurboNativeArrays.call vectTabAd (word ir ic) address
+diff --git a/SBTests/GeneratedTurboExecutionTests.fs b/SBTests/GeneratedTurboExecutionTests.fs
+index 7f244d6..8b3ae4a 100644
+--- a/SBTests/GeneratedTurboExecutionTests.fs
++++ b/SBTests/GeneratedTurboExecutionTests.fs
+@@ -161,6 +161,86 @@ let ``RankOne native FOR plans contain checked and proven accesses`` (hir:bool)
+         Assert.That(listing, Does.Match("Rank-one integer array accesses: [1-9]"))
+     finally Directory.Delete(directory,true)
+ 
++let rankTwoPrograms = [|
++    "10 DIM a%(3,7):total%=0\n20 FOR row%=0 TO 3\n30 FOR col%=0 TO 7\n40 a%(row%,col%)=row%*8+col%:total%=total%+a%(row%,col%)\n50 END FOR col%\n60 END FOR row%\n70 PRINT total%;\":\";a%(3,7);\":\";col%\n80 STOP", "496:31:7\n"
++    // One access has two reaching shapes. Minimum bounds cannot become strides.
++    "10 DIM flags%(0):flags%(0)=1\n20 IF flags%(0) THEN\n30 DIM a%(3,15)\n40 ELSE\n50 DIM a%(3,7)\n60 END IF\n70 row%=2:col%=3:a%(row%,col%)=-32768\n80 PRINT a%(2,3);\":\";a%(1,3)\n90 STOP", "-32768:0\n"
++    "10 DIM a%(3,15),indexes%(1):indexes%(0)=2:indexes%(1)=3\n20 a%(indexes%(0),indexes%(1))=99\n30 PRINT a%(2,3);\":\";a%(1,3)\n40 STOP", "99:0\n"
++    "10 DIM a%(3,7):row%=2:col%=3:a%(row%,col%)=7\n20 DIM a%(3,15)\n30 a%(row%,col%)=99\n40 PRINT a%(row%,col%)\n50 STOP", "99\n"
++    "10 DIM a%(1,1):a%(1,1)=7:work a%,a%\n20 PRINT a%(1,1)\n30 STOP\n100 DEFine PROCedure work(p%,q%)\n110 p%(1,1)=p%(1,1)+1:q%(1,1)=p%(1,1)+2\n120 END DEFine", "10\n"
++    "10 work:work\n20 STOP\n100 DEFine PROCedure work\n110 LOCal a%(2,3),row%,col%\n120 row%=1:col%=2:a%(row%,col%)=7\n130 a%(row%,col%)=a%(row%,col%)+1\n140 PRINT a%(row%,col%)\n150 END DEFine", "8\n8\n"
++    "10 DIM a%(1,1,1):a%(1,0,1)=17\n20 PRINT a%(1,0,1)\n30 STOP", "17\n"
++    "10 WHEN ERROR\n20 attempts%=attempts%+1\n30 IF attempts%<3 THEN RETRY\n40 PRINT ERNUM;\":\";attempts%;\":\";answer%\n50 STOP\n60 END WHEN\n70 DIM a%(1,2):row%=1:col%=3:answer%=42\n80 answer%=7+a%(row%,col%)\n90 PRINT \"wrong\"", "-4:3:42\n"
++    // All indices and the RHS are evaluated before either bounds check.
++    "10 WHEN ERROR\n20 PRINT ERNUM;\":\";a%(0,0)\n30 STOP\n40 END WHEN\n50 DIM a%(1,2):row%=3:col%=3:divisor%=0:a%(0,0)=42\n60 a%(row%,col%)=1 DIV divisor%\n70 PRINT \"wrong\"", "-18:42\n"
++|]
++let rankTwoModes = [|
++    for index in 0..rankTwoPrograms.Length-1 do
++        for hir in [false;true] do
++            for native,registers in [false,false;true,false;true,true] do
++                yield TestCaseData(index,hir,native,registers).SetName($"RankTwo execution {index} (HIR {hir}, native {native}, registers {registers})") |]
++
++[<TestCaseSource(nameof rankTwoModes)>]
++let ``rank-two native arrays preserve loops live shapes aliases locals and error ordering`` (index:int,hir:bool,native:bool,registers:bool) =
++    let source,expected=rankTwoPrograms[index]
++    withCompiledProgramMode hir [(if native then "--native-regions" else "--no-native-regions");(if registers then "--regalloc" else "--no-regalloc")] ".bas" source (fun executable ->
++        let result=run 3000000L executable
++        Assert.That(result.Output, Is.EqualTo(expected))
++        Assert.That(result.ExitCode, Is.Zero))
++
++[<Test>]
++let ``RankTwo native FOR report contains fixed rank accesses and reduces execution cost`` () =
++    let directory=Path.Combine(Path.GetTempPath(),$"rank-two-report-{Guid.NewGuid():N}")
++    Directory.CreateDirectory directory |> ignore
++    try
++        let source,expected=rankTwoPrograms[0]
++        let prefix=Path.Combine(directory,"array")
++        let capture registers=withCompiledProgramMode true ["--native-regions";(if registers then "--regalloc" else "--no-regalloc");"--dump-hir="+prefix] ".bas" source (fun executable -> executable.Length,run 3000000L executable)
++        let beforeSize,before=capture false
++        let afterSize,after=capture true
++        Assert.That(after.Output, Is.EqualTo(expected))
++        Assert.That(after.Output, Is.EqualTo(before.Output))
++        Assert.That(after.Steps, Is.LessThan(before.Steps))
++        let report=File.ReadAllText(prefix+".native-ir.txt")
++        Assert.That(report, Does.Contain("Native integer FOR loops: selected=1"))
++        Assert.That(report, Does.Contain("LoadElement2"))
++        Assert.That(report, Does.Contain("StoreElement2"))
++        TestContext.WriteLine($"Rank-two native FOR: executable bytes {beforeSize}->{afterSize}; instructions {before.Steps}->{after.Steps}.")
++    finally Directory.Delete(directory,true)
++
++let procedureEffectPrograms = [|
++    // Element-only callees preserve the caller's rank and exact shape.
++    "10 DIM a%(3,7):fill\n20 PRINT a%(3,7);\":\";a%(1,2)\n30 STOP\n100 DEFine PROCedure fill\n110 LOCal row%,col%\n120 FOR row%=0 TO 3\n130 FOR col%=0 TO 7\n140 put (row%),(col%)\n150 END FOR col%\n160 END FOR row%\n170 END DEFine\n200 DEFine PROCedure put(row%,col%)\n210 a%(row%,col%)=row%*8+col%\n220 END DEFine", "31:10\n"
++    // Callee-private vectors with the same names must not corrupt caller facts.
++    "10 DIM a%(3):a%(3)=8:total%=0\n20 FOR i%=1 TO 3\n30 private:total%=total%+i%\n40 END FOR i%\n50 PRINT total%;\":\";i%;\":\";a%(3)\n60 STOP\n100 DEFine PROCedure private\n110 LOCal i%,a%(1)\n120 FOR i%=10 TO 11\n130 a%(0)=i%\n140 END FOR i%\n150 END DEFine", "6:3:8\n"
++    // A reference changes the current word but does not replace captured NEXT.
++    "10 total%=0\n20 FOR i%=1 TO 3\n30 bump i%:total%=total%+i%\n40 END FOR i%\n50 PRINT total%;\":\";i%\n60 STOP\n100 DEFine PROCedure bump(p%)\n110 p%=p%+1\n120 END DEFine", "6:4\n"
++    "10 total%=0\n20 FOR i%=1 TO 3\n30 bump (i%):total%=total%+i%\n40 END FOR i%\n50 PRINT total%;\":\";i%\n60 STOP\n100 DEFine PROCedure bump(p%)\n110 p%=p%+1\n120 END DEFine", "6:3\n"
++    // A resize changes the stride and invalidates the former exact shape.
++    "10 DIM a%(3,15):a%(1,3)=4:resize\n20 row%=2:col%=3:a%(row%,col%)=9\n30 inspect a%\n40 STOP\n100 DEFine PROCedure resize\n110 DIM a%(3,7)\n120 END DEFine\n200 DEFine PROCedure inspect(p%)\n210 PRINT p%(2,3);\":\";p%(1,3)\n220 END DEFine", "9:0\n"
++    // A forwarding call maps array effects onto the actual array, not its shape.
++    "10 DIM a%(3):a%(3)=8:forward a%\n20 PRINT a%(0);\":\";a%(3)\n30 STOP\n100 DEFine PROCedure forward(p%)\n110 p%(3)=p%(3):put p%\n120 END DEFine\n200 DEFine PROCedure put(q%)\n210 q%(0)=7\n220 END DEFine", "7:8\n"
++    // Free names can resolve to a caller's local array rather than the global.
++    "10 DIM a%(3):a%(0)=9:outer\n20 PRINT a%(0)\n30 STOP\n100 DEFine PROCedure outer\n110 LOCal a%(1)\n120 a%(0)=4:inner\n130 PRINT a%(0)\n140 END DEFine\n200 DEFine PROCedure inner\n210 a%(0)=7\n220 END DEFine", "7\n9\n"
++    // Aliased parameters must kill values even when descriptors are preserved.
++    "10 a%=1:mutate a%,a%\n20 PRINT a%\n30 STOP\n100 DEFine PROCedure mutate(p%,q%)\n110 p%=1:q%=7:answer%=p%+1\n120 PRINT answer%\n130 END DEFine", "8\n7\n"
++    // Normal binding cleanup and array error ordering still use the runtime.
++    "10 WHEN ERROR\n20 PRINT ERNUM;\":\";a%(0)\n30 STOP\n40 END WHEN\n50 DIM a%(1):a%(0)=9:bad\n60 PRINT \"wrong\"\n100 DEFine PROCedure bad\n110 LOCal i%\n120 FOR i%=0 TO 2\n130 a%(i%)=7\n140 END FOR i%\n150 END DEFine", "-4:7\n"
++|]
++let procedureEffectModes = [|
++    for index in 0..procedureEffectPrograms.Length-1 do
++        for hir in [false;true] do
++            for native,registers in [false,false;true,false;true,true] do
++                yield TestCaseData(index,hir,native,registers).SetName($"Procedure effects execution {index} (HIR {hir}, native {native}, registers {registers})") |]
++
++[<TestCaseSource(nameof procedureEffectModes)>]
++let ``procedure effects retain dynamic bindings array shapes counter writes and errors`` (index:int,hir:bool,native:bool,registers:bool) =
++    let source,expected=procedureEffectPrograms[index]
++    withCompiledProgramMode hir [(if native then "--native-regions" else "--no-native-regions");(if registers then "--regalloc" else "--no-regalloc")] ".bas" source (fun executable ->
++        let result=run 3000000L executable
++        Assert.That(result.Output, Is.EqualTo(expected))
++        Assert.That(result.ExitCode, Is.Zero))
++
+ let divmodPrograms = [|
+     "10 a%=-7:b%=3\n20 q%=a% DIV b%:r%=a% MOD b%\n30 PRINT q%;\":\";r%;\":\";q%*b%+r%\n40 a%=7:b%=-3\n50 q%=a% DIV b%:r%=a% MOD b%\n60 PRINT q%;\":\";r%;\":\";q%*b%+r%\n70 STOP", "-3:2:-7\n-3:-2:7\n"
+     "10 q%=0:r%=0\n20 FOR i%=-7 TO 7 STEP 2\n30 q%=q%+(i% DIV 3):r%=r%+(i% MOD 3)\n40 END FOR i%\n50 PRINT q%;\":\";r%;\":\";i%\n60 STOP", "-3:9:7\n"
+diff --git a/SBTests/Optimization/HirAnalysisTests.fs b/SBTests/Optimization/HirAnalysisTests.fs
+index 7c0ea54..076f8b9 100644
+--- a/SBTests/Optimization/HirAnalysisTests.fs
++++ b/SBTests/Optimization/HirAnalysisTests.fs
+@@ -101,6 +101,59 @@ let private arrayRead indexes=ReadArrayElem(arraySymbol,indexes,HirType.Int,pos)
+ let private arraySafe indexes facts=Assert.That(facts.SafeArrayAccesses.Contains("A%",indexes), Is.True)
+ let private arrayChecked indexes facts=Assert.That(facts.SafeArrayAccesses.Contains("A%",indexes), Is.False)
+ 
++[<Test>]
++let ``rank-two facts separate per-dimension proofs from exact lengths`` () =
++    let indexes=[read x;number 2]
++    let facts=arrayProgram [Dim(arraySymbol,[number 3;number 7],pos);assign y (arrayRead indexes)] |> analyze
++    let shape=facts.TwoDimensionalIntegerAccesses["A%",indexes]
++    Assert.That(shape.ExactLengths, Is.EqualTo(Some(4,8)))
++    Assert.That(shape.ProvenRows, Is.False)
++    Assert.That(shape.ProvenColumns, Is.True)
++
++[<Test>]
++let ``rank-two branch joins do not turn minimum bounds into exact strides`` () =
++    let indexes=[number 1;number 5]
++    let facts=arrayProgram [If(read flag,[Dim(arraySymbol,[number 3;number 7],pos)],Some[Dim(arraySymbol,[number 3;number 15],pos)],pos)
++                            assign y (arrayRead indexes)] |> analyze
++    let shape=facts.TwoDimensionalIntegerAccesses["A%",indexes]
++    Assert.That(shape.ProvenRows && shape.ProvenColumns, Is.True)
++    Assert.That(shape.ExactLengths, Is.EqualTo(None))
++    arraySafe indexes facts
++
++[<Test>]
++let ``rank-two nonconstant DIM keeps rank without inventing an exact length`` () =
++    let indexes=[number 1;number 7]
++    let facts=arrayProgram [If(read flag,[assign x (number 7)],Some[assign x (number 15)],pos)
++                            Dim(arraySymbol,[number 3;read x],pos);assign y (arrayRead indexes)] |> analyze
++    let shape=facts.TwoDimensionalIntegerAccesses["A%",indexes]
++    Assert.That(shape.ProvenRows && shape.ProvenColumns, Is.True)
++    Assert.That(shape.ExactLengths, Is.EqualTo(None))
++
++[<Test>]
++let ``rank-two repeated expressions across resizing never reuse one exact shape`` () =
++    let indexes=[number 1;number 2]
++    let facts=arrayProgram [Dim(arraySymbol,[number 3;number 7],pos);assign y (arrayRead indexes)
++                            Dim(arraySymbol,[number 3;number 15],pos);assign z (arrayRead indexes)] |> analyze
++    Assert.That(facts.TwoDimensionalIntegerAccesses["A%",indexes].ExactLengths, Is.EqualTo(None))
++    let absent=arrayProgram [assign y (arrayRead indexes);Dim(arraySymbol,[number 3;number 7],pos);assign z (arrayRead indexes)] |> analyze
++    Assert.That(absent.TwoDimensionalIntegerAccesses, Is.Empty)
++
++[<Test>]
++let ``rank-two DIM and precise facts are invalidated together by opaque mutation`` () =
++    let indexes=[number 1;number 2]
++    let facts=arrayProgram [Dim(arraySymbol,[number 3;number 7],pos);BuiltInCall(NamedBuiltIn "UNKNOWN",None,[],pos);assign y (arrayRead indexes)] |> analyze
++    Assert.That(facts.TwoDimensionalIntegerAccesses, Is.Empty)
++
++[<Test>]
++let ``rank-two lowering encodes partial checks and an exact or dynamic column length`` () =
++    let indexes=[read x;number 2]
++    let initial=arrayProgram [Dim(arraySymbol,[number 3;number 7],pos);assign y (arrayRead indexes)]
++    let p={initial with Globals=initial.Globals |> List.map(fun s -> if s.Symbol=arraySymbol then {s with Dimensions=Some[3;7]} else s)}
++    let facts=analyze p
++    let options={HirTurboIrBackend.defaultOptions with TwoDimensionalIntegerAccesses=facts.TwoDimensionalIntegerAccesses}
++    let ir=HirTurboIrBackend.generateTurboIrFromHir options p |> Result.defaultWith(String.concat "; " >> failwith) |> TurboNativeRegions.select true |> Result.defaultWith(String.concat "; " >> failwith)
++    Assert.That(ir.Items |> List.exists(function HirTurboIrBackend.Instruction(1911,[_;HirTurboIrBackend.Word 1;HirTurboIrBackend.Word 8],_) -> true | _ -> false), Is.True)
++
+ [<Test>]
+ let ``rank-one selection is independent of index range proof`` () =
+     let indexes=[read x]
+@@ -439,12 +492,175 @@ let ``effects expose failures allocation IO and dynamic memory writes`` () =
+     let io=HirEffects.statement a.Effects MainScope (print(number 1))
+     Assert.That(io.InputOutput && io.MayThrow && io.Allocates, Is.True)
+     let dynamic=HirEffects.statement a.Effects MainScope (Assign(DynamicWriteVar("X%",Int,pos),number 1,pos))
+-    Assert.That(dynamic.WritesUnknown, Is.True)
++    Assert.That(dynamic.WritesUnknown, Is.False)
++    Assert.That(dynamic.Writes, Is.EqualTo(box(Set.singleton x)))
++    let unresolved=HirEffects.statement a.Effects MainScope (Assign(DynamicWriteVar("UNDECLARED%",Int,pos),number 1,pos))
++    Assert.That(unresolved.WritesUnknown && unresolved.DescriptorWritesUnknown, Is.True)
+     let arithmetic=HirEffects.expression a.Effects MainScope (binary Add (read x) (read y))
+     Assert.That(arithmetic.MayThrow, Is.True)
+     let text=HirEffects.expression a.Effects MainScope (Literal(ConstString "x",String,pos))
+     Assert.That(text.MayThrow && text.Allocates, Is.True)
+ 
++[<Test>]
++let ``procedure array effects resolve an unshadowed global and preserve exact bounds`` () =
++    let proc=SymbolId 100
++    let indexes=[read i;number 2]
++    let writer=routine proc "PUT" [] [Assign(DynamicWriteArrayElem("a%",[number 0;number 2],Int,pos),number 7,pos)]
++    let p=arrayProgram [Dim(arraySymbol,[number 3;number 7],pos)
++                        For(LoopId 1,i,number 0,number 3,number 1,[ProcCall(proc,None,[],pos);assign y (arrayRead indexes)],pos)]
++    let facts={p with Routines=[writer]} |> analyze
++    let effect=HirEffects.call facts.Effects MainScope proc []
++    Assert.That(effect.Writes, Is.EqualTo(box(Set.singleton arraySymbol)))
++    Assert.That(effect.WritesUnknown || effect.DescriptorWritesUnknown || effect.LoopMetadataWritesUnknown, Is.False)
++    Assert.That(effect.DescriptorWrites.IsEmpty && effect.LoopMetadataWrites.IsEmpty, Is.True)
++    Assert.That(facts.ArithmeticProofsEnabled, Is.True)
++    arraySafe indexes facts
++    Assert.That(facts.TwoDimensionalIntegerAccesses["A%",indexes].ExactLengths, Is.EqualTo(Some(4,8)))
++    let readEffect=HirEffects.expression facts.Effects (RoutineScope proc) (DynamicReadArrayElem("A%",indexes,Int,pos))
++    Assert.That(readEffect.Reads.Contains arraySymbol, Is.True)
++    Assert.That(readEffect.ReadsUnknown, Is.False)
++
++[<TestCase(false)>]
++[<TestCase(true)>]
++let ``procedure array formal element writes preserve the actual descriptor`` (valueArgument:bool) =
++    let proc,p=SymbolId 100,SymbolId 101
++    let formal={parameter "PUT" p "P%" with Storage={storage p "P%" (RoutineParameterStorage "PUT") with Type=Array Int}}
++    let writer=routine proc "PUT" [formal] [Assign(WriteArrayElem(p,[number 0],Int,pos),number 7,pos)]
++    let arg=if valueArgument then ValueArg(ReadVar(arraySymbol,Array Int,pos)) else RefArg(WriteVar(arraySymbol,Array Int,pos))
++    let source=arrayProgram [Dim(arraySymbol,[number 10],pos);ProcCall(proc,None,[arg],pos);assign y (arrayRead [number 10])]
++    let facts={source with Routines=[writer]} |> analyze
++    let effect=HirEffects.call facts.Effects MainScope proc [arg]
++    Assert.That(effect.Writes.Contains arraySymbol, Is.True)
++    Assert.That(effect.DescriptorWrites.IsEmpty && effect.LoopMetadataWrites.IsEmpty, Is.True)
++    arraySafe [number 10] facts
++
++[<Test>]
++let ``procedure indexed formals forward arrays even when HIR gives them advisory scalar types`` () =
++    let outer,inner,p,q=SymbolId 100,SymbolId 101,SymbolId 102,SymbolId 103
++    let put=routine inner "PUT" [parameter "PUT" q "Q%"] [Assign(WriteArrayElem(q,[number 0],Int,pos),number 7,pos)]
++    let forward=routine outer "FORWARD" [parameter "FORWARD" p "P%"] [Assign(WriteArrayElem(p,[number 0],Int,pos),number 1,pos);ProcCall(inner,None,[ValueArg(read p)],pos)]
++    let source=arrayProgram [Dim(arraySymbol,[number 10],pos);ProcCall(outer,None,[RefArg(WriteVar(arraySymbol,Array Int,pos))],pos);assign y (arrayRead [number 10])]
++    let facts={source with Routines=[put;forward]} |> analyze
++    Assert.That(facts.Effects.Aliases.ArrayStorages.Contains p && facts.Effects.Aliases.ArrayStorages.Contains q, Is.True)
++    let forwarded=HirEffects.call facts.Effects (RoutineScope outer) inner [ValueArg(read p)]
++    Assert.That(forwarded.Writes.Contains p, Is.True)
++    Assert.That(forwarded.DescriptorWrites.IsEmpty && forwarded.LoopMetadataWrites.IsEmpty, Is.True)
++    arraySafe [number 10] facts
++
++[<Test>]
++let ``procedure array resizing through a formal discards minimum and exact bounds`` () =
++    let proc,p=SymbolId 100,SymbolId 101
++    let formal={parameter "RESIZE" p "P%" with Storage={storage p "P%" (RoutineParameterStorage "RESIZE") with Type=Array Int}}
++    let writer=routine proc "RESIZE" [formal] [Dim(p,[number 0;number 0],pos)]
++    let arg=RefArg(WriteVar(arraySymbol,Array Int,pos))
++    let source=arrayProgram [Dim(arraySymbol,[number 3;number 7],pos);ProcCall(proc,None,[arg],pos);assign y (arrayRead [number 1;number 2])]
++    let facts={source with Routines=[writer]} |> analyze
++    let effect=HirEffects.call facts.Effects MainScope proc [arg]
++    Assert.That(effect.DescriptorWrites.Contains arraySymbol, Is.True)
++    arrayChecked [number 1;number 2] facts
++    Assert.That(facts.TwoDimensionalIntegerAccesses, Is.Empty)
++
++[<Test>]
++let ``procedure element references change contents without resizing the owning array`` () =
++    let proc,p=SymbolId 100,SymbolId 101
++    let setter=routine proc "SET" [parameter "SET" p "P%"] [assign p (number 7)]
++    let arg=RefArg(WriteArrayElem(arraySymbol,[number 0],Int,pos))
++    let source=arrayProgram [Dim(arraySymbol,[number 10],pos);ProcCall(proc,None,[arg],pos);assign y (arrayRead [number 10])]
++    let facts={source with Routines=[setter]} |> analyze
++    let effect=HirEffects.call facts.Effects MainScope proc [arg]
++    Assert.That(effect.Writes.Contains arraySymbol, Is.True)
++    Assert.That(effect.DescriptorWrites.IsEmpty && effect.LoopMetadataWrites.IsEmpty, Is.True)
++    arraySafe [number 10] facts
++
++[<TestCase(false)>]
++[<TestCase(true)>]
++let ``procedure scalar writes preserve FOR control but invalidate the referenced counter value`` (byReference:bool) =
++    let proc,p=SymbolId 100,SymbolId 101
++    let setter=routine proc "SET" [parameter "SET" p "P%"] [assign p (number 32767)]
++    let arg=if byReference then RefArg(target i) else ValueArg(read i)
++    let expr=binary Multiply (read i) (number 3)
++    let source=program [For(LoopId 1,i,number 1,number 3,number 1,[ProcCall(proc,None,[arg],pos);assign y expr],pos)]
++    let facts={source with Routines=[setter]} |> analyze
++    Assert.That(facts.ArithmeticProofsEnabled && (main facts).ForMetadataTrusted, Is.True)
++    let effect=HirEffects.call facts.Effects MainScope proc [arg]
++    Assert.That(effect.LoopMetadataWrites.IsEmpty && not effect.LoopMetadataWritesUnknown, Is.True)
++    if byReference then unproven expr facts else proven expr facts
++
++[<TestCase(false)>]
++[<TestCase(true)>]
++let ``procedure FOR initialization maps hidden metadata writes to references only`` (byReference:bool) =
++    let proc,p=SymbolId 100,SymbolId 101
++    let setter=routine proc "LOOP" [parameter "LOOP" p "P%"] [For(LoopId 2,p,number 1,number 2,number 1,[],pos)]
++    let arg=if byReference then RefArg(target i) else ValueArg(read i)
++    let source=program [For(LoopId 1,i,number 1,number 3,number 1,[ProcCall(proc,None,[arg],pos)],pos)]
++    let facts={source with Routines=[setter]} |> analyze
++    let effect=HirEffects.call facts.Effects MainScope proc [arg]
++    Assert.That(effect.LoopMetadataWrites.Contains i, Is.EqualTo(byReference))
++    Assert.That(facts.ArithmeticProofsEnabled, Is.EqualTo(not byReference))
++
++[<Test>]
++let ``procedure private LOCAL bindings do not leak metadata writes to a caller's same-named vector`` () =
++    let proc,localI,localA=SymbolId 100,SymbolId 101,SymbolId 102
++    let localCounter=storage localI "I%" (RoutineLocalStorage "PRIVATE")
++    let localArray={storage localA "A%" (RoutineLocalStorage "PRIVATE") with Type=Array Int;Dimensions=Some[1]}
++    let worker={routine proc "PRIVATE" [] [Dim(localA,[number 1],pos);For(LoopId 2,localI,number 1,number 2,number 1,[],pos)] with Locals=[localCounter;localArray]}
++    let expr=binary Multiply (read i) (number 3)
++    let source=arrayProgram [Dim(arraySymbol,[number 10],pos);For(LoopId 1,i,number 1,number 3,number 1,[ProcCall(proc,None,[],pos);assign y expr;assign z (arrayRead [number 10])],pos)]
++    let facts={source with Routines=[worker]} |> analyze
++    let effect=HirEffects.call facts.Effects MainScope proc []
++    Assert.That(effect.Writes.IsEmpty && effect.DescriptorWrites.IsEmpty && effect.LoopMetadataWrites.IsEmpty, Is.True)
++    Assert.That(facts.ArithmeticProofsEnabled, Is.True)
++    proven expr facts
++    arraySafe [number 10] facts
++
++[<Test>]
++let ``procedure free names that a caller LOCAL can shadow remain conservative`` () =
++    let proc,caller,localA=SymbolId 100,SymbolId 101,SymbolId 102
++    let localArray={storage localA "A%" (RoutineLocalStorage "CALLER") with Type=Array Int;Dimensions=Some[1]}
++    let writer=routine proc "RESIZE" [] [Dim(arraySymbol,[number 0],pos)]
++    let callerRoutine={routine caller "CALLER" [] [ProcCall(proc,None,[],pos)] with Locals=[localArray]}
++    let source=arrayProgram [Dim(arraySymbol,[number 10],pos);ProcCall(proc,None,[],pos);assign y (arrayRead [number 10])]
++    let facts={source with Routines=[writer;callerRoutine]} |> analyze
++    let effect=HirEffects.call facts.Effects MainScope proc []
++    Assert.That(effect.DescriptorWritesUnknown && effect.LoopMetadataWritesUnknown, Is.True)
++    arrayChecked [number 10] facts
++
++[<Test>]
++let ``procedure unresolved array content writes retain unknown value effects without inventing metadata changes`` () =
++    let proc,caller,localA=SymbolId 100,SymbolId 101,SymbolId 102
++    let localArray={storage localA "A%" (RoutineLocalStorage "CALLER") with Type=Array Int;Dimensions=Some[1]}
++    let writer=routine proc "PUT" [] [Assign(DynamicWriteArrayElem("A%",[number 0],Int,pos),number 7,pos)]
++    let callerRoutine={routine caller "CALLER" [] [] with Locals=[localArray]}
++    let facts={arrayProgram [] with Routines=[writer;callerRoutine]} |> analyze
++    let effect=HirEffects.call facts.Effects MainScope proc []
++    Assert.That(effect.WritesUnknown, Is.True)
++    Assert.That(effect.DescriptorWritesUnknown || effect.LoopMetadataWritesUnknown, Is.False)
++
++[<Test>]
++let ``procedure recursive array summaries converge without losing content-only precision`` () =
++    let first,second=SymbolId 100,SymbolId 101
++    let a=routine first "A" [] [ProcCall(second,None,[],pos)]
++    let b=routine second "B" [] [Assign(DynamicWriteArrayElem("A%",[number 0],Int,pos),number 7,pos);If(read flag,[ProcCall(first,None,[],pos)],None,pos)]
++    let source=arrayProgram [Dim(arraySymbol,[number 10],pos);ProcCall(first,None,[],pos);assign y (arrayRead [number 10])]
++    let facts={source with Routines=[a;b]} |> analyze
++    Assert.That(facts.Effects.Summaries[first].Writes.Contains arraySymbol, Is.True)
++    Assert.That(facts.Effects.Summaries[first].DescriptorWrites.IsEmpty && facts.Effects.Summaries[first].LoopMetadataWrites.IsEmpty, Is.True)
++    arraySafe [number 10] facts
++
++[<Test>]
++let ``procedure dynamic reference arguments retain escape tracking`` () =
++    let source=program [ProcCall(SymbolId 999,None,[RefArg(DynamicWriteVar("X%",Int,pos))],pos)]
++    let facts=analyze source
++    Assert.That(facts.Effects.Aliases.AddressTaken.Contains x && facts.Effects.Aliases.Escaped.Contains x, Is.True)
++
++[<Test>]
++let ``procedure unknown residents retain all memory and metadata barriers`` () =
++    let proc=SymbolId 100
++    let worker=routine proc "OPAQUE" [] [BuiltInCall(NamedBuiltIn "POKE",None,[number 1;number 2],pos)]
++    let facts={program [] with Routines=[worker]} |> analyze
++    let effect=HirEffects.call facts.Effects MainScope proc []
++    Assert.That(effect.WritesUnknown && effect.DescriptorWritesUnknown && effect.LoopMetadataWritesUnknown, Is.True)
++
+ [<Test>]
+ let ``analysis reports are deterministic and include reusable facts`` () =
+     let p=program [assign x (number 1);assign y (binary Add (read x) (number 1))]
+diff --git a/SBTests/Optimization/TurboNativeIrTests.fs b/SBTests/Optimization/TurboNativeIrTests.fs
+index af07fa4..0a8c997 100644
+--- a/SBTests/Optimization/TurboNativeIrTests.fs
++++ b/SBTests/Optimization/TurboNativeIrTests.fs
+@@ -557,6 +557,98 @@ let private arrayExecuteAllocation allocated length incoming scalarAlias expecte
+ 
+ let private arrayExecute items length incoming scalarAlias expectedError = arrayExecuteAllocation (allocation items) length incoming scalarAlias expectedError
+ 
++let private rankTwoExecute allocated rows columns dataPointer targetAddress scalarAlias expectedError =
++    let code=emit -256 allocated
++    let memory=Array.zeroCreate<byte> 0x80000
++    let cpu=Cpu(memory)
++    Array.blit code 0 memory 0x1000 code.Length
++    for r in 0..7 do cpu.D[r]<-0x12340000u+uint32 r;cpu.A[r]<-0x2000u+uint32(r*16)
++    cpu.A[1]<-0x5000u;cpu.A[6]<-0x8000u;cpu.A[7]<-0xF000u;cpu.Pc<-0x1000u
++    for v in 1..32 do
++        cpu.WriteLong(uint32(0x7F00+v*4),uint32(0x6000+v*8))
++        cpu.WriteWord(uint32(0x6000+v*8),uint32 v)
++    cpu.WriteLong(0x7F78u,0x7000u)
++    cpu.WriteLong(0x7000u,dataPointer)
++    cpu.WriteWord(0x7008u,1u);cpu.WriteWord(0x700Au,uint32 columns);cpu.WriteWord(0x700Cu,uint32 rows)
++    cpu.WriteWord(targetAddress,0xA55Au)
++    if scalarAlias then cpu.WriteLong(0x7F04u,targetAddress);cpu.WriteWord(targetAddress,7u)
++    cpu.WriteWord(0x5000u,99u)
++    let savedD=Array.copy cpu.D
++    let savedA=Array.copy cpu.A
++    let before=Array.copy memory[0x10000..]
++    let finish=0x1000u+uint32 code.Length
++    while cpu.Pc<>finish && cpu.Pc<>0xAE0u && cpu.Pc<>0xAD8u do
++        if cpu.Steps>100000L then failwith "Rank-two native IR did not finish."
++        cpu.Step()
++    Assert.That(cpu.Pc, Is.EqualTo(if expectedError then 0xAE0u else finish))
++    Assert.That(cpu.A[7], Is.EqualTo(savedA[7]))
++    for r in 2..7 do Assert.That(cpu.D[r], Is.EqualTo(savedD[r]),$"D{r} was clobbered.")
++    for r in [0;3;4;5;6] do Assert.That(cpu.A[r], Is.EqualTo(savedA[r]),$"A{r} was clobbered.")
++    if expectedError then Assert.That(memory[0x10000..], Is.EqualTo(box before),"Failed store changed array contents.")
++    cpu
++
++[<TestCase(1911,0,0)>]
++[<TestCase(1911,3,8)>]
++[<TestCase(1911,1,0)>]
++[<TestCase(1911,2,8)>]
++[<TestCase(1912,0,8)>]
++[<TestCase(1912,3,0)>]
++let ``rank-two native accesses use exact or current strides and long addresses`` (opcode:int,mask:int,stride:int) =
++    let target=0x10000u+uint32(2*(2*8+3))
++    let items=[op 106 [2];op 106 [3]] @ (if opcode=1912 then [op 106 [0x8001]] else []) @ [op opcode [30;mask;stride]] @ (if opcode=1911 then [op 118 [20]] else [])
++    let cpu=rankTwoExecute (allocation items) 4 8 0x10000u target false false
++    Assert.That((if opcode=1911 then cpu.ReadWord 0x60A0u else cpu.ReadWord target), Is.EqualTo(if opcode=1911 then 0xA55Au else 0x8001u))
++    Assert.That(cpu.A[1], Is.EqualTo(0x5000u))
++
++[<TestCase(0)>]
++[<TestCase(32768)>]
++let ``rank-two offsets can exceed a word without extra overflow traps`` (stride:int) =
++    let items=[op 106 [1];op 106 [0];op 1911 [30;3;stride];op 118 [20]]
++    let cpu=rankTwoExecute (allocation items) 2 32768 0x10000u 0x20000u false false
++    Assert.That(cpu.ReadWord 0x60A0u, Is.EqualTo(0xA55Au))
++
++[<Test>]
++let ``rank-two unsigned word multiplication and long address wrap match Turbo`` () =
++    let items=[op 106 [32767];op 106 [0];op 1911 [30;3;32768];op 118 [20]]
++    let cpu=rankTwoExecute (allocation items) 32768 32768 0x80020000u 0x10000u false false
++    Assert.That(cpu.ReadWord 0x60A0u, Is.EqualTo(0xA55Au))
++
++[<TestCase(1911,-1,-1,true)>]
++[<TestCase(1911,4,8,true)>]
++[<TestCase(1911,-32768,0,false)>]
++[<TestCase(1911,4,0,false)>]
++[<TestCase(1912,1,8,true)>]
++[<TestCase(1912,4,1,false)>]
++let ``rank-two failures retain the correct consumed subscript prefix`` (opcode:int,row:int,column:int,columnFails:bool) =
++    let items=[op 106 [42];op 106 [row];op 106 [column]] @ (if opcode=1912 then [op 106 [9]] else []) @ [op opcode [30;3;0]]
++    let cpu=rankTwoExecute (allocation items) 4 8 0x10000u 0x10000u false true
++    Assert.That(cpu.A[1], Is.EqualTo(if columnFails then 0x4FFCu else 0x4FFEu))
++    if columnFails then Assert.That(cpu.ReadWord 0x4FFCu, Is.EqualTo(uint32(row &&& 65535)))
++    Assert.That(cpu.ReadWord 0x4FFEu, Is.EqualTo(42u))
++    Assert.That(cpu.ReadWord 0x5000u, Is.EqualTo(99u))
++
++[<Test>]
++let ``rank-two stores invalidate scalar aliases without changing pending values`` () =
++    let items=[op 109 [1];op 106 [0];op 106 [0];op 106 [9];op 1912 [30;3;0];op 109 [1];op 5 [];op 118 [20]]
++    let cpu=rankTwoExecute (allocation items) 4 8 0x10000u 0x10000u true false
++    Assert.That(cpu.ReadWord 0x10000u, Is.EqualTo(9u))
++    Assert.That(readVector 20 cpu, Is.EqualTo(16))
++
++[<Test>]
++let ``rank-two register pressure preserves three live store operands`` () =
++    let items=[op 109 [1];op 268 [];op 109 [2];op 109 [1];op 109 [2];op 5 [];op 1912 [30;3;8];op 109 [1];op 109 [2];op 5 [];op 118 [20]]
++    // row=1, column=2, value=3, with a duplicated row remaining pending.
++    let cpu=rankTwoExecute (allocation items) 4 8 0x10000u 0x10014u false false
++    Assert.That(cpu.ReadWord 0x10014u, Is.EqualTo(3u))
++    Assert.That(readVector 20 cpu, Is.EqualTo(3))
++
++[<Test>]
++let ``rank-two proven dimensions reduce checks without changing the result`` () =
++    let run mask=rankTwoExecute (allocation [op 106 [1];op 106 [2];op 1911 [30;mask;8];op 118 [20]]) 4 8 0x10000u 0x10014u false false
++    let checkedCpu,provenCpu=run 3,run 0
++    Assert.That(readVector 20 provenCpu, Is.EqualTo(readVector 20 checkedCpu))
++    Assert.That(provenCpu.Steps, Is.LessThan(checkedCpu.Steps))
++
+ [<TestCase(false)>]
+ [<TestCase(true)>]
+ let ``an array store reads a spilled word directly without reloading it`` (fails:bool) =
+diff --git a/SBTests/Optimization/TurboNativeLoopsTests.fs b/SBTests/Optimization/TurboNativeLoopsTests.fs
+index 407a1e4..bdf8b57 100644
+--- a/SBTests/Optimization/TurboNativeLoopsTests.fs
++++ b/SBTests/Optimization/TurboNativeLoopsTests.fs
+@@ -331,6 +331,43 @@ let ``rank-one FOR bounds failure releases spill and loop frames and preserves p
+     Assert.That(cpu.ReadWord 0x10000u, Is.EqualTo(1u))
+     Assert.That(cpu.ReadWord 0x10002u, Is.EqualTo(2u))
+ 
++[<TestCase(0,8,false,false)>]
++[<TestCase(3,0,false,false)>]
++[<TestCase(3,8,true,false)>]
++[<TestCase(3,0,false,true)>]
++let ``rank-two native FOR keeps counters and releases both frames on either subscript failure`` (mask:int,stride:int,rowFails:bool,columnFails:bool) =
++    let row=if rowFails then 4 else 1
++    let body=[op 106 [row];op 109 [1];op 109 [1];op 1912 [4;mask;stride]
++              op 109 [2];op 109 [3];op 106 [row];op 109 [1];op 1911 [4;mask;stride]
++              op 1005 [];op 1005 [];op 118 [2]]
++    let report=plan 140 [op 126 [1;4]] body
++    Assert.That(report.Loops.Length, Is.EqualTo(1))
++    let loop=report.Loops.Head
++    let cpu=Cpu(Array.zeroCreate<byte> 0x40000)
++    Array.blit loop.Code 0 cpu.Memory 0x1000 loop.Code.Length
++    for r in 0..7 do cpu.D[r]<-0xABCD0000u+uint32 r;cpu.A[r]<-0x2000u+uint32(r*16)
++    cpu.A[1]<-0x5000u;cpu.A[6]<-0x8000u;cpu.A[7]<-0xF000u;cpu.Pc<-0x1000u
++    for v in 1..3 do cpu.WriteLong(uint32(0x7F00+v*4),uint32(0x6000+v*32))
++    cpu.WriteWord(0x6020u,0u);cpu.WriteWord(0x6026u,1u);cpu.WriteWord(0x6028u,3u)
++    cpu.WriteLong(0x7F10u,0x7000u);cpu.WriteLong(0x7000u,0x10000u)
++    cpu.WriteWord(0x7008u,1u);cpu.WriteWord(0x700Au,if columnFails then 2u else 8u);cpu.WriteWord(0x700Cu,4u)
++    let savedD,savedA=Array.copy cpu.D,Array.copy cpu.A
++    let finish=0x1000u+uint32 loop.Code.Length
++    while cpu.Pc<>finish && cpu.Pc<>0xAE0u do
++        if cpu.Steps>100000L then failwith "Rank-two FOR did not finish."
++        cpu.Step()
++    Assert.That(cpu.Pc, Is.EqualTo(if rowFails || columnFails then 0xAE0u else finish))
++    Assert.That(cpu.A[7], Is.EqualTo(savedA[7]))
++    for r in 2..7 do Assert.That(cpu.D[r], Is.EqualTo(savedD[r]))
++    for r in [0;3;4;5;6] do Assert.That(cpu.A[r], Is.EqualTo(savedA[r]))
++    Assert.That(read 1 cpu, Is.EqualTo(if rowFails then 0 elif columnFails then 2 else 3))
++    Assert.That(read 2 cpu, Is.EqualTo(if rowFails then 0 elif columnFails then 1 else 6))
++    Assert.That(cpu.A[1], Is.EqualTo(if columnFails then 0x4FFEu else 0x5000u))
++    if columnFails then Assert.That(cpu.ReadWord 0x4FFEu, Is.EqualTo(1u))
++    if not rowFails then
++        for column in 0..(if columnFails then 1 else 3) do
++            Assert.That(cpu.ReadWord(uint32(0x10000+2*((if columnFails then 2 else 8)+column))), Is.EqualTo(uint32 column))
++
+ [<Test>]
+ let ``native FOR reuses checked arithmetic within each iteration without caching its counter`` () =
+     let loop=selected [op 109 [1];op 106 [1];op 1005 [];op 109 [1];op 106 [1];op 1005 [];op 1007 [];op 118 [2]]
+diff --git a/SBTests/TurboCodegenTests.fs b/SBTests/TurboCodegenTests.fs
+index 38998ea..81b949b 100644
+--- a/SBTests/TurboCodegenTests.fs
++++ b/SBTests/TurboCodegenTests.fs
+@@ -571,6 +571,41 @@ let ``rank-one array pressure falls back without exceeding configured stack head
+     Assert.That(result.NativeAllocation.Value.StackExtraBytes, Is.Zero)
+     Assert.That((TurboExecutionHarness.run 2000000L (executableFile result)).Output, Is.EqualTo("19\n"))
+ 
++let private rankTwoIr mask stride source =
++    let raw=irOf source
++    let items=decode raw |> Result.defaultWith failwith
++    let selected=TurboNativeRegions.select true {Items=items;Bytes=raw;Listing=formatListing items;Warnings=[]} |> Result.defaultWith(String.concat "; " >> failwith)
++    selected.Items |> List.map(function
++        | Instruction((1111|1112 as op),args,comment) -> Instruction(op+800,args@[Word mask;Word stride],comment)
++        | item -> item) |> serialize
++
++[<TestCase(0)>]
++[<TestCase(3)>]
++let ``rank-two records fall back exactly with allocation disabled or insufficient headroom`` (mask:int) =
++    let specialized=rankTwoIr mask 8 "10 DIM a%(3,7)\n20 row%=1:col%=2:p%=7:q%=9:a%(row%,col%)=3\n30 result%=p%+(q%+a%(row%,col%))\n40 PRINT result%\n50 STOP"
++    let original=decode specialized |> Result.defaultWith failwith |> List.map(function
++        | Instruction((1911|1912 as op),[vector;_;_],comment) -> Instruction(op-800,[vector],comment)
++        | item -> item) |> serialize
++    for stack,registers in [350,false;9998,true] do
++        let options={portOptions with StackSize=Some stack}
++        let before=generateFromIr options original |> Result.defaultWith(String.concat "; " >> failwith)
++        let after=generateFromIr {options with LocalRegisterAllocation=registers} specialized |> Result.defaultWith(String.concat "; " >> failwith)
++        Assert.That(after.Code, Is.EqualTo(box before.Code))
++        Assert.That(after.Dataspace, Is.EqualTo(before.Dataspace))
++        Assert.That((TurboExecutionHarness.run 2000000L (executableFile after)).Output, Is.EqualTo("19\n"))
++
++[<TestCase(false,false)>]
++[<TestCase(true,false)>]
++[<TestCase(false,true)>]
++[<TestCase(true,true)>]
++let ``selected rank-two failures preserve RETRY and never commit a failed assignment`` (store:bool,rowFails:bool) =
++    let row,col=if rowFails then 2,1 else 1,3
++    let access=if store then "a%(row%,col%)=answer%+1" else "answer%=keep%+a%(row%,col%)"
++    let source = $"10 WHEN ERROR\n20 count%%=count%%+1\n30 IF count%%<3 THEN RETRY\n40 PRINT ERNUM;\":\";count%%;\":\";answer%%;\":\";a%%(0,0)\n50 STOP\n60 END WHEN\n70 DIM a%%(1,2)\n80 a%%(0,0)=7:row%%={row}:col%%={col}:answer%%=42:keep%%=9\n90 {access}\n100 PRINT \"wrong\""
++    let result=generateFromIr {portOptions with LocalRegisterAllocation=true} (rankTwoIr 3 0 source) |> Result.defaultWith(String.concat "; " >> failwith)
++    Assert.That(result.NativeAllocation.Value.Blocks |> List.collect(fun b -> b.Allocation.Instructions) |> List.exists(function TurboNativeIr.LoadElement2 _ | TurboNativeIr.StoreElement2 _ -> true | _ -> false), Is.True)
++    Assert.That((TurboExecutionHarness.run 2000000L (executableFile result)).Output, Is.EqualTo("-4:3:42:7\n"))
++
+ let private numericArrayIr copies compact =
+     let ir=irOf "10 DIM a%(2)\n20 i%=1\n30 a%(i%)=7\n40 r%=a%(i%)\n50 STOP" |> nativeBodyOf
+     let items=decode ir |> Result.defaultWith failwith

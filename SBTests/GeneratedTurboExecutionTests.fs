@@ -208,6 +208,103 @@ let ``RankTwo native FOR report contains fixed rank accesses and reduces executi
         TestContext.WriteLine($"Rank-two native FOR: executable bytes {beforeSize}->{afterSize}; instructions {before.Steps}->{after.Steps}.")
     finally Directory.Delete(directory,true)
 
+let procedureEffectPrograms = [|
+    // Element-only callees preserve the caller's rank and exact shape.
+    "10 DIM a%(3,7):fill\n20 PRINT a%(3,7);\":\";a%(1,2)\n30 STOP\n100 DEFine PROCedure fill\n110 LOCal row%,col%\n120 FOR row%=0 TO 3\n130 FOR col%=0 TO 7\n140 put (row%),(col%)\n150 END FOR col%\n160 END FOR row%\n170 END DEFine\n200 DEFine PROCedure put(row%,col%)\n210 a%(row%,col%)=row%*8+col%\n220 END DEFine", "31:10\n"
+    // Callee-private vectors with the same names must not corrupt caller facts.
+    "10 DIM a%(3):a%(3)=8:total%=0\n20 FOR i%=1 TO 3\n30 private:total%=total%+i%\n40 END FOR i%\n50 PRINT total%;\":\";i%;\":\";a%(3)\n60 STOP\n100 DEFine PROCedure private\n110 LOCal i%,a%(1)\n120 FOR i%=10 TO 11\n130 a%(0)=i%\n140 END FOR i%\n150 END DEFine", "6:3:8\n"
+    // A reference changes the current word but does not replace captured NEXT.
+    "10 total%=0\n20 FOR i%=1 TO 3\n30 bump i%:total%=total%+i%\n40 END FOR i%\n50 PRINT total%;\":\";i%\n60 STOP\n100 DEFine PROCedure bump(p%)\n110 p%=p%+1\n120 END DEFine", "6:4\n"
+    "10 total%=0\n20 FOR i%=1 TO 3\n30 bump (i%):total%=total%+i%\n40 END FOR i%\n50 PRINT total%;\":\";i%\n60 STOP\n100 DEFine PROCedure bump(p%)\n110 p%=p%+1\n120 END DEFine", "6:3\n"
+    // A resize changes the stride and invalidates the former exact shape.
+    "10 DIM a%(3,15):a%(1,3)=4:resize\n20 row%=2:col%=3:a%(row%,col%)=9\n30 inspect a%\n40 STOP\n100 DEFine PROCedure resize\n110 DIM a%(3,7)\n120 END DEFine\n200 DEFine PROCedure inspect(p%)\n210 PRINT p%(2,3);\":\";p%(1,3)\n220 END DEFine", "9:0\n"
+    // A forwarding call maps array effects onto the actual array, not its shape.
+    "10 DIM a%(3):a%(3)=8:forward a%\n20 PRINT a%(0);\":\";a%(3)\n30 STOP\n100 DEFine PROCedure forward(p%)\n110 p%(3)=p%(3):put p%\n120 END DEFine\n200 DEFine PROCedure put(q%)\n210 q%(0)=7\n220 END DEFine", "7:8\n"
+    // Free names can resolve to a caller's local array rather than the global.
+    "10 DIM a%(3):a%(0)=9:outer\n20 PRINT a%(0)\n30 STOP\n100 DEFine PROCedure outer\n110 LOCal a%(1)\n120 a%(0)=4:inner\n130 PRINT a%(0)\n140 END DEFine\n200 DEFine PROCedure inner\n210 a%(0)=7\n220 END DEFine", "7\n9\n"
+    // Aliased parameters must kill values even when descriptors are preserved.
+    "10 a%=1:mutate a%,a%\n20 PRINT a%\n30 STOP\n100 DEFine PROCedure mutate(p%,q%)\n110 p%=1:q%=7:answer%=p%+1\n120 PRINT answer%\n130 END DEFine", "8\n7\n"
+    // Normal binding cleanup and array error ordering still use the runtime.
+    "10 WHEN ERROR\n20 PRINT ERNUM;\":\";a%(0)\n30 STOP\n40 END WHEN\n50 DIM a%(1):a%(0)=9:bad\n60 PRINT \"wrong\"\n100 DEFine PROCedure bad\n110 LOCal i%\n120 FOR i%=0 TO 2\n130 a%(i%)=7\n140 END FOR i%\n150 END DEFine", "-4:7\n"
+|]
+let procedureEffectModes = [|
+    for index in 0..procedureEffectPrograms.Length-1 do
+        for hir in [false;true] do
+            for native,registers in [false,false;true,false;true,true] do
+                yield TestCaseData(index,hir,native,registers).SetName($"Procedure effects execution {index} (HIR {hir}, native {native}, registers {registers})") |]
+
+[<TestCaseSource(nameof procedureEffectModes)>]
+let ``procedure effects retain dynamic bindings array shapes counter writes and errors`` (index:int,hir:bool,native:bool,registers:bool) =
+    let source,expected=procedureEffectPrograms[index]
+    withCompiledProgramMode hir [(if native then "--native-regions" else "--no-native-regions");(if registers then "--regalloc" else "--no-regalloc")] ".bas" source (fun executable ->
+        let result=run 3000000L executable
+        Assert.That(result.Output, Is.EqualTo(expected))
+        Assert.That(result.ExitCode, Is.Zero))
+
+let callEntryPrograms = [|
+    procedureEffectPrograms[0]
+    // Different callers guarantee minimum bounds but require the live stride.
+    "10 DIM a%(3,7):put (7):inspect a%\n20 DIM a%(3,15):put (99):inspect a%\n30 STOP\n100 DEFine PROCedure put(value%)\n110 a%(2,3)=value%\n120 END DEFine\n200 DEFine PROCedure inspect(p%)\n210 PRINT p%(2,3);\":\";p%(1,3)\n220 END DEFine", "7:0\n99:0\n"
+    "10 DIM flags%(0):flags%(0)=1\n20 IF flags%(0) THEN\n30 DIM a%(3,15)\n40 ELSE\n50 DIM a%(3,7)\n60 END IF\n70 put (99):inspect a%\n80 STOP\n100 DEFine PROCedure put(value%)\n110 a%(2,3)=value%\n120 END DEFine\n200 DEFine PROCedure inspect(p%)\n210 PRINT p%(2,3);\":\";p%(1,3)\n220 END DEFine", "99:0\n"
+    "10 DIM a%(1,2):a%(1,2)=7\n20 answer%=read%()+read%()\n30 PRINT answer%\n40 STOP\n100 DEFine FuNction read%\n110 RETurn a%(1,2)\n120 END DEFine", "14\n"
+    // A sibling mutates the descriptor; the earlier read retains its value.
+    "10 DIM a%(3,7):a%(2,3)=7\n20 answer%=read%()+grow%()\n30 PRINT answer%:inspect a%\n40 STOP\n100 DEFine FuNction read%\n110 RETurn a%(2,3)\n120 END DEFine\n200 DEFine FuNction grow%\n210 DIM a%(3,15):a%(2,3)=99\n220 RETurn 0\n230 END DEFine\n300 DEFine PROCedure inspect(p%)\n310 PRINT p%(2,3);\":\";p%(1,3)\n320 END DEFine", "7\n99:0\n"
+    "10 DIM a%(3,15):a%(2,3)=99:shrink\n20 inspect a%\n30 STOP\n100 DEFine PROCedure shrink\n110 PRINT a%(2,3)\n120 DIM a%(3,7):a%(2,3)=7\n130 END DEFine\n200 DEFine PROCedure inspect(p%)\n210 PRINT p%(2,3);\":\";p%(1,3)\n220 END DEFine", "99\n7:0\n"
+    "10 DIM a%(3,7):a%(1,2)=5:visit (2)\n20 STOP\n100 DEFine PROCedure visit(depth%)\n110 PRINT a%(1,2)\n120 IF depth%>0 THEN visit (depth%-1)\n130 END DEFine", "5\n5\n5\n"
+    procedureEffectPrograms[6]
+    procedureEffectPrograms[1]
+|]
+let callEntryModes = [|
+    for index in 0..callEntryPrograms.Length-1 do
+        for hir in [false;true] do
+            for native,registers in [false,false;true,false;true,true] do
+                yield TestCaseData(index,hir,native,registers).SetName($"CallEntry execution {index} (HIR {hir}, native {native}, registers {registers})") |]
+
+[<TestCaseSource(nameof callEntryModes)>]
+let ``CallEntry shapes preserve actual strides mutation ordering and dynamic binding`` (index:int,hir:bool,native:bool,registers:bool) =
+    let source,expected=callEntryPrograms[index]
+    withCompiledProgramMode hir [(if native then "--native-regions" else "--no-native-regions");(if registers then "--regalloc" else "--no-regalloc")] ".bas" source (fun executable ->
+        let result=run 3000000L executable
+        Assert.That(result.Output, Is.EqualTo(expected))
+        Assert.That(result.ExitCode, Is.Zero))
+
+let callEntryFailures = [|
+    for row,column in [-1,0;2,0;0,3] do
+        for store in [false;true] do
+            for hir in [false;true] do
+                for native,registers in [false,false;true,false;true,true] do
+                    yield TestCaseData(row,column,store,hir,native,registers).SetName($"CallEntry bounds {row},{column} store {store}, HIR {hir}, native {native}, registers {registers}") |]
+
+[<TestCaseSource(nameof callEntryFailures)>]
+let ``CallEntry known ranks retain checks for unknown row and column values`` (row:int,column:int,store:bool,hir:bool,native:bool,registers:bool) =
+    let access=if store then "a%(row%,col%)=42" else "answer%=7+a%(row%,col%)"
+    let source = $"10 DIM a%%(1,2),indexes%%(1):indexes%%(0)={row}:indexes%%(1)={column}\n20 bad\n30 PRINT \"wrong\"\n40 STOP\n100 DEFine PROCedure bad\n110 LOCal row%%,col%%\n120 row%%=indexes%%(0):col%%=indexes%%(1)\n130 {access}\n140 END DEFine"
+    withCompiledProgramMode hir [(if native then "--native-regions" else "--no-native-regions");(if registers then "--regalloc" else "--no-regalloc")] ".bas" source (fun executable ->
+        let error=Assert.Throws<M68kFault>(fun () -> run 3000000L executable |> ignore)
+        Assert.That(error.Message, Does.Contain("Runtime error message:")))
+
+[<Test>]
+let ``CallEntry native plans include checked and proven global arrays inside procedures`` () =
+    let directory=Path.Combine(Path.GetTempPath(),$"call-entry-report-{Guid.NewGuid():N}")
+    Directory.CreateDirectory directory |> ignore
+    try
+        let prefix=Path.Combine(directory,"arrays")
+        let source,expected=callEntryPrograms[0]
+        let capture registers=withCompiledProgramMode true ["--native-regions";(if registers then "--regalloc" else "--no-regalloc");"--dump-hir="+prefix] ".bas" source (fun executable -> executable.Length,run 3000000L executable)
+        let beforeSize,before=capture false
+        let afterSize,after=capture true
+        Assert.That(after.Output, Is.EqualTo(expected))
+        Assert.That(after.Output, Is.EqualTo(before.Output))
+        Assert.That(after.Steps, Is.LessThan(before.Steps))
+        let report=File.ReadAllText(prefix+".native-ir.txt")
+        Assert.That(report, Does.Contain("Native integer FOR loops: selected=0"))
+        Assert.That(report, Does.Contain("StoreElement2"))
+        let analysis=File.ReadAllText(prefix+".analysis.txt")
+        Assert.That(analysis, Does.Match("Rank-two integer array accesses: [1-9]"))
+        Assert.That(analysis, Does.Match("Global array call-entry analysis: passes=[1-9][0-9]*; certified=True"))
+        TestContext.WriteLine($"CallEntry arrays: executable bytes {beforeSize}->{afterSize}; instructions {before.Steps}->{after.Steps}.")
+    finally Directory.Delete(directory,true)
+
 let divmodPrograms = [|
     "10 a%=-7:b%=3\n20 q%=a% DIV b%:r%=a% MOD b%\n30 PRINT q%;\":\";r%;\":\";q%*b%+r%\n40 a%=7:b%=-3\n50 q%=a% DIV b%:r%=a% MOD b%\n60 PRINT q%;\":\";r%;\":\";q%*b%+r%\n70 STOP", "-3:2:-7\n-3:-2:7\n"
     "10 q%=0:r%=0\n20 FOR i%=-7 TO 7 STEP 2\n30 q%=q%+(i% DIV 3):r%=r%+(i% MOD 3)\n40 END FOR i%\n50 PRINT q%;\":\";r%;\":\";i%\n60 STOP", "-3:9:7\n"

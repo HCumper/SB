@@ -1,0 +1,17 @@
+sequence,benchmark,compiler,trial,passes,expected,checksum,ticks,seconds,hostJobSeconds,stdout,status
+r015,route_planner,Turbo FAST,0,1,4701,4701,1807,36.14,36.180039405822754,"route_planner:4701
+",passed
+r016,route_planner,SB,0,1,4701,4701,1629,32.58,32.599870443344116,"route_planner:4701
+",passed
+r033,route_planner,SB,1,1,4701,4701,1629,32.58,32.59943127632141,"route_planner:4701
+",passed
+r034,route_planner,Turbo FAST,1,1,4701,4701,1803,36.06,36.080422163009644,"route_planner:4701
+",passed
+r051,route_planner,Turbo FAST,2,1,4701,4701,1803,36.06,36.080188035964966,"route_planner:4701
+",passed
+r052,route_planner,SB,2,1,4701,4701,1629,32.58,32.59992957115173,"route_planner:4701
+",passed
+r069,route_planner,SB,3,1,4701,4701,1629,32.58,32.6000611782074,"route_planner:4701
+",passed
+r070,route_planner,Turbo FAST,3,1,4701,4701,1803,36.06,36.07987308502197,"route_planner:4701
+",passed

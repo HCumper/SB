@@ -1,6 +1,10 @@
 # Turbo FAST versus SB in Q-emuLator
 
-[Latest timings with direct string append, 22 November 2026](Results/2026-11-22-string-append/README.md)
+[Procedure-entry array shapes: route-planner timing and verification, 22 November 2026](Results/2026-11-22-call-entry-shapes/README.md)
+
+[Rank-two native arrays: matrix timing and full verification, 22 November 2026](Results/2026-11-22-rank-two/README.md)
+
+[Full collection timings with direct string append, 22 November 2026](Results/2026-11-22-string-append/README.md)
 
 [External-timing baseline before string append](Results/2026-11-22-external/README.md)
 
@@ -123,9 +127,10 @@ timings.
 `Build-SB.ps1` uses `--hir-opt --native-regions --regalloc`. It independently builds
 each original program with the same compile-time metadata, requires an identical
 complete executable, and compares native FOR and arithmetic/array proof coverage.
-The ordinary arithmetic build selects one native FOR loop; sieve selects two.
-The other seven currently select none. Compiler checks and threaded fallbacks
-remain where required. Turbo FAST can omit overflow checks; supplied successful
+The ordinary arithmetic build selects one native FOR loop; sieve selects two
+and matrix multiplication selects three. The other six currently select none.
+Compiler checks and threaded fallbacks remain where required. Turbo FAST can
+omit overflow checks; supplied successful
 workloads keep integer arithmetic within signed 16-bit limits.
 
 `Test-Harness.py` checks untouched inputs, failure detection, old-format rejection
