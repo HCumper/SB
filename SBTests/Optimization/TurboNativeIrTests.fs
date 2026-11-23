@@ -557,6 +557,98 @@ let private arrayExecuteAllocation allocated length incoming scalarAlias expecte
 
 let private arrayExecute items length incoming scalarAlias expectedError = arrayExecuteAllocation (allocation items) length incoming scalarAlias expectedError
 
+let private rankTwoExecute allocated rows columns dataPointer targetAddress scalarAlias expectedError =
+    let code=emit -256 allocated
+    let memory=Array.zeroCreate<byte> 0x80000
+    let cpu=Cpu(memory)
+    Array.blit code 0 memory 0x1000 code.Length
+    for r in 0..7 do cpu.D[r]<-0x12340000u+uint32 r;cpu.A[r]<-0x2000u+uint32(r*16)
+    cpu.A[1]<-0x5000u;cpu.A[6]<-0x8000u;cpu.A[7]<-0xF000u;cpu.Pc<-0x1000u
+    for v in 1..32 do
+        cpu.WriteLong(uint32(0x7F00+v*4),uint32(0x6000+v*8))
+        cpu.WriteWord(uint32(0x6000+v*8),uint32 v)
+    cpu.WriteLong(0x7F78u,0x7000u)
+    cpu.WriteLong(0x7000u,dataPointer)
+    cpu.WriteWord(0x7008u,1u);cpu.WriteWord(0x700Au,uint32 columns);cpu.WriteWord(0x700Cu,uint32 rows)
+    cpu.WriteWord(targetAddress,0xA55Au)
+    if scalarAlias then cpu.WriteLong(0x7F04u,targetAddress);cpu.WriteWord(targetAddress,7u)
+    cpu.WriteWord(0x5000u,99u)
+    let savedD=Array.copy cpu.D
+    let savedA=Array.copy cpu.A
+    let before=Array.copy memory[0x10000..]
+    let finish=0x1000u+uint32 code.Length
+    while cpu.Pc<>finish && cpu.Pc<>0xAE0u && cpu.Pc<>0xAD8u do
+        if cpu.Steps>100000L then failwith "Rank-two native IR did not finish."
+        cpu.Step()
+    Assert.That(cpu.Pc, Is.EqualTo(if expectedError then 0xAE0u else finish))
+    Assert.That(cpu.A[7], Is.EqualTo(savedA[7]))
+    for r in 2..7 do Assert.That(cpu.D[r], Is.EqualTo(savedD[r]),$"D{r} was clobbered.")
+    for r in [0;3;4;5;6] do Assert.That(cpu.A[r], Is.EqualTo(savedA[r]),$"A{r} was clobbered.")
+    if expectedError then Assert.That(memory[0x10000..], Is.EqualTo(box before),"Failed store changed array contents.")
+    cpu
+
+[<TestCase(1911,0,0)>]
+[<TestCase(1911,3,8)>]
+[<TestCase(1911,1,0)>]
+[<TestCase(1911,2,8)>]
+[<TestCase(1912,0,8)>]
+[<TestCase(1912,3,0)>]
+let ``rank-two native accesses use exact or current strides and long addresses`` (opcode:int,mask:int,stride:int) =
+    let target=0x10000u+uint32(2*(2*8+3))
+    let items=[op 106 [2];op 106 [3]] @ (if opcode=1912 then [op 106 [0x8001]] else []) @ [op opcode [30;mask;stride]] @ (if opcode=1911 then [op 118 [20]] else [])
+    let cpu=rankTwoExecute (allocation items) 4 8 0x10000u target false false
+    Assert.That((if opcode=1911 then cpu.ReadWord 0x60A0u else cpu.ReadWord target), Is.EqualTo(if opcode=1911 then 0xA55Au else 0x8001u))
+    Assert.That(cpu.A[1], Is.EqualTo(0x5000u))
+
+[<TestCase(0)>]
+[<TestCase(32768)>]
+let ``rank-two offsets can exceed a word without extra overflow traps`` (stride:int) =
+    let items=[op 106 [1];op 106 [0];op 1911 [30;3;stride];op 118 [20]]
+    let cpu=rankTwoExecute (allocation items) 2 32768 0x10000u 0x20000u false false
+    Assert.That(cpu.ReadWord 0x60A0u, Is.EqualTo(0xA55Au))
+
+[<Test>]
+let ``rank-two unsigned word multiplication and long address wrap match Turbo`` () =
+    let items=[op 106 [32767];op 106 [0];op 1911 [30;3;32768];op 118 [20]]
+    let cpu=rankTwoExecute (allocation items) 32768 32768 0x80020000u 0x10000u false false
+    Assert.That(cpu.ReadWord 0x60A0u, Is.EqualTo(0xA55Au))
+
+[<TestCase(1911,-1,-1,true)>]
+[<TestCase(1911,4,8,true)>]
+[<TestCase(1911,-32768,0,false)>]
+[<TestCase(1911,4,0,false)>]
+[<TestCase(1912,1,8,true)>]
+[<TestCase(1912,4,1,false)>]
+let ``rank-two failures retain the correct consumed subscript prefix`` (opcode:int,row:int,column:int,columnFails:bool) =
+    let items=[op 106 [42];op 106 [row];op 106 [column]] @ (if opcode=1912 then [op 106 [9]] else []) @ [op opcode [30;3;0]]
+    let cpu=rankTwoExecute (allocation items) 4 8 0x10000u 0x10000u false true
+    Assert.That(cpu.A[1], Is.EqualTo(if columnFails then 0x4FFCu else 0x4FFEu))
+    if columnFails then Assert.That(cpu.ReadWord 0x4FFCu, Is.EqualTo(uint32(row &&& 65535)))
+    Assert.That(cpu.ReadWord 0x4FFEu, Is.EqualTo(42u))
+    Assert.That(cpu.ReadWord 0x5000u, Is.EqualTo(99u))
+
+[<Test>]
+let ``rank-two stores invalidate scalar aliases without changing pending values`` () =
+    let items=[op 109 [1];op 106 [0];op 106 [0];op 106 [9];op 1912 [30;3;0];op 109 [1];op 5 [];op 118 [20]]
+    let cpu=rankTwoExecute (allocation items) 4 8 0x10000u 0x10000u true false
+    Assert.That(cpu.ReadWord 0x10000u, Is.EqualTo(9u))
+    Assert.That(readVector 20 cpu, Is.EqualTo(16))
+
+[<Test>]
+let ``rank-two register pressure preserves three live store operands`` () =
+    let items=[op 109 [1];op 268 [];op 109 [2];op 109 [1];op 109 [2];op 5 [];op 1912 [30;3;8];op 109 [1];op 109 [2];op 5 [];op 118 [20]]
+    // row=1, column=2, value=3, with a duplicated row remaining pending.
+    let cpu=rankTwoExecute (allocation items) 4 8 0x10000u 0x10014u false false
+    Assert.That(cpu.ReadWord 0x10014u, Is.EqualTo(3u))
+    Assert.That(readVector 20 cpu, Is.EqualTo(3))
+
+[<Test>]
+let ``rank-two proven dimensions reduce checks without changing the result`` () =
+    let run mask=rankTwoExecute (allocation [op 106 [1];op 106 [2];op 1911 [30;mask;8];op 118 [20]]) 4 8 0x10000u 0x10014u false false
+    let checkedCpu,provenCpu=run 3,run 0
+    Assert.That(readVector 20 provenCpu, Is.EqualTo(readVector 20 checkedCpu))
+    Assert.That(provenCpu.Steps, Is.LessThan(checkedCpu.Steps))
+
 [<TestCase(false)>]
 [<TestCase(true)>]
 let ``an array store reads a spilled word directly without reloading it`` (fails:bool) =

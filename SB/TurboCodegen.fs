@@ -485,6 +485,8 @@ type private Generator(sourceLibrary: byte[], options: TurboCodegenOptions, sour
     /// g_t3/g_t4/g_t2: a word read as a token.
     member private this.Dispatchable(token: int) : (int * int) option =
         if token >= lowName then this.NextToken()
+        elif token=1911 || token=1912 then
+            this.Lookup(TurboNativeArrays.baseOpcode token) |> Option.map(fun (_,record) -> token,record)
         else this.Lookup(if TurboNativeArrays.isCompact token then TurboNativeArrays.baseOpcode token elif token >= 1000 then token - 1000 else token)
 
     /// g_t2 onwards: a token below 1000.
@@ -500,7 +502,8 @@ type private Generator(sourceLibrary: byte[], options: TurboCodegenOptions, sour
 
     /// Skips a token's operands (the "Now skip parameters" code after klim).
     member private this.SkipOperands(token: int, record: int) =
-        if this.IsParameterised record then
+        if token=1911 || token=1912 then ic<-ic+6
+        elif this.IsParameterised record then
             let _, header, _ = this.GetBytes record
             if header &&& 0x80 = 0 then
                 ic <- ic + (header &&& 0x1F)
@@ -879,6 +882,19 @@ type private Generator(sourceLibrary: byte[], options: TurboCodegenOptions, sour
     member private this.Instruction(token: int) =
         // int_ins
         if token = 2 || token = 34 then ()
+        elif token=1911 || token=1912 then
+            if pMode then fail "Rank-two native arrays require native mode."
+            match nativeArrayAddresses.TryFind(TurboNativeArrays.canonicalOpcode token) with
+            | Some address ->
+                let bytes=TurboNativeArrays.call vectTabAd (word ir ic) address
+                if pass<>0 then write bytes
+                objCode<-objCode+bytes.Length
+                ic<-ic+6
+            | None ->
+                // A rejected allocation/stack budget keeps the exact original
+                // checked array template; metadata operands have no template.
+                this.Instruction(TurboNativeArrays.baseOpcode token)
+                ic<-ic+4
         elif not pMode && nativeArrayAddresses.ContainsKey(TurboNativeArrays.canonicalOpcode token) then
             let address=nativeArrayAddresses[TurboNativeArrays.canonicalOpcode token]
             let bytes=TurboNativeArrays.call vectTabAd (word ir ic) address

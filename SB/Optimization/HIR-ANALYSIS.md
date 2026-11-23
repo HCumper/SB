@@ -85,6 +85,13 @@ are nonnegative. Joins retain the common rank and minimum upper bounds from
 every path. Storage declarations alone do not establish reaching facts when a
 DIM exists; implicit entry allocations follow the backend's explicit rules.
 
+Exact shape is tracked separately in `EntryExactBounds`. A DIM supplies exact
+bounds only when each evaluated dimension has a singleton interval. Joins keep
+an exact shape only when every incoming path agrees; an elementwise minimum is
+only a bounds guarantee. The same effect/alias invalidations kill both maps.
+This prevents a branch selecting different row strides, or a later DIM, from
+turning a safe minimum bound into an incorrect address calculation.
+
 Element stores preserve descriptor facts. Calls, unknown memory writes, scalar
 aliases and DIM/rebinding invalidate affected descriptor facts before reuse.
 Routine parameters have no assumed entry shape. Effects in sibling expressions
@@ -106,6 +113,14 @@ fully proven indexes use their unchecked variants. Unknown ranks, ambiguous
 dynamic bindings, sibling writes and uncertain continuation contexts retain the
 generic helpers. Neither source subscript count nor declaration rank alone is
 treated as a reaching shape proof.
+
+`TwoDimensionalIntegerAccesses` records reaching rank-two facts, separate row
+and column safety, and optional exact lengths. Every occurrence must have a
+trusted shape; range proofs are intersected and exact shapes must agree across
+all occurrences. Native IR uses the live descriptor column length otherwise.
+Unknown ranks, sibling mutation, ambiguous bindings and uncertain continuation
+contexts retain the generic path. This enables fixed-rank native FOR accesses
+without assuming dimensions are constants or caching descriptor pointers.
 
 ## Effects and aliases
 

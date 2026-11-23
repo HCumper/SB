@@ -331,6 +331,43 @@ let ``rank-one FOR bounds failure releases spill and loop frames and preserves p
     Assert.That(cpu.ReadWord 0x10000u, Is.EqualTo(1u))
     Assert.That(cpu.ReadWord 0x10002u, Is.EqualTo(2u))
 
+[<TestCase(0,8,false,false)>]
+[<TestCase(3,0,false,false)>]
+[<TestCase(3,8,true,false)>]
+[<TestCase(3,0,false,true)>]
+let ``rank-two native FOR keeps counters and releases both frames on either subscript failure`` (mask:int,stride:int,rowFails:bool,columnFails:bool) =
+    let row=if rowFails then 4 else 1
+    let body=[op 106 [row];op 109 [1];op 109 [1];op 1912 [4;mask;stride]
+              op 109 [2];op 109 [3];op 106 [row];op 109 [1];op 1911 [4;mask;stride]
+              op 1005 [];op 1005 [];op 118 [2]]
+    let report=plan 140 [op 126 [1;4]] body
+    Assert.That(report.Loops.Length, Is.EqualTo(1))
+    let loop=report.Loops.Head
+    let cpu=Cpu(Array.zeroCreate<byte> 0x40000)
+    Array.blit loop.Code 0 cpu.Memory 0x1000 loop.Code.Length
+    for r in 0..7 do cpu.D[r]<-0xABCD0000u+uint32 r;cpu.A[r]<-0x2000u+uint32(r*16)
+    cpu.A[1]<-0x5000u;cpu.A[6]<-0x8000u;cpu.A[7]<-0xF000u;cpu.Pc<-0x1000u
+    for v in 1..3 do cpu.WriteLong(uint32(0x7F00+v*4),uint32(0x6000+v*32))
+    cpu.WriteWord(0x6020u,0u);cpu.WriteWord(0x6026u,1u);cpu.WriteWord(0x6028u,3u)
+    cpu.WriteLong(0x7F10u,0x7000u);cpu.WriteLong(0x7000u,0x10000u)
+    cpu.WriteWord(0x7008u,1u);cpu.WriteWord(0x700Au,if columnFails then 2u else 8u);cpu.WriteWord(0x700Cu,4u)
+    let savedD,savedA=Array.copy cpu.D,Array.copy cpu.A
+    let finish=0x1000u+uint32 loop.Code.Length
+    while cpu.Pc<>finish && cpu.Pc<>0xAE0u do
+        if cpu.Steps>100000L then failwith "Rank-two FOR did not finish."
+        cpu.Step()
+    Assert.That(cpu.Pc, Is.EqualTo(if rowFails || columnFails then 0xAE0u else finish))
+    Assert.That(cpu.A[7], Is.EqualTo(savedA[7]))
+    for r in 2..7 do Assert.That(cpu.D[r], Is.EqualTo(savedD[r]))
+    for r in [0;3;4;5;6] do Assert.That(cpu.A[r], Is.EqualTo(savedA[r]))
+    Assert.That(read 1 cpu, Is.EqualTo(if rowFails then 0 elif columnFails then 2 else 3))
+    Assert.That(read 2 cpu, Is.EqualTo(if rowFails then 0 elif columnFails then 1 else 6))
+    Assert.That(cpu.A[1], Is.EqualTo(if columnFails then 0x4FFEu else 0x5000u))
+    if columnFails then Assert.That(cpu.ReadWord 0x4FFEu, Is.EqualTo(1u))
+    if not rowFails then
+        for column in 0..(if columnFails then 1 else 3) do
+            Assert.That(cpu.ReadWord(uint32(0x10000+2*((if columnFails then 2 else 8)+column))), Is.EqualTo(uint32 column))
+
 [<Test>]
 let ``native FOR reuses checked arithmetic within each iteration without caching its counter`` () =
     let loop=selected [op 109 [1];op 106 [1];op 1005 [];op 109 [1];op 106 [1];op 1005 [];op 1007 [];op 118 [2]]

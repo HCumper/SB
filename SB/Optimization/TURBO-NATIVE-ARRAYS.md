@@ -14,7 +14,7 @@ With `--regalloc`, certified one-dimensional integer accesses can be lowered
 into native IR and simple native FOR bodies. Checked records 1711/1712 and
 range-proven records 1811/1812 carry one vector operand. They require a reaching
 rank-one shape proof; they are not hints inferred solely from source arity.
-Unknown ranks and dimensions, floats, strings and multidimensional accesses
+Unknown ranks and dimensions, floats, strings and higher-rank accesses
 retain the generic helper paths. Existing low-level/default IR generation is
 unchanged unless the new shape facts are explicitly supplied.
 
@@ -55,6 +55,35 @@ accesses not consumed by a successful native IR/loop plan. Inlined accesses add
 no CPU return frames; any actual leaf spill area is still reserved in MAX_STACK
 and QDOS dataspace. Shared helper fetches are included in the allocator's legacy
 cost estimate, separately from actual executable byte counts.
+
+## Register-aware two-dimensional integers
+
+Certified rank-two integer accesses use native IR records 1911/1912. Their three
+word operands are the vector, a check mask (bit 0 checks the row, bit 1 checks
+the column), and an exact column length or zero for the live descriptor length.
+These records require a reaching rank proof. Each dimension can independently
+retain or omit its bounds check. Source arity alone is insufficient.
+
+The address operation computes `2 * (row * columnLength + column)` with unsigned
+word multiplication and long address additions. It preserves Turbo's address
+wrap behavior and introduces no arithmetic-overflow trap. This internal address
+calculation is separate from checked, word-valued BASIC arithmetic. The column
+length is read at descriptor offset 10 unless every reaching shape proves the
+same exact lengths. Guaranteed minimum bounds are never used as exact strides.
+
+Inputs, stored values and recovery snapshots may occupy registers, immediates
+or spill slots. One D0/D1 accumulator and A2 are scratch; the other registers,
+including FOR's D2-D4, remain intact. Column checks precede row checks, matching
+lib537's consumed subscript prefix. A failed store changes no element. Pending
+words and the current loop counter are restored before the original range-error
+handler runs. Descriptors and data pointers are reloaded for each operation;
+there is no row-pointer caching, pointer increment or loop address hoisting.
+
+When allocation is disabled or rejected, these records use the existing checked
+generic helper, or the original checked inline template if helper headroom is
+unavailable. Metadata operands are skipped consistently by the improver and
+both codegen passes. Higher ranks and noninteger elements keep their generic
+paths. The ordinary Turbo peephole pass remains enabled in every mode.
 
 ## Representation and size
 

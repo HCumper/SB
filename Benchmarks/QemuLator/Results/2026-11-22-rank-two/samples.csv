@@ -1,0 +1,17 @@
+sequence,benchmark,compiler,trial,passes,expected,checksum,ticks,seconds,hostJobSeconds,stdout,status
+r005,matrix_multiply,SB,0,10,1094,1094,113,2.26,2.2999720573425293,"matrix_multiply:1094
+",passed
+r006,matrix_multiply,Turbo FAST,0,10,1094,1094,182,3.64,3.6801042556762695,"matrix_multiply:1094
+",passed
+r023,matrix_multiply,Turbo FAST,1,10,1094,1094,183,3.66,3.6801187992095947,"matrix_multiply:1094
+",passed
+r024,matrix_multiply,SB,1,10,1094,1094,109,2.18,2.2203335762023926,"matrix_multiply:1094
+",passed
+r041,matrix_multiply,SB,2,10,1094,1094,109,2.18,2.219926118850708,"matrix_multiply:1094
+",passed
+r042,matrix_multiply,Turbo FAST,2,10,1094,1094,182,3.64,3.6994876861572266,"matrix_multiply:1094
+",passed
+r059,matrix_multiply,Turbo FAST,3,10,1094,1094,182,3.64,3.679381847381592,"matrix_multiply:1094
+",passed
+r060,matrix_multiply,SB,3,10,1094,1094,109,2.18,2.220266819000244,"matrix_multiply:1094
+",passed

@@ -104,7 +104,7 @@ let private emit vectorTableOffset counter constantStep body =
 /// Selection is deliberately restricted to programs without reference/local
 /// binding, error continuation or opaque memory mutation. A body may contain
 /// only balanced integer leaf operations and may never write its counter.
-/// Labels, calls, arrays, comparisons and nested loops remain ordinary code.
+/// Labels, calls, generic arrays, comparisons and nested loops remain ordinary code.
 let plan maxExtraBytes vectorTableOffset source : Result<Report,string> =
     decode source |> Result.map(fun decoded ->
         let items=List.toArray decoded
@@ -162,11 +162,14 @@ let plan maxExtraBytes vectorTableOffset source : Result<Report,string> =
                         | Instruction(118,_,_) -> if depth<1 then valid<-false else depth<-depth-1
                         | Instruction((1711|1811),_,_) -> if depth<1 then valid<-false
                         | Instruction((1712|1812),_,_) -> if depth<2 then valid<-false else depth<-depth-2
+                        | Instruction(1911,_,_) -> if depth<2 then valid<-false else depth<-depth-1
+                        | Instruction(1912,_,_) -> if depth<3 then valid<-false else depth<-depth-3
                         | _ -> ()
                         match normalized with
                         | Instruction((109|118|337|338|339|340|1339|1340 as op),Word v::_,_) ->
                             if not(globals.Contains v) || (op<>109 && v=counter) then valid<-false
                         | Instruction((1711|1712|1811|1812),[Word v],_) -> if not(arrays.Contains v) then valid<-false
+                        | Instruction((1911|1912),Word v::_,_) -> if not(arrays.Contains v) then valid<-false
                         | _ -> ()
                         body.Add normalized
                         if body.Count>256 then valid<-false;reading<-false

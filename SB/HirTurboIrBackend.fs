@@ -89,6 +89,13 @@ type TurboIrWindow = {
     Y: int
 }
 
+type RankTwoIntegerAccess = {
+    ProvenRows: bool
+    ProvenColumns: bool
+    /// Actual lengths, not guaranteed minimum upper bounds; None reads the descriptor.
+    ExactLengths: (int * int) option
+}
+
 type TurboIrOptions = {
     /// Startup windows to open, as Turbo's windows% setting (0-3). TURBO_windo n overrides it.
     WindowCount: int
@@ -111,6 +118,7 @@ type TurboIrOptions = {
     /// Numeric array accesses whose current descriptor and every index are proven safe.
     SafeArrayAccesses: Set<string * HirExpr list>
     OneDimensionalIntegerAccesses: Set<string * HirExpr list>
+    TwoDimensionalIntegerAccesses: Map<string * HirExpr list, RankTwoIntegerAccess>
 }
 
 type TurboIrOutput = {
@@ -145,6 +153,7 @@ let defaultOptions = {
     SafeIntegerExpressions = Set.empty
     SafeArrayAccesses = Set.empty
     OneDimensionalIntegerAccesses = Set.empty
+    TwoDimensionalIntegerAccesses = Map.empty
 }
 
 /// Internal listing annotation consumed by native-region selection. The binary
@@ -153,6 +162,19 @@ let rangeProvenIntegerComment = "range-proven integer arithmetic"
 let rangeProvenArrayComment = "range-proven array access"
 let rankOneIntegerArrayComment = "rank-one integer array access"
 let provenRankOneIntegerArrayComment = "range-proven rank-one integer array access"
+
+let rankTwoIntegerArrayComment facts =
+    let checks=(if facts.ProvenRows then 0 else 1) ||| (if facts.ProvenColumns then 0 else 2)
+    let columns=facts.ExactLengths |> Option.map snd |> Option.defaultValue 0
+    $"rank-two integer array access:{checks}:{columns}"
+
+let tryRankTwoIntegerArrayComment (comment:string) =
+    match comment.Split(':') with
+    | [|"rank-two integer array access";checks;columns|] ->
+        match Int32.TryParse checks,Int32.TryParse columns with
+        | (true,mask),(true,stride) when mask>=0 && mask<=3 && stride>=0 && stride<=32768 -> Some(mask,stride)
+        | _ -> None
+    | _ -> None
 
 /// The listing written beside a generated stream.
 let listingFileName (outputFileName: string) = outputFileName + ".lst"
@@ -367,6 +389,8 @@ let private operandShapes =
     for opcode in two do shapes[opcode] <- FixedWords 2
     shapes[138] <- FixedWords 3
     shapes[139] <- FixedWords 3
+    shapes[1911] <- FixedWords 3 // vector, checked-dimension mask, exact column length (0 = dynamic).
+    shapes[1912] <- FixedWords 3
     shapes[247] <- FixedWords 9
     shapes[169] <- TextShape
     shapes[170] <- TextShape
@@ -390,6 +414,8 @@ let private vectorOperandPositions =
                     175; 176; 182; 230; 232; 246; 249; 253; 257; 262; 264; 265; 266; 293; 294; 337; 338; 339; 340
                     370; 374; 375; 382; 24; 26; 56; 58; 360; 227; 1339; 1340; 1111; 1112; 1143; 1144; 1611; 1612; 1643; 1644; 1711; 1712; 1811; 1812 ] do
         positions[opcode] <- 0
+    positions[1911] <- 0
+    positions[1912] <- 0
     for opcode in [ 115; 126; 147; 158; 179; 190; 234; 224; 366 ] do
         positions[opcode] <- 1
     positions
@@ -399,7 +425,7 @@ let private threadedOnly = set [ 101; 114; 133; 146; 234; 247; 262; 327; 328; 38
 
 /// Raw data operations that belong in native data sections (spec 3).
 let private nativeDataOnly = set [ 107; 139; 171; 243; 261; 358; 370 ]
-let private rangeProvenNativeOnly = set [1611;1612;1643;1644;1811;1812]
+let private rangeProvenNativeOnly = set [1611;1612;1643;1644;1811;1812;1911;1912]
 
 // ---------------------------------------------------------------------------
 // Binary form, listing and decoding
@@ -597,6 +623,10 @@ let validate (bytes: byte[]) : string list =
                 if not native && rangeProvenNativeOnly.Contains opcode then
                     problems.Add $"Range-proven array opcode {opcode} requires native mode (record {index})."
                 let operandArray = List.toArray operands
+                match opcode,operands with
+                | (1911|1912),[_;Word mask;Word columns] when mask>3 || columns>32768 ->
+                    problems.Add $"Invalid rank-two array metadata (record {index})."
+                | _ -> ()
                 match labelOperandPositions.TryGetValue opcode with
                 | true, labelIndex when labelIndex < operandArray.Length ->
                     match operandArray[labelIndex] with
@@ -1344,7 +1374,7 @@ type private Emitter(options: TurboIrOptions, program: HirProgram) =
             this.EmitIndexes(scope, vector, indexes, pos)
             let key=normalizeIdentifier name,indexes
             let proven=options.SafeArrayAccesses.Contains key
-            let comment=if options.OneDimensionalIntegerAccesses.Contains key then (if proven then provenRankOneIntegerArrayComment else rankOneIntegerArrayComment) elif proven then rangeProvenArrayComment else vector.Name
+            let comment=match options.TwoDimensionalIntegerAccesses.TryFind key with Some facts -> rankTwoIntegerArrayComment facts | None -> if options.OneDimensionalIntegerAccesses.Contains key then (if proven then provenRankOneIntegerArrayComment else rankOneIntegerArrayComment) elif proven then rangeProvenArrayComment else vector.Name
             opc Op.extractInt [ Word vector.Id ] comment
         | TurboFloat ->
             this.EmitIndexes(scope, vector, indexes, pos)
@@ -1808,7 +1838,7 @@ type private Emitter(options: TurboIrOptions, program: HirProgram) =
             emitValue TurboInt
             let key=normalizeIdentifier name,indexes
             let proven=options.SafeArrayAccesses.Contains key
-            let comment=if options.OneDimensionalIntegerAccesses.Contains key then (if proven then provenRankOneIntegerArrayComment else rankOneIntegerArrayComment) elif proven then rangeProvenArrayComment else vector.Name
+            let comment=match options.TwoDimensionalIntegerAccesses.TryFind key with Some facts -> rankTwoIntegerArrayComment facts | None -> if options.OneDimensionalIntegerAccesses.Contains key then (if proven then provenRankOneIntegerArrayComment else rankOneIntegerArrayComment) elif proven then rangeProvenArrayComment else vector.Name
             opc Op.insertInt [ Word vector.Id ] comment
         | TurboFloat ->
             this.EmitIndexes(scope, vector, indexes, pos)

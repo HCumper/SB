@@ -23,6 +23,8 @@ type Instruction =
     | Divide of Value * DivisionOperation * Value * Value * stack:Value list
     | LoadArrayWord of Value * vector:int * checkedBounds:bool * index:Value * stack:Value list
     | StoreArrayWord of vector:int * checkedBounds:bool * index:Value * value:Value * stack:Value list
+    | LoadArrayWord2 of Value * vector:int * checks:int * columns:int * row:Value * column:Value * stack:Value list
+    | StoreArrayWord2 of vector:int * checks:int * columns:int * row:Value * column:Value * value:Value * stack:Value list
     | Negate of Value * Value
     // Snapshot in bottom-to-top maths-stack order at the failing P template.
     // A checked increment also commits its wrapped destination before trapping.
@@ -61,6 +63,10 @@ type AllocatedInstruction =
     // load's result is clobbered. A2 reloads the descriptor/data each operation.
     | LoadElement of vector:int * checkedBounds:bool * index:int * result:int * stack:RecoveryLocation list
     | StoreElement of vector:int * checkedBounds:bool * index:int * value:RecoveryLocation * stack:RecoveryLocation list
+    // The accumulator is scratch; inputs/recovery locations never refer to it.
+    // A long MULU/ADDA address is internal, not a word-valued BASIC expression.
+    | LoadElement2 of vector:int * checks:int * columns:int * row:RecoveryLocation * column:RecoveryLocation * accumulator:int * stack:RecoveryLocation list
+    | StoreElement2 of vector:int * checks:int * columns:int * row:RecoveryLocation * column:RecoveryLocation * value:RecoveryLocation * accumulator:int * stack:RecoveryLocation list
     | Negative of register:int
     | Check of productRegister:int option * stack:RecoveryLocation list * store:(int * RecoveryLocation) option
     | Store of vector:int * value:RecoveryLocation
@@ -76,6 +82,7 @@ let supports = function
     | HirTurboIrBackend.Instruction((1|2|5|6|7|8|20|1001|1005|1006|1007|263|268),[],_) -> true
     | HirTurboIrBackend.Instruction((106|109|118),[Word _],_) -> true
     | HirTurboIrBackend.Instruction((1711|1712|1811|1812),[Word _],_) -> true
+    | HirTurboIrBackend.Instruction((1911|1912),[Word _;Word mask;Word columns],_) when mask>=0 && mask<=3 && columns>=0 && columns<=32768 -> true
     | HirTurboIrBackend.Instruction((337|338|339|340|1339|1340),[Word _;Word _],_) -> true
     | _ -> false
 
@@ -92,6 +99,8 @@ let private legacyCost = function
     // compact helper. Shared helper bytes are not replicated in the executable.
     | HirTurboIrBackend.Instruction((1711|1712),_,_) -> 46,18
     | HirTurboIrBackend.Instruction((1811|1812),_,_) -> 40,17
+    | HirTurboIrBackend.Instruction((1911|1912),[_;Word 0;_],_) -> 56,25
+    | HirTurboIrBackend.Instruction((1911|1912),_,_) -> 72,29
     | HirTurboIrBackend.Instruction(106,_,_) -> 4,1
     | HirTurboIrBackend.Instruction((109|118),_,_) -> 6,4
     | HirTurboIrBackend.Instruction(263,_,_) -> 2,1
@@ -176,6 +185,15 @@ let lower startOffset endOffset items =
             // A scalar parameter may point at an element of this same array.
             // Immutable pending values survive, but scalar loads must be fresh.
             variables.Clear()
+        | HirTurboIrBackend.Instruction(1911,[Word vector;Word mask;Word columns],_) ->
+            let column,row=pop(),pop()
+            let value=fresh()
+            code.Add(LoadArrayWord2(value,vector,mask,columns,row,column,(if mask<>0 then List.rev stack else [])))
+            push value
+        | HirTurboIrBackend.Instruction(1912,[Word vector;Word mask;Word columns],_) ->
+            let value,column,row=pop(),pop(),pop()
+            code.Add(StoreArrayWord2(vector,mask,columns,row,column,value,(if mask<>0 then List.rev stack else [])))
+            variables.Clear()
         | _ -> invalidArg "items" "Only audited leaf integer operations are supported."
     for value in List.rev stack do code.Add(PushMaths value)
     let bytes,words=items |> List.map legacyCost |> List.fold (fun (bytes,words) (b,w) -> bytes+b,words+w) (0,0)
@@ -186,12 +204,14 @@ let private sources = function
     | Divide(_,_,a,b,stack) -> a::b::stack
     | LoadArrayWord(_,_,_,index,stack) -> index::stack
     | StoreArrayWord(_,_,index,value,stack) -> index::value::stack
+    | LoadArrayWord2(_,_,_,_,row,column,stack) -> row::column::stack
+    | StoreArrayWord2(_,_,_,row,column,value,stack) -> row::column::value::stack
     | Negate(_,a) | StoreVector(_,a) | PushMaths a -> [a]
     | OverflowCheck(product,stack,store) -> (Option.toList product)@stack@(store |> Option.map (snd >> List.singleton) |> Option.defaultValue [])
     | _ -> []
 
 let private destination = function
-    | Constant(v,_) | LoadVector(v,_) | PopMaths v | Binary(v,_,_,_) | Divide(v,_,_,_,_) | LoadArrayWord(v,_,_,_,_) | Negate(v,_) -> Some v
+    | Constant(v,_) | LoadVector(v,_) | PopMaths v | Binary(v,_,_,_) | Divide(v,_,_,_,_) | LoadArrayWord(v,_,_,_,_) | LoadArrayWord2(v,_,_,_,_,_,_) | Negate(v,_) -> Some v
     | _ -> None
 
 type private ExpressionKey =
@@ -243,6 +263,8 @@ let optimize (block:Block) =
             | Divide(v,op,a,b,stack) -> Divide(v,op,resolve a,resolve b,List.map resolve stack)
             | LoadArrayWord(v,vector,checkedBounds,index,stack) -> LoadArrayWord(v,vector,checkedBounds,resolve index,List.map resolve stack)
             | StoreArrayWord(vector,checkedBounds,index,value,stack) -> StoreArrayWord(vector,checkedBounds,resolve index,resolve value,List.map resolve stack)
+            | LoadArrayWord2(v,vector,mask,columns,row,column,stack) -> LoadArrayWord2(v,vector,mask,columns,resolve row,resolve column,List.map resolve stack)
+            | StoreArrayWord2(vector,mask,columns,row,column,value,stack) -> StoreArrayWord2(vector,mask,columns,resolve row,resolve column,resolve value,List.map resolve stack)
             | OverflowCheck(product,stack,store) -> OverflowCheck(Option.map resolve product,List.map resolve stack,store |> Option.map(fun (vector,value) -> vector,resolve value))
             | StoreVector(vector,value) -> StoreVector(vector,resolve value)
             | PushMaths value -> PushMaths(resolve value)
@@ -536,6 +558,18 @@ let allocateWithContext maxFrameBytes (vectorRegisters:Map<int,int>) (block:Bloc
                 let source=recoveryLocation stored
                 let snapshot=stack |> List.map recoveryLocation
                 code.Add(StoreElement(vector,checkedBounds,r,source,snapshot))
+            | LoadArrayWord2(value,vector,mask,columns,row,column,stack) ->
+                // Evict one scratch owner before capturing locations, even if
+                // it is an input used only here. Checks may use the accumulator
+                // before the address multiplication. D2-D4 stay read-only.
+                let accumulator=choose Set.empty
+                let row,column=recoveryLocation row,recoveryLocation column
+                let snapshot=stack |> List.map recoveryLocation
+                owners[accumulator]<-value;locations[value]<-Register accumulator
+                code.Add(LoadElement2(vector,mask,columns,row,column,accumulator,snapshot))
+            | StoreArrayWord2(vector,mask,columns,row,column,value,stack) ->
+                let accumulator=choose Set.empty
+                code.Add(StoreElement2(vector,mask,columns,recoveryLocation row,recoveryLocation column,recoveryLocation value,accumulator,List.map recoveryLocation stack))
             for value in sources instruction |> List.distinct do retire value index
             match destination instruction with
             | Some value when not(last.ContainsKey value) -> retire value index
@@ -586,6 +620,37 @@ let emitWithContext vectorTableOffset (vectorRegisters:Map<int,int>) (recoverySu
         // Two sign-extended word additions form the full long offset without
         // changing the index, including the highest valid byte offset 65534.
         word(0xD4C0 ||| index);word(0xD4C0 ||| index)
+    let moveWord r = function
+        | RecoveryRegister source -> word(0x3000 ||| (r <<< 9) ||| source)
+        | RecoverySlot slot -> word(0x302F ||| (r <<< 9));word(slot*2)
+        | RecoveryImmediate n -> word(0x303C ||| (r <<< 9));word n
+    let elementAddress2 vector mask columns row column accumulator stack =
+        word 0x246E;displacement vector
+        let check location bound snapshot =
+            let r=match location with RecoveryRegister r -> r | _ -> moveWord accumulator location;accumulator
+            let failureBytes=recoveryBytes frame snapshot None + recoverySuffix.Length
+            if failureBytes+2>32767 then invalidArg "allocation" "Rank-two array recovery exceeds a 68000 word branch."
+            word(0x4A40 ||| r);word 0x6B00;word 10
+            word(0xB06A ||| (r <<< 9));word bound
+            word 0x6B00;word(failureBytes+2)
+            recovery 0x8AE0 snapshot None
+        // lib537 consumes/checks the last source subscript first. On a column
+        // failure the row is still on the maths stack; the value is consumed.
+        if mask &&& 2<>0 then check column 10 (stack@[row])
+        if mask &&& 1<>0 then check row 12 stack
+        moveWord accumulator row
+        if columns=0 then word(0xC0EA ||| (accumulator <<< 9));word 10
+        else word(0xC0FC ||| (accumulator <<< 9));word columns
+        word 0x2452 // reload current data pointer after descriptor accesses
+        // Long address additions reproduce Turbo's modulo-32-bit offset rules.
+        // They are not checked BASIC arithmetic, and do not truncate at 16 bits.
+        word(0xD5C0 ||| accumulator);word(0xD5C0 ||| accumulator)
+        let addColumn () =
+            match column with
+            | RecoveryRegister r -> word(0xD4C0 ||| r)
+            | RecoverySlot slot -> word 0xD4EF;word(slot*2)
+            | RecoveryImmediate n -> word 0xD4FC;word n
+        addColumn();addColumn()
     if frame>0 then word 0x4FEF;word(-frame)
     for instruction in allocation.Instructions do
         match instruction with
@@ -660,6 +725,12 @@ let emitWithContext vectorTableOffset (vectorRegisters:Map<int,int>) (recoverySu
         | StoreElement(vector,checkedBounds,index,value,stack) ->
             elementAddress vector checkedBounds index stack
             writeWord value
+        | LoadElement2(vector,mask,columns,row,column,accumulator,stack) ->
+            elementAddress2 vector mask columns row column accumulator stack
+            word(0x3012 ||| (accumulator <<< 9))
+        | StoreElement2(vector,mask,columns,row,column,value,accumulator,stack) ->
+            elementAddress2 vector mask columns row column accumulator stack
+            writeWord value
         | Check(product,stack,store) ->
             let failureBytes=recoveryBytes frame stack store + recoverySuffix.Length
             if failureBytes+2>32767 then invalidArg "allocation" "Overflow recovery exceeds a 68000 word branch."
@@ -685,6 +756,9 @@ let private dataWords allocation =
         | Store(_,value) -> 3+(match value with RecoverySlot _ -> 1 | _ -> 0)
         | LoadElement(_,checkedBounds,_,_,_) -> if checkedBounds then 6 else 5
         | StoreElement(_,checkedBounds,_,value,_) -> (if checkedBounds then 6 else 5)+(match value with RecoverySlot _ -> 1 | _ -> 0)
+        | LoadElement2(_,mask,columns,row,column,_,_) | StoreElement2(_,mask,columns,row,column,_,_,_) ->
+            6+(if columns=0 then 1 else 0)+(if mask &&& 1<>0 then 2 else 0)+(if mask &&& 2<>0 then 2 else 0)+
+            ([row;column] |> List.sumBy(function RecoverySlot _ -> 1 | _ -> 0))
         | Spill _ | Reload _ | Pop _ | Push _ -> 1
         | _ -> 0)
 
@@ -711,6 +785,9 @@ let plan maxFrameBytes vectorTableOffset bytes : Result<Report,string> =
                         | Check(_,stack,store) -> recoveryBytes (allocation.SpillSlots*2) stack store
                         | Division(_,_,_,stack) -> recoveryBytes (allocation.SpillSlots*2) stack None
                         | LoadElement(_,true,_,_,stack) | StoreElement(_,true,_,_,stack) -> recoveryBytes (allocation.SpillSlots*2) stack None
+                        | LoadElement2(_,mask,_,row,_,_,stack) | StoreElement2(_,mask,_,row,_,_,_,stack) ->
+                            (if mask &&& 2<>0 then recoveryBytes (allocation.SpillSlots*2) (stack@[row]) None else 0)+
+                            (if mask &&& 1<>0 then recoveryBytes (allocation.SpillSlots*2) stack None else 0)
                         | _ -> 0)
                     // A bus-word estimate includes instruction fetches and data
                     // traffic. It is not a calibrated MC68008 timing model.

@@ -102,6 +102,59 @@ let private arraySafe indexes facts=Assert.That(facts.SafeArrayAccesses.Contains
 let private arrayChecked indexes facts=Assert.That(facts.SafeArrayAccesses.Contains("A%",indexes), Is.False)
 
 [<Test>]
+let ``rank-two facts separate per-dimension proofs from exact lengths`` () =
+    let indexes=[read x;number 2]
+    let facts=arrayProgram [Dim(arraySymbol,[number 3;number 7],pos);assign y (arrayRead indexes)] |> analyze
+    let shape=facts.TwoDimensionalIntegerAccesses["A%",indexes]
+    Assert.That(shape.ExactLengths, Is.EqualTo(Some(4,8)))
+    Assert.That(shape.ProvenRows, Is.False)
+    Assert.That(shape.ProvenColumns, Is.True)
+
+[<Test>]
+let ``rank-two branch joins do not turn minimum bounds into exact strides`` () =
+    let indexes=[number 1;number 5]
+    let facts=arrayProgram [If(read flag,[Dim(arraySymbol,[number 3;number 7],pos)],Some[Dim(arraySymbol,[number 3;number 15],pos)],pos)
+                            assign y (arrayRead indexes)] |> analyze
+    let shape=facts.TwoDimensionalIntegerAccesses["A%",indexes]
+    Assert.That(shape.ProvenRows && shape.ProvenColumns, Is.True)
+    Assert.That(shape.ExactLengths, Is.EqualTo(None))
+    arraySafe indexes facts
+
+[<Test>]
+let ``rank-two nonconstant DIM keeps rank without inventing an exact length`` () =
+    let indexes=[number 1;number 7]
+    let facts=arrayProgram [If(read flag,[assign x (number 7)],Some[assign x (number 15)],pos)
+                            Dim(arraySymbol,[number 3;read x],pos);assign y (arrayRead indexes)] |> analyze
+    let shape=facts.TwoDimensionalIntegerAccesses["A%",indexes]
+    Assert.That(shape.ProvenRows && shape.ProvenColumns, Is.True)
+    Assert.That(shape.ExactLengths, Is.EqualTo(None))
+
+[<Test>]
+let ``rank-two repeated expressions across resizing never reuse one exact shape`` () =
+    let indexes=[number 1;number 2]
+    let facts=arrayProgram [Dim(arraySymbol,[number 3;number 7],pos);assign y (arrayRead indexes)
+                            Dim(arraySymbol,[number 3;number 15],pos);assign z (arrayRead indexes)] |> analyze
+    Assert.That(facts.TwoDimensionalIntegerAccesses["A%",indexes].ExactLengths, Is.EqualTo(None))
+    let absent=arrayProgram [assign y (arrayRead indexes);Dim(arraySymbol,[number 3;number 7],pos);assign z (arrayRead indexes)] |> analyze
+    Assert.That(absent.TwoDimensionalIntegerAccesses, Is.Empty)
+
+[<Test>]
+let ``rank-two DIM and precise facts are invalidated together by opaque mutation`` () =
+    let indexes=[number 1;number 2]
+    let facts=arrayProgram [Dim(arraySymbol,[number 3;number 7],pos);BuiltInCall(NamedBuiltIn "UNKNOWN",None,[],pos);assign y (arrayRead indexes)] |> analyze
+    Assert.That(facts.TwoDimensionalIntegerAccesses, Is.Empty)
+
+[<Test>]
+let ``rank-two lowering encodes partial checks and an exact or dynamic column length`` () =
+    let indexes=[read x;number 2]
+    let initial=arrayProgram [Dim(arraySymbol,[number 3;number 7],pos);assign y (arrayRead indexes)]
+    let p={initial with Globals=initial.Globals |> List.map(fun s -> if s.Symbol=arraySymbol then {s with Dimensions=Some[3;7]} else s)}
+    let facts=analyze p
+    let options={HirTurboIrBackend.defaultOptions with TwoDimensionalIntegerAccesses=facts.TwoDimensionalIntegerAccesses}
+    let ir=HirTurboIrBackend.generateTurboIrFromHir options p |> Result.defaultWith(String.concat "; " >> failwith) |> TurboNativeRegions.select true |> Result.defaultWith(String.concat "; " >> failwith)
+    Assert.That(ir.Items |> List.exists(function HirTurboIrBackend.Instruction(1911,[_;HirTurboIrBackend.Word 1;HirTurboIrBackend.Word 8],_) -> true | _ -> false), Is.True)
+
+[<Test>]
 let ``rank-one selection is independent of index range proof`` () =
     let indexes=[read x]
     let facts=arrayProgram [Dim(arraySymbol,[number 10],pos);assign y (arrayRead indexes)] |> analyze

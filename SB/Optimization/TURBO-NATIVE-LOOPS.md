@@ -75,13 +75,16 @@ success; live accumulators and reused operands use the ordinary spill slots.
 The pinned counter, END and STEP remain untouched. See
 [register allocation](TURBO-REGISTER-ALLOCATION.md) for recovery and clobber details.
 
-Certified one-dimensional global integer array loads/stores are also eligible.
+Certified one- and two-dimensional global integer array loads/stores are also eligible.
 Their explicit native IR records retain checked or proven bounds semantics and
 use only D0/D1 and A2, preserving D2-D4 across each access. Scalar caches are
 invalidated after stores; current descriptors are reloaded and no pointer is
 hoisted. A bounds failure reconstructs the consumed-prefix maths state and
 releases the complete spill plus loop-save depth before the existing runtime
-range handler. Unknown-rank, multidimensional and floating accesses remain on
+range handler. Rank-two accesses check columns before rows and use either an
+exact proven column length or the current descriptor length for long offset
+arithmetic. Minimum bounds never stand in for exact strides. Unknown-rank,
+higher-dimensional and floating accesses remain on
 their previous paths. The native loop dump includes its allocated operations.
 
 ## Registers, stack and errors

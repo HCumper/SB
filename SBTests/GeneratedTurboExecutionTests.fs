@@ -161,6 +161,53 @@ let ``RankOne native FOR plans contain checked and proven accesses`` (hir:bool) 
         Assert.That(listing, Does.Match("Rank-one integer array accesses: [1-9]"))
     finally Directory.Delete(directory,true)
 
+let rankTwoPrograms = [|
+    "10 DIM a%(3,7):total%=0\n20 FOR row%=0 TO 3\n30 FOR col%=0 TO 7\n40 a%(row%,col%)=row%*8+col%:total%=total%+a%(row%,col%)\n50 END FOR col%\n60 END FOR row%\n70 PRINT total%;\":\";a%(3,7);\":\";col%\n80 STOP", "496:31:7\n"
+    // One access has two reaching shapes. Minimum bounds cannot become strides.
+    "10 DIM flags%(0):flags%(0)=1\n20 IF flags%(0) THEN\n30 DIM a%(3,15)\n40 ELSE\n50 DIM a%(3,7)\n60 END IF\n70 row%=2:col%=3:a%(row%,col%)=-32768\n80 PRINT a%(2,3);\":\";a%(1,3)\n90 STOP", "-32768:0\n"
+    "10 DIM a%(3,15),indexes%(1):indexes%(0)=2:indexes%(1)=3\n20 a%(indexes%(0),indexes%(1))=99\n30 PRINT a%(2,3);\":\";a%(1,3)\n40 STOP", "99:0\n"
+    "10 DIM a%(3,7):row%=2:col%=3:a%(row%,col%)=7\n20 DIM a%(3,15)\n30 a%(row%,col%)=99\n40 PRINT a%(row%,col%)\n50 STOP", "99\n"
+    "10 DIM a%(1,1):a%(1,1)=7:work a%,a%\n20 PRINT a%(1,1)\n30 STOP\n100 DEFine PROCedure work(p%,q%)\n110 p%(1,1)=p%(1,1)+1:q%(1,1)=p%(1,1)+2\n120 END DEFine", "10\n"
+    "10 work:work\n20 STOP\n100 DEFine PROCedure work\n110 LOCal a%(2,3),row%,col%\n120 row%=1:col%=2:a%(row%,col%)=7\n130 a%(row%,col%)=a%(row%,col%)+1\n140 PRINT a%(row%,col%)\n150 END DEFine", "8\n8\n"
+    "10 DIM a%(1,1,1):a%(1,0,1)=17\n20 PRINT a%(1,0,1)\n30 STOP", "17\n"
+    "10 WHEN ERROR\n20 attempts%=attempts%+1\n30 IF attempts%<3 THEN RETRY\n40 PRINT ERNUM;\":\";attempts%;\":\";answer%\n50 STOP\n60 END WHEN\n70 DIM a%(1,2):row%=1:col%=3:answer%=42\n80 answer%=7+a%(row%,col%)\n90 PRINT \"wrong\"", "-4:3:42\n"
+    // All indices and the RHS are evaluated before either bounds check.
+    "10 WHEN ERROR\n20 PRINT ERNUM;\":\";a%(0,0)\n30 STOP\n40 END WHEN\n50 DIM a%(1,2):row%=3:col%=3:divisor%=0:a%(0,0)=42\n60 a%(row%,col%)=1 DIV divisor%\n70 PRINT \"wrong\"", "-18:42\n"
+|]
+let rankTwoModes = [|
+    for index in 0..rankTwoPrograms.Length-1 do
+        for hir in [false;true] do
+            for native,registers in [false,false;true,false;true,true] do
+                yield TestCaseData(index,hir,native,registers).SetName($"RankTwo execution {index} (HIR {hir}, native {native}, registers {registers})") |]
+
+[<TestCaseSource(nameof rankTwoModes)>]
+let ``rank-two native arrays preserve loops live shapes aliases locals and error ordering`` (index:int,hir:bool,native:bool,registers:bool) =
+    let source,expected=rankTwoPrograms[index]
+    withCompiledProgramMode hir [(if native then "--native-regions" else "--no-native-regions");(if registers then "--regalloc" else "--no-regalloc")] ".bas" source (fun executable ->
+        let result=run 3000000L executable
+        Assert.That(result.Output, Is.EqualTo(expected))
+        Assert.That(result.ExitCode, Is.Zero))
+
+[<Test>]
+let ``RankTwo native FOR report contains fixed rank accesses and reduces execution cost`` () =
+    let directory=Path.Combine(Path.GetTempPath(),$"rank-two-report-{Guid.NewGuid():N}")
+    Directory.CreateDirectory directory |> ignore
+    try
+        let source,expected=rankTwoPrograms[0]
+        let prefix=Path.Combine(directory,"array")
+        let capture registers=withCompiledProgramMode true ["--native-regions";(if registers then "--regalloc" else "--no-regalloc");"--dump-hir="+prefix] ".bas" source (fun executable -> executable.Length,run 3000000L executable)
+        let beforeSize,before=capture false
+        let afterSize,after=capture true
+        Assert.That(after.Output, Is.EqualTo(expected))
+        Assert.That(after.Output, Is.EqualTo(before.Output))
+        Assert.That(after.Steps, Is.LessThan(before.Steps))
+        let report=File.ReadAllText(prefix+".native-ir.txt")
+        Assert.That(report, Does.Contain("Native integer FOR loops: selected=1"))
+        Assert.That(report, Does.Contain("LoadElement2"))
+        Assert.That(report, Does.Contain("StoreElement2"))
+        TestContext.WriteLine($"Rank-two native FOR: executable bytes {beforeSize}->{afterSize}; instructions {before.Steps}->{after.Steps}.")
+    finally Directory.Delete(directory,true)
+
 let divmodPrograms = [|
     "10 a%=-7:b%=3\n20 q%=a% DIV b%:r%=a% MOD b%\n30 PRINT q%;\":\";r%;\":\";q%*b%+r%\n40 a%=7:b%=-3\n50 q%=a% DIV b%:r%=a% MOD b%\n60 PRINT q%;\":\";r%;\":\";q%*b%+r%\n70 STOP", "-3:2:-7\n-3:-2:7\n"
     "10 q%=0:r%=0\n20 FOR i%=-7 TO 7 STEP 2\n30 q%=q%+(i% DIV 3):r%=r%+(i% MOD 3)\n40 END FOR i%\n50 PRINT q%;\":\";r%;\":\";i%\n60 STOP", "-3:9:7\n"

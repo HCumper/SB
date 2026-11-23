@@ -9,7 +9,7 @@ open HirTurboIrBackend
 type Pool = { Code:byte[]; Addresses:Map<int,int> }
 
 let isRankOneInteger = function 1711 | 1712 | 1811 | 1812 -> true | _ -> false
-let canonicalOpcode = function 1711 -> 1111 | 1712 -> 1112 | 1811 -> 1611 | 1812 -> 1612 | op -> op
+let canonicalOpcode = function 1711 | 1911 -> 1111 | 1712 | 1912 -> 1112 | 1811 -> 1611 | 1812 -> 1612 | op -> op
 let isUnchecked op = match canonicalOpcode op with 1611 | 1612 | 1643 | 1644 -> true | _ -> false
 let isCompact op = match canonicalOpcode op with 1111 | 1112 | 1143 | 1144 | 1611 | 1612 | 1643 | 1644 -> true | _ -> false
 let baseOpcode op = let op=canonicalOpcode op in if isUnchecked op then op-1500 else op%1000

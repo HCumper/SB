@@ -571,6 +571,41 @@ let ``rank-one array pressure falls back without exceeding configured stack head
     Assert.That(result.NativeAllocation.Value.StackExtraBytes, Is.Zero)
     Assert.That((TurboExecutionHarness.run 2000000L (executableFile result)).Output, Is.EqualTo("19\n"))
 
+let private rankTwoIr mask stride source =
+    let raw=irOf source
+    let items=decode raw |> Result.defaultWith failwith
+    let selected=TurboNativeRegions.select true {Items=items;Bytes=raw;Listing=formatListing items;Warnings=[]} |> Result.defaultWith(String.concat "; " >> failwith)
+    selected.Items |> List.map(function
+        | Instruction((1111|1112 as op),args,comment) -> Instruction(op+800,args@[Word mask;Word stride],comment)
+        | item -> item) |> serialize
+
+[<TestCase(0)>]
+[<TestCase(3)>]
+let ``rank-two records fall back exactly with allocation disabled or insufficient headroom`` (mask:int) =
+    let specialized=rankTwoIr mask 8 "10 DIM a%(3,7)\n20 row%=1:col%=2:p%=7:q%=9:a%(row%,col%)=3\n30 result%=p%+(q%+a%(row%,col%))\n40 PRINT result%\n50 STOP"
+    let original=decode specialized |> Result.defaultWith failwith |> List.map(function
+        | Instruction((1911|1912 as op),[vector;_;_],comment) -> Instruction(op-800,[vector],comment)
+        | item -> item) |> serialize
+    for stack,registers in [350,false;9998,true] do
+        let options={portOptions with StackSize=Some stack}
+        let before=generateFromIr options original |> Result.defaultWith(String.concat "; " >> failwith)
+        let after=generateFromIr {options with LocalRegisterAllocation=registers} specialized |> Result.defaultWith(String.concat "; " >> failwith)
+        Assert.That(after.Code, Is.EqualTo(box before.Code))
+        Assert.That(after.Dataspace, Is.EqualTo(before.Dataspace))
+        Assert.That((TurboExecutionHarness.run 2000000L (executableFile after)).Output, Is.EqualTo("19\n"))
+
+[<TestCase(false,false)>]
+[<TestCase(true,false)>]
+[<TestCase(false,true)>]
+[<TestCase(true,true)>]
+let ``selected rank-two failures preserve RETRY and never commit a failed assignment`` (store:bool,rowFails:bool) =
+    let row,col=if rowFails then 2,1 else 1,3
+    let access=if store then "a%(row%,col%)=answer%+1" else "answer%=keep%+a%(row%,col%)"
+    let source = $"10 WHEN ERROR\n20 count%%=count%%+1\n30 IF count%%<3 THEN RETRY\n40 PRINT ERNUM;\":\";count%%;\":\";answer%%;\":\";a%%(0,0)\n50 STOP\n60 END WHEN\n70 DIM a%%(1,2)\n80 a%%(0,0)=7:row%%={row}:col%%={col}:answer%%=42:keep%%=9\n90 {access}\n100 PRINT \"wrong\""
+    let result=generateFromIr {portOptions with LocalRegisterAllocation=true} (rankTwoIr 3 0 source) |> Result.defaultWith(String.concat "; " >> failwith)
+    Assert.That(result.NativeAllocation.Value.Blocks |> List.collect(fun b -> b.Allocation.Instructions) |> List.exists(function TurboNativeIr.LoadElement2 _ | TurboNativeIr.StoreElement2 _ -> true | _ -> false), Is.True)
+    Assert.That((TurboExecutionHarness.run 2000000L (executableFile result)).Output, Is.EqualTo("-4:3:42:7\n"))
+
 let private numericArrayIr copies compact =
     let ir=irOf "10 DIM a%(2)\n20 i%=1\n30 a%(i%)=7\n40 r%=a%(i%)\n50 STOP" |> nativeBodyOf
     let items=decode ir |> Result.defaultWith failwith

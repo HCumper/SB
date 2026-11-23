@@ -1,0 +1,39 @@
+{
+  "formatVersion": 2,
+  "timingMethod": "external-qdos-job",
+  "trials": 3,
+  "warmups": 1,
+  "timerHz": 50,
+  "expectedResults": 8,
+  "benchmarks": [
+    {
+      "name": "matrix_multiply",
+      "file": "matrix_multiply.bas",
+      "passes": 10,
+      "expectedChecksum": 1094,
+      "category": "kernel",
+      "description": "Eight by eight integer matrix multiplication and weighted checksum",
+      "sourceLines": 33,
+      "reference": "Existing independent Check-ReferenceChecksums.ps1",
+      "tag": "b02",
+      "sourceFile": "C:\\Source\\SB\\Benchmarks\\QemuLator\\Programs\\matrix_multiply.bas",
+      "sourceSha256": "5AAC1348BE68C38B4FD2C1A52CF9675F7F8879752240B9E977603C4985E80D6A",
+      "compilerDirectives": [
+        "TURBO_objfil \"mdv1_b02t\"",
+        "TURBO_repfil \"mdv1_b02_report\"",
+        "TURBO_optim 2",
+        "TURBO_model \">\"",
+        "TURBO_diags 0",
+        "TURBO_windo 0",
+        "TURBO_objdat 20",
+        "TURBO_objstk 350",
+        "TURBO_buffersz 64",
+        "TURBO_list 0",
+        "TURBO_struct 1"
+      ]
+    }
+  ],
+  "scope": "Whole job: executable loading, runtime startup, initialization, computation, internal checks, checksum PRINT and shutdown; runner file opening/closing and reporting are outside the timer.",
+  "outputChannel": 1,
+  "inheritedChannels": 31
+}

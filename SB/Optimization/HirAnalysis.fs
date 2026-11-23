@@ -16,7 +16,7 @@ type RangeState = Map<SymbolId,Interval>
 type CapturedLoop = { Owner:int; Finish:Interval; Step:Interval }
 type Options = { UseWideningThresholds:bool; NarrowingPasses:int }
 let defaultOptions = {UseWideningThresholds=true;NarrowingPasses=8}
-type private FlowState = { Ranges:RangeState; Bounds:Map<SymbolId,int list>; Loops:Map<SymbolId,CapturedLoop> }
+type private FlowState = { Ranges:RangeState; Bounds:Map<SymbolId,int list>; ExactBounds:Map<SymbolId,int list>; Loops:Map<SymbolId,CapturedLoop> }
 type ScopeAnalysis = {
     Graph:Graph
     Liveness:Liveness
@@ -24,6 +24,7 @@ type ScopeAnalysis = {
     ExitRanges:Map<int,RangeState option>
     ExpressionRanges:Map<int * HirExpr,Interval option>
     EntryBounds:Map<int,Map<SymbolId,int list> option>
+    EntryExactBounds:Map<int,Map<SymbolId,int list> option>
     EntryLoops:Map<int,Map<SymbolId,CapturedLoop> option>
     WideningThresholds:int64 list
     NarrowingPasses:int
@@ -37,6 +38,7 @@ type Analysis = {
     ArithmeticProofsEnabled:bool
     SafeArrayAccesses:Set<string * HirExpr list>
     OneDimensionalIntegerAccesses:Set<string * HirExpr list>
+    TwoDimensionalIntegerAccesses:Map<string * HirExpr list,RankTwoIntegerAccess>
 }
 
 let word = {Lower = -32768L; Upper=32767L}
@@ -213,13 +215,14 @@ let rec private refine context scope expr truth state =
             | _ -> compareRange s (if truth then reverse op else invert(reverse op)) value
         | _ -> Some state
 
-let private unknownFlow = {Ranges=Map.empty;Bounds=Map.empty;Loops=Map.empty}
+let private unknownFlow = {Ranges=Map.empty;Bounds=Map.empty;ExactBounds=Map.empty;Loops=Map.empty}
 
 let private killMetadata context scope effects state =
-    if effects.WritesUnknown then {state with Bounds=Map.empty;Loops=Map.empty}
+    if effects.WritesUnknown then {state with Bounds=Map.empty;ExactBounds=Map.empty;Loops=Map.empty}
     else
         let killed=expand context.Effects.Aliases scope effects.Writes
         {state with Bounds=state.Bounds |> Map.filter(fun s _ -> not(killed.Contains s))
+                    ExactBounds=state.ExactBounds |> Map.filter(fun s _ -> not(killed.Contains s))
                     Loops=state.Loops |> Map.filter(fun s _ -> not(killed.Contains s))}
 
 let private transfer context scope (node:Node) state =
@@ -227,6 +230,7 @@ let private transfer context scope (node:Node) state =
     let evaluated=killMetadata context scope evaluation state
     let after=killMetadata context scope (nodeEffects context.Effects scope node.Kind) evaluated
     let mutable bounds=after.Bounds
+    let mutable exactBounds=after.ExactBounds
     let mutable loops=after.Loops
     let range expr=evaluate context (kill context scope evaluation state.Ranges) expr |> fst |> Option.defaultValue word
     match node.Kind with
@@ -234,6 +238,7 @@ let private transfer context scope (node:Node) state =
         // An element store changes contents, not the descriptor. Calls in its
         // value/subscripts have already invalidated descriptor facts above.
         bounds<-evaluated.Bounds
+        exactBounds<-evaluated.ExactBounds
     | Statement(Assign(WriteVar(symbol,_,_),_,_)) when context.Integers.Contains symbol ->
         // Its own word store changes only the counter, not END/STEP/NEXT.
         // Keep invalidations of other potentially aliased metadata conservative.
@@ -244,11 +249,13 @@ let private transfer context scope (node:Node) state =
         let values=dimensions |> List.map range
         if not values.IsEmpty && (values |> List.forall(fun r -> r.Lower>=0L && r.Upper<=word.Upper)) then
             bounds<-bounds.Add(symbol,values |> List.map(fun r -> int r.Lower))
+            if values |> List.forall(fun r -> r.Lower=r.Upper) then
+                exactBounds<-exactBounds.Add(symbol,values |> List.map(fun r -> int r.Lower))
     | ForInitialise(symbol,[first;last;step],_) ->
         loops<-loops.Add(symbol,{Owner=node.Id;Finish=range last;Step=range step})
     | ForAdvance(_,Some _) -> loops<-evaluated.Loops // ADD.W changes the counter, not END/STEP.
     | _ -> ()
-    {Ranges=transferRanges context scope node state.Ranges evaluated.Loops;Bounds=bounds;Loops=loops}
+    {Ranges=transferRanges context scope node state.Ranges evaluated.Loops;Bounds=bounds;ExactBounds=exactBounds;Loops=loops}
 
 let private edgeState context scope edge state =
     let initial=if edge.Havoc then unknownFlow else state
@@ -283,6 +290,7 @@ let private joinFlows a b =
         let shared (first:Map<_,_>) (second:Map<_,_>) combine = first |> Map.toSeq |> Seq.choose(fun (key,value) -> second.TryFind key |> Option.bind(fun other -> combine value other |> Option.map(fun joined -> key,joined))) |> Map.ofSeq
         Some {Ranges=(joinStates (Some a.Ranges) (Some b.Ranges)).Value
               Bounds=shared a.Bounds b.Bounds (fun a b -> if List.length a=List.length b then Some(List.map2 min a b) else None)
+              ExactBounds=shared a.ExactBounds b.ExactBounds (fun a b -> if a=b then Some a else None)
               Loops=shared a.Loops b.Loops (fun a b -> if a.Owner=b.Owner then Some {Owner=a.Owner;Finish=join a.Finish b.Finish;Step=join a.Step b.Step} else None)}
 
 let private thresholds context graph =
@@ -324,6 +332,7 @@ let private covers old candidate =
     | Some old,Some candidate ->
         (old.Ranges |> Map.forall(fun s range -> interval range (get candidate.Ranges s))) &&
         (old.Bounds |> Map.forall(fun s bounds -> candidate.Bounds.TryFind s |> Option.exists(fun actual -> actual.Length=bounds.Length && List.forall2 (<=) bounds actual))) &&
+        (old.ExactBounds |> Map.forall(fun s bounds -> candidate.ExactBounds.TryFind s = Some bounds)) &&
         (old.Loops |> Map.forall(fun s loop -> candidate.Loops.TryFind s |> Option.exists(fun actual -> loop.Owner=actual.Owner && interval loop.Finish actual.Finish && interval loop.Step actual.Step)))
 
 let private solve options context graph =
@@ -338,7 +347,7 @@ let private solve options context graph =
             match storage.Type,storage.Dimensions with
             | Array _,Some dims when local && not(dimmed.Contains s) && not dims.IsEmpty && List.forall(fun n -> n>=0 && n<=32767) dims -> Some(s,dims)
             | _ -> None) |> Map.ofSeq
-    let initial={unknownFlow with Bounds=initialBounds}
+    let initial={unknownFlow with Bounds=initialBounds;ExactBounds=initialBounds}
     incoming[graph.Entry]<-Some initial
     let edges=graph.Edges |> List.groupBy _.Source |> Map.ofList
     let predecessors=graph.Edges |> List.groupBy _.Target |> Map.ofList
@@ -419,6 +428,7 @@ let private solve options context graph =
         | _ -> true)
     {Graph=graph;Liveness=liveness context.Effects graph;EntryRanges=entryRanges;ExitRanges=exitRanges;ExpressionRanges=expressions
      EntryBounds=incoming |> Seq.map(fun p -> p.Key,p.Value |> Option.map _.Bounds) |> Map.ofSeq
+     EntryExactBounds=incoming |> Seq.map(fun p -> p.Key,p.Value |> Option.map _.ExactBounds) |> Map.ofSeq
      EntryLoops=incoming |> Seq.map(fun p -> p.Key,p.Value |> Option.map _.Loops) |> Map.ofSeq
      WideningThresholds=limits;NarrowingPasses=passes;Certified=certified;ForMetadataTrusted=metadataTrusted}
 
@@ -458,6 +468,7 @@ let analyzeWithOptions options target program =
                 let evaluation=nodeEvaluation effects scope node.Kind
                 let state=analysis.EntryRanges[id] |> Option.map(kill context scope evaluation)
                 let bounds=analysis.EntryBounds[id]
+                let exactBounds=analysis.EntryExactBounds[id]
                 let reads=nodeExpressions node.Kind |> Seq.collect HirEffects.expressions |> Seq.choose(function
                     | ReadArrayElem(s,indexes,_,_) -> access s indexes
                     | DynamicReadArrayElem(name,indexes,_,_) ->
@@ -491,11 +502,31 @@ let analyzeWithOptions options target program =
                                  dimensions.Length=indexes.Length && List.forall2(fun index bound ->
                                      evaluate context state index |> fst |> Option.exists(fun range -> range.Lower>=0L && range.Upper<=int64 bound)) indexes dimensions)
                          | _ -> false)
-                    yield (name,indexes),proven,rankOne]
-    let accesses proof = arrayCandidates |> List.groupBy(fun (key,_,_) -> key) |> List.choose(fun (key,occurrences) -> if occurrences |> List.forall proof then Some key else None) |> Set.ofList
-    let safeArrays=accesses(fun (_,proven,_) -> proven)
-    let rankOneArrays=accesses(fun (_,_,rankOne) -> rankOne)
-    {Effects=effects;Scopes=scopes;SafeIntegerExpressions=safe;ArithmeticProofsEnabled=trusted;SafeArrayAccesses=safeArrays;OneDimensionalIntegerAccesses=rankOneArrays}
+                    let rankTwo=
+                        if eligible && trusted && nameIsInteger target name && indexes.Length=2 &&
+                           not evaluation.WritesUnknown && evaluation.Writes.IsEmpty then
+                            match symbol,bounds with
+                            | Some symbol,Some bounds when named name=[symbol] ->
+                                match bounds.TryFind symbol with
+                                | Some [row;column] ->
+                                    let safe index bound=state |> Option.bind(fun state -> evaluate context state index |> fst) |> Option.exists(fun range -> range.Lower>=0L && range.Upper<=int64 bound)
+                                    let exact=exactBounds |> Option.bind(Map.tryFind symbol) |> Option.bind(function [a;b] -> Some(a+1,b+1) | _ -> None)
+                                    Some {ProvenRows=safe indexes[0] row;ProvenColumns=safe indexes[1] column;ExactLengths=exact}
+                                | _ -> None
+                            | _ -> None
+                        else None
+                    yield (name,indexes),proven,rankOne,rankTwo]
+    let accesses proof = arrayCandidates |> List.groupBy(fun (key,_,_,_) -> key) |> List.choose(fun (key,occurrences) -> if occurrences |> List.forall proof then Some key else None) |> Set.ofList
+    let safeArrays=accesses(fun (_,proven,_,_) -> proven)
+    let rankOneArrays=accesses(fun (_,_,rankOne,_) -> rankOne)
+    let rankTwoArrays=arrayCandidates |> List.groupBy(fun (key,_,_,_) -> key) |> List.choose(fun (key,occurrences) ->
+        let facts=occurrences |> List.choose(fun (_,_,_,fact) -> fact)
+        if facts.Length<>occurrences.Length then None
+        else
+            let exact=facts.Head.ExactLengths
+            Some(key,{ProvenRows=facts |> List.forall _.ProvenRows;ProvenColumns=facts |> List.forall _.ProvenColumns
+                      ExactLengths=if facts |> List.forall(fun fact -> fact.ExactLengths=exact) then exact else None})) |> Map.ofList
+    {Effects=effects;Scopes=scopes;SafeIntegerExpressions=safe;ArithmeticProofsEnabled=trusted;SafeArrayAccesses=safeArrays;OneDimensionalIntegerAccesses=rankOneArrays;TwoDimensionalIntegerAccesses=rankTwoArrays}
 
 let analyze target program = analyzeWithOptions defaultOptions target program
 
@@ -515,6 +546,7 @@ let format (analysis:Analysis) =
     line $"Unchecked arithmetic proofs enabled: {analysis.ArithmeticProofsEnabled}; proven expressions: {analysis.SafeIntegerExpressions.Count}"
     line $"Proven numeric array accesses: {analysis.SafeArrayAccesses.Count}"
     line $"Rank-one integer array accesses: {analysis.OneDimensionalIntegerAccesses.Count}"
+    line $"Rank-two integer array accesses: {analysis.TwoDimensionalIntegerAccesses.Count}"
     line $"Address taken: [{symbols analysis.Effects.Aliases.AddressTaken}]; escaped to unknown callees: [{symbols analysis.Effects.Aliases.Escaped}]"
     for KeyValue(symbol,summary) in analysis.Effects.Summaries do line $"Routine {symbol}: {effects summary}"
     for KeyValue(scope,data) in analysis.Scopes do
@@ -527,6 +559,8 @@ let format (analysis:Analysis) =
             line $"    out: {ranges data.ExitRanges[id]}"
             data.EntryBounds[id] |> Option.iter(fun bounds ->
                 for KeyValue(symbol,dimensions) in bounds do line $"    array {symbols(Set.singleton symbol)} guaranteed-upper-bounds={dimensions}")
+            data.EntryExactBounds[id] |> Option.iter(fun bounds ->
+                for KeyValue(symbol,dimensions) in bounds do line $"    array {symbols(Set.singleton symbol)} exact-upper-bounds={dimensions}")
             data.EntryLoops[id] |> Option.iter(fun loops ->
                 for KeyValue(symbol,captured) in loops do line $"    captured FOR {symbols(Set.singleton symbol)} owner={captured.Owner} end=[{captured.Finish.Lower},{captured.Finish.Upper}] step=[{captured.Step.Lower},{captured.Step.Upper}]")
             line $"    {effects (nodeEffects analysis.Effects scope node.Kind)}"

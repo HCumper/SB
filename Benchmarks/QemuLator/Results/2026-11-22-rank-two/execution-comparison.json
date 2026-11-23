@@ -1,0 +1,58 @@
+[
+  {
+    "AfterBytes": 6448,
+    "AfterFetchWords": 506707,
+    "AfterInstructions": 405133,
+    "BaselineRevision": "24eb6f58457c4b8cae1d7d5bf04ee752557a805d",
+    "BeforeBytes": 6448,
+    "BeforeFetchWords": 506707,
+    "BeforeInstructions": 405133,
+    "Benchmark": "integer_arithmetic",
+    "BinaryIdentical": true,
+    "Checksum": 6430,
+    "FetchReductionPercent": 0,
+    "InstructionReductionPercent": 0
+  },
+  {
+    "AfterBytes": 7398,
+    "AfterFetchWords": 544501,
+    "AfterInstructions": 447099,
+    "BaselineRevision": "24eb6f58457c4b8cae1d7d5bf04ee752557a805d",
+    "BeforeBytes": 7398,
+    "BeforeFetchWords": 544501,
+    "BeforeInstructions": 447099,
+    "Benchmark": "sieve",
+    "BinaryIdentical": true,
+    "Checksum": 840,
+    "FetchReductionPercent": 0,
+    "InstructionReductionPercent": 0
+  },
+  {
+    "AfterBytes": 7860,
+    "AfterFetchWords": 546926,
+    "AfterInstructions": 383294,
+    "BaselineRevision": "24eb6f58457c4b8cae1d7d5bf04ee752557a805d",
+    "BeforeBytes": 7666,
+    "BeforeFetchWords": 875081,
+    "BeforeInstructions": 652186,
+    "Benchmark": "matrix_multiply",
+    "BinaryIdentical": false,
+    "Checksum": 1094,
+    "FetchReductionPercent": 37.49995714682412,
+    "InstructionReductionPercent": 41.22934254951808
+  },
+  {
+    "AfterBytes": 7644,
+    "AfterFetchWords": 1113941,
+    "AfterInstructions": 946785,
+    "BaselineRevision": "24eb6f58457c4b8cae1d7d5bf04ee752557a805d",
+    "BeforeBytes": 7644,
+    "BeforeFetchWords": 1113941,
+    "BeforeInstructions": 946785,
+    "Benchmark": "string_operations",
+    "BinaryIdentical": true,
+    "Checksum": 880,
+    "FetchReductionPercent": 0,
+    "InstructionReductionPercent": 0
+  }
+]
