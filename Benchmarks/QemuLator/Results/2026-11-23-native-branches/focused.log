@@ -1,0 +1,13 @@
+  SBLib -> C:\Source\SB\SBLib\bin\Debug\net10.0\SBLib.dll
+  SBRuntime -> C:\Source\SB\SBRuntime\bin\Debug\net10.0\SBRuntime.dll
+  SB.CSharpRuntime -> C:\Source\SB\SB.CSharpRuntime\bin\Debug\net10.0\SB.CSharpRuntime.dll
+  SB.AvaloniaHost -> C:\Source\SB\SB.AvaloniaHost\bin\Debug\net10.0\SB.AvaloniaHost.dll
+C:\Source\SB\SB\Interpreter.fs(2638,15): warning FS0040: This and other recursive references to the object(s) being defined will be checked for initialization-soundness at runtime through the use of a delayed reference. This is because you are defining one or more recursive objects, rather than recursive functions. This warning may be suppressed by using '#nowarn "40"' or '--nowarn:40'. [C:\Source\SB\SB\SB.fsproj]
+C:\Source\SB\SB\ParseTreeVisitor.fs(1053,19): warning FS0025: Incomplete pattern matches on this expression. For example, the value '(``some-non-null-value``,_)' may indicate a case not covered by the pattern(s). However, a pattern rule with a 'when' clause might successfully match this value. [C:\Source\SB\SB\SB.fsproj]
+  SB -> C:\Source\SB\SB\bin\Debug\net10.0\SB.dll
+  SBTests -> C:\Source\SB\SBTests\bin\Debug\net10.0\SBTests.dll
+Test run for C:\Source\SB\SBTests\bin\Debug\net10.0\SBTests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Results File: C:\Source\codex-workspace\.scratch\turbo-native-branches\targeted\conditional-final.trx
+
+Passed!  - Failed:     0, Passed:   412, Skipped:     0, Total:   412, Duration: 1 m 18 s - SBTests.dll (net10.0)

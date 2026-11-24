@@ -26,11 +26,14 @@ GOSUB returns include conservative continuation edges. Possible exceptions
 connect to handlers with unknown storage facts. These graphs support
 reachability, dominators, natural-loop discovery and backward liveness.
 
-GOSUB contexts, unknown/missing targets, error-handler RETRY/CONTINUE protocols,
-enumerated FOR sequences and possibly overwritten FOR continuations withhold arithmetic and array check-removal proofs
-for the whole program. Their CFG edges remain available; the existing audited
-native scalar/comparison/DIV/MOD regions still work. This is a deliberate limit
-until their continuation state is modeled precisely.
+Arithmetic and array proofs are eligible per scope, after its fixed point,
+control flow and captured FOR ownership have been certified. Local GOSUB
+contexts, enumerated FOR sequences and overwritten FOR continuations withhold
+these proofs in the affected scope. They do not disable independent procedures.
+Computed/missing or cross-scope line targets, error handlers/resumption, raw
+memory and opaque residents can affect other scopes and retain program-wide
+barriers. A normal RETURN and a literal transfer to an anchor in the same scope
+do not introduce a foreign entry. Uncertain CFG edges remain conservative.
 
 ## Ranges and arithmetic proofs
 
@@ -61,7 +64,7 @@ checks and advances: jumping between bodies cannot borrow another loop's hidden
 NEXT address. Captures also carry their initializer identity: another FOR using
 the same vector invalidates ownership even if the earlier initializer still
 dominates. Ordinary integer counter stores preserve ownership. Invalid
-ownership withholds proofs program-wide.
+ownership withholds arithmetic/array proofs in that scope.
 FOR advancement models the library's unchecked
 word wrap. The synthetic candidate counter is invalidated on loop exit because
 Turbo only stores it when the next iteration is valid. Overflowing arithmetic,
@@ -131,6 +134,10 @@ exceptions, I/O, allocation, control barriers and calls.
 Unknown residents remain full memory/effect barriers. Known calls map formal
 effects to actual references. Scalar `ValueArg` temporaries do not write their
 caller's variable; array references and element writes retain their owner root.
+The existing ROM `ABS` function has a narrow nonmutating effect summary: its
+argument effects, possible coercion/allocation failure and call boundary remain.
+It cannot replace descriptors or FOR continuations. A user-defined ABS routine
+uses its actual summary; unknown functions retain their full effects.
 
 Array-element stores invalidate affected values but preserve descriptor and
 captured FOR metadata. Scalar stores conservatively invalidate affected
@@ -191,14 +198,56 @@ mutating function may receive fewer facts than a standalone procedure.
 The outer solver starts every routine with no imported facts and reanalyzes
 only scopes whose entry facts change. Recursive calls cannot bootstrap assumed
 shapes. Each scope still requires its normal range/CFG certification, and the
-outer solution must satisfy all call-entry equations. Uncertain continuations
-withhold propagation. The pass is bounded to 64 rounds; nonconvergence or a
+outer solution must satisfy all call-entry equations. An untrusted caller
+contributes unknown shapes at every static call site, including sites whose
+reachability it cannot certify. It is never silently omitted from a callee's
+MUST facts. Independent trusted callers/callees can still propagate shapes.
+Program-wide barriers withhold propagation. The pass is bounded to 64 rounds; nonconvergence or a
 failed certificate discards all imported facts and retains the original scope
 analysis. `--dump-hir` reports call-entry rounds and certification status.
 
 Procedure entry bindings cannot shadow propagated globals, while body aliases
 and DIM continue to invalidate shapes through the precise effect categories.
-The existing native array operations reload descriptors/data pointers, preserve
-checked accesses for unknown indexes and retain generic fallback. This analysis
-does not expand native FOR eligibility to local/branching loops or allocate
-registers across calls.
+Standalone native array operations reload descriptors/data pointers, preserve
+checked accesses for unknown indexes and retain generic fallback. Certified
+native loops can retain invariant row addresses as described below. This
+analysis does not allocate registers across calls.
+
+## Native FOR binding certificates
+
+Certified loop regions can identify independent integer LOCAL counters owned by the
+current routine and uniquely named global counters. A call-free
+body must have resolved effects, no counter writes, no escaped counter reference
+and no other read/write root that may alias the counter. Formal body accesses
+remain conservative; formal values may still supply the captured loop bounds.
+Only simple range FOR statements qualify, with no imported counter values or
+register state across calls. Nested IF arms are included in the effect proof;
+calls, counter/alias writes and other unsupported statements still reject it.
+The downstream typed native CFG independently validates branch targets, join
+stacks and supported integer/boolean operations.
+The source CFG records each range FOR's initializer, check, advance and members.
+Its own initializer must own the captured control, and all outside edges must
+enter through it. This binding proof can succeed even when local uncertainty
+elsewhere withholds range proofs for the surrounding scope. Global control
+barriers still reject every binding certificate. Diagnostics list both the
+proof-eligible scopes and each rejected binding's reasons.
+`ArithmeticProofsEnabled` now means that at least one scope is eligible; the
+`ProofEligibleScopes` set identifies exactly which ones. Proofs for an expression
+or array key still require every occurrence, across all scopes, to be safe.
+
+Certificates additionally identify unchanged scalar bindings and array descriptors.
+Scalar invariance excludes the counter, every body write and any possible alias
+of those writes, including content writes through reference parameters and both
+IF arms. Array descriptor invariance uses the separate descriptor-write effects;
+ordinary element stores do not invalidate it. Escaped storage is excluded.
+The emitter translates these certificates into body-label/counter/scalar/array-vector
+metadata for every routine ABI variant. The metadata is kept outside the IR byte
+stream and consumed by the existing whole-loop planner, which independently
+checks supported body instructions, operand coverage, references and budgets.
+Legacy byte-only generation remains conservative. The ordinary initializer,
+counter writeback and spill recovery remain unchanged. The native loop planner
+may retain a literal or certified invariant scalar row's complete long address,
+initializing it only at the first executed, successful access. Extra saved
+registers are included in its stack budget and restored on errors. Unknown
+descriptors, changing/aliased rows and remaining helper calls retain normal
+address calculation. This does not infer an exact stride from minimum bounds.

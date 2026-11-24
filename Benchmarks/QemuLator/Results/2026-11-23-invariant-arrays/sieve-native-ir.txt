@@ -1,0 +1,57 @@
+Native register IR: blocks=4; rejected=2; extra-stack=0 bytes
+Scratch registers: D0,D1,A2. All values are materialized and frames released at every boundary.
+Block IR bytes 138..156: native bytes 90->32; spill slots=0
+  virtual: Constant (Value 0, 0)
+  virtual: StoreArrayWord (4, false, Value 0, Value 0, [])
+  virtual: Constant (Value 1, 1)
+  virtual: StoreArrayWord (4, false, Value 1, Value 0, [])
+  allocated: Immediate (0, 0)
+  allocated: StoreElement (4, false, 0, RecoveryImmediate 0, [])
+  allocated: Immediate (1, 1)
+  allocated: StoreElement (4, false, 1, RecoveryImmediate 0, [])
+Block IR bytes 186..194: native bytes 46->20; spill slots=0
+  virtual: LoadVector (Value 0, 3)
+  virtual: LoadArrayWord (Value 1, 4, false, Value 0, [])
+  virtual: PushMaths (Value 1)
+  allocated: Load (0, 3)
+  allocated: LoadElement (4, false, 0, 0, [])
+  allocated: Push 0
+Block IR bytes 204..214: native bytes 16->10; spill slots=0
+  virtual: LoadVector (Value 0, 3)
+  virtual: Binary (Value 1, MultiplyWord, Value 0, Value 0)
+  virtual: PushMaths (Value 1)
+  allocated: Load (0, 3)
+  allocated: Arithmetic (MultiplyWord, 0, 0)
+  allocated: Push 0
+Block IR bytes 346..366: native bytes 68->46; spill slots=0
+  virtual: LoadVector (Value 0, 1)
+  virtual: LoadVector (Value 1, 2)
+  virtual: Binary (Value 2, AddWord, Value 0, Value 1)
+  virtual: OverflowCheck (None, [Value 0], None)
+  virtual: Constant (Value 3, 10000)
+  virtual: Divide (Value 4, ModuloWord, Value 2, Value 3, [Value 2])
+  virtual: StoreVector (1, Value 4)
+  allocated: Load (0, 1)
+  allocated: Load (1, 2)
+  allocated: Arithmetic (AddWord, 1, 0)
+  allocated: Check (None, [RecoveryRegister 0], None)
+  allocated: PositiveDivision (ModuloWord, 1, 10000)
+  allocated: Store (1, RecoveryRegister 1)
+Native integer FOR loops: selected=3; rejected=2; extra-stack=12 bytes
+Native FOR rejected at IR byte 88: counter vector=8; reasons=unsupported body opcode 357 at IR byte 98; matching threaded NEXT was not reached; NEXT is not followed by its end marker; integer maths stack is unbalanced
+Native FOR rejected at IR byte 184: counter vector=3; reasons=unsupported body opcode 357 at IR byte 224; matching threaded NEXT was not reached; NEXT is not followed by its end marker
+Loop IR bytes 112..132: counter vector=5 in D2; captured END=D3, STEP=D4; literal STEP=Some(1); counter commit=exit/error; native bytes=58; spill slots=0; certified binding=True
+  invariant array rows: retained=0; extra saves=0 bytes; initialization=first executed access
+  allocated-loop: StoreElement (4, false, 2, RecoveryImmediate 1, [])
+Loop IR bytes 238..256: counter vector=6 in D2; captured END=D3, STEP=D4; literal STEP=; counter commit=exit/error; native bytes=68; spill slots=0; certified binding=True
+  invariant array rows: retained=0; extra saves=0 bytes; initialization=first executed access
+  allocated-loop: StoreElement (4, false, 2, RecoveryImmediate 0, [])
+Loop IR bytes 302..340: counter vector=5 in D2; captured END=D3, STEP=D4; literal STEP=Some(1); counter commit=exit/error; native bytes=100; spill slots=0; certified binding=True
+  conditional body: branches=1; parts=4; helper-stack=0 bytes
+  direct conditions: comparisons=0; integer truth=1; folded NOT=0; eager AND/OR=0
+  invariant array rows: retained=0; extra saves=0 bytes; initialization=first executed access
+  allocated-loop: LoadElement (4, false, 2, 0, [])
+  allocated-loop: Load (0, 2)
+  allocated-loop: ArithmeticImmediate (AddWord, 0, 1)
+  allocated-loop: Check (None, [], Some (2, RecoveryRegister 0))
+  allocated-loop: Store (2, RecoveryRegister 0)

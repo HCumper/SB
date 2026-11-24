@@ -1,0 +1,7 @@
+{
+  "Baseline": "C:\\Source\\codex-workspace\\.scratch\\turbo-local-for\\qemulator",
+  "BaselineCompilerSha256": "3E5303705A4965A6D51C3D8F10305321606F2238C3D82FA7FD510CB055777507",
+  "SameCanonicalSources": true,
+  "SameTurboInputs": true,
+  "TurboReusedFromVerifiedBuild": true
+}

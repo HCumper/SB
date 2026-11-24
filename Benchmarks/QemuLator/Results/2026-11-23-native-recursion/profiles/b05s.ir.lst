@@ -1,0 +1,142 @@
+999 12 ; vector table
+255
+242 10001
+254
+10000: ; DATA
+251
+255
+10001: ; first initialisation: windows, arrays, strings
+242 10005
+255
+10002: ; program body
+326
+346
+254 ; audited native region
+106 5
+118 5 ; PASSES_I
+263
+118 2 ; CHECK_I
+255 ; resume threaded code
+106 1
+109 5 ; PASSES_I
+106 1
+357 2001
+26 6 2000 ; PASS_I
+355
+2000: ; FOR PASS_I
+106 1
+106 256
+106 1
+357 2003
+26 4 2002 ; I_I
+355
+2002: ; FOR I_I
+254 ; audited native region
+109 4 ; I_I
+109 6 ; PASS_I
+1005 ; checked native integer arithmetic
+320
+150 1 ; ANGLE
+255 ; resume threaded code
+141 1 ; ANGLE
+377 2059 16384 ; 1024
+40
+150 1 ; ANGLE
+141 1 ; ANGLE
+224 2 9 [02] ; SIN
+150 8 ; SINE
+141 1 ; ANGLE
+224 2 10 [02] ; COS
+150 3 ; COSINE
+141 8 ; SINE
+141 8 ; SINE
+39
+141 3 ; COSINE
+141 3 ; COSINE
+39
+37
+224 2 11 [02] ; SQRT
+150 7 ; ROOT
+141 7 ; ROOT
+138 2048 32767 44061 ; 0.99999
+47
+141 7 ; ROOT
+138 2049 16384 10737 ; 1.00001
+42
+53
+239 2004
+106 1
+281
+170 "FAIL float_transcendentals result"
+186
+203
+220
+2004: ; END IF
+254 ; audited native region
+109 2 ; CHECK_I
+106 1
+1005 ; checked native integer arithmetic
+106 10000
+20
+118 2 ; CHECK_I
+255 ; resume threaded code
+230 4 ; I_I
+378 2003
+230 6 ; PASS_I
+378 2001
+254 ; audited native region
+109 5 ; PASSES_I
+106 5
+12
+109 2 ; CHECK_I
+106 1280
+13
+255 ; resume threaded code
+54
+239 2005
+106 1
+281
+170 "FAIL float_transcendentals checksum"
+186
+203
+220
+2005: ; END IF
+106 1
+281
+170 "float_transcendentals:"
+186
+109 2 ; CHECK_I
+312
+186
+203
+220
+220
+242 10007
+254
+10006: ; GLOBAL/EXTERNAL linkage list (empty)
+261 -1 "" ; end of list
+255
+10007:
+255
+10005: ; second initialisation: scalars
+146 1 ; ANGLE
+114 2 ; CHECK_I
+146 3 ; COSINE
+101 4 ; I_I
+114 5 ; PASSES_I
+101 6 ; PASS_I
+146 7 ; ROOT
+146 8 ; SINE
+267
+237 10000
+242 10002
+254
+10003: ; resident routine names
+261 9 "SIN" ; SIN
+261 10 "COS" ; COS
+261 11 "SQRT" ; SQRT
+261 -1 "" ; end of list
+243 10003 ; startup trailer
+358 0 ; own module number
+243 10006
+0

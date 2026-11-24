@@ -1,0 +1,10 @@
+Turbo IR warning: line 1 (1:2): Turbo directive 'TURBO_objfil"mdv1_b06t"' configures Turbo's compiler or intercom block, not the IR, so it was not emitted.
+Turbo IR warning: line 2 (2:2): Turbo directive 'TURBO_repfil"mdv1_b06_report"' configures Turbo's compiler or intercom block, not the IR, so it was not emitted.
+Turbo IR warning: line 3 (3:2): Turbo directive 'TURBO_optim2' configures Turbo's compiler or intercom block, not the IR, so it was not emitted.
+Turbo IR warning: line 4 (4:2): Turbo directive 'TURBO_model">"' configures Turbo's compiler or intercom block, not the IR, so it was not emitted.
+Turbo IR warning: line 5 (5:2): Turbo directive 'TURBO_diags0' configures Turbo's compiler or intercom block, not the IR, so it was not emitted.
+Turbo IR warning: line 7 (7:2): Turbo directive 'TURBO_objdat20' configures Turbo's compiler or intercom block, not the IR, so it was not emitted.
+Turbo IR warning: line 8 (8:2): Turbo directive 'TURBO_objstk350' configures Turbo's compiler or intercom block, not the IR, so it was not emitted.
+Turbo IR warning: line 9 (9:2): Turbo directive 'TURBO_buffersz64' configures Turbo's compiler or intercom block, not the IR, so it was not emitted.
+Turbo IR warning: line 10 (10:3): Turbo directive 'TURBO_list0' configures Turbo's compiler or intercom block, not the IR, so it was not emitted.
+Turbo IR warning: line 11 (11:3): Turbo directive 'TURBO_struct1' configures Turbo's compiler or intercom block, not the IR, so it was not emitted.

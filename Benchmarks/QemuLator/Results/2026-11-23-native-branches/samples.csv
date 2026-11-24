@@ -1,0 +1,33 @@
+sequence,benchmark,compiler,trial,passes,expected,checksum,ticks,seconds,hostJobSeconds,stdout,status
+r003,sieve,Turbo FAST,0,5,840,840,196,3.92,3.959446668624878,"sieve:840
+",passed
+r004,sieve,SB,0,5,840,840,84,1.68,1.7217912673950195,"sieve:840
+",passed
+r015,route_planner,Turbo FAST,0,1,4701,4701,1803,36.06,36.07981324195862,"route_planner:4701
+",passed
+r016,route_planner,SB,0,1,4701,4701,991,19.82,19.839887857437134,"route_planner:4701
+",passed
+r021,sieve,SB,1,5,840,840,84,1.68,1.719543695449829,"sieve:840
+",passed
+r022,sieve,Turbo FAST,1,5,840,840,192,3.84,3.860135555267334,"sieve:840
+",passed
+r033,route_planner,SB,1,1,4701,4701,991,19.82,19.859751224517822,"route_planner:4701
+",passed
+r034,route_planner,Turbo FAST,1,1,4701,4701,1803,36.06,36.09999060630798,"route_planner:4701
+",passed
+r039,sieve,Turbo FAST,2,5,840,840,191,3.82,3.880715847015381,"sieve:840
+",passed
+r040,sieve,SB,2,5,840,840,84,1.68,1.7202064990997314,"sieve:840
+",passed
+r051,route_planner,Turbo FAST,2,1,4701,4701,1803,36.06,36.080363273620605,"route_planner:4701
+",passed
+r052,route_planner,SB,2,1,4701,4701,991,19.82,19.859981775283813,"route_planner:4701
+",passed
+r057,sieve,SB,3,5,840,840,85,1.7,1.7206473350524902,"sieve:840
+",passed
+r058,sieve,Turbo FAST,3,5,840,840,192,3.84,3.879916191101074,"sieve:840
+",passed
+r069,route_planner,SB,3,1,4701,4701,991,19.82,19.860108613967896,"route_planner:4701
+",passed
+r070,route_planner,Turbo FAST,3,1,4701,4701,1803,36.06,36.09934854507446,"route_planner:4701
+",passed

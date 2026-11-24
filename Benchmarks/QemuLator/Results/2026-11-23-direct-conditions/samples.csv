@@ -1,0 +1,49 @@
+sequence,benchmark,compiler,trial,passes,expected,checksum,ticks,seconds,hostJobSeconds,stdout,status
+r003,sieve,Turbo FAST,0,5,840,840,196,3.92,3.9611809253692627,"sieve:840
+",passed
+r004,sieve,SB,0,5,840,840,58,1.16,1.2003746032714844,"sieve:840
+",passed
+r013,eight_queens,SB,0,1,4962,4962,1141,22.82,22.840316772460938,"eight_queens:4962
+",passed
+r014,eight_queens,Turbo FAST,0,1,4962,4962,967,19.34,19.38043713569641,"eight_queens:4962
+",passed
+r015,route_planner,Turbo FAST,0,1,4701,4701,1803,36.06,36.100194692611694,"route_planner:4701
+",passed
+r016,route_planner,SB,0,1,4701,4701,763,15.26,15.280160903930664,"route_planner:4701
+",passed
+r021,sieve,SB,1,5,840,840,58,1.16,1.1793487071990967,"sieve:840
+",passed
+r022,sieve,Turbo FAST,1,5,840,840,192,3.84,3.8810462951660156,"sieve:840
+",passed
+r031,eight_queens,Turbo FAST,1,1,4962,4962,967,19.34,19.38011121749878,"eight_queens:4962
+",passed
+r032,eight_queens,SB,1,1,4962,4962,1140,22.8,22.840155124664307,"eight_queens:4962
+",passed
+r033,route_planner,SB,1,1,4701,4701,762,15.24,15.299320220947266,"route_planner:4701
+",passed
+r034,route_planner,Turbo FAST,1,1,4701,4701,1803,36.06,36.09940052032471,"route_planner:4701
+",passed
+r039,sieve,Turbo FAST,2,5,840,840,192,3.84,3.8811655044555664,"sieve:840
+",passed
+r040,sieve,SB,2,5,840,840,57,1.14,1.1799230575561523,"sieve:840
+",passed
+r049,eight_queens,SB,2,1,4962,4962,1140,22.8,22.840122938156128,"eight_queens:4962
+",passed
+r050,eight_queens,Turbo FAST,2,1,4962,4962,968,19.36,19.3997163772583,"eight_queens:4962
+",passed
+r051,route_planner,Turbo FAST,2,1,4701,4701,1803,36.06,36.09878468513489,"route_planner:4701
+",passed
+r052,route_planner,SB,2,1,4701,4701,763,15.26,15.279800653457642,"route_planner:4701
+",passed
+r057,sieve,SB,3,5,840,840,58,1.16,1.1800100803375244,"sieve:840
+",passed
+r058,sieve,Turbo FAST,3,5,840,840,192,3.84,3.8791916370391846,"sieve:840
+",passed
+r067,eight_queens,Turbo FAST,3,1,4962,4962,967,19.34,19.38017463684082,"eight_queens:4962
+",passed
+r068,eight_queens,SB,3,1,4962,4962,1140,22.8,22.84039306640625,"eight_queens:4962
+",passed
+r069,route_planner,SB,3,1,4701,4701,763,15.26,15.29951524734497,"route_planner:4701
+",passed
+r070,route_planner,Turbo FAST,3,1,4701,4701,1804,36.08,36.09849143028259,"route_planner:4701
+",passed

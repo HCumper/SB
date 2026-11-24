@@ -1,0 +1,22 @@
+{
+  "Assemblies": [
+    {
+      "Assembly": "SBRuntimeTests.dll",
+      "Passed": 248,
+      "Failed": 0,
+      "Skipped": 0,
+      "Total": 248,
+      "Duration": "12 s"
+    },
+    {
+      "Assembly": "SBTests.dll",
+      "Passed": 3416,
+      "Failed": 0,
+      "Skipped": 0,
+      "Total": 3416,
+      "Duration": "12 m 31 s"
+    }
+  ],
+  "TotalPassed": 3664,
+  "Command": "dotnet test SB.sln --no-build --no-restore"
+}

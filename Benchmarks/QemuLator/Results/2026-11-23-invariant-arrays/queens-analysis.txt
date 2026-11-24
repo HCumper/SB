@@ -1,0 +1,18 @@
+HIR control-flow, range, effect and alias analysis (checked QL)
+Unchecked arithmetic proofs enabled: True; proven expressions: 3
+Proven numeric array accesses: 8
+Rank-one integer array accesses: 8
+Rank-two integer array accesses: 0
+Global array call-entry analysis: passes=2; certified=True
+Certified native FOR bindings: 3
+Proof-eligible scopes: 4/4
+Native FOR binding rejected: routine=; loop=LoopId 0; reasons=body contains calls, nested loops or unsupported control; body evaluates a function or procedure call; body may replace FOR metadata
+Native FOR binding rejected: routine=Some(SymbolId 20); loop=LoopId 0; reasons=body contains calls, nested loops or unsupported control; body evaluates a function or procedure call; body may replace FOR metadata
+Native FOR binding rejected: routine=Some(SymbolId 20); loop=LoopId 1; reasons=body evaluates a function or procedure call
+Native FOR binding rejected: routine=Some(SymbolId 22); loop=LoopId 0; reasons=body contains calls, nested loops or unsupported control; body storage may alias the counter; body evaluates a function or procedure call
+Address taken: []; escaped to unknown callees: []
+Routine SymbolId 11: reads=[SLOT_I] writes=[SLOT_I,COLUMN_I,FALLING_I,FIRST_I,QUEEN_I,RISING_I] descriptors=[SLOT_I] loop-metadata=[SLOT_I] unknown-read=False unknown-write=False unknown-descriptors=False unknown-loop-metadata=False throw=True io=False allocate=True control=True
+Routine SymbolId 20: reads=[CODE_I,LEFT_I,RIGHT_I,SEPARATION_I,BOARD_SUM_I,FIRST_I,QUEEN_I,SOLUTIONS_I] writes=[CODE_I,LEFT_I,RIGHT_I,SEPARATION_I,BOARD_SUM_I,FAILED_I,FIRST_I,SOLUTIONS_I] descriptors=[CODE_I,LEFT_I,RIGHT_I,SEPARATION_I,BOARD_SUM_I,FAILED_I,SOLUTIONS_I] loop-metadata=[LEFT_I,RIGHT_I] unknown-read=False unknown-write=False unknown-descriptors=False unknown-loop-metadata=False throw=True io=False allocate=True control=True
+Routine SymbolId 22: reads=[CHOICE_I,DOWN_I,ROW_I,UP_I,BOARD_SUM_I,COLUMN_I,FALLING_I,FIRST_I,QUEEN_I,RISING_I,SOLUTIONS_I] writes=[CHOICE_I,DOWN_I,UP_I,BOARD_SUM_I,COLUMN_I,FAILED_I,FALLING_I,FIRST_I,QUEEN_I,RISING_I,SOLUTIONS_I] descriptors=[CHOICE_I,DOWN_I,UP_I,BOARD_SUM_I,FAILED_I,SOLUTIONS_I] loop-metadata=[CHOICE_I] unknown-read=False unknown-write=False unknown-descriptors=False unknown-loop-metadata=False throw=True io=False allocate=True control=True
+Scope MainScope: blocks=87 edges=115 natural-loops=2 uncertain-control=False
+  certified-postfixed=True; captured-FOR-control=True; narrowing-passes=1; widening-thresholds=[-32768,-2,-1,0,1,2,7,8,9,10,15,16,17,91,92,93,9999,10000,10001,32767]

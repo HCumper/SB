@@ -1,0 +1,65 @@
+[
+  {
+    "benchmark": "integer_arithmetic",
+    "passes": 20,
+    "checksum": 6430,
+    "method": "Closed-form reduction of accumulated increments",
+    "sourceSha256": "9247D7DEED863D9F5AB10FD46CA0673020F50129BD6CB04AFE0BCA8F8497D833"
+  },
+  {
+    "benchmark": "sieve",
+    "passes": 5,
+    "checksum": 840,
+    "method": "Independent trial division",
+    "sourceSha256": "7C1B5A04BBF8EADB12CCEB8FBF19027405AEBF6D9FA6369CB5A94D18175A314E"
+  },
+  {
+    "benchmark": "matrix_multiply",
+    "passes": 10,
+    "checksum": 1094,
+    "method": "Direct mathematical dot products without mutable result arrays",
+    "sourceSha256": "5AAC1348BE68C38B4FD2C1A52CF9675F7F8879752240B9E977603C4985E80D6A"
+  },
+  {
+    "benchmark": "string_operations",
+    "passes": 80,
+    "checksum": 880,
+    "method": "Analytical endpoint characters after an even rotation",
+    "sourceSha256": "21CBC87F0852A477AD3B764A0D204176E9816D4C83863B6A8CF624C4A026AE32"
+  },
+  {
+    "benchmark": "float_polynomial",
+    "passes": 4,
+    "checksum": 9252,
+    "method": "Exact rational sum 37008003/16000 within the BASIC tolerance",
+    "sourceSha256": "DDC6292B39A84FFD30FD80E6F30FAD6AD471637C4B068D7FC88F351F536DBDFD"
+  },
+  {
+    "benchmark": "float_transcendentals",
+    "passes": 5,
+    "checksum": 1280,
+    "method": "SIN squared plus COS squared identity, with per-iteration guest tolerance checks",
+    "sourceSha256": "4545581B08C6C1E11AEAABE1773E2D215DB33741D9FE86003B1E24A7242E93F1"
+  },
+  {
+    "benchmark": "eight_queens",
+    "passes": 1,
+    "checksum": 4962,
+    "method": "Bitboard enumeration and independently known 92-solution histogram",
+    "sourceSha256": "75F2FD3DBE01B807E7364A92F8498B55AE554E0EE53130990ECEFC036AB8D29D"
+  },
+  {
+    "benchmark": "route_planner",
+    "passes": 1,
+    "checksum": 4701,
+    "method": "Floyd-Warshall, independent of the BASIC Dijkstra implementation",
+    "sourceSha256": "1F7AE77ED90071A7194072A630610AB8532DF3E0B3AFFCBFC0C956A4BC2E4D6D"
+  },
+  {
+    "benchmark": "concordance",
+    "passes": 4,
+    "checksum": 7936,
+    "method": "Regular-expression tokenizer, Counter and host sort over the source corpus",
+    "sourceSha256": "E79D9ED78E83B9E7147658B7323CEA680E666D19BE12CA4D57029D902B73310C"
+  }
+]

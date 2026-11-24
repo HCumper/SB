@@ -1,0 +1,13 @@
+
+
+Check-Retained-Unwind.fsx(11,12): info FS3365: The syntax 'expr1[expr2]' is used for indexing. Consider adding a type annotation to enable indexing, or if calling a function add a space, e.g. 'expr1 [expr2]'.
+
+
+
+Check-Retained-Unwind.fsx(11,22): info FS3886: This list expression contains a single tuple element. Did you mean to use ';' instead of ',' to separate list elements?
+
+
+
+Check-Retained-Unwind.fsx(11,53): info FS3365: The syntax 'expr1[expr2]' is used for indexing. Consider adding a type annotation to enable indexing, or if calling a function add a space, e.g. 'expr1 [expr2]'.
+
+PASS: three row caches initialize once; overflow after reuse preserves scalar/array stores, counter, maths operand, CPU stack and D2-D7/A0/A3-A6.

@@ -1,0 +1,8 @@
+HIR control-flow, range, effect and alias analysis (checked QL)
+Unchecked arithmetic proofs enabled: True; proven expressions: 6
+Proven numeric array accesses: 15
+Rank-one integer array accesses: 15
+Rank-two integer array accesses: 5
+Global array call-entry analysis: passes=3; certified=True
+Certified native FOR bindings: 3
+Address taken: []; escaped to unknown callees: []

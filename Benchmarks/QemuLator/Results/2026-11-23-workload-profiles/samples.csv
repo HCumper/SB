@@ -1,0 +1,81 @@
+sequence,benchmark,compiler,trial,passes,expected,checksum,ticks,seconds,hostJobSeconds,stdout,status
+r007,string_operations,Turbo FAST,0,80,880,880,207,4.14,4.180221796035767,"string_operations:880
+",passed
+r008,string_operations,SB,0,80,880,880,224,4.48,4.500455617904663,"string_operations:880
+",passed
+r009,float_polynomial,SB,0,4,9252,9252,702,14.04,14.059965133666992,"float_polynomial:9252
+",passed
+r010,float_polynomial,Turbo FAST,0,4,9252,9252,642,12.84,12.879684686660767,"float_polynomial:9252
+",passed
+r011,float_transcendentals,Turbo FAST,0,5,1280,1280,910,18.2,18.240750074386597,"float_transcendentals:1280
+",passed
+r012,float_transcendentals,SB,0,5,1280,1280,934,18.68,18.719895124435425,"float_transcendentals:1280
+",passed
+r013,eight_queens,SB,0,1,4962,4962,1141,22.82,22.85853362083435,"eight_queens:4962
+",passed
+r014,eight_queens,Turbo FAST,0,1,4962,4962,969,19.38,19.40044403076172,"eight_queens:4962
+",passed
+r017,concordance,SB,0,4,7936,7936,2823,56.46,56.49992322921753,"concordance:7936
+",passed
+r018,concordance,Turbo FAST,0,4,7936,7936,2483,49.66,49.70027303695679,"concordance:7936
+",passed
+r025,string_operations,SB,1,80,880,880,224,4.48,4.499960660934448,"string_operations:880
+",passed
+r026,string_operations,Turbo FAST,1,80,880,880,203,4.06,4.099781274795532,"string_operations:880
+",passed
+r027,float_polynomial,Turbo FAST,1,4,9252,9252,642,12.84,12.880321502685547,"float_polynomial:9252
+",passed
+r028,float_polynomial,SB,1,4,9252,9252,701,14.02,14.079581022262573,"float_polynomial:9252
+",passed
+r029,float_transcendentals,SB,1,5,1280,1280,934,18.68,18.719688177108765,"float_transcendentals:1280
+",passed
+r030,float_transcendentals,Turbo FAST,1,5,1280,1280,910,18.2,18.2401282787323,"float_transcendentals:1280
+",passed
+r031,eight_queens,Turbo FAST,1,1,4962,4962,969,19.38,19.400168895721436,"eight_queens:4962
+",passed
+r032,eight_queens,SB,1,1,4962,4962,1141,22.82,22.85792899131775,"eight_queens:4962
+",passed
+r035,concordance,Turbo FAST,1,4,7936,7936,2483,49.66,49.700233936309814,"concordance:7936
+",passed
+r036,concordance,SB,1,4,7936,7936,2823,56.46,56.52027368545532,"concordance:7936
+",passed
+r043,string_operations,Turbo FAST,2,80,880,880,203,4.06,4.101457118988037,"string_operations:880
+",passed
+r044,string_operations,SB,2,80,880,880,224,4.48,4.520692586898804,"string_operations:880
+",passed
+r045,float_polynomial,SB,2,4,9252,9252,702,14.04,14.079548835754395,"float_polynomial:9252
+",passed
+r046,float_polynomial,Turbo FAST,2,4,9252,9252,642,12.84,12.881421089172363,"float_polynomial:9252
+",passed
+r047,float_transcendentals,Turbo FAST,2,5,1280,1280,910,18.2,18.240550994873047,"float_transcendentals:1280
+",passed
+r048,float_transcendentals,SB,2,5,1280,1280,934,18.68,18.72064709663391,"float_transcendentals:1280
+",passed
+r049,eight_queens,SB,2,1,4962,4962,1140,22.8,22.85979151725769,"eight_queens:4962
+",passed
+r050,eight_queens,Turbo FAST,2,1,4962,4962,968,19.36,19.40104913711548,"eight_queens:4962
+",passed
+r053,concordance,SB,2,4,7936,7936,2824,56.48,56.52029538154602,"concordance:7936
+",passed
+r054,concordance,Turbo FAST,2,4,7936,7936,2483,49.66,49.69970774650574,"concordance:7936
+",passed
+r061,string_operations,SB,3,80,880,880,223,4.46,4.520279884338379,"string_operations:880
+",passed
+r062,string_operations,Turbo FAST,3,80,880,880,203,4.06,4.0994462966918945,"string_operations:880
+",passed
+r063,float_polynomial,Turbo FAST,3,4,9252,9252,643,12.86,12.879411220550537,"float_polynomial:9252
+",passed
+r064,float_polynomial,SB,3,4,9252,9252,702,14.04,14.079903364181519,"float_polynomial:9252
+",passed
+r065,float_transcendentals,SB,3,5,1280,1280,934,18.68,18.720014095306396,"float_transcendentals:1280
+",passed
+r066,float_transcendentals,Turbo FAST,3,5,1280,1280,909,18.18,18.239480018615723,"float_transcendentals:1280
+",passed
+r067,eight_queens,Turbo FAST,3,1,4962,4962,969,19.38,19.419660329818726,"eight_queens:4962
+",passed
+r068,eight_queens,SB,3,1,4962,4962,1141,22.82,22.860544443130493,"eight_queens:4962
+",passed
+r071,concordance,Turbo FAST,3,4,7936,7936,2483,49.66,49.71295142173767,"concordance:7936
+",passed
+r072,concordance,SB,3,4,7936,7936,2823,56.46,56.49463701248169,"concordance:7936
+",passed

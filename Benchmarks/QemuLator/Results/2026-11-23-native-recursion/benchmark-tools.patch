@@ -1,0 +1,145 @@
+diff --git a/AGENTS.md b/AGENTS.md
+index d3879c7..bad5179 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -135,6 +135,8 @@ dotnet run --project .\SB\SB.fsproj -- .\q3.sb .\unused.txt false interpret aval
+ 
+ ## Build and test
+ 
++- Use **GoldCard speed** (`Speed=GoldCard`) for future Q-emuLator benchmark timing runs, as requested on 23 November 2026. Compilation may use Full speed. Keep historical Original QL results labeled with their original speed; use `--speed QL` explicitly when reproducing them.
++
+ ```powershell
+ dotnet build .\SB.sln
+ dotnet test .\SBTests\SBTests.fsproj
+diff --git a/Benchmarks/QemuLator/Prepare-Benchmarks.py b/Benchmarks/QemuLator/Prepare-Benchmarks.py
+index cb31f43..3fcb0c3 100644
+--- a/Benchmarks/QemuLator/Prepare-Benchmarks.py
++++ b/Benchmarks/QemuLator/Prepare-Benchmarks.py
+@@ -21,6 +21,8 @@ def main():
+     parser.add_argument("--collection",type=Path,default=ROOT/"Programs")
+     parser.add_argument("--trials",type=int,default=3)
+     parser.add_argument("--warmups",type=int,default=1)
++    parser.add_argument("--speed",choices=["GoldCard","QL"],default="GoldCard",
++                        help="Timing speed (default: GoldCard); QL reproduces historical runs")
+     parser.add_argument("--name",action="append",default=[])
+     parser.add_argument("--turbo-directory",type=Path,default=Path(r"I:\QL\Turbo"))
+     parser.add_argument("--toolkit",type=Path,default=Path(r"C:\Source\codex-workspace\ql-records-demo\turbo_tk"))
+@@ -112,14 +114,14 @@ def main():
+     configuration='\n'.join(['Ram=640K',f'MainRom={args.rom}',f'BackRom={args.toolkit_rom}',
+         'BackRomActive=Yes','ExpRomActive=No','UseFloppyName=Yes','FloppyName=FLP',
+         'UseHardDiskName=Yes','HardDiskName=WIN','HasRamDisk=Yes','RamDiskName=RAM',
+-        'HasParPort=No','TCP=Off','Subdirs=Off','Speed=QL','FastStartup=Yes',
++        'HasParPort=No','TCP=Off','Subdirs=Off',f'Speed={args.speed}','FastStartup=Yes',
+         'AutoStartSession=Yes','FirstKey=F1','DisplayMode=Window','AcceleratedGraphics=No',
+         'Sound=Off','SampledSound=Off','Joystick1=None','SER1=None','SER2=None','SER3=None',
+         'SER4=None',f'Slot1={drive}',*[f'Slot{i}=Empty' for i in range(2,9)]])+'\n'
+     write_text(run/"benchmark.QCF",configuration)
+-    write_text(run/"compile.QCF",configuration.replace('Speed=QL','Speed=Full'))
++    write_text(run/"compile.QCF",configuration.replace(f'Speed={args.speed}','Speed=Full'))
+     (run/"plan.json").write_text(json.dumps(dict(formatVersion=2,timingMethod="external-qdos-job",
+-        trials=args.trials,warmups=args.warmups,timerHz=50,expectedResults=sequence,
++        trials=args.trials,warmups=args.warmups,timerHz=50,timingSpeed=args.speed,expectedResults=sequence,
+         benchmarks=plan,scope=SCOPE,outputChannel=1,inheritedChannels=31),indent=2)+"\n")
+     (run/"compile-commands.json").write_text(json.dumps(commands,indent=2)+"\n")
+     print(f"Prepared {len(cases)} unchanged programs and {sequence} external job timings in {run}")
+diff --git a/Benchmarks/QemuLator/README.md b/Benchmarks/QemuLator/README.md
+index 9821156..97f9dab 100644
+--- a/Benchmarks/QemuLator/README.md
++++ b/Benchmarks/QemuLator/README.md
+@@ -1,5 +1,21 @@
+ # Turbo FAST versus SB in Q-emuLator
+ 
++[Memory-based native recursive calls: N-queens at GoldCard speed and full verification, 23 November 2026](Results/2026-11-23-native-recursion/README.md)
++
++[Native control flow for string and floating-point loop bodies: timings, instruction reductions and full verification, 23 November 2026](Results/2026-11-23-native-template-loops/README.md)
++
++[Profiles of the five remaining slower workloads: instruction attribution, fresh timings and next priorities, 23 November 2026](Results/2026-11-23-workload-profiles/README.md)
++
++[Invariant native array rows: matrix and route timings and verification, 23 November 2026](Results/2026-11-23-invariant-arrays/README.md)
++
++[Direct comparisons, integer truth and eager AND/OR branches: timings and verification, 23 November 2026](Results/2026-11-23-direct-conditions/README.md)
++
++[Procedure and region eligibility: eight-queens timing and verification, 23 November 2026](Results/2026-11-23-scoped-eligibility/README.md)
++
++[Native integer comparisons and conditional FOR loops: sieve and route timing, 23 November 2026](Results/2026-11-23-native-branches/README.md)
++
++[Certified procedure-local native FOR loops: route timing and verification, 23 November 2026](Results/2026-11-23-local-for/README.md)
++
+ [Procedure-entry array shapes: route-planner timing and verification, 22 November 2026](Results/2026-11-22-call-entry-shapes/README.md)
+ 
+ [Rank-two native arrays: matrix timing and full verification, 22 November 2026](Results/2026-11-22-rank-two/README.md)
+@@ -80,8 +96,8 @@ python .\Test-Harness.py
+    with the compatibility generator. Run `.\Use-TimingBoot.ps1 -RunDirectory
+    $run`; it checks all builds and both compilers' verification evidence before
+    installing the timing boot file.
+-4. Open `benchmark.QCF` in Q-emuLator. This starts a fresh session at **Original
+-   QL** speed (`Speed=QL`), with 640 KiB RAM, JS ROM, Toolkit II, unaccelerated
++4. Open `benchmark.QCF` in Q-emuLator. This starts a fresh session at **GoldCard**
++   speed (`Speed=GoldCard`), with 640 KiB RAM, JS ROM, Toolkit II, unaccelerated
+    graphics and sound disabled. Leave that setting unchanged until completion.
+ 5. Wait for `drive\done`, then run:
+ 
+@@ -93,6 +109,11 @@ python .\Test-Harness.py
+ Preparation refuses directories containing compiled jobs or timing samples. Generated QDOS
+ files use LF endings. No files in the installed Turbo distribution are changed.
+ 
++Future timing runs default to GoldCard speed, as requested on 23 November 2026.
++Use `Prepare-Benchmarks.py --speed QL` only when reproducing historical Original QL
++runs. The plan and metadata record the chosen speed; compare timings collected at
++the same speed. Compilation continues to use Full speed and is excluded from timing.
++
+ ## Measurement and validation
+ 
+ An interpreted parent BASIC runner reads a common resident 50 Hz polling clock
+@@ -127,8 +148,9 @@ timings.
+ `Build-SB.ps1` uses `--hir-opt --native-regions --regalloc`. It independently builds
+ each original program with the same compile-time metadata, requires an identical
+ complete executable, and compares native FOR and arithmetic/array proof coverage.
+-The ordinary arithmetic build selects one native FOR loop; sieve selects two
+-and matrix multiplication selects three. The other six currently select none.
++The ordinary arithmetic build selects one native FOR loop; sieve selects three,
++matrix multiplication selects three, route planner selects five and eight queens
++selects three. The other four currently select none.
+ Compiler checks and threaded fallbacks remain where required. Turbo FAST can
+ omit overflow checks; supplied successful
+ workloads keep integer arithmetic within signed 16-bit limits.
+diff --git a/Benchmarks/QemuLator/Save-Metadata.ps1 b/Benchmarks/QemuLator/Save-Metadata.ps1
+index b981a9c..a30067e 100644
+--- a/Benchmarks/QemuLator/Save-Metadata.ps1
++++ b/Benchmarks/QemuLator/Save-Metadata.ps1
+@@ -20,6 +20,11 @@ $fingerprints['SB.dll']=Hash $CompilerDll
+ $fingerprints['lib537.bin']=Hash (Join-Path $RepositoryDirectory 'SB\TurboRuntime\lib537.bin')
+ $fingerprints['emulator']=Hash $Emulator
+ $config=Get-Content -LiteralPath (Join-Path $run 'benchmark.QCF')
++$speedLines=@($config | Where-Object { $_.StartsWith('Speed=') })
++if ($speedLines.Count -ne 1 -or $speedLines[0] -notin @('Speed=GoldCard','Speed=QL')) { throw 'Timing requires GoldCard or QL speed.' }
++$timingSpeed=$speedLines[0].Substring(6)
++if ($plan.timingSpeed -and $timingSpeed -ne $plan.timingSpeed) { throw 'Timing speed differs from the prepared plan.' }
++$speedName=if ($timingSpeed -eq 'GoldCard') { 'GoldCard' } else { 'Original QL' }
+ foreach ($key in @('MainRom','BackRom')) {
+     $line=@($config | Where-Object { $_.StartsWith($key+'=') })
+     if ($line.Count -ne 1) { throw "Missing $key setting." }
+@@ -68,7 +73,7 @@ $revision=(& git -C $RepositoryDirectory rev-parse HEAD).Trim()
+ if ($LASTEXITCODE -ne 0) { throw 'Cannot identify SB revision.' }
+ [pscustomobject]@{ FormatVersion=2; TimingMethod=$plan.timingMethod; RecordedUtc=[DateTime]::UtcNow.ToString('o')
+     Emulator='Q-emuLator'; EmulatorVersion=(Get-Item -LiteralPath $Emulator).VersionInfo.FileVersion
+-    TimingSpeed='Original QL (Speed=QL)'; CompilationSpeed='Full; compilation excluded'; RamKiB=640; Rom='JS'
++    TimingSpeed="$speedName (Speed=$timingSpeed)"; CompilationSpeed='Full; compilation excluded'; RamKiB=640; Rom='JS'
+     TurboParserVersion='5.09'; TurboCodeGeneratorVersion='3.27 (generator 4.10, library 5.37)'; TurboToolkitVersion='3.44'
+     TurboOptions='FAST (TURBO_optim 2), large addressing, no copied windows, no line numbers, structured, 20 KiB dataspace, base stack 350 bytes'
+     SbRevision=$revision; SbOptions=$build.Flags; HostOs=[Environment]::OSVersion.VersionString
+diff --git a/Benchmarks/QemuLator/Use-TimingBoot.ps1 b/Benchmarks/QemuLator/Use-TimingBoot.ps1
+index 85b76c6..db47b3f 100644
+--- a/Benchmarks/QemuLator/Use-TimingBoot.ps1
++++ b/Benchmarks/QemuLator/Use-TimingBoot.ps1
+@@ -20,7 +20,9 @@ foreach ($file in @('sb-verification.json','native-verification.json')) {
+             ($file -eq 'native-verification.json' -and (-not $row.CompatibilityExecutableIdentical -or $row.NativeIntegerOperations -le 0))) { throw "Failed verification: $file" }
+     }
+ }
+-if ((Get-Content -LiteralPath (Join-Path $run 'benchmark.QCF')) -notcontains 'Speed=QL') { throw 'Timing requires Speed=QL.' }
++$speedLines=@(Get-Content -LiteralPath (Join-Path $run 'benchmark.QCF') | Where-Object { $_.StartsWith('Speed=') })
++if ($speedLines.Count -ne 1 -or $speedLines[0] -notin @('Speed=GoldCard','Speed=QL')) { throw 'Timing requires GoldCard or QL speed.' }
++if ($plan.timingSpeed -and $speedLines[0] -ne ('Speed='+$plan.timingSpeed)) { throw 'Timing speed differs from the prepared plan.' }
+ Copy-Item -LiteralPath (Join-Path $drive 'run_boot') -Destination (Join-Path $drive 'boot')
+ [IO.File]::WriteAllText((Join-Path $drive 'build_done'),"Verified ordinary SB and Turbo FAST executables.`n")
+ Write-Output "Open $run\benchmark.QCF in Q-emuLator to run the external timing trials."

@@ -3,6 +3,46 @@
   "provenance": "Original workloads written for SB; independently calculated checksums.",
   "benchmarks": [
     {
+      "name": "native_truth_for",
+      "file": "native_truth_for.bas",
+      "description": "Direct-condition microbenchmark: variable integer truth and eager AND with native integer comparison",
+      "passes": 20,
+      "quickPasses": 1,
+      "expectedChecksum": 4970,
+      "quickChecksum": 2239,
+      "requiresRom": false
+    },
+    {
+      "name": "scoped_integer_for",
+      "file": "scoped_integer_for.bas",
+      "description": "Eligibility microbenchmark: local procedure counter beside a separate GOSUB continuation",
+      "passes": 20,
+      "quickPasses": 1,
+      "expectedChecksum": 270,
+      "quickChecksum": 3004,
+      "requiresRom": false
+    },
+    {
+      "name": "native_conditional_for",
+      "file": "native_conditional_for.bas",
+      "description": "Native conditional-loop microbenchmark: integer comparison and IF/ELSE with a procedure-local counter",
+      "passes": 20,
+      "quickPasses": 1,
+      "expectedChecksum": 6870,
+      "quickChecksum": 1334,
+      "requiresRom": false
+    },
+    {
+      "name": "local_integer_for",
+      "file": "local_integer_for.bas",
+      "description": "Procedure-local native FOR microbenchmark with captured parameter bounds and checked integer arithmetic",
+      "passes": 20,
+      "quickPasses": 1,
+      "expectedChecksum": 270,
+      "quickChecksum": 3004,
+      "requiresRom": false
+    },
+    {
       "name": "regalloc_copy_chain",
       "file": "regalloc_copy_chain.bas",
       "description": "Allocation microbenchmark: scalar copies across assignments; report separately from applications",

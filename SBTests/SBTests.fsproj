@@ -16,6 +16,7 @@
         <Compile Include="Optimization\HirTurboOptimizerTests.fs" />
         <Compile Include="Optimization\HirAnalysisTests.fs" />
         <Compile Include="Optimization\TurboNativeRegionsTests.fs" />
+        <Compile Include="Optimization\TurboNativeTemplateLoopsTests.fs" />
         <Compile Include="M68kEmulator.fs" />
         <Compile Include="Optimization\TurboNativeIrTests.fs" />
         <Compile Include="Optimization\TurboNativeLoopsTests.fs" />

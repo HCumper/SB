@@ -30,6 +30,7 @@ type ScopeAnalysis = {
     NarrowingPasses:int
     Certified:bool
     ForMetadataTrusted:bool
+    TrustedForInitialisers:Set<int>
 }
 type Analysis = {
     Effects:Context
@@ -41,6 +42,11 @@ type Analysis = {
     TwoDimensionalIntegerAccesses:Map<string * HirExpr list,RankTwoIntegerAccess>
     EntryShapePasses:int
     EntryShapesCertified:bool
+    CertifiedNativeForLoops:Map<SymbolId option * LoopId,NativeForBindings>
+    CertifiedMemoryForLoops:Set<SymbolId option * LoopId>
+    NativeForRejections:Map<SymbolId option * LoopId,string list>
+    ProofEligibleScopes:Set<Scope>
+    GlobalControlBarriers:string list
 }
 
 let word = {Lower = -32768L; Upper=32767L}
@@ -402,7 +408,7 @@ let private solve options context graph globalEntry =
     // A jump into a different FOR body can carry another loop's hidden NEXT
     // address, even when both use the same counter vector. Require the matching
     // initializer to dominate checks/advances before trusting runtime control.
-    let metadataTrusted=graph.Nodes |> Map.forall(fun id node ->
+    let metadataValid id (node:Node) =
         match node.Kind with
         | ForCheck(counter,_,_) ->
             let predecessors=predecessors.TryFind id |> Option.defaultValue []
@@ -415,17 +421,47 @@ let private solve options context graph globalEntry =
                     | Some state -> graph.Dominators[target].Contains init.Source &&
                                     (state.Loops.TryFind counter |> Option.exists(fun captured -> captured.Owner=init.Source)))
             | None -> false
-        | _ -> true)
+        | _ -> true
+    let metadataTrusted=graph.Nodes |> Map.forall metadataValid
+    let trustedInitialisers=graph.ForRegions |> Map.toSeq |> Seq.choose(fun (_,region) ->
+        if metadataValid region.Check graph.Nodes[region.Check] then Some region.Initialiser else None) |> Set.ofSeq
     {Graph=graph;Liveness=liveness context.Effects graph;EntryRanges=entryRanges;ExitRanges=exitRanges;ExpressionRanges=expressions
      EntryBounds=incoming |> Seq.map(fun p -> p.Key,p.Value |> Option.map _.Bounds) |> Map.ofSeq
      EntryExactBounds=incoming |> Seq.map(fun p -> p.Key,p.Value |> Option.map _.ExactBounds) |> Map.ofSeq
      EntryLoops=incoming |> Seq.map(fun p -> p.Key,p.Value |> Option.map _.Loops) |> Map.ofSeq
-     WideningThresholds=limits;NarrowingPasses=passes;Certified=certified;ForMetadataTrusted=metadataTrusted}
+     WideningThresholds=limits;NarrowingPasses=passes;Certified=certified;ForMetadataTrusted=metadataTrusted;TrustedForInitialisers=trustedInitialisers}
+
+// Unknown/nonlocal entries and persistent error/memory operations can affect
+// other procedures. Ordinary local CFG uncertainty is deliberately not global.
+let private controlBarriers (context:RangeContext) (graphs:(Scope*Graph) list) =
+    let known=context.Effects.Program.Routines |> List.map _.Symbol |> Set.ofList
+    [for scope,graph in graphs do
+        for KeyValue(_,node) in graph.Nodes do
+            let localTarget = function Literal(ConstInt line,_,_) -> graph.Labels.ContainsKey line | _ -> false
+            match node.Kind with
+            | Statement(WhenError _) -> yield "error handler may resume in another region"
+            | Statement(Goto(target,_) | Gosub(target,_)) when not(localTarget target) -> yield "computed or nonlocal line transfer"
+            | Statement(OnGoto(_,targets,_) | OnGosub(_,targets,_)) when not(List.forall localTarget targets) -> yield "computed or nonlocal ON transfer"
+            | Statement(BuiltInCall(NamedBuiltIn name,_,_,_)) when not(List.contains (name.ToUpperInvariant()) ["STOP";"QUIT"]) ->
+                yield $"opaque/persistent resident {name.ToUpperInvariant()}"
+            | _ -> ()
+            for expr in nodeExpressions node.Kind |> Seq.collect HirEffects.expressions do
+                match expr with
+                | CallFunc(s,args,_,_) when not(known.Contains s) && not(nonmutatingCall context.Effects.Program s args) ->
+                    yield "opaque function may alter bindings or continuations"
+                | _ -> ()
+            match node.Kind with
+            | Statement(ProcCall(s,_,_,_)) when not(known.Contains s) -> yield "opaque procedure may alter bindings or continuations"
+            | _ -> ()]
+    |> List.distinct
+
+let private scopeTrusted barriers (data:ScopeAnalysis) =
+    List.isEmpty barriers && data.Certified && not data.Graph.HasUncertainControl && data.ForMetadataTrusted
 
 // Incoming shapes are MUST facts from every statically known call site. No
 // scalar values, parameters, caller LOCALs or FOR captures cross the boundary.
 // Starting with no facts avoids bootstrapping assumptions around recursion.
-let private solveCallEntries options context (graphs:(Scope*Graph) list) =
+let private solveCallEntries options context barriers (graphs:(Scope*Graph) list) =
     let globalArrays =
         context.Effects.Program.Globals
         |> List.choose(fun storage ->
@@ -436,7 +472,6 @@ let private solveCallEntries options context (graphs:(Scope*Graph) list) =
         |> Set.ofList
     let emptyEntries=graphs |> List.map(fun (scope,_) -> scope,unknownFlow) |> Map.ofList
     let original=graphs |> List.map(fun (scope,graph) -> scope,solve options context graph unknownFlow) |> Map.ofList
-    let trusted (scopes:Map<Scope,ScopeAnalysis>)=graphs |> List.forall(fun (scope,graph) -> not graph.HasUncertainControl && scopes[scope].Certified && scopes[scope].ForMetadataTrusted)
     let infer (scopes:Map<Scope,ScopeAnalysis>) =
         let inputs=Dictionary<Scope,FlowState option>()
         for scope,_ in graphs do inputs[scope]<-None
@@ -444,6 +479,16 @@ let private solveCallEntries options context (graphs:(Scope*Graph) list) =
             let data=scopes[scope]
             for KeyValue(id,node) in graph.Nodes do
                 match data.EntryBounds[id],data.EntryExactBounds[id] with
+                | _ when not(scopeTrusted barriers data) ->
+                    // An untrusted caller contributes UNKNOWN, never an omitted
+                    // call site or facts derived from incomplete continuations.
+                    let callees=seq {
+                        match node.Kind with Statement(ProcCall(s,_,_,_)) -> yield s | _ -> ()
+                        for expr in nodeExpressions node.Kind |> Seq.collect HirEffects.expressions do
+                            match expr with CallFunc(s,_,_,_) -> yield s | _ -> () }
+                    for callee in callees do
+                        let target=RoutineScope callee
+                        if inputs.ContainsKey target then inputs[target]<-Some unknownFlow
                 | Some bounds,Some exact ->
                     // Arguments and sibling calls may change descriptors before
                     // entry. For expression calls this also includes the callee's
@@ -461,7 +506,7 @@ let private solveCallEntries options context (graphs:(Scope*Graph) list) =
                         if inputs.ContainsKey target then inputs[target]<-joinFlows inputs[target] (Some passed)
                 | _ -> () // Unreachable sites contribute no entry states.
         emptyEntries |> Map.map(fun scope _ -> inputs[scope] |> Option.defaultValue unknownFlow)
-    if globalArrays.IsEmpty || graphs.Length=1 || not(trusted original) then original,0,true
+    if globalArrays.IsEmpty || graphs.Length=1 || not barriers.IsEmpty then original,0,true
     else
         let mutable entries=emptyEntries
         let mutable scopes=original
@@ -480,11 +525,120 @@ let private solveCallEntries options context (graphs:(Scope*Graph) list) =
                 for scope,graph in graphs do
                     if next[scope]<>entries[scope] then scopes<-scopes.Add(scope,solve options context graph next[scope])
                 entries<-next
-                certified<-trusted scopes
+                certified<-scopes |> Map.forall(fun scope data -> entries[scope]=unknownFlow || data.Certified)
         if stable && certified && infer scopes=entries then scopes,passes,true
         else original,passes,false
 
 let private arithmetic = function Unary(Negate,_,_,_) | Binary((Add|Subtract|Multiply),_,_,_,_) -> true | _ -> false
+
+// Binding certificates are independent of scalar range proofs. Keep counters
+// in their own cells: a formal/array alias must not observe a deferred counter
+// store, even when it only reads. Calls and non-leaf control remain boundaries.
+let private nativeForCertificates (context:RangeContext) barriers (scopes:Map<Scope,ScopeAnalysis>) =
+    let effects=context.Effects
+    let certificate scope routine = function
+        | For(loop,counter,_,_,_,body,_) ->
+            let data=scopes[scope]
+            let owned =
+                effects.Aliases.Storages.TryFind counter |> Option.exists(fun storage ->
+                    let scalar=not(effects.Aliases.ArrayStorages.Contains counter) && nameIsInteger context.Target storage.Name
+                    let binding=
+                        match storage.Class,routine with
+                        | RoutineLocalStorage _,Some routine -> routine.Locals |> List.exists(fun local -> local.Symbol=counter)
+                        | GlobalStorage,_ ->
+                            effects.Aliases.Storages |> Map.toSeq |> Seq.filter(fun (_,other) -> String.Equals(storage.Name,other.Name,StringComparison.OrdinalIgnoreCase)) |> Seq.length = 1
+                        | _ -> false
+                    scalar && binding)
+            let rec leaf body=body |> List.forall(function
+                | Assign _ | LineNumber _ | Remark _ -> true
+                | If(_,yes,no,_) -> leaf yes && leaf(Option.defaultValue [] no)
+                | _ -> false)
+            let writes=body |> List.map(statement effects scope) |> combineAll
+            let roots=Set.union writes.Reads writes.Writes
+            let independent=roots |> Set.forall(fun root -> root=counter || not(mayAlias effects.Aliases scope counter root))
+            let region=data.Graph.ForRegions.TryFind loop
+            let control=region |> Option.exists(fun region ->
+                data.TrustedForInitialisers.Contains region.Initialiser &&
+                data.Graph.Edges |> List.forall(fun edge ->
+                    not(region.Members.Contains edge.Target) || region.Members.Contains edge.Source || edge.Source=region.Initialiser))
+            let reasons=[
+                yield! barriers
+                if not data.Certified then yield "scope analysis did not certify a fixed point"
+                if not control then yield "loop has an external entry or untrusted FOR continuation"
+                if not owned then yield "counter is not an owned integer LOCAL or unique global"
+                if not(leaf body) then yield "body contains calls, nested loops or unsupported control"
+                if not independent then yield "body storage may alias the counter"
+                if effects.Aliases.Escaped.Contains counter then yield "counter reference escapes to an opaque callee"
+                if writes.ReadsUnknown || writes.WritesUnknown then yield "body has unresolved storage effects"
+                if statements body |> Seq.collect statementExpressions |> Seq.collect expressions |> Seq.exists(function
+                    | CallFunc(symbol,args,_,_) -> not(inlineCall effects.Program symbol args)
+                    | _ -> false) then yield "body evaluates a function or procedure call"
+                if writes.Writes.Contains counter then yield "body writes the counter"
+                if writes.LoopMetadataWritesUnknown || not writes.LoopMetadataWrites.IsEmpty then yield "body may replace FOR metadata"]
+            let key=(routine |> Option.map _.Symbol,loop)
+            if reasons.IsEmpty then
+                let scalars=roots.Add counter |> Set.filter(fun s -> not(effects.Aliases.ArrayStorages.Contains s))
+                let stable changed s = not(effects.Aliases.Escaped.Contains s) &&
+                                       (changed |> Set.forall(fun w -> not(mayAlias effects.Aliases scope s w)))
+                let invariants=scalars.Remove counter |> Set.filter(stable (writes.Writes.Add counter))
+                let arrays=Set.intersect roots effects.Aliases.ArrayStorages |> Set.filter(fun s ->
+                    not writes.DescriptorWritesUnknown && stable writes.DescriptorWrites s)
+                let names symbols=symbols |> Set.map(fun s -> effects.Aliases.Storages[s].Name)
+                Some(key,Ok {Scalars=names scalars;InvariantScalars=names invariants;InvariantArrays=names arrays})
+            else Some(key,Error reasons)
+        | _ -> None
+    [yield! statements effects.Program.Main |> Seq.choose(certificate MainScope None)
+     for routine in effects.Program.Routines do
+         yield! statements routine.Body |> Seq.choose(certificate (RoutineScope routine.Symbol) (Some routine))]
+    |> List.fold(fun (certificates,rejections) (key,result) ->
+        match result with Ok names -> Map.add key names certificates,rejections | Error reasons -> certificates,Map.add key reasons rejections) (Map.empty,Map.empty)
+
+// Unlike pinned loops, memory-counter loops permit scalar aliases and writes:
+// every operation observes the actual cell, as in P mode. Only binding/FOR
+// metadata must survive calls. LOCAL effects of recursive activations are
+// projected out by the existing interprocedural summaries at normal returns.
+let private memoryForCertificates (context:RangeContext) (barriers:string list) (scopes:Map<Scope,ScopeAnalysis>) =
+    let effects=context.Effects
+    let routines=effects.Program.Routines |> List.map(fun r -> r.Symbol,r) |> Map.ofList
+    let candidate scope routine = function
+        | For(loop,counter,_,_,_,body,_) ->
+            let data=scopes[scope]
+            let mutable calls=0
+            let rec leaf body = body |> List.forall(function
+                | Assign _ | LineNumber _ | Remark _ -> true
+                | If(_,yes,no,_) -> leaf yes && leaf(Option.defaultValue [] no)
+                | ProcCall(symbol,None,args,_) ->
+                    calls<-calls+1
+                    routines.TryFind symbol |> Option.exists(fun callee ->
+                        callee.ReturnType.IsNone &&
+                        (callee.Parameters |> List.forall(fun p -> p.Binding<>ReferenceBinding && nameIsInteger context.Target p.Storage.Name && not(effects.Aliases.ArrayStorages.Contains p.Storage.Symbol))) &&
+                        (args |> List.forall(function ValueArg _ -> true | _ -> false)))
+                | _ -> false)
+            let supported=leaf body && calls>0
+            let owned=effects.Aliases.Storages.TryFind counter |> Option.exists(fun storage ->
+                nameIsInteger context.Target storage.Name && not(effects.Aliases.ArrayStorages.Contains counter) &&
+                match storage.Class,routine with
+                | RoutineLocalStorage _,Some routine -> routine.Locals |> List.exists(fun local -> local.Symbol=counter)
+                | GlobalStorage,_ -> effects.Aliases.Storages |> Map.forall(fun s other -> s=counter || not(String.Equals(storage.Name,other.Name,StringComparison.OrdinalIgnoreCase)))
+                | _ -> false)
+            let writes=body |> List.map(statement effects scope) |> combineAll
+            let control=data.Graph.ForRegions.TryFind loop |> Option.exists(fun region ->
+                data.TrustedForInitialisers.Contains region.Initialiser &&
+                data.Graph.Edges |> List.forall(fun edge -> not(region.Members.Contains edge.Target) || region.Members.Contains edge.Source || edge.Source=region.Initialiser))
+            let expressionsKnown=statements body |> Seq.collect statementExpressions |> Seq.collect expressions |> Seq.forall(function
+                | CallFunc(symbol,args,_,_) -> inlineCall effects.Program symbol args
+                | _ -> true)
+            if barriers.IsEmpty && data.Certified && supported && owned && control && expressionsKnown &&
+               not(effects.Aliases.Escaped.Contains counter) && not writes.ReadsUnknown && not writes.WritesUnknown &&
+               not writes.InputOutput && not writes.LoopMetadataWritesUnknown &&
+               not((expand effects.Aliases scope writes.LoopMetadataWrites).Contains counter) then
+                Some(routine |> Option.map _.Symbol,loop)
+            else None
+        | _ -> None
+    [yield! statements effects.Program.Main |> Seq.choose(candidate MainScope None)
+     for routine in effects.Program.Routines do
+         yield! statements routine.Body |> Seq.choose(candidate (RoutineScope routine.Symbol) (Some routine))]
+    |> Set.ofList
 
 /// Analyzes immutable HIR. No facts are assumptions about caller values, QL
 /// startup zeroes, floating arithmetic, or successful execution of a call.
@@ -494,10 +648,11 @@ let analyzeWithOptions options target program =
         if storage.Dimensions.IsNone && (match storage.Type with Array _ -> false | _ -> true) && nameIsInteger target storage.Name then Some symbol else None) |> Set.ofSeq
     let context={Target=target;Effects=effects;Integers=integers}
     let graphs = (MainScope,build effects MainScope program.Main) :: (program.Routines |> List.map (fun r -> RoutineScope r.Symbol,build effects (RoutineScope r.Symbol) r.Body))
-    // Unknown continuations can enter another scope or resume past a guard.
-    // Model their edges, but withhold unchecked-arithmetic proofs program-wide.
-    let scopes,entryShapePasses,entryShapesCertified=solveCallEntries options context graphs
-    let trusted=(graphs |> List.forall (fun (_,g) -> not g.HasUncertainControl)) && (scopes |> Map.forall(fun _ data -> data.Certified && data.ForMetadataTrusted))
+    let barriers=controlBarriers context graphs
+    let scopes,entryShapePasses,entryShapesCertified=solveCallEntries options context barriers graphs
+    let trustedScopes=scopes |> Map.toSeq |> Seq.choose(fun (scope,data) -> if scopeTrusted barriers data then Some scope else None) |> Set.ofSeq
+    let certificates,rejections=nativeForCertificates context barriers scopes
+    let memoryCertificates=memoryForCertificates context barriers scopes
     let candidates = [
         for KeyValue(scope,analysis) in scopes do
             for KeyValue(id,node) in analysis.Graph.Nodes do
@@ -505,7 +660,7 @@ let analyzeWithOptions options target program =
                 let state=analysis.EntryRanges[id] |> Option.map (kill context scope evaluation)
                 for expr in nodeExpressions node.Kind |> Seq.collect HirEffects.expressions |> Seq.filter arithmetic do
                     let proven=
-                        trusted && not evaluation.WritesUnknown && evaluation.Writes.IsEmpty &&
+                        trustedScopes.Contains scope && not evaluation.WritesUnknown && evaluation.Writes.IsEmpty &&
                         (state |> Option.exists (fun state -> integerExpression context expr && (evaluate context state expr |> snd)))
                     yield expr,proven]
     let safe=candidates |> List.groupBy fst |> List.choose (fun (expr,occurrences) -> if occurrences |> List.forall snd then Some expr else None) |> Set.ofList
@@ -541,13 +696,13 @@ let analyzeWithOptions options target program =
                 let occurrences=Seq.append (reads |> Seq.map(fun (a,b,c) -> a,b,c,true)) (writes |> Seq.map(fun (a,b,c) -> a,b,c,ordinary))
                 for name,indexes,symbol,eligible in occurrences do
                     let rankOne=
-                        eligible && trusted && nameIsInteger target name && indexes.Length=1 &&
+                        eligible && trustedScopes.Contains scope && nameIsInteger target name && indexes.Length=1 &&
                         not evaluation.WritesUnknown && evaluation.Writes.IsEmpty &&
                         (match symbol,bounds with
                          | Some symbol,Some bounds when named name=[symbol] -> bounds.TryFind symbol |> Option.exists(fun dimensions -> dimensions.Length=1)
                          | _ -> false)
                     let proven=
-                        eligible && trusted && not(name.EndsWith "$" ) && not evaluation.WritesUnknown && evaluation.Writes.IsEmpty &&
+                        eligible && trustedScopes.Contains scope && not(name.EndsWith "$" ) && not evaluation.WritesUnknown && evaluation.Writes.IsEmpty &&
                         (match symbol,state,bounds with
                          | Some symbol,Some state,Some bounds when named name=[symbol] ->
                              bounds.TryFind symbol |> Option.exists(fun dimensions ->
@@ -555,7 +710,7 @@ let analyzeWithOptions options target program =
                                      evaluate context state index |> fst |> Option.exists(fun range -> range.Lower>=0L && range.Upper<=int64 bound)) indexes dimensions)
                          | _ -> false)
                     let rankTwo=
-                        if eligible && trusted && nameIsInteger target name && indexes.Length=2 &&
+                        if eligible && trustedScopes.Contains scope && nameIsInteger target name && indexes.Length=2 &&
                            not evaluation.WritesUnknown && evaluation.Writes.IsEmpty then
                             match symbol,bounds with
                             | Some symbol,Some bounds when named name=[symbol] ->
@@ -578,8 +733,9 @@ let analyzeWithOptions options target program =
             let exact=facts.Head.ExactLengths
             Some(key,{ProvenRows=facts |> List.forall _.ProvenRows;ProvenColumns=facts |> List.forall _.ProvenColumns
                       ExactLengths=if facts |> List.forall(fun fact -> fact.ExactLengths=exact) then exact else None})) |> Map.ofList
-    {Effects=effects;Scopes=scopes;SafeIntegerExpressions=safe;ArithmeticProofsEnabled=trusted;SafeArrayAccesses=safeArrays;OneDimensionalIntegerAccesses=rankOneArrays;TwoDimensionalIntegerAccesses=rankTwoArrays
-     EntryShapePasses=entryShapePasses;EntryShapesCertified=entryShapesCertified}
+    {Effects=effects;Scopes=scopes;SafeIntegerExpressions=safe;ArithmeticProofsEnabled=not trustedScopes.IsEmpty;SafeArrayAccesses=safeArrays;OneDimensionalIntegerAccesses=rankOneArrays;TwoDimensionalIntegerAccesses=rankTwoArrays
+     EntryShapePasses=entryShapePasses;EntryShapesCertified=entryShapesCertified
+     CertifiedNativeForLoops=certificates;CertifiedMemoryForLoops=memoryCertificates;NativeForRejections=rejections;ProofEligibleScopes=trustedScopes;GlobalControlBarriers=barriers}
 
 let analyze target program = analyzeWithOptions defaultOptions target program
 
@@ -601,6 +757,13 @@ let format (analysis:Analysis) =
     line $"Rank-one integer array accesses: {analysis.OneDimensionalIntegerAccesses.Count}"
     line $"Rank-two integer array accesses: {analysis.TwoDimensionalIntegerAccesses.Count}"
     line $"Global array call-entry analysis: passes={analysis.EntryShapePasses}; certified={analysis.EntryShapesCertified}"
+    line $"Certified native FOR bindings: {analysis.CertifiedNativeForLoops.Count}"
+    line $"Certified memory-counter FOR call regions: {analysis.CertifiedMemoryForLoops.Count}"
+    line $"Proof-eligible scopes: {analysis.ProofEligibleScopes.Count}/{analysis.Scopes.Count}"
+    for barrier in analysis.GlobalControlBarriers do line $"Global control barrier: {barrier}"
+    for KeyValue((routine,loop),reasons) in analysis.NativeForRejections do
+        let reasons=String.concat "; " reasons
+        line $"Native FOR binding rejected: routine={routine}; loop={loop}; reasons={reasons}"
     line $"Address taken: [{symbols analysis.Effects.Aliases.AddressTaken}]; escaped to unknown callees: [{symbols analysis.Effects.Aliases.Escaped}]"
     for KeyValue(symbol,summary) in analysis.Effects.Summaries do line $"Routine {symbol}: {effects summary}"
     for KeyValue(scope,data) in analysis.Scopes do

@@ -1,5 +1,21 @@
 # Turbo FAST versus SB in Q-emuLator
 
+[Memory-based native recursive calls: N-queens at GoldCard speed and full verification, 23 November 2026](Results/2026-11-23-native-recursion/README.md)
+
+[Native control flow for string and floating-point loop bodies: timings, instruction reductions and full verification, 23 November 2026](Results/2026-11-23-native-template-loops/README.md)
+
+[Profiles of the five remaining slower workloads: instruction attribution, fresh timings and next priorities, 23 November 2026](Results/2026-11-23-workload-profiles/README.md)
+
+[Invariant native array rows: matrix and route timings and verification, 23 November 2026](Results/2026-11-23-invariant-arrays/README.md)
+
+[Direct comparisons, integer truth and eager AND/OR branches: timings and verification, 23 November 2026](Results/2026-11-23-direct-conditions/README.md)
+
+[Procedure and region eligibility: eight-queens timing and verification, 23 November 2026](Results/2026-11-23-scoped-eligibility/README.md)
+
+[Native integer comparisons and conditional FOR loops: sieve and route timing, 23 November 2026](Results/2026-11-23-native-branches/README.md)
+
+[Certified procedure-local native FOR loops: route timing and verification, 23 November 2026](Results/2026-11-23-local-for/README.md)
+
 [Procedure-entry array shapes: route-planner timing and verification, 22 November 2026](Results/2026-11-22-call-entry-shapes/README.md)
 
 [Rank-two native arrays: matrix timing and full verification, 22 November 2026](Results/2026-11-22-rank-two/README.md)
@@ -80,8 +96,8 @@ python .\Test-Harness.py
    with the compatibility generator. Run `.\Use-TimingBoot.ps1 -RunDirectory
    $run`; it checks all builds and both compilers' verification evidence before
    installing the timing boot file.
-4. Open `benchmark.QCF` in Q-emuLator. This starts a fresh session at **Original
-   QL** speed (`Speed=QL`), with 640 KiB RAM, JS ROM, Toolkit II, unaccelerated
+4. Open `benchmark.QCF` in Q-emuLator. This starts a fresh session at **GoldCard**
+   speed (`Speed=GoldCard`), with 640 KiB RAM, JS ROM, Toolkit II, unaccelerated
    graphics and sound disabled. Leave that setting unchanged until completion.
 5. Wait for `drive\done`, then run:
 
@@ -92,6 +108,11 @@ python .\Test-Harness.py
 
 Preparation refuses directories containing compiled jobs or timing samples. Generated QDOS
 files use LF endings. No files in the installed Turbo distribution are changed.
+
+Future timing runs default to GoldCard speed, as requested on 23 November 2026.
+Use `Prepare-Benchmarks.py --speed QL` only when reproducing historical Original QL
+runs. The plan and metadata record the chosen speed; compare timings collected at
+the same speed. Compilation continues to use Full speed and is excluded from timing.
 
 ## Measurement and validation
 
@@ -127,8 +148,9 @@ timings.
 `Build-SB.ps1` uses `--hir-opt --native-regions --regalloc`. It independently builds
 each original program with the same compile-time metadata, requires an identical
 complete executable, and compares native FOR and arithmetic/array proof coverage.
-The ordinary arithmetic build selects one native FOR loop; sieve selects two
-and matrix multiplication selects three. The other six currently select none.
+The ordinary arithmetic build selects one native FOR loop; sieve selects three,
+matrix multiplication selects three, route planner selects five and eight queens
+selects three. The other four currently select none.
 Compiler checks and threaded fallbacks remain where required. Turbo FAST can
 omit overflow checks; supplied successful
 workloads keep integer arithmetic within signed 16-bit limits.

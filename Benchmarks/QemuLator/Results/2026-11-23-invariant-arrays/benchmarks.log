@@ -1,0 +1,179 @@
+Verified independent reference checksums for 19 benchmarks.
+
+
+RunBenchmarks.fsx(110,183): info FS3886: This list expression contains a single tuple element. Did you mean to use ';' instead of ',' to separate list elements?
+
+PASS native_truth_for [disabled-native-disabled-registers-disabled]: checksum 4970, 6944 bytes, 5066290 instructions, 6222327 instruction words fetched
+PASS native_truth_for [disabled-native-enabled-registers-disabled]: checksum 4970, 7172 bytes, 4323594 instructions, 5256802 instruction words fetched
+PASS native_truth_for [disabled-native-enabled-registers-enabled]: checksum 4970, 6992 bytes, 1672252 instructions, 2013071 instruction words fetched
+PASS native_truth_for [enabled-native-disabled-registers-disabled]: checksum 4970, 6944 bytes, 5066290 instructions, 6222327 instruction words fetched
+PASS native_truth_for [enabled-native-enabled-registers-disabled]: checksum 4970, 7172 bytes, 4323594 instructions, 5256802 instruction words fetched
+PASS native_truth_for [enabled-native-enabled-registers-enabled]: checksum 4970, 6992 bytes, 1672252 instructions, 2013071 instruction words fetched
+PASS scoped_integer_for [disabled-native-disabled-registers-disabled]: checksum 270, 6810 bytes, 1443537 instructions, 1806055 instruction words fetched
+PASS scoped_integer_for [disabled-native-enabled-registers-disabled]: checksum 270, 6886 bytes, 1183497 instructions, 1465990 instruction words fetched
+PASS scoped_integer_for [disabled-native-enabled-registers-enabled]: checksum 270, 6856 bytes, 389175 instructions, 491774 instruction words fetched
+PASS scoped_integer_for [enabled-native-disabled-registers-disabled]: checksum 270, 6810 bytes, 1443537 instructions, 1806055 instruction words fetched
+PASS scoped_integer_for [enabled-native-enabled-registers-disabled]: checksum 270, 6886 bytes, 1183497 instructions, 1465990 instruction words fetched
+PASS scoped_integer_for [enabled-native-enabled-registers-enabled]: checksum 270, 6856 bytes, 389175 instructions, 491774 instruction words fetched
+PASS native_conditional_for [disabled-native-disabled-registers-disabled]: checksum 6870, 6850 bytes, 1902603 instructions, 2385111 instruction words fetched
+PASS native_conditional_for [disabled-native-enabled-registers-disabled]: checksum 6870, 7004 bytes, 1642719 instructions, 2045241 instruction words fetched
+PASS native_conditional_for [disabled-native-enabled-registers-enabled]: checksum 6870, 6908 bytes, 455905 instructions, 578520 instruction words fetched
+PASS native_conditional_for [enabled-native-disabled-registers-disabled]: checksum 6870, 6850 bytes, 1902603 instructions, 2385111 instruction words fetched
+PASS native_conditional_for [enabled-native-enabled-registers-disabled]: checksum 6870, 7004 bytes, 1642719 instructions, 2045241 instruction words fetched
+PASS native_conditional_for [enabled-native-enabled-registers-enabled]: checksum 6870, 6908 bytes, 455905 instructions, 578520 instruction words fetched
+PASS local_integer_for [disabled-native-disabled-registers-disabled]: checksum 270, 6800 bytes, 1443477 instructions, 1805980 instruction words fetched
+PASS local_integer_for [disabled-native-enabled-registers-disabled]: checksum 270, 6876 bytes, 1183437 instructions, 1465915 instruction words fetched
+PASS local_integer_for [disabled-native-enabled-registers-enabled]: checksum 270, 6846 bytes, 389115 instructions, 491699 instruction words fetched
+PASS local_integer_for [enabled-native-disabled-registers-disabled]: checksum 270, 6800 bytes, 1443477 instructions, 1805980 instruction words fetched
+PASS local_integer_for [enabled-native-enabled-registers-disabled]: checksum 270, 6876 bytes, 1183437 instructions, 1465915 instruction words fetched
+PASS local_integer_for [enabled-native-enabled-registers-enabled]: checksum 270, 6846 bytes, 389115 instructions, 491699 instruction words fetched
+PASS regalloc_copy_chain [disabled-native-disabled-registers-disabled]: checksum 210, 6560 bytes, 1145561 instructions, 1587187 instruction words fetched
+PASS regalloc_copy_chain [disabled-native-enabled-registers-disabled]: checksum 210, 6574 bytes, 785297 instructions, 1106827 instruction words fetched
+PASS regalloc_copy_chain [disabled-native-enabled-registers-enabled]: checksum 210, 6564 bytes, 285295 instructions, 366941 instruction words fetched
+PASS regalloc_copy_chain [enabled-native-disabled-registers-disabled]: checksum 210, 6560 bytes, 1145561 instructions, 1587187 instruction words fetched
+PASS regalloc_copy_chain [enabled-native-enabled-registers-disabled]: checksum 210, 6574 bytes, 785297 instructions, 1106827 instruction words fetched
+PASS regalloc_copy_chain [enabled-native-enabled-registers-enabled]: checksum 210, 6564 bytes, 285295 instructions, 366941 instruction words fetched
+PASS regalloc_arithmetic [disabled-native-disabled-registers-disabled]: checksum 310, 6650 bytes, 1825821 instructions, 2547512 instruction words fetched
+PASS regalloc_arithmetic [disabled-native-enabled-registers-disabled]: checksum 310, 6620 bytes, 1045429 instructions, 1486982 instruction words fetched
+PASS regalloc_arithmetic [disabled-native-enabled-registers-enabled]: checksum 310, 6616 bytes, 385499 instructions, 487251 instruction words fetched
+PASS regalloc_arithmetic [enabled-native-disabled-registers-disabled]: checksum 310, 6650 bytes, 1825821 instructions, 2547512 instruction words fetched
+PASS regalloc_arithmetic [enabled-native-enabled-registers-disabled]: checksum 310, 6620 bytes, 1045429 instructions, 1486982 instruction words fetched
+PASS regalloc_arithmetic [enabled-native-enabled-registers-enabled]: checksum 310, 6616 bytes, 385499 instructions, 487251 instruction words fetched
+PASS native_constant_chain [disabled-native-disabled-registers-disabled]: checksum 490, 6622 bytes, 2085687 instructions, 2827344 instruction words fetched
+PASS native_constant_chain [disabled-native-enabled-registers-disabled]: checksum 490, 6650 bytes, 1285451 instructions, 1747019 instruction words fetched
+PASS native_constant_chain [disabled-native-enabled-registers-enabled]: checksum 490, 6584 bytes, 345337 instructions, 526993 instruction words fetched
+PASS native_constant_chain [enabled-native-disabled-registers-disabled]: checksum 490, 6622 bytes, 2085687 instructions, 2827344 instruction words fetched
+PASS native_constant_chain [enabled-native-enabled-registers-disabled]: checksum 490, 6650 bytes, 1285451 instructions, 1747019 instruction words fetched
+PASS native_constant_chain [enabled-native-enabled-registers-enabled]: checksum 490, 6584 bytes, 345337 instructions, 526993 instruction words fetched
+PASS native_repeated_expression [disabled-native-disabled-registers-disabled]: checksum 9430, 6590 bytes, 1864814 instructions, 2426449 instruction words fetched
+PASS native_repeated_expression [disabled-native-enabled-registers-disabled]: checksum 9430, 6638 bytes, 1324618 instructions, 1686174 instruction words fetched
+PASS native_repeated_expression [disabled-native-enabled-registers-enabled]: checksum 9430, 6558 bytes, 325276 instructions, 366913 instruction words fetched
+PASS native_repeated_expression [enabled-native-disabled-registers-disabled]: checksum 9430, 6590 bytes, 1864814 instructions, 2426449 instruction words fetched
+PASS native_repeated_expression [enabled-native-enabled-registers-disabled]: checksum 9430, 6638 bytes, 1324618 instructions, 1686174 instruction words fetched
+PASS native_repeated_expression [enabled-native-enabled-registers-enabled]: checksum 9430, 6558 bytes, 325276 instructions, 366913 instruction words fetched
+PASS integer_arithmetic [disabled-native-disabled-registers-disabled]: checksum 6430, 6576 bytes, 1865154 instructions, 2426782 instruction words fetched
+PASS integer_arithmetic [disabled-native-enabled-registers-disabled]: checksum 6430, 6618 bytes, 1325026 instructions, 1686612 instruction words fetched
+PASS integer_arithmetic [disabled-native-enabled-registers-enabled]: checksum 6430, 6550 bytes, 405352 instructions, 507005 instruction words fetched
+PASS integer_arithmetic [enabled-native-disabled-registers-disabled]: checksum 6430, 6576 bytes, 1865154 instructions, 2426782 instruction words fetched
+PASS integer_arithmetic [enabled-native-enabled-registers-disabled]: checksum 6430, 6618 bytes, 1325026 instructions, 1686612 instruction words fetched
+PASS integer_arithmetic [enabled-native-enabled-registers-enabled]: checksum 6430, 6550 bytes, 405352 instructions, 507005 instruction words fetched
+PASS constant_expressions [disabled-native-disabled-registers-disabled]: checksum 8290, 6590 bytes, 2125584 instructions, 2907219 instruction words fetched
+PASS constant_expressions [disabled-native-enabled-registers-disabled]: checksum 8290, 6620 bytes, 1305432 instructions, 1747019 instruction words fetched
+PASS constant_expressions [disabled-native-enabled-registers-enabled]: checksum 8290, 6544 bytes, 325342 instructions, 446992 instruction words fetched
+PASS constant_expressions [enabled-native-disabled-registers-disabled]: checksum 8290, 6534 bytes, 1285472 instructions, 1667079 instruction words fetched
+PASS constant_expressions [enabled-native-enabled-registers-disabled]: checksum 8290, 6574 bytes, 985340 instructions, 1286904 instruction words fetched
+PASS constant_expressions [enabled-native-enabled-registers-enabled]: checksum 8290, 6534 bytes, 265322 instructions, 346967 instruction words fetched
+PASS sieve [disabled-native-disabled-registers-disabled]: checksum 840, 7510 bytes, 939316 instructions, 1167699 instruction words fetched
+PASS sieve [disabled-native-enabled-registers-disabled]: checksum 840, 7486 bytes, 870060 instructions, 1120354 instruction words fetched
+PASS sieve [disabled-native-enabled-registers-enabled]: checksum 840, 7534 bytes, 239026 instructions, 275774 instruction words fetched
+PASS sieve [enabled-native-disabled-registers-disabled]: checksum 840, 7510 bytes, 939316 instructions, 1167699 instruction words fetched
+PASS sieve [enabled-native-enabled-registers-disabled]: checksum 840, 7486 bytes, 870060 instructions, 1120354 instruction words fetched
+PASS sieve [enabled-native-enabled-registers-enabled]: checksum 840, 7534 bytes, 239026 instructions, 275774 instruction words fetched
+PASS matrix_multiply [disabled-native-disabled-registers-disabled]: checksum 1094, 7666 bytes, 922291 instructions, 1182336 instruction words fetched
+PASS matrix_multiply [disabled-native-enabled-registers-disabled]: checksum 1094, 7880 bytes, 759511 instructions, 982541 instruction words fetched
+PASS matrix_multiply [disabled-native-enabled-registers-enabled]: checksum 1094, 8076 bytes, 373821 instructions, 539109 instruction words fetched
+PASS matrix_multiply [enabled-native-disabled-registers-disabled]: checksum 1094, 7666 bytes, 922291 instructions, 1182336 instruction words fetched
+PASS matrix_multiply [enabled-native-enabled-registers-disabled]: checksum 1094, 7880 bytes, 759511 instructions, 982541 instruction words fetched
+PASS matrix_multiply [enabled-native-enabled-registers-enabled]: checksum 1094, 8076 bytes, 373821 instructions, 539109 instruction words fetched
+PASS bubble_sort [disabled-native-disabled-registers-disabled]: checksum 121, 7690 bytes, 1648593 instructions, 2049911 instruction words fetched
+PASS bubble_sort [disabled-native-enabled-registers-disabled]: checksum 121, 7822 bytes, 1269872 instructions, 1655975 instruction words fetched
+PASS bubble_sort [disabled-native-enabled-registers-enabled]: checksum 121, 7704 bytes, 399986 instructions, 471477 instruction words fetched
+PASS bubble_sort [enabled-native-disabled-registers-disabled]: checksum 121, 7690 bytes, 1648593 instructions, 2049911 instruction words fetched
+PASS bubble_sort [enabled-native-enabled-registers-disabled]: checksum 121, 7822 bytes, 1269872 instructions, 1655975 instruction words fetched
+PASS bubble_sort [enabled-native-enabled-registers-enabled]: checksum 121, 7704 bytes, 399986 instructions, 471477 instruction words fetched
+PASS procedure_calls [disabled-native-disabled-registers-disabled]: checksum 270, 6762 bytes, 3260256 instructions, 4081981 instruction words fetched
+PASS procedure_calls [disabled-native-enabled-registers-disabled]: checksum 270, 6846 bytes, 3060232 instructions, 3821936 instruction words fetched
+PASS procedure_calls [disabled-native-enabled-registers-enabled]: checksum 270, 6770 bytes, 2645558 instructions, 3407225 instruction words fetched
+PASS procedure_calls [enabled-native-disabled-registers-disabled]: checksum 270, 6762 bytes, 3260256 instructions, 4081981 instruction words fetched
+PASS procedure_calls [enabled-native-enabled-registers-disabled]: checksum 270, 6846 bytes, 3060232 instructions, 3821936 instruction words fetched
+PASS procedure_calls [enabled-native-enabled-registers-enabled]: checksum 270, 6770 bytes, 2645558 instructions, 3407225 instruction words fetched
+PASS recursion [disabled-native-disabled-registers-disabled]: checksum 1885, 6780 bytes, 656197 instructions, 837139 instruction words fetched
+PASS recursion [disabled-native-enabled-registers-disabled]: checksum 1885, 6834 bytes, 619593 instructions, 794419 instruction words fetched
+PASS recursion [disabled-native-enabled-registers-enabled]: checksum 1885, 6750 bytes, 613113 instructions, 763538 instruction words fetched
+PASS recursion [enabled-native-disabled-registers-disabled]: checksum 1885, 6780 bytes, 656197 instructions, 837139 instruction words fetched
+PASS recursion [enabled-native-enabled-registers-disabled]: checksum 1885, 6834 bytes, 619593 instructions, 794419 instruction words fetched
+PASS recursion [enabled-native-enabled-registers-enabled]: checksum 1885, 6750 bytes, 613113 instructions, 763538 instruction words fetched
+PASS string_operations [disabled-native-disabled-registers-disabled]: checksum 5220, 7756 bytes, 241960 instructions, 285115 instruction words fetched
+PASS string_operations [disabled-native-enabled-registers-disabled]: checksum 5220, 7838 bytes, 241736 instructions, 284810 instruction words fetched
+PASS string_operations [disabled-native-enabled-registers-enabled]: checksum 5220, 7782 bytes, 241204 instructions, 284210 instruction words fetched
+PASS string_operations [enabled-native-disabled-registers-disabled]: checksum 5220, 7756 bytes, 241960 instructions, 285115 instruction words fetched
+PASS string_operations [enabled-native-enabled-registers-disabled]: checksum 5220, 7838 bytes, 241736 instructions, 284810 instruction words fetched
+PASS string_operations [enabled-native-enabled-registers-enabled]: checksum 5220, 7782 bytes, 241204 instructions, 284210 instruction words fetched
+PASS float_dyadic [disabled-native-disabled-registers-disabled]: checksum 5440, 6758 bytes, 1168413 instructions, 1530806 instruction words fetched
+PASS float_dyadic [disabled-native-enabled-registers-disabled]: checksum 5440, 6742 bytes, 1168089 instructions, 1530371 instruction words fetched
+PASS float_dyadic [disabled-native-enabled-registers-enabled]: checksum 5440, 6714 bytes, 1167811 instructions, 1530060 instruction words fetched
+PASS float_dyadic [enabled-native-disabled-registers-disabled]: checksum 5440, 6758 bytes, 1168413 instructions, 1530806 instruction words fetched
+PASS float_dyadic [enabled-native-enabled-registers-disabled]: checksum 5440, 6742 bytes, 1168089 instructions, 1530371 instruction words fetched
+PASS float_dyadic [enabled-native-enabled-registers-enabled]: checksum 5440, 6714 bytes, 1167811 instructions, 1530060 instruction words fetched
+COMPILED float_polynomial [disabled-native-disabled-registers-disabled]: 7234 bytes, full QL ROM required
+COMPILED float_polynomial [disabled-native-enabled-registers-disabled]: 7214 bytes, full QL ROM required
+COMPILED float_polynomial [disabled-native-enabled-registers-enabled]: 7186 bytes, full QL ROM required
+COMPILED float_polynomial [enabled-native-disabled-registers-disabled]: 7234 bytes, full QL ROM required
+COMPILED float_polynomial [enabled-native-enabled-registers-disabled]: 7214 bytes, full QL ROM required
+COMPILED float_polynomial [enabled-native-enabled-registers-enabled]: 7186 bytes, full QL ROM required
+COMPILED float_transcendentals [disabled-native-disabled-registers-disabled]: 7266 bytes, full QL ROM required
+COMPILED float_transcendentals [disabled-native-enabled-registers-disabled]: 7256 bytes, full QL ROM required
+COMPILED float_transcendentals [disabled-native-enabled-registers-enabled]: 7230 bytes, full QL ROM required
+COMPILED float_transcendentals [enabled-native-disabled-registers-disabled]: 7266 bytes, full QL ROM required
+COMPILED float_transcendentals [enabled-native-enabled-registers-disabled]: 7256 bytes, full QL ROM required
+COMPILED float_transcendentals [enabled-native-enabled-registers-enabled]: 7230 bytes, full QL ROM required
+
+Instruction comparisons (functional counts, not QL speed estimates):
+  native_truth_for            5066290 ->    5066290 (  0.00% fewer)
+  scoped_integer_for          1443537 ->    1443537 (  0.00% fewer)
+  native_conditional_for      1902603 ->    1902603 (  0.00% fewer)
+  local_integer_for           1443477 ->    1443477 (  0.00% fewer)
+  regalloc_copy_chain         1145561 ->    1145561 (  0.00% fewer)
+  regalloc_arithmetic         1825821 ->    1825821 (  0.00% fewer)
+  native_constant_chain       2085687 ->    2085687 (  0.00% fewer)
+  native_repeated_expression    1864814 ->    1864814 (  0.00% fewer)
+  integer_arithmetic          1865154 ->    1865154 (  0.00% fewer)
+  constant_expressions        2125584 ->    1285472 ( 39.52% fewer)
+  sieve                        939316 ->     939316 (  0.00% fewer)
+  matrix_multiply              922291 ->     922291 (  0.00% fewer)
+  bubble_sort                 1648593 ->    1648593 (  0.00% fewer)
+  procedure_calls             3260256 ->    3260256 (  0.00% fewer)
+  recursion                    656197 ->     656197 (  0.00% fewer)
+  string_operations            241960 ->     241960 (  0.00% fewer)
+  float_dyadic                1168413 ->    1168413 (  0.00% fewer)
+
+Audited native-region comparisons with HIR optimization enabled:
+  native_truth_for            5066290 ->    4323594 ( 14.66% fewer), bytes 6944 -> 7172
+  scoped_integer_for          1443537 ->    1183497 ( 18.01% fewer), bytes 6810 -> 6886
+  native_conditional_for      1902603 ->    1642719 ( 13.66% fewer), bytes 6850 -> 7004
+  local_integer_for           1443477 ->    1183437 ( 18.01% fewer), bytes 6800 -> 6876
+  regalloc_copy_chain         1145561 ->     785297 ( 31.45% fewer), bytes 6560 -> 6574
+  regalloc_arithmetic         1825821 ->    1045429 ( 42.74% fewer), bytes 6650 -> 6620
+  native_constant_chain       2085687 ->    1285451 ( 38.37% fewer), bytes 6622 -> 6650
+  native_repeated_expression    1864814 ->    1324618 ( 28.97% fewer), bytes 6590 -> 6638
+  integer_arithmetic          1865154 ->    1325026 ( 28.96% fewer), bytes 6576 -> 6618
+  constant_expressions        1285472 ->     985340 ( 23.35% fewer), bytes 6534 -> 6574
+  sieve                        939316 ->     870060 (  7.37% fewer), bytes 7510 -> 7486
+  matrix_multiply              922291 ->     759511 ( 17.65% fewer), bytes 7666 -> 7880
+  bubble_sort                 1648593 ->    1269872 ( 22.97% fewer), bytes 7690 -> 7822
+  procedure_calls             3260256 ->    3060232 (  6.14% fewer), bytes 6762 -> 6846
+  recursion                    656197 ->     619593 (  5.58% fewer), bytes 6780 -> 6834
+  string_operations            241960 ->     241736 (  0.09% fewer), bytes 7756 -> 7838
+  float_dyadic                1168413 ->    1168089 (  0.03% fewer), bytes 6758 -> 6742
+
+Local register allocation compared with native templates (HIR enabled):
+  native_truth_for            4323594 ->    1672252 ( 61.32% fewer), bytes 7172 -> 6992
+  scoped_integer_for          1183497 ->     389175 ( 67.12% fewer), bytes 6886 -> 6856
+  native_conditional_for      1642719 ->     455905 ( 72.25% fewer), bytes 7004 -> 6908
+  local_integer_for           1183437 ->     389115 ( 67.12% fewer), bytes 6876 -> 6846
+  regalloc_copy_chain          785297 ->     285295 ( 63.67% fewer), bytes 6574 -> 6564
+  regalloc_arithmetic         1045429 ->     385499 ( 63.13% fewer), bytes 6620 -> 6616
+  native_constant_chain       1285451 ->     345337 ( 73.13% fewer), bytes 6650 -> 6584
+  native_repeated_expression    1324618 ->     325276 ( 75.44% fewer), bytes 6638 -> 6558
+  integer_arithmetic          1325026 ->     405352 ( 69.41% fewer), bytes 6618 -> 6550
+  constant_expressions         985340 ->     265322 ( 73.07% fewer), bytes 6574 -> 6534
+  sieve                        870060 ->     239026 ( 72.53% fewer), bytes 7486 -> 7534
+  matrix_multiply              759511 ->     373821 ( 50.78% fewer), bytes 7880 -> 8076
+  bubble_sort                 1269872 ->     399986 ( 68.50% fewer), bytes 7822 -> 7704
+  procedure_calls             3060232 ->    2645558 ( 13.55% fewer), bytes 6846 -> 6770
+  recursion                    619593 ->     613113 (  1.05% fewer), bytes 6834 -> 6750
+  string_operations            241736 ->     241204 (  0.22% fewer), bytes 7838 -> 7782
+  float_dyadic                1168089 ->    1167811 (  0.02% fewer), bytes 6742 -> 6714
+
+102 executions passed; 12 ROM executables compiled only; 0 failures.
+Results: C:\Source\codex-workspace\.scratch\turbo-invariant-arrays\benchmarks\default

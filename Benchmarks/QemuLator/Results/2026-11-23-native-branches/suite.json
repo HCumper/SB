@@ -1,0 +1,176 @@
+{
+  "formatVersion": 1,
+  "provenance": "Original workloads written for SB; independently calculated checksums.",
+  "benchmarks": [
+    {
+      "name": "native_conditional_for",
+      "file": "native_conditional_for.bas",
+      "description": "Native conditional-loop microbenchmark: integer comparison and IF/ELSE with a procedure-local counter",
+      "passes": 20,
+      "quickPasses": 1,
+      "expectedChecksum": 6870,
+      "quickChecksum": 1334,
+      "requiresRom": false
+    },
+    {
+      "name": "local_integer_for",
+      "file": "local_integer_for.bas",
+      "description": "Procedure-local native FOR microbenchmark with captured parameter bounds and checked integer arithmetic",
+      "passes": 20,
+      "quickPasses": 1,
+      "expectedChecksum": 270,
+      "quickChecksum": 3004,
+      "requiresRom": false
+    },
+    {
+      "name": "regalloc_copy_chain",
+      "file": "regalloc_copy_chain.bas",
+      "description": "Allocation microbenchmark: scalar copies across assignments; report separately from applications",
+      "passes": 20,
+      "quickPasses": 1,
+      "expectedChecksum": 210,
+      "quickChecksum": 1001,
+      "requiresRom": false
+    },
+    {
+      "name": "regalloc_arithmetic",
+      "file": "regalloc_arithmetic.bas",
+      "description": "Allocation microbenchmark: bounded integer multiply add subtract and negate chains",
+      "passes": 20,
+      "quickPasses": 1,
+      "expectedChecksum": 310,
+      "quickChecksum": 3006,
+      "requiresRom": false
+    },
+    {
+      "name": "native_constant_chain",
+      "file": "native_constant_chain.bas",
+      "description": "Native-value microbenchmark: constant results across scalar assignments; report separately from applications",
+      "passes": 20,
+      "quickPasses": 1,
+      "expectedChecksum": 490,
+      "quickChecksum": 1015,
+      "requiresRom": false
+    },
+    {
+      "name": "native_repeated_expression",
+      "file": "native_repeated_expression.bas",
+      "description": "Native-value microbenchmark: repeated immutable DIVMOD and integer arithmetic; report separately from applications",
+      "passes": 20,
+      "quickPasses": 1,
+      "expectedChecksum": 9430,
+      "quickChecksum": 962,
+      "requiresRom": false
+    },
+    {
+      "name": "integer_arithmetic",
+      "file": "integer_arithmetic.bas",
+      "description": "Integer arithmetic and MOD in a counted loop",
+      "passes": 20,
+      "quickPasses": 1,
+      "expectedChecksum": 6430,
+      "quickChecksum": 2812,
+      "requiresRom": false
+    },
+    {
+      "name": "constant_expressions",
+      "file": "constant_expressions.bas",
+      "description": "Optimizer microbenchmark with literal expressions and integer identities",
+      "passes": 20,
+      "quickPasses": 1,
+      "expectedChecksum": 8290,
+      "quickChecksum": 4405,
+      "requiresRom": false
+    },
+    {
+      "name": "sieve",
+      "file": "sieve.bas",
+      "description": "Sieve of Eratosthenes through 1000 with array writes and branches",
+      "passes": 5,
+      "quickPasses": 1,
+      "expectedChecksum": 840,
+      "quickChecksum": 168,
+      "requiresRom": false
+    },
+    {
+      "name": "matrix_multiply",
+      "file": "matrix_multiply.bas",
+      "description": "Eight by eight integer matrix multiplication and weighted checksum",
+      "passes": 10,
+      "quickPasses": 1,
+      "expectedChecksum": 1094,
+      "quickChecksum": 1774,
+      "requiresRom": false
+    },
+    {
+      "name": "bubble_sort",
+      "file": "bubble_sort.bas",
+      "description": "Sort 64 deterministic integers and validate ordering and weighted checksum",
+      "passes": 5,
+      "quickPasses": 1,
+      "expectedChecksum": 121,
+      "quickChecksum": 3846,
+      "requiresRom": false
+    },
+    {
+      "name": "procedure_calls",
+      "file": "procedure_calls.bas",
+      "description": "Repeated procedure calls with a reference scalar and a value argument",
+      "passes": 20,
+      "quickPasses": 1,
+      "expectedChecksum": 270,
+      "quickChecksum": 3004,
+      "requiresRom": false
+    },
+    {
+      "name": "recursion",
+      "file": "recursion.bas",
+      "description": "Naive recursive Fibonacci at 12 and 13 with value arguments",
+      "passes": 10,
+      "quickPasses": 1,
+      "expectedChecksum": 1885,
+      "quickChecksum": 233,
+      "requiresRom": false
+    },
+    {
+      "name": "string_operations",
+      "file": "string_operations.bas",
+      "description": "Build and rotate a 64 character string with concatenation slicing LEN and CODE",
+      "passes": 20,
+      "quickPasses": 1,
+      "expectedChecksum": 5220,
+      "quickChecksum": 259,
+      "requiresRom": false
+    },
+    {
+      "name": "float_dyadic",
+      "file": "float_dyadic.bas",
+      "description": "Exact dyadic floating additions scaling and conversion to integer",
+      "passes": 20,
+      "quickPasses": 1,
+      "expectedChecksum": 5440,
+      "quickChecksum": 253,
+      "requiresRom": false
+    },
+    {
+      "name": "float_polynomial",
+      "file": "float_polynomial.bas",
+      "description": "General QDOS floating division multiplication and Horner polynomial",
+      "passes": 4,
+      "quickPasses": 1,
+      "expectedChecksum": 9252,
+      "quickChecksum": 2313,
+      "requiresRom": true
+    },
+    {
+      "name": "float_transcendentals",
+      "file": "float_transcendentals.bas",
+      "description": "ROM SIN COS and SQRT with the trigonometric identity as a numerical check",
+      "passes": 5,
+      "quickPasses": 1,
+      "expectedChecksum": 1280,
+      "quickChecksum": 256,
+      "requiresRom": true
+    }
+  ]
+}

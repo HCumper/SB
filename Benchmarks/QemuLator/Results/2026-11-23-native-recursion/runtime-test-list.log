@@ -1,0 +1,250 @@
+Test run for C:\Source\SB\SBRuntimeTests\bin\Debug\net10.0\SBRuntimeTests.dll (.NETCoreApp,Version=v10.0)
+The following Tests are available:
+    avalonia controller channel zero read applies editing before submit
+    avalonia controller default line reader returns submitted channel one text
+    avalonia controller flush input clears direct prompt session rendering
+    avalonia controller queues printable text to runtime input when no prompt is active
+    avalonia controller queues special keys and exposes transient key rows without prompt
+    avalonia controller captures early prompt text across channels(0,"Prompt","ABC")
+    avalonia controller captures early prompt text across channels(1,"Enter","ABC")
+    avalonia controller clears active prompt pane text on escape
+    avalonia controller edits wrapped prompt text across row boundaries
+    avalonia controller flush input clears active prompt pane session
+    avalonia controller gameplay pulse updates key row state
+    avalonia controller handles repeated prompt submissions(0,25)
+    avalonia controller handles repeated prompt submissions(1,10)
+    avalonia controller handles sequential prompt sessions across channels(0)
+    avalonia controller handles sequential prompt sessions across channels(1)
+    avalonia controller preserves mixed editing sequence during prompt activation
+    avalonia controller renders prompt input at cursor origin after at
+    avalonia controller renders prompt pane text before enter
+    avalonia controller submits text input to screen channel program
+    avalonia controller supports home and end during prompt pane editing
+    avalonia controller supports left arrow and backspace editing
+    avalonia controller updates prompt pane after each editing key
+    avalonia controller wraps long prompt pane input across rows before enter
+    default host scripted input flush clears queued prompt input across channels(0)
+    default host scripted input flush clears queued prompt input across channels(1)
+    default host scripted input flushes pending lines before a built in input
+    default host scripted input handles implicit prompt submission
+    default host scripted input handles prequeued prompt submissions across channels(0,"Prompt","ABC")
+    default host scripted input handles prequeued prompt submissions across channels(1,"Enter","ABC")
+    default host scripted input handles prompt submissions across channels(0,"Prompt","ABC")
+    default host scripted input handles prompt submissions across channels(1,"Enter","ABC")
+    default host scripted input handles prompt submissions across channels(2,"Enter","ABC")
+    default host scripted input handles repeated prompt submissions across channels(0,10)
+    default host scripted input handles repeated prompt submissions across channels(1,10)
+    default host scripted input handles sequential prompt sessions across channels(0)
+    default host scripted input handles sequential prompt sessions across channels(1)
+    default host scripted input honors positioned prompt placement
+    default host scripted input routes explicit screen channel input through the screen queue
+    almost equal floats follow Turbo's 127-unit mantissa tolerance
+    interpreter == ignores case and tolerates float rounding where = does not
+    interpreter beep and beeping use host sound state
+    interpreter built in function arity mismatch reports coded runtime error
+    interpreter built in numeric functions preserve real results
+    interpreter calls user functions
+    interpreter coerces numeric assignment into typed string target
+    interpreter coerces string assignment into typed real target
+    interpreter date string built ins support zero argument forms
+    interpreter date string family and character functions work
+    interpreter date uses runtime clock
+    interpreter dimn returns declared array dimensions
+    interpreter evaluates arithmetic and print
+    interpreter getenv len inkey and keyrow functions work
+    interpreter getenv maps ql environment aliases to host values
+    interpreter inkey$ accepts timeout and channel arguments
+    interpreter inkey$ returns queued key and then null character
+    interpreter input preserves decimal values for unsuffixed numeric targets
+    interpreter instr returns one based position and zero when not found
+    interpreter left and right clamp lengths to string bounds
+    interpreter passes whole arrays by reference and leaves an omitted argument empty
+    interpreter print backslash separator starts a new line and single quoted strings are not printed with quotes
+    interpreter prints the pling and TO separators
+    interpreter randomise reseeds rnd deterministically
+    interpreter remaining math functions handle simple numeric cases
+    interpreter rnd range accepts mixed numeric bound types
+    interpreter rnd supports deterministic float integer and range forms
+    interpreter rnd unsupported arguments reports coded runtime error
+    interpreter rnd without arguments returns deterministic float
+    interpreter sdate adjusts date family and time built ins
+    interpreter slices string array elements in both SuperBASIC forms
+    interpreter string postfix slices support bounded and open ended ranges
+    interpreter time and string helper functions work
+    interpreter trig functions handle standard angles
+    interpreter val parses numeric text and returns zero for non numeric text
+    interpreter wait uses runtime sleeper like pause
+    ql random matches expected seeded sequence
+    runtime date and eof built ins return expected values
+    runtime getenv len inkey and keyrow built ins return expected values
+    runtime inkey family returns zero and null character when no key is available
+    runtime instr callable built in returns one based position
+    runtime remaining math functions return expected values
+    runtime time and string helper built ins return expected values
+    runtime trig inverse and angle conversion functions return expected values
+    interpreter backward goto can iterate without growing the runtime stack
+    interpreter executes for loops
+    interpreter executes for sequence loops
+    interpreter gosub from for body returns and loop continues
+    interpreter gosub from if body returns to branch flow
+    interpreter gosub from repeat body returns and loop can exit
+    interpreter gosub missing target reports runtime error
+    interpreter gosub returns to following statement
+    interpreter goto can jump into for body line block
+    interpreter goto can jump into if line block
+    interpreter goto can jump into repeat body line block
+    interpreter goto can jump out of for body
+    interpreter goto can jump out of if line block
+    interpreter goto can jump out of repeat body
+    interpreter goto jumps to numbered line target
+    interpreter goto missing target reports runtime error
+    interpreter goto to end define line exits the routine
+    interpreter nested gosub returns in stack order
+    interpreter not treats minus one qualification flag as false when negated
+    interpreter on gosub selector out of range falls through
+    interpreter on gosub selector zero falls through
+    interpreter on gosub selects target and returns to caller flow
+    interpreter on goto selector out of range falls through
+    interpreter on goto selector zero falls through
+    interpreter on goto selects target by one based index
+    interpreter procedure call can shadow callable built in statement name
+    interpreter return after goto inside gosub still returns to caller
+    interpreter return without active gosub reports runtime error
+    q3 fixture runtime completes sort check without inversion output
+    default host block uses window pixel coordinates
+    default host bordered pane keeps enough text rows to avoid scrolling footer labels
+    default host bordered pane recomputes inset when character size changes
+    default host borderless pane keeps shared raster after paper and csize churn
+    default host borderless text overlay pane keeps shared graphics visible
+    default host console pane line spans overlay width under default scale
+    default host console pane shows graphics drawn into channel zero window
+    default host densely spaced vertical graphics lines fill adjacent pixel columns
+    default host display includes dynamically opened screen panes
+    default host dynamic text pane stays opaque over shared graphics
+    default host exposes default channels zero through two
+    default host exposes ql and extended screen modes
+    default host exposes tv style default output pane and listing pane
+    default host extended modes use denser text rows than classic ql modes
+    default host filled circles for trees cover 2d clusters rather than thin lines
+    default host graphics modes apply xor under and flash to pixels
+    default host maps unchanneled print and input prompt to output window
+    default host mode 8 clear uses composite strip background
+    default host mode 8 composite colours stay consistent across a logical pixel pair
+    default host mode 8 getcol-style peek reconstructs green correctly
+    default host mode 8 getcol-style peek reconstructs water cyan correctly
+    default host mode 8 golfer ball mask preserves a visible pixel
+    default host mode 8 overlay pane preserves full prompt width
+    default host mode 8 peek reads live screen bytes from framebuffer
+    default host mode 8 poke paints decoded screen memory pixels
+    default host newline scrolls by visible text rows
+    default host openas replaces existing non default screen channel
+    default host overlapping pane surface shows shared screen text
+    default host pane snapshots preserve paper strip and border state
+    default host pane snapshots preserve recolor and palette state
+    default host pane snapshots stay independent per channel
+    default host pane surface composes graphics and text in one raster
+    default host pane surface preserves graphics under transparent text cells
+    default host pane text grid follows window size and csize
+    default host panes keep cursors hidden unless explicitly enabled
+    default host pent prompt sequence keeps second prompt visible after cls on overlay pane
+    default host preserves strip on explicitly written blank cells
+    default host ql scale widens x axis relative to y axis
+    default host rasterizes dline circle ellipse and arc into pane pixels
+    default host shared raster text honors bordered pane pixel origin
+    default host shot put ellipse stays wider than tall and arc bows right
+    default host snapshot text cells preserve raw character codes
+    default host snapshot text cells use strip as text background
+    default host sprint pane pan reveals offscreen point markers
+    default host sprint pane pan shifts visible marker columns across successive updates
+    default host supports peek and poke built-ins
+    default host text cells stay transparent until text writes a background
+    default host uses distinct tv style windows for output and listings
+    dynamic screen pane shows later unchanneled arc through shared raster
+    interpreter append adds to existing file channels
+    interpreter append supports directory backed devices
+    interpreter bare continue resumes at next statement on same line
+    interpreter channeled ink preserves all supplied values
+    interpreter char use updates per-channel and default screen fonts
+    interpreter close rejects default channels
+    interpreter continue preserves when error for subsequent errors
+    interpreter copy copy_n move and delete manage file paths
+    interpreter default input prompt follows default screen cursor state
+    interpreter display controls update per-window state
+    interpreter drawing mode controls update graphics state
+    interpreter eof reflects file channel read position
+    interpreter extended arity graphics and display primitives dispatch correctly
+    interpreter file management built ins support directory backed devices
+    interpreter goto into repeat body preserves repeat iteration semantics
+    interpreter graphics builtins support implicit channels
+    interpreter graphics operations respect window pan scale and clipping
+    interpreter graphics operations update backing pixel buffer
+    interpreter graphics primitives dispatch to host graphics device
+    interpreter input preserves dynamic string targets
+    interpreter later when error replaces previous handler
+    interpreter load replaces program without running it
+    interpreter lrun loads and runs replacement program
+    interpreter minimum arity graphics and display primitives dispatch correctly
+    interpreter missing dynamic local reports runtime error code
+    interpreter mode changes host screen mode
+    interpreter mode resets default screen geometry and default windows
+    interpreter mrun merges numbered lines and runs merged program
+    interpreter new stops execution after resetting program
+    interpreter open and close support dynamic screen channels
+    interpreter open parses console device strings and preserves configured window across mode changes
+    interpreter open parses screen device geometry strings
+    interpreter open supports console null and printer devices
+    interpreter open supports directory backed devices
+    interpreter open_new and open_in support directory backed devices
+    interpreter open_new open_in and close handle file channels
+    interpreter open_new supports printer device
+    interpreter pause ignores stale queued input present before pause starts
+    interpreter pause stops early when input becomes available
+    interpreter pause uses runtime sleeper
+    interpreter peek and poke built-ins use little endian virtual memory
+    interpreter peek invalid address reports bad parameter runtime error
+    interpreter pent prompt keeps unchanneled screen io on pane one while overlay shows shared raster
+    interpreter print commas tabulate screen output every eight columns
+    interpreter print supports implicit channel to file
+    interpreter print to screen channels does not mirror into console output
+    interpreter print trailing semicolons keep subsequent print on same screen line
+    interpreter reads data and restores by line
+    interpreter reads hex data literals as signed 32 bit integers
+    interpreter remaining graphics primitives dispatch to host graphics device
+    interpreter report supports explicit channel and explicit error number
+    interpreter restore missing target reports runtime error code
+    interpreter restore to non data line uses next data line
+    interpreter run restarts current program from specified line
+    interpreter runtime errors fall back to editor line and column in messages
+    interpreter runtime errors prefer BASIC line numbers in messages
+    interpreter screen channel operations keep default window state independent
+    interpreter screen print formats floats compactly
+    interpreter screen text writes and cls update backing text buffer
+    interpreter slug executes counted delay statement
+    interpreter strip dispatches separately from paper and paper resets strip
+    interpreter unsupported mode reports runtime error
+    interpreter when error exposes ernum and erlin and can continue
+    interpreter when error report writes last error to channel zero
+    interpreter window updates default screen geometry
+    parser lowers explicit TO arc syntax into endpoint arc arguments
+    parser preserves leading TO arc syntax as arc arguments
+    interpreter accepts array element actual for reference parameter
+    interpreter aliases bare array element procedure arguments without reference
+    interpreter aliases bare variable procedure arguments without reference
+    interpreter callee can write caller local and grandchild reads updated value
+    interpreter callee can write caller local array element and grandchild reads updated value
+    interpreter copies expression actual for flexible parameter without mutating caller
+    interpreter dynamic local lookup walks multiple caller levels
+    interpreter dynamic write to caller visible string character updates caller local
+    interpreter dynamic writes target nearest caller local before outer local or global
+    interpreter for loop body reads local loop counter instead of dynamic caller variable
+    interpreter local array is dynamically visible to called procedure
+    interpreter local is dynamically visible to called procedure
+    interpreter local shadows global in called procedure
+    interpreter locals are isolated across repeated procedure calls
+    interpreter parameter shadows caller local which shadows global
+    interpreter reference parameter shadows globals and caller locals
+    interpreter rejects bare string character procedure arguments without reference
+    interpreter rejects expression actual for reference parameter
+    interpreter rejects literal actual for reference parameter
+    interpreter repeated nested reference aliasing updates caller storage
+    interpreter supports mixed flexible and reference parameters in one routine

@@ -1,0 +1,4 @@
+benchmark,category,passes,checksum,turboSamples,turboMedian,turboMin,turboMax,turboBytes,sbSamples,sbMedian,sbMin,sbMax,sbBytes,sbSpeedup,sbTimeReductionPercent
+string_operations,kernel,80,880,3,4.04,4.04,4.06,9184,3,4.2,4.18,4.2,8126,0.9619047619047618,-3.960396039603964
+float_polynomial,kernel,4,9252,3,12.84,12.84,12.84,7856,3,12.82,12.82,12.82,7356,1.001560062402496,0.1557632398753861
+concordance,application,4,7936,3,49.66,49.64,49.66,17920,3,54.66,54.66,54.68,12856,0.9085254299304794,-10.068465565847765

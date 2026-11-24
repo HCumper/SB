@@ -1,0 +1,2385 @@
+{
+  "LibrarySha256": "0CCCE42D7B56E139B7593D47266D629EE1E842EA5B5669D36999A3CE53CDDA81",
+  "EntryOffset": 2314,
+  "EntryLength": 5210,
+  "Labels": [
+    {
+      "Name": "lib_index_end",
+      "Offset": 2314
+    },
+    {
+      "Name": "entry_routine",
+      "Offset": 2314
+    },
+    {
+      "Name": "task_name",
+      "Offset": 2322
+    },
+    {
+      "Name": "copyright",
+      "Offset": 2336
+    },
+    {
+      "Name": "global_external_list",
+      "Offset": 2360
+    },
+    {
+      "Name": "my_module_number",
+      "Offset": 2364
+    },
+    {
+      "Name": "module_table_base",
+      "Offset": 2366
+    },
+    {
+      "Name": "owner_id",
+      "Offset": 2370
+    },
+    {
+      "Name": "globals_set",
+      "Offset": 2374
+    },
+    {
+      "Name": "externals_set",
+      "Offset": 2375
+    },
+    {
+      "Name": "snoozing",
+      "Offset": 2376
+    },
+    {
+      "Name": "module_in_use",
+      "Offset": 2377
+    },
+    {
+      "Name": "head_pointer",
+      "Offset": 2378
+    },
+    {
+      "Name": "master_job_base",
+      "Offset": 2382
+    },
+    {
+      "Name": "initiali",
+      "Offset": 2386
+    },
+    {
+      "Name": "local_when",
+      "Offset": 2388
+    },
+    {
+      "Name": "global_when",
+      "Offset": 2392
+    },
+    {
+      "Name": "retry_point",
+      "Offset": 2396
+    },
+    {
+      "Name": "retry_dump",
+      "Offset": 2400
+    },
+    {
+      "Name": "retry1_point",
+      "Offset": 2416
+    },
+    {
+      "Name": "retry1_dump",
+      "Offset": 2420
+    },
+    {
+      "Name": "sys_vars",
+      "Offset": 2436
+    },
+    {
+      "Name": "err_chan",
+      "Offset": 2440
+    },
+    {
+      "Name": "con",
+      "Offset": 2444
+    },
+    {
+      "Name": "sysvar_area",
+      "Offset": 2450
+    },
+    {
+      "Name": "initialise",
+      "Offset": 2450
+    },
+    {
+      "Name": "init2",
+      "Offset": 2472
+    },
+    {
+      "Name": "init1",
+      "Offset": 2476
+    },
+    {
+      "Name": "init3",
+      "Offset": 2532
+    },
+    {
+      "Name": "conn_pipes",
+      "Offset": 2572
+    },
+    {
+      "Name": "no_pipes",
+      "Offset": 2582
+    },
+    {
+      "Name": "check_id",
+      "Offset": 2588
+    },
+    {
+      "Name": "bad_vibes",
+      "Offset": 2614
+    },
+    {
+      "Name": "link_names",
+      "Offset": 2620
+    },
+    {
+      "Name": "ex_2",
+      "Offset": 2658
+    },
+    {
+      "Name": "ex_1",
+      "Offset": 2670
+    },
+    {
+      "Name": "next_name1",
+      "Offset": 2686
+    },
+    {
+      "Name": "next_name",
+      "Offset": 2698
+    },
+    {
+      "Name": "valid_num",
+      "Offset": 2724
+    },
+    {
+      "Name": "valid_num1",
+      "Offset": 2732
+    },
+    {
+      "Name": "try_name",
+      "Offset": 2754
+    },
+    {
+      "Name": "check_a_byte",
+      "Offset": 2768
+    },
+    {
+      "Name": "skip_null",
+      "Offset": 2778
+    },
+    {
+      "Name": "matched",
+      "Offset": 2790
+    },
+    {
+      "Name": "type_ok",
+      "Offset": 2810
+    },
+    {
+      "Name": "find_next",
+      "Offset": 2818
+    },
+    {
+      "Name": "ext_n",
+      "Offset": 2832
+    },
+    {
+      "Name": "ext_n7",
+      "Offset": 2838
+    },
+    {
+      "Name": "ext_n1",
+      "Offset": 2862
+    },
+    {
+      "Name": "ext_n3",
+      "Offset": 2874
+    },
+    {
+      "Name": "ext_n5",
+      "Offset": 2894
+    },
+    {
+      "Name": "ext_n2",
+      "Offset": 2900
+    },
+    {
+      "Name": "ext_n6",
+      "Offset": 2910
+    },
+    {
+      "Name": "ext_n4",
+      "Offset": 2914
+    },
+    {
+      "Name": "ext_n8",
+      "Offset": 2930
+    },
+    {
+      "Name": "error_name",
+      "Offset": 2938
+    },
+    {
+      "Name": "show_error",
+      "Offset": 2942
+    },
+    {
+      "Name": "print_name",
+      "Offset": 2962
+    },
+    {
+      "Name": "redef_message",
+      "Offset": 3010
+    },
+    {
+      "Name": "undef_message",
+      "Offset": 3028
+    },
+    {
+      "Name": "ex_5",
+      "Offset": 3046
+    },
+    {
+      "Name": "ex_3",
+      "Offset": 3054
+    },
+    {
+      "Name": "ex_4",
+      "Offset": 3082
+    },
+    {
+      "Name": "set_sysvars",
+      "Offset": 3088
+    },
+    {
+      "Name": "clear_sys",
+      "Offset": 3096
+    },
+    {
+      "Name": "point_chans",
+      "Offset": 3118
+    },
+    {
+      "Name": "not_pe",
+      "Offset": 3168
+    },
+    {
+      "Name": "go_slow",
+      "Offset": 3170
+    },
+    {
+      "Name": "native_to_p",
+      "Offset": 3174
+    },
+    {
+      "Name": "p_to_p_short",
+      "Offset": 3182
+    },
+    {
+      "Name": "interpreter",
+      "Offset": 3186
+    },
+    {
+      "Name": "p_to_native",
+      "Offset": 3192
+    },
+    {
+      "Name": "ope_erch",
+      "Offset": 3198
+    },
+    {
+      "Name": "native_to_p_16",
+      "Offset": 3218
+    },
+    {
+      "Name": "p_to_p_16",
+      "Offset": 3220
+    },
+    {
+      "Name": "interpreter_16",
+      "Offset": 3224
+    },
+    {
+      "Name": "byte_table",
+      "Offset": 3230
+    },
+    {
+      "Name": "compare_string",
+      "Offset": 3296
+    },
+    {
+      "Name": "not_null",
+      "Offset": 3316
+    },
+    {
+      "Name": "got_result",
+      "Offset": 3322
+    },
+    {
+      "Name": "similar",
+      "Offset": 3330
+    },
+    {
+      "Name": "get_up",
+      "Offset": 3372
+    },
+    {
+      "Name": "copy_upstr",
+      "Offset": 3392
+    },
+    {
+      "Name": "null_upstr",
+      "Offset": 3400
+    },
+    {
+      "Name": "work_hard",
+      "Offset": 3404
+    },
+    {
+      "Name": "qdos_compare",
+      "Offset": 3422
+    },
+    {
+      "Name": "moved",
+      "Offset": 3444
+    },
+    {
+      "Name": "updown_move",
+      "Offset": 3446
+    },
+    {
+      "Name": "upd_m1",
+      "Offset": 3454
+    },
+    {
+      "Name": "shove_em",
+      "Offset": 3462
+    },
+    {
+      "Name": "shove_b",
+      "Offset": 3464
+    },
+    {
+      "Name": "shove_l",
+      "Offset": 3472
+    },
+    {
+      "Name": "dunnit",
+      "Offset": 3484
+    },
+    {
+      "Name": "one_odd",
+      "Offset": 3486
+    },
+    {
+      "Name": "odd_block",
+      "Offset": 3494
+    },
+    {
+      "Name": "move_last",
+      "Offset": 3502
+    },
+    {
+      "Name": "minimove",
+      "Offset": 3504
+    },
+    {
+      "Name": "mega_check",
+      "Offset": 3518
+    },
+    {
+      "Name": "mega_move",
+      "Offset": 3532
+    },
+    {
+      "Name": "move_how_many",
+      "Offset": 3536
+    },
+    {
+      "Name": "source_even",
+      "Offset": 3572
+    },
+    {
+      "Name": "big_move",
+      "Offset": 3580
+    },
+    {
+      "Name": "big_block",
+      "Offset": 3592
+    },
+    {
+      "Name": "last_block",
+      "Offset": 3598
+    },
+    {
+      "Name": "move_longs",
+      "Offset": 3612
+    },
+    {
+      "Name": "last_part",
+      "Offset": 3614
+    },
+    {
+      "Name": "even_words",
+      "Offset": 3622
+    },
+    {
+      "Name": "even_bytes",
+      "Offset": 3630
+    },
+    {
+      "Name": "thread_rom_proc",
+      "Offset": 3632
+    },
+    {
+      "Name": "thread_rom_fn",
+      "Offset": 3634
+    },
+    {
+      "Name": "call_rom_proc",
+      "Offset": 3640
+    },
+    {
+      "Name": "call_rom_fn",
+      "Offset": 3642
+    },
+    {
+      "Name": "got_param_ptr",
+      "Offset": 3644
+    },
+    {
+      "Name": "heap_even",
+      "Offset": 3662
+    },
+    {
+      "Name": "no_params",
+      "Offset": 3724
+    },
+    {
+      "Name": "next_param",
+      "Offset": 3740
+    },
+    {
+      "Name": "got_p_return_2",
+      "Offset": 3762
+    },
+    {
+      "Name": "move_par_down",
+      "Offset": 3768
+    },
+    {
+      "Name": "m_p_d1",
+      "Offset": 3786
+    },
+    {
+      "Name": "m_p_d2",
+      "Offset": 3812
+    },
+    {
+      "Name": "copy_text1",
+      "Offset": 3828
+    },
+    {
+      "Name": "copy_text2",
+      "Offset": 3832
+    },
+    {
+      "Name": "copy_text",
+      "Offset": 3838
+    },
+    {
+      "Name": "not_enough_room",
+      "Offset": 3854
+    },
+    {
+      "Name": "afloat",
+      "Offset": 3858
+    },
+    {
+      "Name": "unstacked",
+      "Offset": 3860
+    },
+    {
+      "Name": "go_rom",
+      "Offset": 3868
+    },
+    {
+      "Name": "not_stretched",
+      "Offset": 3946
+    },
+    {
+      "Name": "no_error",
+      "Offset": 3952
+    },
+    {
+      "Name": "native_returns",
+      "Offset": 3958
+    },
+    {
+      "Name": "re_thread",
+      "Offset": 3960
+    },
+    {
+      "Name": "got_type_1",
+      "Offset": 3968
+    },
+    {
+      "Name": "thread_returns",
+      "Offset": 3970
+    },
+    {
+      "Name": "go_coerce",
+      "Offset": 3976
+    },
+    {
+      "Name": "coerce",
+      "Offset": 3978
+    },
+    {
+      "Name": "check_string",
+      "Offset": 3986
+    },
+    {
+      "Name": "stack_descriptor",
+      "Offset": 4014
+    },
+    {
+      "Name": "correctly_stacked",
+      "Offset": 4020
+    },
+    {
+      "Name": "make_int",
+      "Offset": 4032
+    },
+    {
+      "Name": "str_to_int",
+      "Offset": 4042
+    },
+    {
+      "Name": "make_float",
+      "Offset": 4074
+    },
+    {
+      "Name": "str_to_float",
+      "Offset": 4090
+    },
+    {
+      "Name": "make_string",
+      "Offset": 4122
+    },
+    {
+      "Name": "int_to_str",
+      "Offset": 4128
+    },
+    {
+      "Name": "fl_to_str",
+      "Offset": 4156
+    },
+    {
+      "Name": "not_zero",
+      "Offset": 4172
+    },
+    {
+      "Name": "not_so_fast",
+      "Offset": 4214
+    },
+    {
+      "Name": "slither",
+      "Offset": 4254
+    },
+    {
+      "Name": "negative",
+      "Offset": 4270
+    },
+    {
+      "Name": "positive",
+      "Offset": 4274
+    },
+    {
+      "Name": "scale_down",
+      "Offset": 4292
+    },
+    {
+      "Name": "get_10",
+      "Offset": 4318
+    },
+    {
+      "Name": "under_1e9",
+      "Offset": 4332
+    },
+    {
+      "Name": "scale_up",
+      "Offset": 4350
+    },
+    {
+      "Name": "at_least_1e8",
+      "Offset": 4376
+    },
+    {
+      "Name": "op_9_digits",
+      "Offset": 4390
+    },
+    {
+      "Name": "e_mode",
+      "Offset": 4442
+    },
+    {
+      "Name": "point_margin",
+      "Offset": 4446
+    },
+    {
+      "Name": "copy_back",
+      "Offset": 4452
+    },
+    {
+      "Name": "try_copy",
+      "Offset": 4456
+    },
+    {
+      "Name": "suppress",
+      "Offset": 4470
+    },
+    {
+      "Name": "ignore_point",
+      "Offset": 4484
+    },
+    {
+      "Name": "text_stored",
+      "Offset": 4512
+    },
+    {
+      "Name": "zero_stored",
+      "Offset": 4514
+    },
+    {
+      "Name": "got_type",
+      "Offset": 4538
+    },
+    {
+      "Name": "easy_reading",
+      "Offset": 4540
+    },
+    {
+      "Name": "good_exponent",
+      "Offset": 4572
+    },
+    {
+      "Name": "int_or_string",
+      "Offset": 4580
+    },
+    {
+      "Name": "at_next_item",
+      "Offset": 4604
+    },
+    {
+      "Name": "stack_int_data",
+      "Offset": 4608
+    },
+    {
+      "Name": "got_short_int",
+      "Offset": 4610
+    },
+    {
+      "Name": "got_data_value",
+      "Offset": 4612
+    },
+    {
+      "Name": "fast_float_to_int",
+      "Offset": 4620
+    },
+    {
+      "Name": "significant",
+      "Offset": 4632
+    },
+    {
+      "Name": "valid_int",
+      "Offset": 4644
+    },
+    {
+      "Name": "must_inc",
+      "Offset": 4650
+    },
+    {
+      "Name": "rounded1",
+      "Offset": 4652
+    },
+    {
+      "Name": "no_shift",
+      "Offset": 4656
+    },
+    {
+      "Name": "fast_int_to_float",
+      "Offset": 4662
+    },
+    {
+      "Name": "fast_d1_to_float",
+      "Offset": 4664
+    },
+    {
+      "Name": "long_to_float",
+      "Offset": 4666
+    },
+    {
+      "Name": "denormalised_one",
+      "Offset": 4688
+    },
+    {
+      "Name": "fast_add_two",
+      "Offset": 4718
+    },
+    {
+      "Name": "fast_add_four",
+      "Offset": 4742
+    },
+    {
+      "Name": "fast_add_one",
+      "Offset": 4766
+    },
+    {
+      "Name": "do_slow_way",
+      "Offset": 4774
+    },
+    {
+      "Name": "do_fast_way",
+      "Offset": 4788
+    },
+    {
+      "Name": "diff_lt_16",
+      "Offset": 4814
+    },
+    {
+      "Name": "add_one_to_mant",
+      "Offset": 4820
+    },
+    {
+      "Name": "add_1_done",
+      "Offset": 4842
+    },
+    {
+      "Name": "fast_sub",
+      "Offset": 4844
+    },
+    {
+      "Name": "shift_down",
+      "Offset": 4872
+    },
+    {
+      "Name": "negated",
+      "Offset": 4888
+    },
+    {
+      "Name": "fast_add",
+      "Offset": 4892
+    },
+    {
+      "Name": "denorm_nos",
+      "Offset": 4902
+    },
+    {
+      "Name": "registered_1",
+      "Offset": 4940
+    },
+    {
+      "Name": "nos_biggest",
+      "Offset": 4950
+    },
+    {
+      "Name": "registered_2",
+      "Offset": 4986
+    },
+    {
+      "Name": "check_register",
+      "Offset": 4992
+    },
+    {
+      "Name": "normalise_d1",
+      "Offset": 4994
+    },
+    {
+      "Name": "must_normalise",
+      "Offset": 4996
+    },
+    {
+      "Name": "well_rounded",
+      "Offset": 5008
+    },
+    {
+      "Name": "normalise1",
+      "Offset": 5010
+    },
+    {
+      "Name": "normalise",
+      "Offset": 5014
+    },
+    {
+      "Name": "far_out_man",
+      "Offset": 5026
+    },
+    {
+      "Name": "good_exit",
+      "Offset": 5030
+    },
+    {
+      "Name": "a_bit_bigger",
+      "Offset": 5032
+    },
+    {
+      "Name": "result_weeny",
+      "Offset": 5044
+    },
+    {
+      "Name": "result_zero",
+      "Offset": 5048
+    },
+    {
+      "Name": "return_tos",
+      "Offset": 5052
+    },
+    {
+      "Name": "return_nos",
+      "Offset": 5064
+    },
+    {
+      "Name": "not_found_thread",
+      "Offset": 5072
+    },
+    {
+      "Name": "not_found",
+      "Offset": 5078
+    },
+    {
+      "Name": "overflow",
+      "Offset": 5082
+    },
+    {
+      "Name": "bad_param",
+      "Offset": 5086
+    },
+    {
+      "Name": "range_error",
+      "Offset": 5090
+    },
+    {
+      "Name": "end_of_file",
+      "Offset": 5094
+    },
+    {
+      "Name": "not_open",
+      "Offset": 5098
+    },
+    {
+      "Name": "no_memory",
+      "Offset": 5102
+    },
+    {
+      "Name": "qdos_error",
+      "Offset": 5104
+    },
+    {
+      "Name": "error_trap",
+      "Offset": 5106
+    },
+    {
+      "Name": "retry_regs",
+      "Offset": 5136
+    },
+    {
+      "Name": "retry1_regs",
+      "Offset": 5142
+    },
+    {
+      "Name": "retry_regs_a",
+      "Offset": 5146
+    },
+    {
+      "Name": "still_awake",
+      "Offset": 5158
+    },
+    {
+      "Name": "is_fatal",
+      "Offset": 5162
+    },
+    {
+      "Name": "retry_where",
+      "Offset": 5166
+    },
+    {
+      "Name": "do_retry",
+      "Offset": 5170
+    },
+    {
+      "Name": "do_next_locals",
+      "Offset": 5202
+    },
+    {
+      "Name": "forget_local2",
+      "Offset": 5218
+    },
+    {
+      "Name": "locals_gone2",
+      "Offset": 5236
+    },
+    {
+      "Name": "locals_unravelled",
+      "Offset": 5240
+    },
+    {
+      "Name": "fatal",
+      "Offset": 5246
+    },
+    {
+      "Name": "show_reason",
+      "Offset": 5300
+    },
+    {
+      "Name": "early_error1",
+      "Offset": 5306
+    },
+    {
+      "Name": "vector_out",
+      "Offset": 5312
+    },
+    {
+      "Name": "shut_up",
+      "Offset": 5324
+    },
+    {
+      "Name": "shuttered",
+      "Offset": 5340
+    },
+    {
+      "Name": "shut_down",
+      "Offset": 5348
+    },
+    {
+      "Name": "m_p_d3",
+      "Offset": 5358
+    },
+    {
+      "Name": "m_p_d9",
+      "Offset": 5372
+    },
+    {
+      "Name": "m_p_d10",
+      "Offset": 5374
+    },
+    {
+      "Name": "m_p_d4",
+      "Offset": 5398
+    },
+    {
+      "Name": "m_p_l1",
+      "Offset": 5426
+    },
+    {
+      "Name": "m_p_l2",
+      "Offset": 5458
+    },
+    {
+      "Name": "m_p_l3",
+      "Offset": 5472
+    },
+    {
+      "Name": "m_p_range",
+      "Offset": 5478
+    },
+    {
+      "Name": "m_p_d7",
+      "Offset": 5486
+    },
+    {
+      "Name": "m_p_d8",
+      "Offset": 5488
+    },
+    {
+      "Name": "m_p_d6",
+      "Offset": 5516
+    },
+    {
+      "Name": "m_p_d5",
+      "Offset": 5530
+    },
+    {
+      "Name": "m_p_c1",
+      "Offset": 5590
+    },
+    {
+      "Name": "m_p_c2",
+      "Offset": 5600
+    },
+    {
+      "Name": "m_p_c5",
+      "Offset": 5608
+    },
+    {
+      "Name": "m_p_c4",
+      "Offset": 5632
+    },
+    {
+      "Name": "m_p_rnge",
+      "Offset": 5658
+    },
+    {
+      "Name": "m_p_c3",
+      "Offset": 5666
+    },
+    {
+      "Name": "m_p_q2",
+      "Offset": 5676
+    },
+    {
+      "Name": "m_p_l4",
+      "Offset": 5704
+    },
+    {
+      "Name": "m_p_l8",
+      "Offset": 5720
+    },
+    {
+      "Name": "m_p_l6",
+      "Offset": 5722
+    },
+    {
+      "Name": "m_p_close",
+      "Offset": 5748
+    },
+    {
+      "Name": "m_p_close1",
+      "Offset": 5756
+    },
+    {
+      "Name": "m_p_l5",
+      "Offset": 5768
+    },
+    {
+      "Name": "m_p_l6a",
+      "Offset": 5770
+    },
+    {
+      "Name": "m_p_l13",
+      "Offset": 5790
+    },
+    {
+      "Name": "m_p_l12",
+      "Offset": 5810
+    },
+    {
+      "Name": "m_p_l11",
+      "Offset": 5834
+    },
+    {
+      "Name": "m_p_l10",
+      "Offset": 5840
+    },
+    {
+      "Name": "m_p_lerr",
+      "Offset": 5848
+    },
+    {
+      "Name": "m_p_l7",
+      "Offset": 5856
+    },
+    {
+      "Name": "m_p_l9",
+      "Offset": 5874
+    },
+    {
+      "Name": "m_p_l14",
+      "Offset": 5880
+    },
+    {
+      "Name": "m_p_l15",
+      "Offset": 5890
+    },
+    {
+      "Name": "m_p_st",
+      "Offset": 5896
+    },
+    {
+      "Name": "m_p_st2",
+      "Offset": 5902
+    },
+    {
+      "Name": "m_p_st1",
+      "Offset": 5930
+    },
+    {
+      "Name": "task_prefix",
+      "Offset": 5936
+    },
+    {
+      "Name": "line_prefix",
+      "Offset": 5948
+    },
+    {
+      "Name": "datascream",
+      "Offset": 5970
+    },
+    {
+      "Name": "error_prefix",
+      "Offset": 5998
+    },
+    {
+      "Name": "long_table",
+      "Offset": 6010
+    },
+    {
+      "Name": "option_pointer",
+      "Offset": 6076
+    },
+    {
+      "Name": "data_pointer",
+      "Offset": 6080
+    },
+    {
+      "Name": "maths_top",
+      "Offset": 6084
+    },
+    {
+      "Name": "clear_base",
+      "Offset": 6088
+    },
+    {
+      "Name": "clear_top",
+      "Offset": 6092
+    },
+    {
+      "Name": "array_base",
+      "Offset": 6096
+    },
+    {
+      "Name": "exts_base",
+      "Offset": 6100
+    },
+    {
+      "Name": "suppress_op",
+      "Offset": 6104
+    },
+    {
+      "Name": "channel_details",
+      "Offset": 6106
+    },
+    {
+      "Name": "channel_table",
+      "Offset": 6110
+    },
+    {
+      "Name": "end_channel_table",
+      "Offset": 7390
+    },
+    {
+      "Name": "early_error",
+      "Offset": 7390
+    },
+    {
+      "Name": "set_w",
+      "Offset": 7394
+    },
+    {
+      "Name": "set_w2",
+      "Offset": 7400
+    },
+    {
+      "Name": "set_w3",
+      "Offset": 7422
+    },
+    {
+      "Name": "set_w4",
+      "Offset": 7452
+    },
+    {
+      "Name": "set_w5",
+      "Offset": 7456
+    },
+    {
+      "Name": "set_w1",
+      "Offset": 7486
+    },
+    {
+      "Name": "norm_size",
+      "Offset": 7490
+    },
+    {
+      "Name": "shut_down1",
+      "Offset": 7498
+    },
+    {
+      "Name": "slow_out",
+      "Offset": 7502
+    },
+    {
+      "Name": "slow_out1",
+      "Offset": 7518
+    },
+    {
+      "Name": "max_stack",
+      "Offset": 7520
+    },
+    {
+      "Name": "str_ref",
+      "Offset": 7522
+    }
+  ],
+  "Templates": [
+    {
+      "Number": 1,
+      "Name": "minus_int"
+    },
+    {
+      "Number": 2,
+      "Name": "plus_int"
+    },
+    {
+      "Number": 3,
+      "Name": "b_not_int"
+    },
+    {
+      "Number": 4,
+      "Name": "l_not_int"
+    },
+    {
+      "Number": 5,
+      "Name": "add_int"
+    },
+    {
+      "Number": 6,
+      "Name": "sub_int"
+    },
+    {
+      "Number": 7,
+      "Name": "times_int"
+    },
+    {
+      "Number": 8,
+      "Name": "divide_int"
+    },
+    {
+      "Number": 9,
+      "Name": "geq_int"
+    },
+    {
+      "Number": 10,
+      "Name": "gt_int"
+    },
+    {
+      "Number": 11,
+      "Name": "mosteq_int"
+    },
+    {
+      "Number": 12,
+      "Name": "eq_int"
+    },
+    {
+      "Number": 13,
+      "Name": "neq_int"
+    },
+    {
+      "Number": 14,
+      "Name": "leq_int"
+    },
+    {
+      "Number": 15,
+      "Name": "less_int"
+    },
+    {
+      "Number": 16,
+      "Name": "b_or_int"
+    },
+    {
+      "Number": 17,
+      "Name": "b_and_int"
+    },
+    {
+      "Number": 18,
+      "Name": "b_xor_int"
+    },
+    {
+      "Number": 20,
+      "Name": "mod_int"
+    },
+    {
+      "Number": 24,
+      "Name": "for_inst_int"
+    },
+    {
+      "Number": 26,
+      "Name": "for_range_int"
+    },
+    {
+      "Number": 33,
+      "Name": "minus_float"
+    },
+    {
+      "Number": 34,
+      "Name": "plus_float"
+    },
+    {
+      "Number": 36,
+      "Name": "l_not_float"
+    },
+    {
+      "Number": 37,
+      "Name": "add_float"
+    },
+    {
+      "Number": 38,
+      "Name": "sub_float"
+    },
+    {
+      "Number": 39,
+      "Name": "times_float"
+    },
+    {
+      "Number": 40,
+      "Name": "divide_float"
+    },
+    {
+      "Number": 41,
+      "Name": "geq_float"
+    },
+    {
+      "Number": 42,
+      "Name": "gt_float"
+    },
+    {
+      "Number": 43,
+      "Name": "mosteq_float"
+    },
+    {
+      "Number": 44,
+      "Name": "eq_float"
+    },
+    {
+      "Number": 45,
+      "Name": "neq_float"
+    },
+    {
+      "Number": 46,
+      "Name": "leq_float"
+    },
+    {
+      "Number": 47,
+      "Name": "less_float"
+    },
+    {
+      "Number": 51,
+      "Name": "power_float"
+    },
+    {
+      "Number": 53,
+      "Name": "l_or_float"
+    },
+    {
+      "Number": 54,
+      "Name": "l_and_float"
+    },
+    {
+      "Number": 55,
+      "Name": "l_xor_float"
+    },
+    {
+      "Number": 56,
+      "Name": "for_inst_fl"
+    },
+    {
+      "Number": 58,
+      "Name": "for_rge_fl"
+    },
+    {
+      "Number": 73,
+      "Name": "geq_string"
+    },
+    {
+      "Number": 74,
+      "Name": "gt_string"
+    },
+    {
+      "Number": 75,
+      "Name": "mosteq_string"
+    },
+    {
+      "Number": 76,
+      "Name": "eq_string"
+    },
+    {
+      "Number": 77,
+      "Name": "neq_string"
+    },
+    {
+      "Number": 78,
+      "Name": "leq_string"
+    },
+    {
+      "Number": 79,
+      "Name": "less_string"
+    },
+    {
+      "Number": 84,
+      "Name": "concat_string"
+    },
+    {
+      "Number": 90,
+      "Name": "instr_string"
+    },
+    {
+      "Number": 102,
+      "Name": "loc_for_int"
+    },
+    {
+      "Number": 106,
+      "Name": "constant_int"
+    },
+    {
+      "Number": 107,
+      "Name": "data_int"
+    },
+    {
+      "Number": 108,
+      "Name": "vec_par"
+    },
+    {
+      "Number": 109,
+      "Name": "fch_int_var"
+    },
+    {
+      "Number": 110,
+      "Name": "local_int"
+    },
+    {
+      "Number": 111,
+      "Name": "extract_int"
+    },
+    {
+      "Number": 112,
+      "Name": "insert_int"
+    },
+    {
+      "Number": 113,
+      "Name": "read_int"
+    },
+    {
+      "Number": 115,
+      "Name": "loc_arr_int"
+    },
+    {
+      "Number": 116,
+      "Name": "input_int"
+    },
+    {
+      "Number": 118,
+      "Name": "store_int_var"
+    },
+    {
+      "Number": 123,
+      "Name": "hide_int"
+    },
+    {
+      "Number": 124,
+      "Name": "recover_int"
+    },
+    {
+      "Number": 125,
+      "Name": "vec_adr"
+    },
+    {
+      "Number": 126,
+      "Name": "glob_arr_int"
+    },
+    {
+      "Number": 127,
+      "Name": "range_int"
+    },
+    {
+      "Number": 128,
+      "Name": "ch_adr"
+    },
+    {
+      "Number": 134,
+      "Name": "loc_for_float"
+    },
+    {
+      "Number": 138,
+      "Name": "const_float"
+    },
+    {
+      "Number": 139,
+      "Name": "data_float"
+    },
+    {
+      "Number": 141,
+      "Name": "fch_float_var"
+    },
+    {
+      "Number": 142,
+      "Name": "local_float"
+    },
+    {
+      "Number": 143,
+      "Name": "extract_float"
+    },
+    {
+      "Number": 144,
+      "Name": "insert_float"
+    },
+    {
+      "Number": 145,
+      "Name": "read_float"
+    },
+    {
+      "Number": 147,
+      "Name": "loc_arr_float"
+    },
+    {
+      "Number": 148,
+      "Name": "input_float"
+    },
+    {
+      "Number": 150,
+      "Name": "st_float_var"
+    },
+    {
+      "Number": 155,
+      "Name": "hide_float"
+    },
+    {
+      "Number": 156,
+      "Name": "recover_float"
+    },
+    {
+      "Number": 158,
+      "Name": "glob_arr_fl"
+    },
+    {
+      "Number": 159,
+      "Name": "range_float"
+    },
+    {
+      "Number": 169,
+      "Name": "short_string"
+    },
+    {
+      "Number": 170,
+      "Name": "const_string"
+    },
+    {
+      "Number": 171,
+      "Name": "data_string"
+    },
+    {
+      "Number": 175,
+      "Name": "extr_string"
+    },
+    {
+      "Number": 176,
+      "Name": "insert_string"
+    },
+    {
+      "Number": 177,
+      "Name": "read_string"
+    },
+    {
+      "Number": 179,
+      "Name": "loc_arr_string"
+    },
+    {
+      "Number": 180,
+      "Name": "input_string"
+    },
+    {
+      "Number": 182,
+      "Name": "st_string_var"
+    },
+    {
+      "Number": 186,
+      "Name": "print_string"
+    },
+    {
+      "Number": 187,
+      "Name": "hide_string"
+    },
+    {
+      "Number": 188,
+      "Name": "recover_string"
+    },
+    {
+      "Number": 190,
+      "Name": "glob_arr_str"
+    },
+    {
+      "Number": 191,
+      "Name": "range_string"
+    },
+    {
+      "Number": 201,
+      "Name": "print_comma"
+    },
+    {
+      "Number": 203,
+      "Name": "print_slash"
+    },
+    {
+      "Number": 204,
+      "Name": "print_pling"
+    },
+    {
+      "Number": 205,
+      "Name": "print_to"
+    },
+    {
+      "Number": 206,
+      "Name": "concat_lf"
+    },
+    {
+      "Number": 220,
+      "Name": "prog_end"
+    },
+    {
+      "Number": 221,
+      "Name": "channel"
+    },
+    {
+      "Number": 222,
+      "Name": "eof"
+    },
+    {
+      "Number": 223,
+      "Name": "eof_data"
+    },
+    {
+      "Number": 224,
+      "Name": "rom_fn"
+    },
+    {
+      "Number": 227,
+      "Name": "rom_proc"
+    },
+    {
+      "Number": 229,
+      "Name": "stipple"
+    },
+    {
+      "Number": 230,
+      "Name": "next_for_int"
+    },
+    {
+      "Number": 232,
+      "Name": "next_for_fl"
+    },
+    {
+      "Number": 236,
+      "Name": "gosub"
+    },
+    {
+      "Number": 237,
+      "Name": "restore"
+    },
+    {
+      "Number": 238,
+      "Name": "next_repeat"
+    },
+    {
+      "Number": 239,
+      "Name": "if_false"
+    },
+    {
+      "Number": 240,
+      "Name": "on_goto"
+    },
+    {
+      "Number": 241,
+      "Name": "on_gosub"
+    },
+    {
+      "Number": 242,
+      "Name": "jump"
+    },
+    {
+      "Number": 243,
+      "Name": "address"
+    },
+    {
+      "Number": 244,
+      "Name": "return"
+    },
+    {
+      "Number": 245,
+      "Name": "if_true"
+    },
+    {
+      "Number": 246,
+      "Name": "push_old_ref"
+    },
+    {
+      "Number": 248,
+      "Name": "line"
+    },
+    {
+      "Number": 249,
+      "Name": "loc_arr_str_1d"
+    },
+    {
+      "Number": 250,
+      "Name": "mark_stack"
+    },
+    {
+      "Number": 251,
+      "Name": "data_end"
+    },
+    {
+      "Number": 253,
+      "Name": "gl_arr_str_1d"
+    },
+    {
+      "Number": 254,
+      "Name": "fast"
+    },
+    {
+      "Number": 255,
+      "Name": "slow"
+    },
+    {
+      "Number": 257,
+      "Name": "max_length"
+    },
+    {
+      "Number": 259,
+      "Name": "upstring"
+    },
+    {
+      "Number": 260,
+      "Name": "downstring"
+    },
+    {
+      "Number": 261,
+      "Name": "rom_name"
+    },
+    {
+      "Number": 263,
+      "Name": "quick_zero"
+    },
+    {
+      "Number": 264,
+      "Name": "st_str_var_1d"
+    },
+    {
+      "Number": 265,
+      "Name": "fch_string_1d"
+    },
+    {
+      "Number": 266,
+      "Name": "dimn"
+    },
+    {
+      "Number": 267,
+      "Name": "last_global"
+    },
+    {
+      "Number": 268,
+      "Name": "duplicate_int"
+    },
+    {
+      "Number": 269,
+      "Name": "code"
+    },
+    {
+      "Number": 270,
+      "Name": "len"
+    },
+    {
+      "Number": 271,
+      "Name": "peek"
+    },
+    {
+      "Number": 272,
+      "Name": "peek_w"
+    },
+    {
+      "Number": 273,
+      "Name": "chrs"
+    },
+    {
+      "Number": 274,
+      "Name": "fills"
+    },
+    {
+      "Number": 275,
+      "Name": "respr"
+    },
+    {
+      "Number": 276,
+      "Name": "peek_l"
+    },
+    {
+      "Number": 277,
+      "Name": "clear"
+    },
+    {
+      "Number": 278,
+      "Name": "poke"
+    },
+    {
+      "Number": 279,
+      "Name": "poke_w"
+    },
+    {
+      "Number": 280,
+      "Name": "poke_l"
+    },
+    {
+      "Number": 281,
+      "Name": "chan_op_on"
+    },
+    {
+      "Number": 282,
+      "Name": "chan_op_off"
+    },
+    {
+      "Number": 283,
+      "Name": "duplicate_flt"
+    },
+    {
+      "Number": 290,
+      "Name": "block"
+    },
+    {
+      "Number": 291,
+      "Name": "option_string"
+    },
+    {
+      "Number": 293,
+      "Name": "pass_string"
+    },
+    {
+      "Number": 294,
+      "Name": "create_ref"
+    },
+    {
+      "Number": 310,
+      "Name": "float_to_string"
+    },
+    {
+      "Number": 312,
+      "Name": "make_string_from_int"
+    },
+    {
+      "Number": 317,
+      "Name": "string_to_float"
+    },
+    {
+      "Number": 320,
+      "Name": "int_to_float"
+    },
+    {
+      "Number": 322,
+      "Name": "nos_to_float"
+    },
+    {
+      "Number": 324,
+      "Name": "nos_to_int"
+    },
+    {
+      "Number": 325,
+      "Name": "retry"
+    },
+    {
+      "Number": 326,
+      "Name": "retry_here"
+    },
+    {
+      "Number": 333,
+      "Name": "string_to_int"
+    },
+    {
+      "Number": 334,
+      "Name": "make_int_from_float"
+    },
+    {
+      "Number": 335,
+      "Name": "increment2_float"
+    },
+    {
+      "Number": 336,
+      "Name": "increment4_float"
+    },
+    {
+      "Number": 337,
+      "Name": "qinc_int_var"
+    },
+    {
+      "Number": 338,
+      "Name": "qdec_int_var"
+    },
+    {
+      "Number": 339,
+      "Name": "inc_int_var"
+    },
+    {
+      "Number": 340,
+      "Name": "dec_int_var"
+    },
+    {
+      "Number": 345,
+      "Name": "retry1"
+    },
+    {
+      "Number": 346,
+      "Name": "retry1_here"
+    },
+    {
+      "Number": 351,
+      "Name": "move_mem_rc"
+    },
+    {
+      "Number": 352,
+      "Name": "move_mem_cr"
+    },
+    {
+      "Number": 353,
+      "Name": "move_mem_rc_int"
+    },
+    {
+      "Number": 354,
+      "Name": "move_mem_cr_int"
+    },
+    {
+      "Number": 355,
+      "Name": "done_for"
+    },
+    {
+      "Number": 356,
+      "Name": "print_gosub"
+    },
+    {
+      "Number": 357,
+      "Name": "remember_end"
+    },
+    {
+      "Number": 358,
+      "Name": "data_short"
+    },
+    {
+      "Number": 359,
+      "Name": "expr_slice_1d"
+    },
+    {
+      "Number": 360,
+      "Name": "for_step1"
+    },
+    {
+      "Number": 361,
+      "Name": "lock"
+    },
+    {
+      "Number": 362,
+      "Name": "unlock"
+    },
+    {
+      "Number": 363,
+      "Name": "increment_float"
+    },
+    {
+      "Number": 364,
+      "Name": "continue"
+    },
+    {
+      "Number": 365,
+      "Name": "abort"
+    },
+    {
+      "Number": 366,
+      "Name": "ext_gosub"
+    },
+    {
+      "Number": 370,
+      "Name": "vector_table_address"
+    },
+    {
+      "Number": 371,
+      "Name": "wait_for_externals"
+    },
+    {
+      "Number": 372,
+      "Name": "snooze"
+    },
+    {
+      "Number": 373,
+      "Name": "catnap"
+    },
+    {
+      "Number": 374,
+      "Name": "xtend_str_1d"
+    },
+    {
+      "Number": 375,
+      "Name": "str_len_1d"
+    },
+    {
+      "Number": 376,
+      "Name": "word_float"
+    },
+    {
+      "Number": 377,
+      "Name": "long_float"
+    },
+    {
+      "Number": 378,
+      "Name": "possible_end"
+    },
+    {
+      "Number": 379,
+      "Name": "peeks"
+    },
+    {
+      "Number": 380,
+      "Name": "pokes"
+    },
+    {
+      "Number": 381,
+      "Name": "exit"
+    },
+    {
+      "Number": 383,
+      "Name": "err_num"
+    },
+    {
+      "Number": 384,
+      "Name": "err_lin"
+    },
+    {
+      "Number": 999,
+      "Name": "entry_routine"
+    },
+    {
+      "Number": 1001,
+      "Name": "minus_int_p"
+    },
+    {
+      "Number": 1005,
+      "Name": "add_int_p"
+    },
+    {
+      "Number": 1006,
+      "Name": "sub_int_p"
+    },
+    {
+      "Number": 1007,
+      "Name": "times_int_p"
+    },
+    {
+      "Number": 1024,
+      "Name": "for_inst_int_p"
+    },
+    {
+      "Number": 1026,
+      "Name": "for_range_int_p"
+    },
+    {
+      "Number": 1056,
+      "Name": "for_inst_fl_p"
+    },
+    {
+      "Number": 1058,
+      "Name": "for_rge_fl_p"
+    },
+    {
+      "Number": 1101,
+      "Name": "global_for_int_p"
+    },
+    {
+      "Number": 1102,
+      "Name": "loc_for_int_p"
+    },
+    {
+      "Number": 1106,
+      "Name": "constant_int_p"
+    },
+    {
+      "Number": 1108,
+      "Name": "vec_par_p"
+    },
+    {
+      "Number": 1109,
+      "Name": "fch_int_var_p"
+    },
+    {
+      "Number": 1110,
+      "Name": "local_int_p"
+    },
+    {
+      "Number": 1111,
+      "Name": "extract_int_p"
+    },
+    {
+      "Number": 1112,
+      "Name": "insert_int_p"
+    },
+    {
+      "Number": 1114,
+      "Name": "global_int_p"
+    },
+    {
+      "Number": 1115,
+      "Name": "loc_arr_int_p"
+    },
+    {
+      "Number": 1118,
+      "Name": "store_int_var_p"
+    },
+    {
+      "Number": 1125,
+      "Name": "vec_adr_p"
+    },
+    {
+      "Number": 1126,
+      "Name": "glob_arr_int_p"
+    },
+    {
+      "Number": 1133,
+      "Name": "global_for_float_p"
+    },
+    {
+      "Number": 1134,
+      "Name": "loc_for_float_p"
+    },
+    {
+      "Number": 1138,
+      "Name": "const_float_p"
+    },
+    {
+      "Number": 1141,
+      "Name": "fch_float_var_p"
+    },
+    {
+      "Number": 1142,
+      "Name": "local_float_p"
+    },
+    {
+      "Number": 1143,
+      "Name": "extract_float_p"
+    },
+    {
+      "Number": 1144,
+      "Name": "insert_float_p"
+    },
+    {
+      "Number": 1146,
+      "Name": "global_float_p"
+    },
+    {
+      "Number": 1147,
+      "Name": "loc_arr_float_p"
+    },
+    {
+      "Number": 1150,
+      "Name": "st_float_var_p"
+    },
+    {
+      "Number": 1158,
+      "Name": "glob_arr_fl_p"
+    },
+    {
+      "Number": 1169,
+      "Name": "short_string_p"
+    },
+    {
+      "Number": 1170,
+      "Name": "const_string_p"
+    },
+    {
+      "Number": 1175,
+      "Name": "extr_string_p"
+    },
+    {
+      "Number": 1176,
+      "Name": "insert_string_p"
+    },
+    {
+      "Number": 1179,
+      "Name": "loc_arr_str_p"
+    },
+    {
+      "Number": 1182,
+      "Name": "st_string_var_p"
+    },
+    {
+      "Number": 1190,
+      "Name": "glob_arr_str_p"
+    },
+    {
+      "Number": 1224,
+      "Name": "rom_fn_p"
+    },
+    {
+      "Number": 1227,
+      "Name": "rom_proc_p"
+    },
+    {
+      "Number": 1230,
+      "Name": "next_for_int_p"
+    },
+    {
+      "Number": 1232,
+      "Name": "next_for_fl_p"
+    },
+    {
+      "Number": 1234,
+      "Name": "array_p"
+    },
+    {
+      "Number": 1236,
+      "Name": "gosub_p"
+    },
+    {
+      "Number": 1237,
+      "Name": "restore_p"
+    },
+    {
+      "Number": 1238,
+      "Name": "next_repeat_p"
+    },
+    {
+      "Number": 1239,
+      "Name": "if_false_p"
+    },
+    {
+      "Number": 1240,
+      "Name": "on_goto_p"
+    },
+    {
+      "Number": 1241,
+      "Name": "on_gosub_p"
+    },
+    {
+      "Number": 1242,
+      "Name": "jump_p"
+    },
+    {
+      "Number": 1244,
+      "Name": "return_p"
+    },
+    {
+      "Number": 1245,
+      "Name": "if_true_p"
+    },
+    {
+      "Number": 1246,
+      "Name": "push_old_ref_p"
+    },
+    {
+      "Number": 1247,
+      "Name": "init_window_p"
+    },
+    {
+      "Number": 1248,
+      "Name": "line_p"
+    },
+    {
+      "Number": 1249,
+      "Name": "l_a_str_1d_p"
+    },
+    {
+      "Number": 1253,
+      "Name": "gl_arr_str_1d_p"
+    },
+    {
+      "Number": 1257,
+      "Name": "max_length_p"
+    },
+    {
+      "Number": 1262,
+      "Name": "simple_string_p"
+    },
+    {
+      "Number": 1264,
+      "Name": "st_str_var_1d_p"
+    },
+    {
+      "Number": 1265,
+      "Name": "fch_string_1d_p"
+    },
+    {
+      "Number": 1266,
+      "Name": "dimn_p"
+    },
+    {
+      "Number": 1293,
+      "Name": "pass_string_p"
+    },
+    {
+      "Number": 1294,
+      "Name": "create_ref_p"
+    },
+    {
+      "Number": 1327,
+      "Name": "when_global"
+    },
+    {
+      "Number": 1328,
+      "Name": "when_local"
+    },
+    {
+      "Number": 1339,
+      "Name": "inc_int_var_p"
+    },
+    {
+      "Number": 1340,
+      "Name": "dec_int_var_p"
+    },
+    {
+      "Number": 1355,
+      "Name": "done_for_p"
+    },
+    {
+      "Number": 1356,
+      "Name": "print_gosub_p"
+    },
+    {
+      "Number": 1357,
+      "Name": "remember_end_p"
+    },
+    {
+      "Number": 1360,
+      "Name": "for_step1_p"
+    },
+    {
+      "Number": 1366,
+      "Name": "ext_gosub_p"
+    },
+    {
+      "Number": 1374,
+      "Name": "xtend_str_1d_p"
+    },
+    {
+      "Number": 1375,
+      "Name": "str_len_1d_p"
+    },
+    {
+      "Number": 1376,
+      "Name": "word_float_p"
+    },
+    {
+      "Number": 1377,
+      "Name": "long_float_p"
+    },
+    {
+      "Number": 1381,
+      "Name": "exit_p"
+    },
+    {
+      "Number": 1382,
+      "Name": "global_addr"
+    },
+    {
+      "Number": 1385,
+      "Name": "ext_string_p"
+    }
+  ]
+}

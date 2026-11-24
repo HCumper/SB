@@ -1,0 +1,20 @@
+HIR control-flow, range, effect and alias analysis (checked QL)
+Unchecked arithmetic proofs enabled: True; proven expressions: 3
+Proven numeric array accesses: 0
+Rank-one integer array accesses: 10
+Rank-two integer array accesses: 0
+Global array call-entry analysis: passes=2; certified=True
+Certified native FOR bindings: 2
+Proof-eligible scopes: 5/5
+Native FOR binding rejected: routine=; loop=LoopId 0; reasons=body contains calls, nested loops or unsupported control; body may replace FOR metadata
+Native FOR binding rejected: routine=; loop=LoopId 1; reasons=body contains calls, nested loops or unsupported control; body may replace FOR metadata
+Native FOR binding rejected: routine=; loop=LoopId 2; reasons=body contains calls, nested loops or unsupported control
+Native FOR binding rejected: routine=; loop=LoopId 3; reasons=body contains calls, nested loops or unsupported control; body may replace FOR metadata
+Native FOR binding rejected: routine=Some(SymbolId 7); loop=LoopId 0; reasons=body contains calls, nested loops or unsupported control
+Native FOR binding rejected: routine=Some(SymbolId 22); loop=LoopId 0; reasons=body contains calls, nested loops or unsupported control
+Address taken: []; escaped to unknown callees: []
+Routine SymbolId 7: reads=[FOUND_I,SCAN_I,DICTIONARY$,FREQUENCY_I,TOKEN$,TOTAL_WORDS_I,USED_I] writes=[FOUND_I,SCAN_I,DICTIONARY$,FAILED_I,FREQUENCY_I,TOTAL_WORDS_I,USED_I] descriptors=[FOUND_I,SCAN_I,DICTIONARY$,FAILED_I,TOTAL_WORDS_I,USED_I] loop-metadata=[SCAN_I] unknown-read=False unknown-write=False unknown-descriptors=False unknown-loop-metadata=False throw=True io=False allocate=True control=True
+Routine SymbolId 18: reads=[] writes=[CORPUS$] descriptors=[CORPUS$] loop-metadata=[] unknown-read=False unknown-write=False unknown-descriptors=False unknown-loop-metadata=False throw=True io=False allocate=True control=False
+Routine SymbolId 22: reads=[ITEM_I,PLACE_I,SORT_COUNT_I,DICTIONARY$,FREQUENCY_I,SORT_WORD$,USED_I] writes=[ITEM_I,PLACE_I,SORT_COUNT_I,DICTIONARY$,FREQUENCY_I,SORT_WORD$] descriptors=[ITEM_I,PLACE_I,SORT_COUNT_I,DICTIONARY$,SORT_WORD$] loop-metadata=[ITEM_I] unknown-read=False unknown-write=False unknown-descriptors=False unknown-loop-metadata=False throw=True io=False allocate=True control=True
+Routine SymbolId 27: reads=[COUNTED_I,SCAN_I,DICTIONARY$,FREQUENCY_I,TOTAL_WORDS_I,USED_I] writes=[COUNTED_I,SCAN_I,FAILED_I] descriptors=[COUNTED_I,SCAN_I,FAILED_I] loop-metadata=[SCAN_I] unknown-read=False unknown-write=False unknown-descriptors=False unknown-loop-metadata=False throw=True io=False allocate=True control=True
+Scope MainScope: blocks=117 edges=160 natural-loops=5 uncertain-control=False

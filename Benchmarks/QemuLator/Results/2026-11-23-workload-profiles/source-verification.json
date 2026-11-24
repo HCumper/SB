@@ -1,0 +1,138 @@
+{
+  "BaseRevision": "0b2cb4093f2cf0366815131731e26ed93c76cc9b",
+  "CompilerSha256": "12F7395A57F72A44887603AD7F47553F5537505F19CA3B6E895BD59EE32CAAF8",
+  "ProductionCompilerAndTestSourcesUnchanged": true,
+  "PriorCompilerTestsPassed": 4173,
+  "CompilerTestsRerunForProfilingTask": false,
+  "CompleteProfiles": 10,
+  "RejectedCorruptProfiles": 8,
+  "ProfileReproductions": 10,
+  "QemuLatorJobs": 40,
+  "Tools": [
+    {
+      "Path": "Benchmarks\\Profiling\\Prepare-Profiler.py",
+      "Sha256": "86E16BF93F562CFD8B1DFBC2C58D382BD147C8A21009F4C053EEFB9941E23B18"
+    },
+    {
+      "Path": "Benchmarks\\Profiling\\README.md",
+      "Sha256": "CC1D0BD0D0C88219EA2A8B06F8172EE19B34C46FC68B9C6E1CBA0731DC5BDE09"
+    },
+    {
+      "Path": "Benchmarks\\Profiling\\Run-Profiles.ps1",
+      "Sha256": "12BB9469A42B9532A91BF28A7AFAC579C7A046FACAD0919D46567407C4AF827F"
+    },
+    {
+      "Path": "Benchmarks\\Profiling\\runtime-map.json",
+      "Sha256": "172AEFD431DD3846975BECFFC7ECA414EED5C4A290789924657FF303F376875E"
+    },
+    {
+      "Path": "Benchmarks\\Profiling\\source-recipes.json",
+      "Sha256": "BD907F3CDC77FB8B646E2FA7D005201E49D53D1FE776EB0DC2A1171FE24C97BF"
+    },
+    {
+      "Path": "Benchmarks\\Profiling\\Verify-Profiles.py",
+      "Sha256": "071DACF47E535724474A821B6A18B0106AF74B6C4564E6057FDB298B333638AE"
+    },
+    {
+      "Path": "Benchmarks\\Profiling\\WorkloadProfiler.fsx.in",
+      "Sha256": "8BE5F598D77D311674AFD73A70198DBE18CEF53EA51948890209137A0C128DE8"
+    }
+  ],
+  "PriorProductionSourceFingerprints": [
+    {
+      "Path": "SB/CompilerPipeline.fs",
+      "Sha256": "2DA54289E3C239C4FA629299990357E747A00B9E514CE92222E48307E9DAE180",
+      "GitBlob": "5fd696409d9dbcdc27d49872eebe1606e2e5d203"
+    },
+    {
+      "Path": "SB/HirTurboIrBackend.fs",
+      "Sha256": "86762DD07505D6D377CB7F49381907BF3C39575C81168B09D47CF70A28EF8F68",
+      "GitBlob": "cd748818c2cc106e354f6677c15db45caa37a748"
+    },
+    {
+      "Path": "SB/Optimization/HIR-ANALYSIS.md",
+      "Sha256": "EACD22CAEA11902A77821A845CC18CDD366B585BAD0501A071E7BA258E2298FF",
+      "GitBlob": "38ce08bbc7201211b59e3b3275fbd433b72dfbd0"
+    },
+    {
+      "Path": "SB/Optimization/HirAnalysis.fs",
+      "Sha256": "7FEE7E352870AF7DA743F48B9045B945075D20FC2961EBCFA59738329408F677",
+      "GitBlob": "a38a4788c191c6c52c66fcf75becef01e2a92987"
+    },
+    {
+      "Path": "SB/Optimization/HirControlFlow.fs",
+      "Sha256": "CCC8E3DF80C2D9154F5EF00A8202E876248FD8CA101CB3518929A066EE90770D",
+      "GitBlob": "30a1101394125a3ccb185528b916262ed00a9048"
+    },
+    {
+      "Path": "SB/Optimization/HirEffects.fs",
+      "Sha256": "84C435FDA0A1908EB08CE4B2757C75F3228284E031E1DEAF28B673D78FD2B6C2",
+      "GitBlob": "20788bb5b7cd4aee7e0bc4acb8a8f6cbd1da89da"
+    },
+    {
+      "Path": "SB/Optimization/TURBO-NATIVE-LOOPS.md",
+      "Sha256": "96E4133725EBDEDFFC176C0C3410A57DBA4E9459DEAF409780F87F07C1B5C714",
+      "GitBlob": "6bb45b3b6709225fb5c944796c7ce5b2b93536dd"
+    },
+    {
+      "Path": "SB/Optimization/TURBO-REGISTER-ALLOCATION.md",
+      "Sha256": "23DB54BA07F8960C22A8C5B774A0494EB26A7AE0A0D1BA16046464A776FED7A5",
+      "GitBlob": "9694da45663fd1234090e1846c52b585c6a3e9ee"
+    },
+    {
+      "Path": "SB/Optimization/TurboNativeIr.fs",
+      "Sha256": "A527A71FC0ADB664C5BD090C7BA9A714A7692FFBD60A526E25742B2B375D1A13",
+      "GitBlob": "d72d229e004c48a483a6c19eee65995ef6bb8621"
+    },
+    {
+      "Path": "SB/Optimization/TurboNativeLoops.fs",
+      "Sha256": "34A677A3A22D851180BB26D2EF78654714426B7EF537EDA6B0F738B6313930E7",
+      "GitBlob": "43353ae9682089e746c9defc37d99f98e0273584"
+    },
+    {
+      "Path": "SB/SB.fsproj",
+      "Sha256": "74782B8BF89436D80BC5A72CDC4606BB507569458151E3D085BBEB761DDC6B71",
+      "GitBlob": "a96ae33038185b4e2fce42600835b1389a3203bd"
+    },
+    {
+      "Path": "SB/TurboCodegen.fs",
+      "Sha256": "9A4FE96A34019650D8DD09407DA827D7A669FB0E34A762DE91E3A55132E00894",
+      "GitBlob": "4c0a8f4c3815882377acde659d930a11129dfee4"
+    },
+    {
+      "Path": "SBTests/GeneratedTurboExecutionTests.fs",
+      "Sha256": "647BA4A2C202A028AD13DD1FBE4C640FA63F1C462D5B6ED47781D2D55DFDB82A",
+      "GitBlob": "4843647ea2a12cb10e36e5d65493f58c96187ed9"
+    },
+    {
+      "Path": "SBTests/Optimization/HirAnalysisTests.fs",
+      "Sha256": "E3D77D90E135FE8974C7FB1A54562C969F9F71B068A5C334777777906F4FC063",
+      "GitBlob": "7b2396fdcf136c95db519762afa69f283200885b"
+    },
+    {
+      "Path": "SBTests/Optimization/TurboNativeIrTests.fs",
+      "Sha256": "E15CE721C0CEDE1C2346B4F8074D5D86FA31ED15C3401146FF5248F504CB8DC0",
+      "GitBlob": "b8a0dcf249ec5e25428ae693a1c968090bfb5a43"
+    },
+    {
+      "Path": "SBTests/Optimization/TurboNativeLoopsTests.fs",
+      "Sha256": "35A626ADA5B39C44C24246C13479A76CF1C467CBA8E5DDFC5362C10606F4E473",
+      "GitBlob": "76da66a9c3d525d88df029605751093ba96eae98"
+    },
+    {
+      "Path": "SBTests/TurboCodegenTests.fs",
+      "Sha256": "2762A80104519B22292062FD62CBAF1F2ED14049C23F16757ED776A70AA335FF",
+      "GitBlob": "275f30d9c2559ff221fbb0a7501c9cbbbca0a247"
+    },
+    {
+      "Path": "SB/Optimization/TurboNativeControlFlow.fs",
+      "Sha256": "809E34A76C56883C69D00174F3ADE0655875624EA4653714D91BF188E309A9D7",
+      "GitBlob": "edee0c2d1712f532b74c140d658d74a9f51d7f56"
+    },
+    {
+      "Path": "SB/Optimization/TurboNativeInvariants.fs",
+      "Sha256": "2C203E9C82E6E5AF6EEF02E3C91C9E3FA5BAE8D2C52A3FDE054A225965E6B36C",
+      "GitBlob": "6cfaa39783e548bdea60eecd95865bf5d6b45be8"
+    }
+  ]
+}

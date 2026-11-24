@@ -1,0 +1,4 @@
+benchmark,category,passes,checksum,turboSamples,turboMedian,turboMin,turboMax,turboBytes,sbSamples,sbMedian,sbMin,sbMax,sbBytes,sbSpeedup,sbTimeReductionPercent
+sieve,kernel,5,840,3,3.84,3.84,3.84,8012,3,1.16,1.14,1.16,7432,3.310344827586207,69.79166666666667
+eight_queens,application,1,4962,3,19.34,19.34,19.36,12718,3,22.8,22.8,22.8,9022,0.8482456140350877,-17.89038262668046
+route_planner,application,1,4701,3,36.06,36.06,36.08,13192,3,15.26,15.24,15.26,9442,2.3630406290956754,57.68164170826401

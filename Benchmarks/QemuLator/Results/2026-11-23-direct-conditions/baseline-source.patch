@@ -1,0 +1,1840 @@
+diff --git a/SB/CompilerPipeline.fs b/SB/CompilerPipeline.fs
+index ff6fa42..5fd6964 100644
+--- a/SB/CompilerPipeline.fs
++++ b/SB/CompilerPipeline.fs
+@@ -714,7 +714,7 @@ let generateTurboIrFromLoweredHirWithNativeRegions optimization nativeRegions (s
+         | None -> ()
+         let target =
+             match nativeRegions,analysis with
+-            | true,Some facts -> {target with SafeIntegerExpressions=facts.SafeIntegerExpressions;SafeArrayAccesses=facts.SafeArrayAccesses;OneDimensionalIntegerAccesses=facts.OneDimensionalIntegerAccesses;TwoDimensionalIntegerAccesses=facts.TwoDimensionalIntegerAccesses}
++            | true,Some facts -> {target with SafeIntegerExpressions=facts.SafeIntegerExpressions;SafeArrayAccesses=facts.SafeArrayAccesses;OneDimensionalIntegerAccesses=facts.OneDimensionalIntegerAccesses;TwoDimensionalIntegerAccesses=facts.TwoDimensionalIntegerAccesses;CertifiedNativeForLoops=facts.CertifiedNativeForLoops}
+             | _ -> target
+         HirTurboIrBackend.generateTurboIrFromHir target optimized
+         |> Result.bind (TurboNativeRegions.select nativeRegions)
+@@ -739,7 +739,7 @@ let generateTurboExecutableFromLoweredHirWithRegisterAllocation optimization nat
+     match generateTurboIrFromLoweredHirWithNativeRegions optimization nativeRegions state hirProgram with
+     | Result.Error errors -> Result.Error errors
+     | Result.Ok ir ->
+-        let options = { TurboCodegen.defaultCodegenOptions with TaskName = taskName; LocalRegisterAllocation = nativeRegions && registerAllocation; NativeIntegerForLoops = nativeRegions && registerAllocation }
++        let options = { TurboCodegen.defaultCodegenOptions with TaskName = taskName; LocalRegisterAllocation = nativeRegions && registerAllocation; NativeIntegerForLoops = nativeRegions && registerAllocation; NativeForLoopProofs=ir.NativeForLoopProofs }
+         match TurboCodegen.generateFromIr options ir.Bytes with
+         | Result.Ok executable ->
+             match optimization.DumpPrefix with
+diff --git a/SB/HirTurboIrBackend.fs b/SB/HirTurboIrBackend.fs
+index eec64eb..dd69f7c 100644
+--- a/SB/HirTurboIrBackend.fs
++++ b/SB/HirTurboIrBackend.fs
+@@ -96,6 +96,10 @@ type RankTwoIntegerAccess = {
+     ExactLengths: (int * int) option
+ }
+ 
++/// Trusted HIR binding proof, keyed by the emitted FOR body label. Kept out of
++/// serialized IR: byte-only/programmatic generation retains conservative rules.
++type NativeForLoopProof = { Counter:int; ScalarVectors:Set<int> }
++
+ type TurboIrOptions = {
+     /// Startup windows to open, as Turbo's windows% setting (0-3). TURBO_windo n overrides it.
+     WindowCount: int
+@@ -119,6 +123,7 @@ type TurboIrOptions = {
+     SafeArrayAccesses: Set<string * HirExpr list>
+     OneDimensionalIntegerAccesses: Set<string * HirExpr list>
+     TwoDimensionalIntegerAccesses: Map<string * HirExpr list, RankTwoIntegerAccess>
++    CertifiedNativeForLoops: Map<SymbolId option * LoopId,Set<string>>
+ }
+ 
+ type TurboIrOutput = {
+@@ -126,6 +131,7 @@ type TurboIrOutput = {
+     Bytes: byte[]
+     Listing: string
+     Warnings: string list
++    NativeForLoopProofs: Map<int,NativeForLoopProof>
+ }
+ 
+ // Turbo's parser copies the geometry and colours of its own open windows (P 18062-18146),
+@@ -154,6 +160,7 @@ let defaultOptions = {
+     SafeArrayAccesses = Set.empty
+     OneDimensionalIntegerAccesses = Set.empty
+     TwoDimensionalIntegerAccesses = Map.empty
++    CertifiedNativeForLoops = Map.empty
+ }
+ 
+ /// Internal listing annotation consumed by native-region selection. The binary
+@@ -916,6 +923,7 @@ type private Emitter(options: TurboIrOptions, program: HirProgram) =
+     let variantEntries = Dictionary<SymbolId * Set<SymbolId>, int>()
+     let routineVariants = ResizeArray<HirRoutine * Set<SymbolId> * int>()
+     let localForSymbols = HashSet<SymbolId>()
++    let nativeForLoopProofs = Dictionary<int,NativeForLoopProof>()
+     let declaredLines = SortedSet<int>()
+     let referencedLines = HashSet<int>()
+     let restoreLabels = Dictionary<int, int>()
+@@ -2045,6 +2053,11 @@ type private Emitter(options: TurboIrOptions, program: HirProgram) =
+         let vector = this.ForVector(symbol, scope, pos)
+         let top = newLabel pos
+         let endLabel = newLabel pos
++        match options.CertifiedNativeForLoops.TryFind(scope.Routine |> Option.map _.Symbol,loopId) with
++        | Some names when vector.Type=TurboInt ->
++            let scalars=names |> Set.map(fun name -> (this.NamedVector(name,pos)).Id)
++            nativeForLoopProofs[top]<-{Counter=vector.Id;ScalarVectors=scalars}
++        | _ -> ()
+         emitList vector top endLabel
+         op0 Op.doneFor
+         define top $"FOR {vector.Name}"
+@@ -2687,7 +2700,8 @@ type private Emitter(options: TurboIrOptions, program: HirProgram) =
+                     { Items = items
+                       Bytes = bytes
+                       Listing = formatListing items
+-                      Warnings = List.ofSeq warnings }
++                      Warnings = List.ofSeq warnings
++                      NativeForLoopProofs = nativeForLoopProofs |> Seq.map(fun pair -> pair.Key,pair.Value) |> Map.ofSeq }
+             | problems, roundTripOk ->
+                 let roundTripProblem = if roundTripOk then [] else [ "the stream does not decode back to the emitted records." ]
+                 Result.Error(problems @ roundTripProblem |> List.map (fun problem -> $"Internal Turbo IR error: {problem}"))
+diff --git a/SB/Optimization/HIR-ANALYSIS.md b/SB/Optimization/HIR-ANALYSIS.md
+index dd1bf13..509543d 100644
+--- a/SB/Optimization/HIR-ANALYSIS.md
++++ b/SB/Optimization/HIR-ANALYSIS.md
+@@ -26,11 +26,14 @@ GOSUB returns include conservative continuation edges. Possible exceptions
+ connect to handlers with unknown storage facts. These graphs support
+ reachability, dominators, natural-loop discovery and backward liveness.
+ 
+-GOSUB contexts, unknown/missing targets, error-handler RETRY/CONTINUE protocols,
+-enumerated FOR sequences and possibly overwritten FOR continuations withhold arithmetic and array check-removal proofs
+-for the whole program. Their CFG edges remain available; the existing audited
+-native scalar/comparison/DIV/MOD regions still work. This is a deliberate limit
+-until their continuation state is modeled precisely.
++Arithmetic and array proofs are eligible per scope, after its fixed point,
++control flow and captured FOR ownership have been certified. Local GOSUB
++contexts, enumerated FOR sequences and overwritten FOR continuations withhold
++these proofs in the affected scope. They do not disable independent procedures.
++Computed/missing or cross-scope line targets, error handlers/resumption, raw
++memory and opaque residents can affect other scopes and retain program-wide
++barriers. A normal RETURN and a literal transfer to an anchor in the same scope
++do not introduce a foreign entry. Uncertain CFG edges remain conservative.
+ 
+ ## Ranges and arithmetic proofs
+ 
+@@ -61,7 +64,7 @@ checks and advances: jumping between bodies cannot borrow another loop's hidden
+ NEXT address. Captures also carry their initializer identity: another FOR using
+ the same vector invalidates ownership even if the earlier initializer still
+ dominates. Ordinary integer counter stores preserve ownership. Invalid
+-ownership withholds proofs program-wide.
++ownership withholds arithmetic/array proofs in that scope.
+ FOR advancement models the library's unchecked
+ word wrap. The synthetic candidate counter is invalidated on loop exit because
+ Turbo only stores it when the next iteration is valid. Overflowing arithmetic,
+@@ -131,6 +134,10 @@ exceptions, I/O, allocation, control barriers and calls.
+ Unknown residents remain full memory/effect barriers. Known calls map formal
+ effects to actual references. Scalar `ValueArg` temporaries do not write their
+ caller's variable; array references and element writes retain their owner root.
++The existing ROM `ABS` function has a narrow nonmutating effect summary: its
++argument effects, possible coercion/allocation failure and call boundary remain.
++It cannot replace descriptors or FOR continuations. A user-defined ABS routine
++uses its actual summary; unknown functions retain their full effects.
+ 
+ Array-element stores invalidate affected values but preserve descriptor and
+ captured FOR metadata. Scalar stores conservatively invalidate affected
+@@ -191,8 +198,11 @@ mutating function may receive fewer facts than a standalone procedure.
+ The outer solver starts every routine with no imported facts and reanalyzes
+ only scopes whose entry facts change. Recursive calls cannot bootstrap assumed
+ shapes. Each scope still requires its normal range/CFG certification, and the
+-outer solution must satisfy all call-entry equations. Uncertain continuations
+-withhold propagation. The pass is bounded to 64 rounds; nonconvergence or a
++outer solution must satisfy all call-entry equations. An untrusted caller
++contributes unknown shapes at every static call site, including sites whose
++reachability it cannot certify. It is never silently omitted from a callee's
++MUST facts. Independent trusted callers/callees can still propagate shapes.
++Program-wide barriers withhold propagation. The pass is bounded to 64 rounds; nonconvergence or a
+ failed certificate discards all imported facts and retains the original scope
+ analysis. `--dump-hir` reports call-entry rounds and certification status.
+ 
+@@ -200,5 +210,33 @@ Procedure entry bindings cannot shadow propagated globals, while body aliases
+ and DIM continue to invalidate shapes through the precise effect categories.
+ The existing native array operations reload descriptors/data pointers, preserve
+ checked accesses for unknown indexes and retain generic fallback. This analysis
+-does not expand native FOR eligibility to local/branching loops or allocate
+-registers across calls.
++does not allocate registers across calls.
++
++## Native FOR binding certificates
++
++Certified loop regions can identify independent integer LOCAL counters owned by the
++current routine and uniquely named global counters. A call-free
++body must have resolved effects, no counter writes, no escaped counter reference
++and no other read/write root that may alias the counter. Formal body accesses
++remain conservative; formal values may still supply the captured loop bounds.
++Only simple range FOR statements qualify, with no imported counter values or
++register state across calls. Nested IF arms are included in the effect proof;
++calls, counter/alias writes and other unsupported statements still reject it.
++The downstream typed native CFG independently validates branch targets, join
++stacks and supported integer/boolean operations.
++The source CFG records each range FOR's initializer, check, advance and members.
++Its own initializer must own the captured control, and all outside edges must
++enter through it. This binding proof can succeed even when local uncertainty
++elsewhere withholds range proofs for the surrounding scope. Global control
++barriers still reject every binding certificate. Diagnostics list both the
++proof-eligible scopes and each rejected binding's reasons.
++`ArithmeticProofsEnabled` now means that at least one scope is eligible; the
++`ProofEligibleScopes` set identifies exactly which ones. Proofs for an expression
++or array key still require every occurrence, across all scopes, to be safe.
++
++The emitter translates these certificates into body-label/counter/scalar-vector
++metadata for every routine ABI variant. The metadata is kept outside the IR byte
++stream and consumed by the existing whole-loop planner, which independently
++checks supported body instructions, operand coverage, references and budgets.
++Legacy byte-only generation remains conservative. The ordinary initializer,
++counter writeback, spill recovery and register restoration remain unchanged.
+diff --git a/SB/Optimization/HirAnalysis.fs b/SB/Optimization/HirAnalysis.fs
+index 6d91dc6..109a539 100644
+--- a/SB/Optimization/HirAnalysis.fs
++++ b/SB/Optimization/HirAnalysis.fs
+@@ -30,6 +30,7 @@ type ScopeAnalysis = {
+     NarrowingPasses:int
+     Certified:bool
+     ForMetadataTrusted:bool
++    TrustedForInitialisers:Set<int>
+ }
+ type Analysis = {
+     Effects:Context
+@@ -41,6 +42,10 @@ type Analysis = {
+     TwoDimensionalIntegerAccesses:Map<string * HirExpr list,RankTwoIntegerAccess>
+     EntryShapePasses:int
+     EntryShapesCertified:bool
++    CertifiedNativeForLoops:Map<SymbolId option * LoopId,Set<string>>
++    NativeForRejections:Map<SymbolId option * LoopId,string list>
++    ProofEligibleScopes:Set<Scope>
++    GlobalControlBarriers:string list
+ }
+ 
+ let word = {Lower = -32768L; Upper=32767L}
+@@ -402,7 +407,7 @@ let private solve options context graph globalEntry =
+     // A jump into a different FOR body can carry another loop's hidden NEXT
+     // address, even when both use the same counter vector. Require the matching
+     // initializer to dominate checks/advances before trusting runtime control.
+-    let metadataTrusted=graph.Nodes |> Map.forall(fun id node ->
++    let metadataValid id (node:Node) =
+         match node.Kind with
+         | ForCheck(counter,_,_) ->
+             let predecessors=predecessors.TryFind id |> Option.defaultValue []
+@@ -415,17 +420,47 @@ let private solve options context graph globalEntry =
+                     | Some state -> graph.Dominators[target].Contains init.Source &&
+                                     (state.Loops.TryFind counter |> Option.exists(fun captured -> captured.Owner=init.Source)))
+             | None -> false
+-        | _ -> true)
++        | _ -> true
++    let metadataTrusted=graph.Nodes |> Map.forall metadataValid
++    let trustedInitialisers=graph.ForRegions |> Map.toSeq |> Seq.choose(fun (_,region) ->
++        if metadataValid region.Check graph.Nodes[region.Check] then Some region.Initialiser else None) |> Set.ofSeq
+     {Graph=graph;Liveness=liveness context.Effects graph;EntryRanges=entryRanges;ExitRanges=exitRanges;ExpressionRanges=expressions
+      EntryBounds=incoming |> Seq.map(fun p -> p.Key,p.Value |> Option.map _.Bounds) |> Map.ofSeq
+      EntryExactBounds=incoming |> Seq.map(fun p -> p.Key,p.Value |> Option.map _.ExactBounds) |> Map.ofSeq
+      EntryLoops=incoming |> Seq.map(fun p -> p.Key,p.Value |> Option.map _.Loops) |> Map.ofSeq
+-     WideningThresholds=limits;NarrowingPasses=passes;Certified=certified;ForMetadataTrusted=metadataTrusted}
++     WideningThresholds=limits;NarrowingPasses=passes;Certified=certified;ForMetadataTrusted=metadataTrusted;TrustedForInitialisers=trustedInitialisers}
++
++// Unknown/nonlocal entries and persistent error/memory operations can affect
++// other procedures. Ordinary local CFG uncertainty is deliberately not global.
++let private controlBarriers (context:RangeContext) (graphs:(Scope*Graph) list) =
++    let known=context.Effects.Program.Routines |> List.map _.Symbol |> Set.ofList
++    [for scope,graph in graphs do
++        for KeyValue(_,node) in graph.Nodes do
++            let localTarget = function Literal(ConstInt line,_,_) -> graph.Labels.ContainsKey line | _ -> false
++            match node.Kind with
++            | Statement(WhenError _) -> yield "error handler may resume in another region"
++            | Statement(Goto(target,_) | Gosub(target,_)) when not(localTarget target) -> yield "computed or nonlocal line transfer"
++            | Statement(OnGoto(_,targets,_) | OnGosub(_,targets,_)) when not(List.forall localTarget targets) -> yield "computed or nonlocal ON transfer"
++            | Statement(BuiltInCall(NamedBuiltIn name,_,_,_)) when not(List.contains (name.ToUpperInvariant()) ["STOP";"QUIT"]) ->
++                yield $"opaque/persistent resident {name.ToUpperInvariant()}"
++            | _ -> ()
++            for expr in nodeExpressions node.Kind |> Seq.collect HirEffects.expressions do
++                match expr with
++                | CallFunc(s,args,_,_) when not(known.Contains s) && not(nonmutatingFunction context.Effects.Program s args.Length) ->
++                    yield "opaque function may alter bindings or continuations"
++                | _ -> ()
++            match node.Kind with
++            | Statement(ProcCall(s,_,_,_)) when not(known.Contains s) -> yield "opaque procedure may alter bindings or continuations"
++            | _ -> ()]
++    |> List.distinct
++
++let private scopeTrusted barriers (data:ScopeAnalysis) =
++    List.isEmpty barriers && data.Certified && not data.Graph.HasUncertainControl && data.ForMetadataTrusted
+ 
+ // Incoming shapes are MUST facts from every statically known call site. No
+ // scalar values, parameters, caller LOCALs or FOR captures cross the boundary.
+ // Starting with no facts avoids bootstrapping assumptions around recursion.
+-let private solveCallEntries options context (graphs:(Scope*Graph) list) =
++let private solveCallEntries options context barriers (graphs:(Scope*Graph) list) =
+     let globalArrays =
+         context.Effects.Program.Globals
+         |> List.choose(fun storage ->
+@@ -436,7 +471,6 @@ let private solveCallEntries options context (graphs:(Scope*Graph) list) =
+         |> Set.ofList
+     let emptyEntries=graphs |> List.map(fun (scope,_) -> scope,unknownFlow) |> Map.ofList
+     let original=graphs |> List.map(fun (scope,graph) -> scope,solve options context graph unknownFlow) |> Map.ofList
+-    let trusted (scopes:Map<Scope,ScopeAnalysis>)=graphs |> List.forall(fun (scope,graph) -> not graph.HasUncertainControl && scopes[scope].Certified && scopes[scope].ForMetadataTrusted)
+     let infer (scopes:Map<Scope,ScopeAnalysis>) =
+         let inputs=Dictionary<Scope,FlowState option>()
+         for scope,_ in graphs do inputs[scope]<-None
+@@ -444,6 +478,16 @@ let private solveCallEntries options context (graphs:(Scope*Graph) list) =
+             let data=scopes[scope]
+             for KeyValue(id,node) in graph.Nodes do
+                 match data.EntryBounds[id],data.EntryExactBounds[id] with
++                | _ when not(scopeTrusted barriers data) ->
++                    // An untrusted caller contributes UNKNOWN, never an omitted
++                    // call site or facts derived from incomplete continuations.
++                    let callees=seq {
++                        match node.Kind with Statement(ProcCall(s,_,_,_)) -> yield s | _ -> ()
++                        for expr in nodeExpressions node.Kind |> Seq.collect HirEffects.expressions do
++                            match expr with CallFunc(s,_,_,_) -> yield s | _ -> () }
++                    for callee in callees do
++                        let target=RoutineScope callee
++                        if inputs.ContainsKey target then inputs[target]<-Some unknownFlow
+                 | Some bounds,Some exact ->
+                     // Arguments and sibling calls may change descriptors before
+                     // entry. For expression calls this also includes the callee's
+@@ -461,7 +505,7 @@ let private solveCallEntries options context (graphs:(Scope*Graph) list) =
+                         if inputs.ContainsKey target then inputs[target]<-joinFlows inputs[target] (Some passed)
+                 | _ -> () // Unreachable sites contribute no entry states.
+         emptyEntries |> Map.map(fun scope _ -> inputs[scope] |> Option.defaultValue unknownFlow)
+-    if globalArrays.IsEmpty || graphs.Length=1 || not(trusted original) then original,0,true
++    if globalArrays.IsEmpty || graphs.Length=1 || not barriers.IsEmpty then original,0,true
+     else
+         let mutable entries=emptyEntries
+         let mutable scopes=original
+@@ -480,12 +524,67 @@ let private solveCallEntries options context (graphs:(Scope*Graph) list) =
+                 for scope,graph in graphs do
+                     if next[scope]<>entries[scope] then scopes<-scopes.Add(scope,solve options context graph next[scope])
+                 entries<-next
+-                certified<-trusted scopes
++                certified<-scopes |> Map.forall(fun scope data -> entries[scope]=unknownFlow || data.Certified)
+         if stable && certified && infer scopes=entries then scopes,passes,true
+         else original,passes,false
+ 
+ let private arithmetic = function Unary(Negate,_,_,_) | Binary((Add|Subtract|Multiply),_,_,_,_) -> true | _ -> false
+ 
++// Binding certificates are independent of scalar range proofs. Keep counters
++// in their own cells: a formal/array alias must not observe a deferred counter
++// store, even when it only reads. Calls and non-leaf control remain boundaries.
++let private nativeForCertificates (context:RangeContext) barriers (scopes:Map<Scope,ScopeAnalysis>) =
++    let effects=context.Effects
++    let certificate scope routine = function
++        | For(loop,counter,_,_,_,body,_) ->
++            let data=scopes[scope]
++            let owned =
++                effects.Aliases.Storages.TryFind counter |> Option.exists(fun storage ->
++                    let scalar=not(effects.Aliases.ArrayStorages.Contains counter) && nameIsInteger context.Target storage.Name
++                    let binding=
++                        match storage.Class,routine with
++                        | RoutineLocalStorage _,Some routine -> routine.Locals |> List.exists(fun local -> local.Symbol=counter)
++                        | GlobalStorage,_ ->
++                            effects.Aliases.Storages |> Map.toSeq |> Seq.filter(fun (_,other) -> String.Equals(storage.Name,other.Name,StringComparison.OrdinalIgnoreCase)) |> Seq.length = 1
++                        | _ -> false
++                    scalar && binding)
++            let rec leaf body=body |> List.forall(function
++                | Assign _ | LineNumber _ | Remark _ -> true
++                | If(_,yes,no,_) -> leaf yes && leaf(Option.defaultValue [] no)
++                | _ -> false)
++            let writes=body |> List.map(statement effects scope) |> combineAll
++            let roots=Set.union writes.Reads writes.Writes
++            let independent=roots |> Set.forall(fun root -> root=counter || not(mayAlias effects.Aliases scope counter root))
++            let region=data.Graph.ForRegions.TryFind loop
++            let control=region |> Option.exists(fun region ->
++                data.TrustedForInitialisers.Contains region.Initialiser &&
++                data.Graph.Edges |> List.forall(fun edge ->
++                    not(region.Members.Contains edge.Target) || region.Members.Contains edge.Source || edge.Source=region.Initialiser))
++            let reasons=[
++                yield! barriers
++                if not data.Certified then yield "scope analysis did not certify a fixed point"
++                if not control then yield "loop has an external entry or untrusted FOR continuation"
++                if not owned then yield "counter is not an owned integer LOCAL or unique global"
++                if not(leaf body) then yield "body contains calls, nested loops or unsupported control"
++                if not independent then yield "body storage may alias the counter"
++                if effects.Aliases.Escaped.Contains counter then yield "counter reference escapes to an opaque callee"
++                if writes.ReadsUnknown || writes.WritesUnknown then yield "body has unresolved storage effects"
++                if not writes.Calls.IsEmpty then yield "body evaluates a function or procedure call"
++                if writes.Writes.Contains counter then yield "body writes the counter"
++                if writes.LoopMetadataWritesUnknown || not writes.LoopMetadataWrites.IsEmpty then yield "body may replace FOR metadata"]
++            let key=(routine |> Option.map _.Symbol,loop)
++            if reasons.IsEmpty then
++                let names=roots.Add counter |> Set.filter(fun s -> not(effects.Aliases.ArrayStorages.Contains s))
++                          |> Set.map(fun s -> effects.Aliases.Storages[s].Name)
++                Some(key,Ok names)
++            else Some(key,Error reasons)
++        | _ -> None
++    [yield! statements effects.Program.Main |> Seq.choose(certificate MainScope None)
++     for routine in effects.Program.Routines do
++         yield! statements routine.Body |> Seq.choose(certificate (RoutineScope routine.Symbol) (Some routine))]
++    |> List.fold(fun (certificates,rejections) (key,result) ->
++        match result with Ok names -> Map.add key names certificates,rejections | Error reasons -> certificates,Map.add key reasons rejections) (Map.empty,Map.empty)
++
+ /// Analyzes immutable HIR. No facts are assumptions about caller values, QL
+ /// startup zeroes, floating arithmetic, or successful execution of a call.
+ let analyzeWithOptions options target program =
+@@ -494,10 +593,10 @@ let analyzeWithOptions options target program =
+         if storage.Dimensions.IsNone && (match storage.Type with Array _ -> false | _ -> true) && nameIsInteger target storage.Name then Some symbol else None) |> Set.ofSeq
+     let context={Target=target;Effects=effects;Integers=integers}
+     let graphs = (MainScope,build effects MainScope program.Main) :: (program.Routines |> List.map (fun r -> RoutineScope r.Symbol,build effects (RoutineScope r.Symbol) r.Body))
+-    // Unknown continuations can enter another scope or resume past a guard.
+-    // Model their edges, but withhold unchecked-arithmetic proofs program-wide.
+-    let scopes,entryShapePasses,entryShapesCertified=solveCallEntries options context graphs
+-    let trusted=(graphs |> List.forall (fun (_,g) -> not g.HasUncertainControl)) && (scopes |> Map.forall(fun _ data -> data.Certified && data.ForMetadataTrusted))
++    let barriers=controlBarriers context graphs
++    let scopes,entryShapePasses,entryShapesCertified=solveCallEntries options context barriers graphs
++    let trustedScopes=scopes |> Map.toSeq |> Seq.choose(fun (scope,data) -> if scopeTrusted barriers data then Some scope else None) |> Set.ofSeq
++    let certificates,rejections=nativeForCertificates context barriers scopes
+     let candidates = [
+         for KeyValue(scope,analysis) in scopes do
+             for KeyValue(id,node) in analysis.Graph.Nodes do
+@@ -505,7 +604,7 @@ let analyzeWithOptions options target program =
+                 let state=analysis.EntryRanges[id] |> Option.map (kill context scope evaluation)
+                 for expr in nodeExpressions node.Kind |> Seq.collect HirEffects.expressions |> Seq.filter arithmetic do
+                     let proven=
+-                        trusted && not evaluation.WritesUnknown && evaluation.Writes.IsEmpty &&
++                        trustedScopes.Contains scope && not evaluation.WritesUnknown && evaluation.Writes.IsEmpty &&
+                         (state |> Option.exists (fun state -> integerExpression context expr && (evaluate context state expr |> snd)))
+                     yield expr,proven]
+     let safe=candidates |> List.groupBy fst |> List.choose (fun (expr,occurrences) -> if occurrences |> List.forall snd then Some expr else None) |> Set.ofList
+@@ -541,13 +640,13 @@ let analyzeWithOptions options target program =
+                 let occurrences=Seq.append (reads |> Seq.map(fun (a,b,c) -> a,b,c,true)) (writes |> Seq.map(fun (a,b,c) -> a,b,c,ordinary))
+                 for name,indexes,symbol,eligible in occurrences do
+                     let rankOne=
+-                        eligible && trusted && nameIsInteger target name && indexes.Length=1 &&
++                        eligible && trustedScopes.Contains scope && nameIsInteger target name && indexes.Length=1 &&
+                         not evaluation.WritesUnknown && evaluation.Writes.IsEmpty &&
+                         (match symbol,bounds with
+                          | Some symbol,Some bounds when named name=[symbol] -> bounds.TryFind symbol |> Option.exists(fun dimensions -> dimensions.Length=1)
+                          | _ -> false)
+                     let proven=
+-                        eligible && trusted && not(name.EndsWith "$" ) && not evaluation.WritesUnknown && evaluation.Writes.IsEmpty &&
++                        eligible && trustedScopes.Contains scope && not(name.EndsWith "$" ) && not evaluation.WritesUnknown && evaluation.Writes.IsEmpty &&
+                         (match symbol,state,bounds with
+                          | Some symbol,Some state,Some bounds when named name=[symbol] ->
+                              bounds.TryFind symbol |> Option.exists(fun dimensions ->
+@@ -555,7 +654,7 @@ let analyzeWithOptions options target program =
+                                      evaluate context state index |> fst |> Option.exists(fun range -> range.Lower>=0L && range.Upper<=int64 bound)) indexes dimensions)
+                          | _ -> false)
+                     let rankTwo=
+-                        if eligible && trusted && nameIsInteger target name && indexes.Length=2 &&
++                        if eligible && trustedScopes.Contains scope && nameIsInteger target name && indexes.Length=2 &&
+                            not evaluation.WritesUnknown && evaluation.Writes.IsEmpty then
+                             match symbol,bounds with
+                             | Some symbol,Some bounds when named name=[symbol] ->
+@@ -578,8 +677,9 @@ let analyzeWithOptions options target program =
+             let exact=facts.Head.ExactLengths
+             Some(key,{ProvenRows=facts |> List.forall _.ProvenRows;ProvenColumns=facts |> List.forall _.ProvenColumns
+                       ExactLengths=if facts |> List.forall(fun fact -> fact.ExactLengths=exact) then exact else None})) |> Map.ofList
+-    {Effects=effects;Scopes=scopes;SafeIntegerExpressions=safe;ArithmeticProofsEnabled=trusted;SafeArrayAccesses=safeArrays;OneDimensionalIntegerAccesses=rankOneArrays;TwoDimensionalIntegerAccesses=rankTwoArrays
+-     EntryShapePasses=entryShapePasses;EntryShapesCertified=entryShapesCertified}
++    {Effects=effects;Scopes=scopes;SafeIntegerExpressions=safe;ArithmeticProofsEnabled=not trustedScopes.IsEmpty;SafeArrayAccesses=safeArrays;OneDimensionalIntegerAccesses=rankOneArrays;TwoDimensionalIntegerAccesses=rankTwoArrays
++     EntryShapePasses=entryShapePasses;EntryShapesCertified=entryShapesCertified
++     CertifiedNativeForLoops=certificates;NativeForRejections=rejections;ProofEligibleScopes=trustedScopes;GlobalControlBarriers=barriers}
+ 
+ let analyze target program = analyzeWithOptions defaultOptions target program
+ 
+@@ -601,6 +701,12 @@ let format (analysis:Analysis) =
+     line $"Rank-one integer array accesses: {analysis.OneDimensionalIntegerAccesses.Count}"
+     line $"Rank-two integer array accesses: {analysis.TwoDimensionalIntegerAccesses.Count}"
+     line $"Global array call-entry analysis: passes={analysis.EntryShapePasses}; certified={analysis.EntryShapesCertified}"
++    line $"Certified native FOR bindings: {analysis.CertifiedNativeForLoops.Count}"
++    line $"Proof-eligible scopes: {analysis.ProofEligibleScopes.Count}/{analysis.Scopes.Count}"
++    for barrier in analysis.GlobalControlBarriers do line $"Global control barrier: {barrier}"
++    for KeyValue((routine,loop),reasons) in analysis.NativeForRejections do
++        let reasons=String.concat "; " reasons
++        line $"Native FOR binding rejected: routine={routine}; loop={loop}; reasons={reasons}"
+     line $"Address taken: [{symbols analysis.Effects.Aliases.AddressTaken}]; escaped to unknown callees: [{symbols analysis.Effects.Aliases.Escaped}]"
+     for KeyValue(symbol,summary) in analysis.Effects.Summaries do line $"Routine {symbol}: {effects summary}"
+     for KeyValue(scope,data) in analysis.Scopes do
+diff --git a/SB/Optimization/HirControlFlow.fs b/SB/Optimization/HirControlFlow.fs
+index 57b1ba8..30a1101 100644
+--- a/SB/Optimization/HirControlFlow.fs
++++ b/SB/Optimization/HirControlFlow.fs
+@@ -19,6 +19,7 @@ type EdgeKind = FallThrough | BranchTrue | BranchFalse | Jump | SubroutineCall |
+ type Guard = Unconditional | Predicate of HirExpr * bool | CountedLoop of SymbolId * HirExpr * HirExpr * bool
+ type Edge = { Source:int; Target:int; Kind:EdgeKind; Guard:Guard; Havoc:bool; Kill:Set<SymbolId> }
+ type NaturalLoop = { Header:int; Latch:int; Members:Set<int> }
++type ForRegion = { Initialiser:int; Check:int; Advance:int; Members:Set<int> }
+ type Graph = {
+     Scope:Scope
+     Nodes:Map<int,Node>
+@@ -31,6 +32,7 @@ type Graph = {
+     Dominators:Map<int,Set<int>>
+     Loops:NaturalLoop list
+     HasUncertainControl:bool
++    ForRegions:Map<LoopId,ForRegion>
+ }
+ 
+ let successors graph id = graph.Edges |> List.filter (fun e -> e.Source=id)
+@@ -73,6 +75,7 @@ let build (context:Context) scope body =
+     let returnNodes = ResizeArray<int>()
+     let continuations = HashSet<int>()
+     let handlers = ResizeArray<int>()
++    let forRegions = Dictionary<LoopId,ForRegion>()
+     let mutable uncertain = false
+     let node kind = let id=nodes.Count in nodes.Add {Id=id;Kind=kind}; id
+     let edge source target kind guard havoc kill = edges.Add {Source=source;Target=target;Kind=kind;Guard=guard;Havoc=havoc;Kill=kill}
+@@ -96,12 +99,15 @@ let build (context:Context) scope body =
+             let advance = node(ForAdvance(s,if unstable then None else Some step))
+             if unstable then arbitraryContinuations.Add advance |> ignore
+             normal advance test
++            let firstBodyNode=nodes.Count
+             let inside = block ((loop,(advance,next))::loops) body advance
++            let members=Set.ofList(test::advance::[firstBodyNode..nodes.Count-1])
+             edge test inside BranchTrue (if unstable then Unconditional else CountedLoop(s,last,step,true)) false Set.empty
+             // Turbo stores the advanced counter only if the next iteration is
+             // valid. The model uses a candidate value, so exit kills that fact.
+             edge test next BranchFalse (if unstable then Unconditional else CountedLoop(s,last,step,false)) false (Set.singleton s)
+             let init = node(ForInitialise(s,[first;last;step],Some first))
++            forRegions[loop]<-{Initialiser=init;Check=test;Advance=advance;Members=members}
+             normal init test
+             init
+         | ForSequence(loop,s,prefix,first,last,suffix,step,body,_) ->
+@@ -220,7 +226,8 @@ let build (context:Context) scope body =
+                         if reachable.Contains p.Source && members.Add p.Source && p.Source<>e.Target then search.Push p.Source
+                 yield {Header=e.Target;Latch=e.Source;Members=Set.ofSeq members}]
+     {Scope=scope;Nodes=nodes;Edges=edges;Entry=entry;Exit=finish;Labels=Map.ofSeq (labels |> Seq.map (fun p -> p.Key,p.Value))
+-     Reachable=reachable;ReversePostOrder=traversal;Dominators=dom;Loops=loops;HasUncertainControl=uncertain}
++     Reachable=reachable;ReversePostOrder=traversal;Dominators=dom;Loops=loops;HasUncertainControl=uncertain
++     ForRegions=forRegions |> Seq.map(fun pair -> pair.Key,pair.Value) |> Map.ofSeq}
+ 
+ type Liveness = { LiveIn:Map<int,Set<SymbolId>>; LiveOut:Map<int,Set<SymbolId>> }
+ 
+diff --git a/SB/Optimization/HirEffects.fs b/SB/Optimization/HirEffects.fs
+index 975925a..20788bb 100644
+--- a/SB/Optimization/HirEffects.fs
++++ b/SB/Optimization/HirEffects.fs
+@@ -223,6 +223,13 @@ let loopInitialisation context scope symbol =
+     | Some s -> {write s with DescriptorWrites=Set.singleton s;LoopMetadataWrites=Set.singleton s}
+     | None -> {empty with WritesUnknown=true;DescriptorWritesUnknown=true;LoopMetadataWritesUnknown=true}
+ 
++// The Turbo backend emits the existing ROM ABS helper directly. It may fail
++// coercion/allocation, but it neither rebinds storage nor installs continuations.
++// User-defined routines with this name still use their actual summaries.
++let nonmutatingFunction (program:HirProgram) symbol argumentCount =
++    argumentCount=1 && not(program.Routines |> List.exists(fun r -> r.Symbol=symbol)) &&
++    (program.SymbolNames.TryFind symbol |> Option.exists(fun name -> name.Equals("ABS",StringComparison.OrdinalIgnoreCase)))
++
+ let rec expression (context: Context) scope expr =
+     let children xs = xs |> List.map (expression context scope) |> combineAll
+     match expr with
+@@ -302,6 +309,8 @@ and call context scope symbol args =
+         combine evaluated {summary with Reads=reads;Writes=writes;ReadsUnknown=readsUnknown;WritesUnknown=writesUnknown
+                                         DescriptorWrites=descriptors;DescriptorWritesUnknown=descriptorsUnknown;LoopMetadataWrites=loops;LoopMetadataWritesUnknown=loopsUnknown
+                                         MayThrow=true;Allocates=true;ControlBarrier=true;Calls=summary.Calls.Add symbol}
++    | None,_ when nonmutatingFunction context.Program symbol args.Length ->
++        combine evaluated {empty with MayThrow=true;Allocates=true;Calls=Set.singleton symbol}
+     | _ -> combine evaluated {unknown with Calls=Set.singleton symbol}
+ 
+ let evaluation context scope stmt =
+diff --git a/SB/Optimization/TURBO-NATIVE-LOOPS.md b/SB/Optimization/TURBO-NATIVE-LOOPS.md
+index 1f404e7..a12aa91 100644
+--- a/SB/Optimization/TURBO-NATIVE-LOOPS.md
++++ b/SB/Optimization/TURBO-NATIVE-LOOPS.md
+@@ -11,7 +11,7 @@ Programmatic codegen defaults remain byte compatible; explicitly set both
+ 
+ `TurboNativeLoops` plans whole loops after the legacy peephole improver, before
+ both machine code layout passes. It recognizes the ordinary integer range FOR,
+-done-for marker, single body label, balanced straight-line integer body, matching
++done-for marker, single external body entry, balanced integer/conditional body, matching
+ NEXT and possible-end marker. The original IR and its listing are unchanged.
+ 
+ The genuine runtime FOR initializer still evaluates start, end and step in order,
+@@ -26,7 +26,7 @@ native loop that saves D2-D4, loads the counter into D2 and the captured END/STE
+ into D3/D4. Leaf integer operations use the existing register-aware IR and
+ D0/D1 allocator; counter loads read D2 directly. Every native backedge advances
+ a candidate with unchecked word wrap, tests it using STEP's captured direction,
+-and updates D2 only if the next iteration is valid. The independent global
++and updates D2 only if the next iteration is valid. The independent
+ counter's cell is written once on normal exit, or before any runtime error.
+ Every body counter read uses D2, and no permitted body operation can observe its
+ cell indirectly. A failed candidate leaves the last counter intact. SLOW resumes
+@@ -53,15 +53,70 @@ store is deferred and no array address is cached.
+ 
+ ## Eligibility and fallback
+ 
+-This first implementation requires independent global integer storage. Programs
+-with routine/reference/local binding, error handlers or RETRY/CONTINUE, external
+-calls, opaque code/memory mutation, or computed transfers retain their existing
+-loops. Bodies containing branches, labels, calls, generic arrays, floating operations,
+-counter assignments or nested loops are rejected. An inner loop may
++The analyzed CLI pipeline can certify each loop's storage bindings. Counters may
++be fresh integer LOCals owned by the current procedure/function, or uniquely named
++independent globals. Body accesses must resolve without unknown memory effects;
++no other referenced root may alias or indirectly observe the counter, and its
++reference must not escape to an unknown callee. Formal parameters are excluded
++as counters and conservatively excluded from body reads/writes that could alias
++the counter. They may still supply captured start, END and STEP values.
++
++Certificates identify the emitted body label, counter vector and allowed scalar
++vectors, including each generated value/reference ABI variant. They travel as
++in-memory metadata from HIR lowering through native selection to codegen. The
++serialized IR and listing are unchanged. Byte-only codegen and programmatic
++generation without certificates retain the original program-wide binding
++exclusions. The selector still verifies the complete body and every scalar
++operand, stack budget and original body-label references.
++
++Binding certificates use the individual loop's CFG region, rather than the
++whole-program or whole-scope range gate. Its initializer must own the captured
++control at the check and advance, and every edge entering its body/check/NEXT
++must come from that initializer or inside the region. A local GOSUB elsewhere
++can therefore coexist with an independent native loop. Calls in the body,
++counter aliases and externally entered bodies still fail certification.
++
++Error handlers, RETRY/CONTINUE, opaque residents/memory mutation and possible
++nonlocal entries retain their program-wide barriers. Recursive calls outside a selected loop retain
++the normal runtime binding protocol. Each native invocation commits/restores its
++own currently bound counter cell before normal return or error unwinding.
++The nonmutating ROM ABS helper is permitted outside a certified loop. Codegen
++independently checks its exact resident linkage, result and argument descriptor;
++other ROM calls retain their exclusion. Byte-only generation retains all legacy
++program-wide restrictions. ABS itself is still a call boundary inside a body.
++Bodies may contain nested integer IF/ELSE with acyclic forward edges. Calls,
++generic arrays, floating comparisons/arithmetic, counter assignments and nested
++loops are rejected. An inner loop may
+ still qualify when its enclosing loop does not. A body must have a balanced
+-integer maths stack, and the original body label must have only its FOR reference.
+-
+-At most 256 leaf IR records are lowered per loop. Register-spill limits, stack
++maths stack, and the original body label must have only its FOR reference.
++
++## Comparisons and conditional branches
++
++`TurboNativeControlFlow` validates stack types and forward edges before allocating
++any conditional body. Internal labels accept no external references and must have
++an empty maths stack on every incoming edge. Unequal joins, backward edges,
++unsupported types or an allocation failure retain the complete ordinary loop.
++Each integer leaf has its own local allocation and releases its spill frame before
++an edge. Scalar stores commit immediately and caches restart at joins; only D2's
++certified counter and captured D3/D4 control values persist across branches.
++
++All seven integer comparisons use signed CMP/Scc and produce QL's six-byte float
++0/1 result. Integer almost-equal is exact equality, as in lib537. An immediately
++consumed comparison/IF pair tests its register result directly. Other results are
++materialized canonically before subsequent evaluation. AND/OR/XOR and NOT retain
++their eager logical behavior using the bundled native templates. A failing right
++operand therefore still fails even when the left operand determines the truth.
++Previously evaluated float booleans remain on the real maths stack while checked
++integer/array leaves reconstruct only their own consumed word prefix on failure.
++
++Integer truth tests use the exact QL integer-to-float helper with D2/D3 saved and
++restored; its save area plus return address is charged to the maximum stack depth.
++Canonical boolean-to-integer conversion is direct and cannot fail. General float
++coercion/comparison stays on the existing path. Word branches are relaxed to byte
++encodings where nonzero displacements fit; larger conditional edges retain words.
++No value numbering or register allocation crosses a conditional edge.
++
++At most 256 body IR records are lowered per loop. Register-spill limits, stack
+ headroom and 68000 branch displacement limits cause fallback, rather than a
+ change in arithmetic policy or an inability to compile an otherwise valid loop.
+ The selector retains checked arithmetic from threaded body segments; range-proven
+@@ -91,9 +146,11 @@ their previous paths. The native loop dump includes its allocated operations.
+ 
+ D2-D4 are saved and restored as full long registers. Their 12-byte save area
+ remains live throughout the native loop; a leaf spill frame may coexist with it.
+-The complete maximum live depth (12 plus spill bytes) is included in MAX_STACK
+-and QDOS dataspace. Other leaf/array frames outside the loop do not overlap it.
+-Normal exit releases both frames and preserves the previous register ABI.
++The complete maximum live depth is 12 plus the larger of the leaf spill frame
++and any truth-conversion helper's saves and return address. It is included in
++MAX_STACK and QDOS dataspace. Leaf frames are released before helper calls;
++other leaf/array frames outside the loop do not overlap it. Normal exit releases
++the applicable frames and preserves the previous register ABI.
+ 
+ On arithmetic overflow, the leaf recovery snapshot first reconstructs the exact
+ maths-stack and store state required by the original operation. It then releases
+@@ -109,6 +166,11 @@ programs are excluded because their resumption points need a wider CFG model.
+ including selected/rejected counts, source IR byte spans, counter vector,
+ registers, spill slots, generated size and maximum additional stack. Both codegen
+ passes consume the same immutable plans. The bundled runtime is unchanged.
++The HIR dump lists binding rejections by routine/loop identity, including global
++barriers, outside entries, counter ownership/alias/escape and body effects.
++The native dump lists each rejected loop's IR byte offset, counter vector and
++failed machine checks: unsupported opcodes, stack or spill budgets, unbalanced
++values, missing NEXT/end markers and branch displacement limits.
+ 
+ Tests execute native loops directly on the 68000 CPU, including signed steps,
+ word wrap, last-counter stores, overflow cleanup and ABI preservation. CLI tests
+@@ -117,6 +179,11 @@ nested loops and unsupported control flow/bindings. Codegen tests cover tight
+ stack fallback and loop entry beyond 64 KiB. Comparative benchmarks use
+ `Benchmarks/Turbo/Run-Benchmarks.ps1 -CompareRegisters`; functional instruction
+ counts are reported separately from QL elapsed timings.
++Additional tests cover global/LOCAL shadows, recursion, repeated calls, empty
++loops, parameter-supplied bounds, both flexible-argument ABI variants, scalar
++reference aliases, certificate mismatches, unchanged IR bytes and local error
++cleanup. `local_integer_for.bas` is a dedicated microbenchmark; report it
++separately from the application workloads.
+ Boundary tests execute backedges at -128 and -130 bytes, including layouts that
+ only fit after forward branches shrink. Benchmark reports also count consumed
+ opcode and extension words, exposing fetch reductions when instruction counts
+diff --git a/SB/Optimization/TurboNativeIr.fs b/SB/Optimization/TurboNativeIr.fs
+index 4b8d763..f7dc9f6 100644
+--- a/SB/Optimization/TurboNativeIr.fs
++++ b/SB/Optimization/TurboNativeIr.fs
+@@ -1,7 +1,8 @@
+ module TurboNativeIr
+ 
+ // Leaf integer lowering after Turbo's improver. Values are immutable virtual
+-// words. There are no calls or hidden template clobbers in a block. Checked
++// words. Whole-loop comparison leaves additionally materialize QL float booleans.
++// There are no calls or hidden template clobbers in a block. Checked
+ // operations have explicit non-returning exits to the runtime error handlers.
+ // D0/D1 and A2 are scratch; all other registers are preserved. The maths stack
+ // is canonical and the private CPU-stack spill frame is gone at every edge.
+@@ -26,11 +27,13 @@ type Instruction =
+     | LoadArrayWord2 of Value * vector:int * checks:int * columns:int * row:Value * column:Value * stack:Value list
+     | StoreArrayWord2 of vector:int * checks:int * columns:int * row:Value * column:Value * value:Value * stack:Value list
+     | Negate of Value * Value
++    | CompareWord of Value * opcode:int * Value * Value
+     // Snapshot in bottom-to-top maths-stack order at the failing P template.
+     // A checked increment also commits its wrapped destination before trapping.
+     | OverflowCheck of product:Value option * stack:Value list * store:(int * Value) option
+     | StoreVector of int * Value
+     | PushMaths of Value
++    | PushBooleanMaths of Value
+ 
+ type Block = {
+     StartOffset:int
+@@ -68,9 +71,11 @@ type AllocatedInstruction =
+     | LoadElement2 of vector:int * checks:int * columns:int * row:RecoveryLocation * column:RecoveryLocation * accumulator:int * stack:RecoveryLocation list
+     | StoreElement2 of vector:int * checks:int * columns:int * row:RecoveryLocation * column:RecoveryLocation * value:RecoveryLocation * accumulator:int * stack:RecoveryLocation list
+     | Negative of register:int
++    | Comparison of opcode:int * destination:int * right:RecoveryLocation
+     | Check of productRegister:int option * stack:RecoveryLocation list * store:(int * RecoveryLocation) option
+     | Store of vector:int * value:RecoveryLocation
+     | Push of register:int
++    | PushBoolean of register:int
+ 
+ type Allocation = { Instructions:AllocatedInstruction list; SpillSlots:int; Registers:Set<int> }
+ type CompiledBlock = { Ir:Block; Allocation:Allocation; Code:byte[] }
+@@ -87,6 +92,8 @@ let supports = function
+     | _ -> false
+ 
+ let private legacyCost = function
++    | HirTurboIrBackend.Instruction((9|10|14|15),_,_) -> 24,8
++    | HirTurboIrBackend.Instruction((11|12|13),_,_) -> 22,8
+     | HirTurboIrBackend.Instruction((1|268),_,_) -> 2,2
+     | HirTurboIrBackend.Instruction(2,_,_) -> 0,0
+     | HirTurboIrBackend.Instruction((5|6|7),_,_) -> 8,3
+@@ -112,7 +119,7 @@ let private legacyCost = function
+ /// Lower a straight-line, native-mode sequence. A store invalidates every cached
+ /// variable load, then records only its own value: two different vectors may
+ /// point to the same cell through flexible/reference parameter bindings.
+-let lower startOffset endOffset items =
++let private lowerCore booleanResult startOffset endOffset items =
+     let code=ResizeArray<Instruction>()
+     let variables=Dictionary<int,Value>()
+     let constants=Dictionary<int,Value>()
+@@ -194,11 +201,22 @@ let lower startOffset endOffset items =
+             let value,column,row=pop(),pop(),pop()
+             code.Add(StoreArrayWord2(vector,mask,columns,row,column,value,(if mask<>0 then List.rev stack else [])))
+             variables.Clear()
++        | HirTurboIrBackend.Instruction((9|10|11|12|13|14|15 as op),[],_) when booleanResult ->
++            let right,left=pop(),pop()
++            let value=fresh()
++            code.Add(CompareWord(value,op,left,right))
++            push value
+         | _ -> invalidArg "items" "Only audited leaf integer operations are supported."
+-    for value in List.rev stack do code.Add(PushMaths value)
++    for index,value in List.rev stack |> List.indexed do
++        code.Add(if booleanResult && index=stack.Length-1 then PushBooleanMaths value else PushMaths value)
+     let bytes,words=items |> List.map legacyCost |> List.fold (fun (bytes,words) (b,w) -> bytes+b,words+w) (0,0)
+     {StartOffset=startOffset;EndOffset=endOffset;Instructions=List.ofSeq code;LegacyBytes=bytes;LegacyDataWords=words}
+ 
++let lower startOffset endOffset items = lowerCore false startOffset endOffset items
++/// Only the whole-loop typed CFG uses this: its final integer comparison must
++/// materialize the exact six-byte QL boolean before any following operation.
++let lowerComparison startOffset endOffset items = lowerCore true startOffset endOffset items
++
+ let private sources = function
+     | Binary(_,_,a,b) -> [a;b]
+     | Divide(_,_,a,b,stack) -> a::b::stack
+@@ -206,12 +224,13 @@ let private sources = function
+     | StoreArrayWord(_,_,index,value,stack) -> index::value::stack
+     | LoadArrayWord2(_,_,_,_,row,column,stack) -> row::column::stack
+     | StoreArrayWord2(_,_,_,row,column,value,stack) -> row::column::value::stack
+-    | Negate(_,a) | StoreVector(_,a) | PushMaths a -> [a]
++    | CompareWord(_,_,a,b) -> [a;b]
++    | Negate(_,a) | StoreVector(_,a) | PushMaths a | PushBooleanMaths a -> [a]
+     | OverflowCheck(product,stack,store) -> (Option.toList product)@stack@(store |> Option.map (snd >> List.singleton) |> Option.defaultValue [])
+     | _ -> []
+ 
+ let private destination = function
+-    | Constant(v,_) | LoadVector(v,_) | PopMaths v | Binary(v,_,_,_) | Divide(v,_,_,_,_) | LoadArrayWord(v,_,_,_,_) | LoadArrayWord2(v,_,_,_,_,_,_) | Negate(v,_) -> Some v
++    | Constant(v,_) | LoadVector(v,_) | PopMaths v | Binary(v,_,_,_) | Divide(v,_,_,_,_) | LoadArrayWord(v,_,_,_,_) | LoadArrayWord2(v,_,_,_,_,_,_) | Negate(v,_) | CompareWord(v,_,_,_) -> Some v
+     | _ -> None
+ 
+ type private ExpressionKey =
+@@ -268,6 +287,8 @@ let optimize (block:Block) =
+             | OverflowCheck(product,stack,store) -> OverflowCheck(Option.map resolve product,List.map resolve stack,store |> Option.map(fun (vector,value) -> vector,resolve value))
+             | StoreVector(vector,value) -> StoreVector(vector,resolve value)
+             | PushMaths value -> PushMaths(resolve value)
++            | PushBooleanMaths value -> PushBooleanMaths(resolve value)
++            | CompareWord(v,op,a,b) -> CompareWord(v,op,resolve a,resolve b)
+             | instruction -> instruction
+         let fitsWord n = n>= -32768L && n<=32767L
+         let mutable index=0
+@@ -444,6 +465,12 @@ let allocateWithContext maxFrameBytes (vectorRegisters:Map<int,int>) (block:Bloc
+             | PopMaths value -> code.Add(Pop(define value))
+             | StoreVector(vector,value) -> code.Add(Store(vector,recoveryLocation value))
+             | PushMaths value -> code.Add(Push(ensure value Set.empty))
++            | PushBooleanMaths value -> code.Add(PushBoolean(ensure value Set.empty))
++            | CompareWord(value,op,left,right) ->
++                let lhs=ensure left Set.empty
++                let source=recoveryLocation right
++                overwrite index left value lhs
++                code.Add(Comparison(op,lhs,source))
+             | OverflowCheck(product,stack,store) ->
+                 // No reloads or spills may be inserted between arithmetic and
+                 // its check: MOVE would destroy V. Recovery reads the current
+@@ -663,6 +690,19 @@ let emitWithContext vectorTableOffset (vectorRegisters:Map<int,int>) (recoverySu
+         | Store(vector,value) -> word 0x246E;displacement vector;writeWord value
+         | Pop r -> word(0x3019 ||| (r <<< 9))
+         | Push r -> word(0x3300 ||| r)
++        | PushBoolean r ->
++            word 0x4261 // low mantissa word
++            word(0x4A40 ||| r);word 0x6708
++            word 0x233C;word 0x0801;word 0x4000
++            word 0x6002;word 0x42A1
++        | Comparison(op,dst,right) ->
++            match right with
++            | RecoveryRegister r -> word(0xB040 ||| (dst <<< 9) ||| r)
++            | RecoverySlot slot -> word(0xB06F ||| (dst <<< 9));word(slot*2)
++            | RecoveryImmediate n -> word(0x0C40 ||| dst);word n
++            let condition=match op with 9 -> 12 | 10 -> 14 | 11|12 -> 7 | 13 -> 6 | 14 -> 15 | 15 -> 13 | _ -> invalidArg "op" "Unsupported integer comparison."
++            word(0x50C0 ||| (condition <<< 8) ||| dst)
++            word(0x0240 ||| dst);word 1
+         | Copy(dst,src) -> word(0x3000 ||| (dst <<< 9) ||| src)
+         | Spill(r,slot) -> word(0x3F40 ||| r);word(slot*2)
+         | Reload(r,slot) -> word(0x302F ||| (r <<< 9));word(slot*2)
+diff --git a/SB/Optimization/TurboNativeLoops.fs b/SB/Optimization/TurboNativeLoops.fs
+index 3752946..9404b97 100644
+--- a/SB/Optimization/TurboNativeLoops.fs
++++ b/SB/Optimization/TurboNativeLoops.fs
+@@ -1,6 +1,6 @@
+ module TurboNativeLoops
+ 
+-// Whole-loop lowering for straight-line integer FOR bodies. Keep the genuine
++// Whole-loop lowering for integer FOR bodies with audited acyclic IF control. Keep the genuine
+ // FOR initializer and all of its hidden continuation state. Only replace the
+ // body and its NEXT; every external boundary remains threaded.
+ open System
+@@ -16,16 +16,19 @@ type CompiledLoop = {
+     Allocation:TurboNativeIr.Allocation
+     Code:byte[]
+     StackExtraBytes:int
++    CertifiedBinding:bool
++    ControlFlow:TurboNativeControlFlow.Plan option
+ }
+ 
+-type Report = { Loops:CompiledLoop list; RejectedLoops:int; StackExtraBytes:int }
+-let emptyReport = {Loops=[];RejectedLoops=0;StackExtraBytes=0}
++type Rejection = {StartOffset:int;Counter:int;Reasons:string list}
++type Report = { Loops:CompiledLoop list; RejectedLoops:int; StackExtraBytes:int; Rejections:Rejection list }
++let emptyReport = {Loops=[];RejectedLoops=0;StackExtraBytes=0;Rejections=[]}
+ 
+ let private bytes words = words |> Seq.collect(fun n -> [byte(n >>> 8);byte n]) |> Seq.toArray
+ // Save full registers even though the counter/bound/step are words.
+ let private restore = bytes [0x281F;0x261F;0x241F] // MOVE.L (SP)+,D4/D3/D2
+ 
+-let private emit vectorTableOffset counter constantStep body =
++let private emit vectorTableOffset counter constantStep (body:TurboNativeIr.Allocation) (control:TurboNativeControlFlow.Plan option) =
+     let output=ResizeArray<byte>()
+     let labels=Dictionary<string,int>()
+     let fixups=ResizeArray<int * string>()
+@@ -39,7 +42,22 @@ let private emit vectorTableOffset counter constantStep body =
+     words [0x246E;vectorTableOffset+4*counter;0x3412;0x362A;8;0x382A;6]
+     // A2 -> counter; D2 = current word, D3 = captured END, D4 = captured STEP.
+     label "body"
+-    output.AddRange(TurboNativeIr.emitWithContext vectorTableOffset (Map.ofList[counter,2]) recover body)
++    let leaf allocation=output.AddRange(TurboNativeIr.emitWithContext vectorTableOffset (Map.ofList[counter,2]) recover allocation)
++    match control with
++    | None -> leaf body
++    | Some plan ->
++        for part in plan.Parts do
++            match part with
++            | TurboNativeControlFlow.Leaf(_,allocation) -> leaf allocation
++            | TurboNativeControlFlow.Bytes bytes -> output.AddRange bytes
++            | TurboNativeControlFlow.Label target -> label $"if-{target}"
++            | TurboNativeControlFlow.Branch(condition,target,test) ->
++                match test with
++                | Some TurboNativeControlFlow.FloatTop -> words [0x4AA9;2;0x43E9;6]
++                | Some TurboNativeControlFlow.WordTop -> words [0x3019;0x4A40]
++                | Some(TurboNativeControlFlow.Register r) -> word(0x4A40 ||| r)
++                | None -> ()
++                branch (0x6000 ||| (condition <<< 8)) $"if-{target}"
+     words [0x3002] // candidate = counter + step, with lib537 word wrap
+     match constantStep with
+     | Some step ->
+@@ -59,7 +77,7 @@ let private emit vectorTableOffset counter constantStep body =
+         branch 0x6E00 "exit" // BGT
+     label "commit"
+     // Only a valid next iteration commits its counter, as the original NEXT does.
+-    // Only independent global counters qualify. Every body read uses D2; no
++    // Only independent counters qualify. Every body read uses D2; no
+     // observer can see the cell until normal exit or a non-returning error.
+     words [0x3400]
+     branch 0x6000 "body"
+@@ -101,11 +119,12 @@ let private emit vectorTableOffset counter constantStep body =
+     result.AddRange(output.GetRange(cursor,output.Count-cursor))
+     result.ToArray()
+ 
+-/// Selection is deliberately restricted to programs without reference/local
+-/// binding, error continuation or opaque memory mutation. A body may contain
+-/// only balanced integer leaf operations and may never write its counter.
+-/// Labels, calls, generic arrays, comparisons and nested loops remain ordinary code.
+-let plan maxExtraBytes vectorTableOffset source : Result<Report,string> =
++/// HIR proofs permit stable per-loop local/global bindings; byte-only callers
++/// retain the original global-storage restrictions. Bodies still contain only
++/// balanced integer operations and never write/alias their pinned counter.
++/// Forward IF edges require canonical joins and no external entries. Calls,
++/// generic arrays, floating comparisons and nested loops remain ordinary code.
++let planWithProofs (proofs:Map<int,NativeForLoopProof>) maxExtraBytes vectorTableOffset source : Result<Report,string> =
+     decode source |> Result.map(fun decoded ->
+         let items=List.toArray decoded
+         let offsets=Array.zeroCreate (items.Length+1)
+@@ -120,9 +139,19 @@ let plan maxExtraBytes vectorTableOffset source : Result<Report,string> =
+             | _ -> ()
+         let globals=items |> Array.choose(function Instruction((101|114),[Word v],_) -> Some v | _ -> None) |> Set.ofArray
+         let arrays=items |> Array.choose(function Instruction(126,[_;Word v],_) -> Some v | _ -> None) |> Set.ofArray
++        let residentNames=items |> Array.choose(function Instruction(261,[Word v;Bytes8 name],_) -> Some(v,System.Text.Encoding.ASCII.GetString(name).ToUpperInvariant()) | _ -> None)
++        let absVectors=residentNames |> Array.groupBy fst |> Array.choose(fun (v,names) -> if names.Length=1 && snd names[0]="ABS" then Some v else None) |> Set.ofArray
+         let unsafeProgram = items |> Array.exists(function
+             | Instruction((102|110|115|134|142|147|179|224|227|235|236|240|241|244|246|249|269|275|277|278|279|280|293|294|325|327|328|364|366|382|385),_,_) -> true
+             | _ -> false)
++        // HIR certificates also prove absence of opaque/nonlocal source entries.
++        // ROM calls and local transfers outside this region are then harmless.
++        // Keep independent machine-level guards for persistent memory/resumption
++        // operations. Byte-only callers still use the full legacy exclusions.
++        let unsafeCertifiedProgram = items |> Array.exists(function
++            | Instruction(224,[Word 2;Word v;Bytes8 descriptors],_) when absVectors.Contains v && descriptors.Length=1 && descriptors[0]>=1uy && descriptors[0]<=3uy -> false
++            | Instruction((224|227|235|269|275|277|278|279|280|325|327|328|364|366|382|385),_,_) -> true
++            | _ -> false)
+         let references=Dictionary<int,int>()
+         for item in items do
+             match item with
+@@ -134,6 +163,7 @@ let plan maxExtraBytes vectorTableOffset source : Result<Report,string> =
+             | _ -> ()
+         let loops=ResizeArray<CompiledLoop>()
+         let mutable rejected=0
++        let rejections=ResizeArray<Rejection>()
+         for i in 2..items.Length-1 do
+             match items[i-2],items[i-1],items[i] with
+             | Instruction(26,[Word counter;LabelRef top],_),Instruction(355,[],_),LabelDef(label,_)
+@@ -141,14 +171,27 @@ let plan maxExtraBytes vectorTableOffset source : Result<Report,string> =
+                 let body=ResizeArray<IrItem>()
+                 let mutable j=i+1
+                 let mutable depth=0
+-                let mutable valid=not unsafeProgram && maxExtraBytes>=12 && globals.Contains counter && references[top]=1
++                let mutable depthValid=true
++                let proof=proofs.TryFind top |> Option.filter(fun proof -> not unsafeCertifiedProgram && proof.Counter=counter && proof.ScalarVectors.Contains counter)
++                let scalarAllowed v=proof |> Option.map(fun proof -> proof.ScalarVectors.Contains v) |> Option.defaultValue (globals.Contains v)
++                let reasons=ResizeArray<string>()
++                let mutable valid=true
++                let fail reason=valid<-false;reasons.Add reason
++                let reject reason=
++                    if reason<>"" then reasons.Add reason
++                    rejected<-rejected+1
++                    rejections.Add{StartOffset=offsets[i+1];Counter=counter;Reasons=List.ofSeq reasons |> List.distinct}
++                if proof.IsNone && unsafeProgram then fail "program contains binding/control barriers and no eligible HIR certificate"
++                if maxExtraBytes<12 then fail "insufficient stack budget for D2-D4 saves"
++                if not(scalarAllowed counter) then fail "counter vector is outside the certified scalar bindings"
++                if references[top]<>1 then fail "loop body entry has external references"
+                 let mutable reading=true
+                 while reading && j<items.Length do
+                     let item=items[j]
+                     match item with
+                     | Instruction(230,[Word v],_) when v=counter && not modes[j] -> reading<-false
+                     | Instruction((254|255),[],_) -> j<-j+1
+-                    | _ when TurboNativeIr.supports item ->
++                    | _ when TurboNativeControlFlow.supports item ->
+                         let normalized =
+                             match item with
+                             | Instruction((1|5|6|7 as op),args,comment) when not modes[j] -> Instruction(op+1000,args,comment)
+@@ -156,28 +199,34 @@ let plan maxExtraBytes vectorTableOffset source : Result<Report,string> =
+                             | item -> item
+                         match normalized with
+                         | Instruction((106|109|263),_,_) -> depth<-depth+1
+-                        | Instruction(268,_,_) -> if depth<1 then valid<-false else depth<-depth+1
+-                        | Instruction((5|6|7|8|20|1005|1006|1007),_,_) -> if depth<2 then valid<-false else depth<-depth-1
+-                        | Instruction((1|1001),_,_) -> if depth<1 then valid<-false
+-                        | Instruction(118,_,_) -> if depth<1 then valid<-false else depth<-depth-1
+-                        | Instruction((1711|1811),_,_) -> if depth<1 then valid<-false
+-                        | Instruction((1712|1812),_,_) -> if depth<2 then valid<-false else depth<-depth-2
+-                        | Instruction(1911,_,_) -> if depth<2 then valid<-false else depth<-depth-1
+-                        | Instruction(1912,_,_) -> if depth<3 then valid<-false else depth<-depth-3
++                        | Instruction(268,_,_) -> if depth<1 then depthValid<-false else depth<-depth+1
++                        | Instruction((5|6|7|8|20|1005|1006|1007),_,_) -> if depth<2 then depthValid<-false else depth<-depth-1
++                        | Instruction((1|1001),_,_) -> if depth<1 then depthValid<-false
++                        | Instruction(118,_,_) -> if depth<1 then depthValid<-false else depth<-depth-1
++                        | Instruction((1711|1811),_,_) -> if depth<1 then depthValid<-false
++                        | Instruction((1712|1812),_,_) -> if depth<2 then depthValid<-false else depth<-depth-2
++                        | Instruction(1911,_,_) -> if depth<2 then depthValid<-false else depth<-depth-1
++                        | Instruction(1912,_,_) -> if depth<3 then depthValid<-false else depth<-depth-3
+                         | _ -> ()
+                         match normalized with
+                         | Instruction((109|118|337|338|339|340|1339|1340 as op),Word v::_,_) ->
+-                            if not(globals.Contains v) || (op<>109 && v=counter) then valid<-false
+-                        | Instruction((1711|1712|1811|1812),[Word v],_) -> if not(arrays.Contains v) then valid<-false
+-                        | Instruction((1911|1912),Word v::_,_) -> if not(arrays.Contains v) then valid<-false
++                            if not(scalarAllowed v) then fail $"scalar vector {v} is outside the certified bindings"
++                            if op<>109 && v=counter then fail "body writes the pinned counter"
++                        | Instruction((1711|1712|1811|1812),[Word v],_) -> if not(arrays.Contains v) then fail $"array vector {v} has no global array declaration"
++                        | Instruction((1911|1912),Word v::_,_) -> if not(arrays.Contains v) then fail $"array vector {v} has no global array declaration"
+                         | _ -> ()
+                         body.Add normalized
+-                        if body.Count>256 then valid<-false;reading<-false
++                        if body.Count>256 then fail "body exceeds the 256-record limit";reading<-false
+                         j<-j+1
+-                    | _ -> valid<-false;reading<-false
++                    | Instruction(op,_,_) -> fail $"unsupported body opcode {op} at IR byte {offsets[j]}";reading<-false
++                    | _ -> fail $"unsupported body record at IR byte {offsets[j]}";reading<-false
+                 let hasNext = j<items.Length && (match items[j] with Instruction(230,[Word v],_) -> v=counter | _ -> false)
+                 let hasEnd = j+1<items.Length && (match items[j+1] with Instruction(378,_,_) -> true | _ -> false)
+-                if valid && hasNext && hasEnd && depth=0 then
++                let conditional=body |> Seq.exists(TurboNativeIr.supports >> not)
++                if not hasNext then fail "matching threaded NEXT was not reached"
++                if not hasEnd then fail "NEXT is not followed by its end marker"
++                if not conditional && (not depthValid || depth<>0) then fail "integer maths stack is unbalanced"
++                if valid && hasNext && hasEnd && (conditional || (depthValid && depth=0)) then
+                     // An adjacent literal is exactly the last value pushed for
+                     // the initializer's STEP. Do not infer through expressions,
+                     // labels, bridges or captured-variable loads.
+@@ -188,22 +237,38 @@ let plan maxExtraBytes vectorTableOffset source : Result<Report,string> =
+                             | Instruction(263,[],_),Instruction(357,[LabelRef _],_) -> Some 0
+                             | _ -> None
+                         else None
+-                    let ir=TurboNativeIr.lower offsets[i+1] offsets[j+1] (List.ofSeq body) |> TurboNativeIr.optimize
+-                    match TurboNativeIr.allocateWithContext (min 128 (maxExtraBytes-12)) (Map.ofList[counter,2]) ir with
+-                    | Some allocation ->
++                    let budget=min 128 (maxExtraBytes-12)
++                    let prepared=
++                        if conditional then
++                            TurboNativeControlFlow.plan budget counter references (List.ofSeq body) |> Option.map(fun plan ->
++                                let blocks=plan.Parts |> List.choose(function TurboNativeControlFlow.Leaf(ir,allocation) -> Some(ir,allocation) | _ -> None)
++                                let ir:TurboNativeIr.Block={StartOffset=offsets[i+1];EndOffset=offsets[j+1];Instructions=blocks |> List.collect(fun (ir,_) -> ir.Instructions);LegacyBytes=0;LegacyDataWords=0}
++                                let allocation:TurboNativeIr.Allocation={Instructions=blocks |> List.collect(fun (_,a) -> a.Instructions);SpillSlots=plan.SpillSlots;Registers=blocks |> List.map(fun (_,a) -> a.Registers) |> Set.unionMany}
++                                ir,allocation,Some plan,max(plan.SpillSlots*2) plan.CallStackBytes)
++                        else
++                            let ir=TurboNativeIr.lower offsets[i+1] offsets[j+1] (List.ofSeq body) |> TurboNativeIr.optimize
++                            TurboNativeIr.allocateWithContext budget (Map.ofList[counter,2]) ir |> Option.map(fun allocation -> ir,allocation,None,allocation.SpillSlots*2)
++                    match prepared with
++                    | Some(ir,allocation,control,extra) ->
+                         try
+-                            let code=emit vectorTableOffset counter constantStep allocation
+-                            loops.Add {StartOffset=offsets[i+1];EndOffset=offsets[j+1];Counter=counter;ConstantStep=constantStep;Body=ir;Allocation=allocation;Code=code;StackExtraBytes=12+allocation.SpillSlots*2}
+-                        with :? ArgumentException -> rejected<-rejected+1
+-                    | None -> rejected<-rejected+1
+-                else rejected<-rejected+1
++                            let code=emit vectorTableOffset counter constantStep allocation control
++                            loops.Add {StartOffset=offsets[i+1];EndOffset=offsets[j+1];Counter=counter;ConstantStep=constantStep;Body=ir;Allocation=allocation;Code=code;StackExtraBytes=12+extra;CertifiedBinding=proof.IsSome;ControlFlow=control}
++                        with :? ArgumentException -> reject "native branch exceeds the 68000 displacement budget"
++                    | None -> reject (if conditional then "conditional control flow, stack types or allocation could not be certified" else "register spill frame exceeds the stack budget")
++                else reject ""
+             | _ -> ()
+-        {Loops=List.ofSeq loops;RejectedLoops=rejected;StackExtraBytes=loops |> Seq.map _.StackExtraBytes |> Seq.fold max 0})
++        {Loops=List.ofSeq loops;RejectedLoops=rejected;StackExtraBytes=loops |> Seq.map _.StackExtraBytes |> Seq.fold max 0;Rejections=List.ofSeq rejections})
++
++let plan maxExtraBytes vectorTableOffset source = planWithProofs Map.empty maxExtraBytes vectorTableOffset source
+ 
+ let format report =
+     let lines=ResizeArray<string>()
+     lines.Add($"Native integer FOR loops: selected={report.Loops.Length}; rejected={report.RejectedLoops}; extra-stack={report.StackExtraBytes} bytes")
++    for rejection in report.Rejections do
++        let reasons=String.concat "; " rejection.Reasons
++        lines.Add($"Native FOR rejected at IR byte {rejection.StartOffset}: counter vector={rejection.Counter}; reasons={reasons}")
+     for loop in report.Loops do
+-        lines.Add($"Loop IR bytes {loop.StartOffset}..{loop.EndOffset}: counter vector={loop.Counter} in D2; captured END=D3, STEP=D4; literal STEP={loop.ConstantStep}; counter commit=exit/error; native bytes={loop.Code.Length}; spill slots={loop.Allocation.SpillSlots}")
++        lines.Add($"Loop IR bytes {loop.StartOffset}..{loop.EndOffset}: counter vector={loop.Counter} in D2; captured END=D3, STEP=D4; literal STEP={loop.ConstantStep}; counter commit=exit/error; native bytes={loop.Code.Length}; spill slots={loop.Allocation.SpillSlots}; certified binding={loop.CertifiedBinding}")
++        loop.ControlFlow |> Option.iter(fun plan -> lines.Add($"  conditional body: branches={plan.Branches}; parts={plan.Parts.Length}; helper-stack={plan.CallStackBytes} bytes"))
+         for instruction in loop.Allocation.Instructions do lines.Add($"  allocated-loop: {instruction}")
+     String.Join(Environment.NewLine,lines)+Environment.NewLine
+diff --git a/SB/SB.fsproj b/SB/SB.fsproj
+index a48fcb2..5ae323c 100644
+--- a/SB/SB.fsproj
++++ b/SB/SB.fsproj
+@@ -29,6 +29,7 @@
+         <Compile Include="Optimization\TurboNativeRegions.fs" />
+         <Compile Include="Optimization\TurboNativeArrays.fs" />
+         <Compile Include="Optimization\TurboNativeIr.fs" />
++        <Compile Include="Optimization\TurboNativeControlFlow.fs" />
+         <Compile Include="Optimization\TurboNativeLoops.fs" />
+         <Compile Include="TurboCodegen.fs" />
+         <EmbeddedResource Include="TurboRuntime\lib537.bin" LogicalName="lib537.bin" />
+diff --git a/SB/TurboCodegen.fs b/SB/TurboCodegen.fs
+index d956b6f..4c0a8f4 100644
+--- a/SB/TurboCodegen.fs
++++ b/SB/TurboCodegen.fs
+@@ -45,6 +45,8 @@ type TurboCodegenOptions = {
+     /// Lower eligible integer FOR bodies and NEXT into a native loop. Requires
+     /// local allocation; false retains compatibility with the original generator.
+     NativeIntegerForLoops: bool
++    /// Trusted, nonserialized HIR binding certificates. Empty keeps legacy rules.
++    NativeForLoopProofs: Map<int,HirTurboIrBackend.NativeForLoopProof>
+ }
+ 
+ let defaultCodegenOptions = {
+@@ -55,6 +57,7 @@ let defaultCodegenOptions = {
+     SmallCode = false
+     LocalRegisterAllocation = false
+     NativeIntegerForLoops = false
++    NativeForLoopProofs = Map.empty
+ }
+ 
+ type TurboCodegenOutput = {
+@@ -764,7 +767,7 @@ type private Generator(sourceLibrary: byte[], options: TurboCodegenOptions, sour
+         if options.LocalRegisterAllocation && options.NativeIntegerForLoops then
+             let requested=defaultArg options.StackSize 0 &&& ~~~1
+             let stack=if requested>=minStack && requested<=maxStack then requested else (word lib maxStackOffset + 1) &&& ~~~1
+-            match TurboNativeLoops.plan (maxStack-stack) vectTabAd ir with
++            match TurboNativeLoops.planWithProofs options.NativeForLoopProofs (maxStack-stack) vectTabAd ir with
+             | Error message -> fail $"Native FOR lowering: {message}"
+             | Ok report ->
+                 nativeLoopReport<-Some report
+diff --git a/SBTests/GeneratedTurboExecutionTests.fs b/SBTests/GeneratedTurboExecutionTests.fs
+index bdbfa15..65c04dc 100644
+--- a/SBTests/GeneratedTurboExecutionTests.fs
++++ b/SBTests/GeneratedTurboExecutionTests.fs
+@@ -305,6 +305,190 @@ let ``CallEntry native plans include checked and proven global arrays inside pro
+         TestContext.WriteLine($"CallEntry arrays: executable bytes {beforeSize}->{afterSize}; instructions {before.Steps}->{after.Steps}.")
+     finally Directory.Delete(directory,true)
+ 
++let scopedEligibilityPrograms = [|
++    "10 GOSUB 200\n20 work\n30 PRINT total%;\":\";z%\n40 STOP\n100 DEFine PROCedure work\n110 LOCal i%\n120 total%=0\n130 FOR i%=1 TO 10\n140 total%=total%+i%\n150 END FOR i%\n160 END DEFine\n200 z%=1\n210 RETurn", "55:1\n",1
++    "10 GOSUB 100:total%=0\n20 FOR i%=1 TO 10\n30 total%=total%+i%\n40 END FOR i%\n50 PRINT total%;\":\";z%\n60 STOP\n100 z%=1\n110 RETurn", "55:1\n",1
++    "10 GOSUB 200:work\n20 PRINT a%(3)\n30 STOP\n100 DEFine PROCedure work\n110 LOCal i%\n115 DIM a%(3)\n120 FOR i%=0 TO 3\n130 a%(i%)=i%\n140 END FOR i%\n150 END DEFine\n200 z%=1\n210 RETurn", "3\n",1
++    "10 GOSUB 300:total%=0:visit (3)\n20 PRINT total%\n30 STOP\n100 DEFine PROCedure visit(depth%)\n110 LOCal i%\n120 FOR i%=1 TO 3\n130 total%=total%+i%\n140 END FOR i%\n150 IF depth%>0 THEN visit (depth%-1)\n160 END DEFine\n300 z%=1\n310 RETurn", "24\n",1
++    "10 WHEN ERROR\n20 PRINT \"error\":STOP\n30 END WHEN\n40 total%=0\n50 FOR i%=1 TO 3\n60 total%=total%+i%\n70 END FOR i%\n80 PRINT total%\n90 STOP", "6\n",0
++    "10 total%=0\n20 FOR i%=1 TO 3\n30 total%=total%+i%\n40 END FOR i%\n50 PRINT total%\n60 STOP\n100 DEFine PROCedure opaque\n110 POKE 0,0\n120 END DEFine", "6\n",0
++|]
++
++let scopedEligibilityModes = [|
++    for index in 0..scopedEligibilityPrograms.Length-1 do
++        for hir in [false;true] do
++            for native,registers in [false,false;true,false;true,true] do
++                yield TestCaseData(index,hir,native,registers).SetName($"ScopedEligibility execution {index} (HIR {hir}, native {native}, registers {registers})") |]
++
++[<TestCaseSource(nameof scopedEligibilityModes)>]
++let ``ScopedEligibility preserves procedures recursion arrays and persistent barriers`` (index:int,hir:bool,native:bool,registers:bool) =
++    let source,expected,_=scopedEligibilityPrograms[index]
++    withCompiledProgramMode hir [(if native then "--native-regions" else "--no-native-regions");(if registers then "--regalloc" else "--no-regalloc")] ".bas" source (fun executable ->
++        let result=run 2000000L executable
++        Assert.That(result.Output, Is.EqualTo(expected))
++        Assert.That(result.ExitCode, Is.Zero))
++
++[<TestCase(0)>]
++[<TestCase(1)>]
++[<TestCase(2)>]
++[<TestCase(3)>]
++[<TestCase(4)>]
++[<TestCase(5)>]
++let ``ScopedEligibility reports select independent loops and explain persistent fallbacks`` (index:int) =
++    let source,expected,loops=scopedEligibilityPrograms[index]
++    let directory=Path.Combine(Path.GetTempPath(),$"scoped-eligibility-{Guid.NewGuid():N}")
++    Directory.CreateDirectory directory |> ignore
++    try
++        let prefix=Path.Combine(directory,"scope")
++        withCompiledProgramMode true ["--native-regions";"--regalloc";"--dump-hir="+prefix] ".bas" source (fun executable ->
++            Assert.That((run 2000000L executable).Output, Is.EqualTo(expected)))
++        let report=File.ReadAllText(prefix+".native-ir.txt")
++        Assert.That(report, Does.Contain($"Native integer FOR loops: selected={loops};"))
++        if loops=0 then
++            Assert.That(report, Does.Contain("Native FOR rejected at IR byte"))
++            Assert.That(File.ReadAllText(prefix+".analysis.txt"), Does.Contain("Global control barrier:"))
++    finally Directory.Delete(directory,true)
++
++[<Test>]
++let ``ScopedEligibility compiles native array loops beside ROM ABS without altering IR format`` () =
++    // The functional CPU cannot link this ROM resident. The unchanged
++    // eight-queens job exercises ABS and the new array proofs in Q-emuLator.
++    let source="10 DIM a%(3):x%=-7:amount=ABS(x%):work\n20 PRINT a%(3);\":\";amount\n30 STOP\n100 DEFine PROCedure work\n110 LOCal i%\n120 FOR i%=0 TO 3\n130 a%(i%)=i%\n140 END FOR i%\n150 END DEFine"
++    let directory=Path.Combine(Path.GetTempPath(),$"scoped-abs-{Guid.NewGuid():N}")
++    Directory.CreateDirectory directory |> ignore
++    try
++        let prefix=Path.Combine(directory,"abs")
++        withCompiledProgramMode true ["--native-regions";"--regalloc";"--dump-hir="+prefix] ".bas" source (fun executable -> Assert.That(executable.Length, Is.GreaterThan(0)))
++        Assert.That(File.ReadAllText(prefix+".native-ir.txt"), Does.Contain("Native integer FOR loops: selected=1;"))
++        Assert.That(File.ReadAllText(prefix+".analysis.txt"), Does.Contain("Global array call-entry analysis: passes=2; certified=True"))
++    finally Directory.Delete(directory,true)
++
++let localForPrograms = [|
++    "10 i%=77:work:work\n20 PRINT i%;\":\";total%\n30 STOP\n100 DEFine PROCedure work\n110 LOCal i%,last%,stride%,term%\n120 last%=5:stride%=1:total%=0\n130 FOR i%=1 TO last% STEP stride%\n140 last%=99:stride%=-1:term%=i%*2:total%=total%+term%\n150 END FOR i%\n160 PRINT i%;\":\";total%\n170 END DEFine", "5:30\n5:30\n77:30\n"
++    "10 work (5),(-1),(-2):work (5),(1),(1):work (32767),(32760),(-2)\n20 STOP\n100 DEFine PROCedure work(first%,last%,stride%)\n110 LOCal i%,total%\n120 total%=0\n130 FOR i%=first% TO last% STEP stride%\n140 total%=total%+(i% MOD 10)\n150 END FOR i%\n160 PRINT i%;\":\";total%\n170 END DEFine", "-1:18\n5:0\n32761:16\n"
++    "10 i%=88:total%=0:visit (3)\n20 PRINT i%;\":\";total%\n30 STOP\n100 DEFine PROCedure visit(depth%)\n110 LOCal i%\n120 FOR i%=1 TO 3\n130 total%=total%+i%\n140 END FOR i%\n150 IF depth%>0 THEN visit (depth%-1)\n160 PRINT i%\n170 END DEFine", "3\n3\n3\n3\n88:24\n"
++    "10 DIM a%(5),b%(1,5):work\n20 PRINT a%(5);\":\";b%(1,5)\n30 STOP\n100 DEFine PROCedure work\n110 LOCal i%\n120 FOR i%=0 TO 5\n130 a%(i%)=i%:b%(1,i%)=a%(i%)+1\n140 END FOR i%\n150 END DEFine", "5:6\n"
++    // A formal may alias visible memory. This body must keep the old loop path.
++    "10 value%=0:work value%\n20 PRINT value%\n30 STOP\n100 DEFine PROCedure work(p%)\n110 LOCal i%\n120 FOR i%=1 TO 4\n130 p%=p%+i%\n140 END FOR i%\n150 END DEFine", "10\n"
++    "10 i%=0:visits%=0:work i%\n20 PRINT i%;\":\";visits%\n30 STOP\n100 DEFine PROCedure work(p%)\n110 FOR i%=1 TO 3\n120 p%=p%+1:visits%=visits%+1\n130 END FOR i%\n140 END DEFine", "4:2\n"
++    // Procedure bindings elsewhere must not exclude this independent main loop.
++    "10 work:total%=0\n20 FOR j%=1 TO 4\n30 total%=total%+j%\n40 END FOR j%\n50 PRINT total%;\":\";j%\n60 STOP\n100 DEFine PROCedure work\n110 LOCal private%\n120 private%=99\n130 END DEFine", "10:4\n"
++    "10 PRINT answer%(4);\":\";answer%(2)\n20 STOP\n100 DEFine FuNction answer%(limit%)\n110 LOCal i%,total%\n120 total%=0\n130 FOR i%=1 TO limit%\n140 total%=total%+i%\n150 END FOR i%\n160 RETurn total%\n170 END DEFine", "10:3\n"
++    "10 n%=4:work n%:work (2)\n20 PRINT n%\n30 STOP\n100 DEFine PROCedure work(limit%)\n110 LOCal i%,total%\n120 total%=0\n130 FOR i%=1 TO limit%\n140 total%=total%+i%\n150 END FOR i%\n160 PRINT i%;\":\";total%\n170 END DEFine", "4:10\n2:3\n4\n"
++|]
++
++let conditionalForPrograms = [|
++    "10 total%=0\n20 FOR i%=-3 TO 3\n30 IF i%<0 THEN total%=total%+1:ELSE total%=total%+10\n40 END FOR i%\n50 PRINT total%;\":\";i%\n60 STOP", "43:3\n"
++    "10 total%=0\n20 FOR i%=-2 TO 2\n30 IF i% THEN\n40 IF NOT(i%<0) THEN total%=total%+10:ELSE total%=total%+1\n50 ELSE\n60 total%=total%+100\n70 END IF\n80 END FOR i%\n90 PRINT total%\n100 STOP", "122\n"
++    "10 total%=0\n20 FOR i%=-2 TO 2\n30 flag%=(i%>=0) AND (i%<2)\n40 other%=(i%<0) OR (i%>0)\n50 different%=(i%<0) XOR (i%>0)\n60 total%=total%+flag%+other%+different%\n70 END FOR i%\n80 PRINT total%;\":\";flag%;\":\";other%\n90 STOP", "10:0:1\n"
++    "10 DIM a%(3):total%=0\n20 FOR i%=1 TO 3\n30 a%(i%)=(i%<>2):total%=total%+a%(i%)\n40 END FOR i%\n50 PRINT total%;\":\";a%(1);\":\";a%(2);\":\";a%(3)\n60 STOP", "2:1:0:1\n"
++    "10 x%=0:total%=0\n20 FOR i%=1 TO 3\n30 IF i%=2 THEN x%=7\n40 total%=total%+x%\n50 END FOR i%\n60 PRINT total%;\":\";x%\n70 STOP", "14:7\n"
++    "10 total%=0\n20 FOR i%=1 TO 4\n30 IF i%<3 THEN\n40 REMark empty true arm exercises the improver's opposite branch\n50 ELSE\n60 total%=total%+i%\n70 END IF\n80 END FOR i%\n90 PRINT total%\n100 STOP", "7\n"
++    "10 total%=0\n20 FOR i%=-2 TO 2\n30 flag%=NOT i%\n40 IF i% AND -3 THEN total%=total%+10\n50 total%=total%+flag%\n60 END FOR i%\n70 PRINT total%\n80 STOP", "41\n"
++    "10 i%=77:work\n20 PRINT i%;\":\";total%\n30 STOP\n100 DEFine PROCedure work\n110 LOCal i%,limit%,stride%\n120 limit%=4:stride%=1:total%=0\n130 FOR i%=1 TO limit% STEP stride%\n140 IF i%=2 THEN limit%=-1:stride%=-1\n150 IF i%<=2 THEN total%=total%+i%:ELSE total%=total%+10*i%\n160 END FOR i%\n170 END DEFine", "77:73\n"
++    "10 value%=0:work value%\n20 PRINT value%\n30 STOP\n100 DEFine PROCedure work(p%)\n110 LOCal i%\n120 FOR i%=1 TO 4\n130 IF i%<3 THEN p%=p%+i%:ELSE p%=p%+10\n140 END FOR i%\n150 END DEFine", "23\n"
++    "10 flag=0\n20 FOR i%=1 TO 3\n30 IF i%>1.5 THEN flag=flag+1\n40 END FOR i%\n50 PRINT flag\n60 STOP", "2\n"
++|]
++let conditionalForModes = [|
++    for index in 0..conditionalForPrograms.Length-1 do
++        for hir in [false;true] do
++            for native,registers in [false,false;true,false;true,true] do
++                yield TestCaseData(index,hir,native,registers).SetName($"ConditionalFor execution {index} (HIR {hir}, native {native}, registers {registers})") |]
++
++[<TestCaseSource(nameof conditionalForModes)>]
++let ``ConditionalFor integer comparisons logic and joins preserve QL values`` (index:int,hir:bool,native:bool,registers:bool) =
++    let source,expected=conditionalForPrograms[index]
++    withCompiledProgramMode hir [(if native then "--native-regions" else "--no-native-regions");(if registers then "--regalloc" else "--no-regalloc")] ".bas" source (fun executable ->
++        let result=run 4000000L executable
++        Assert.That(result.Output, Is.EqualTo(expected))
++        Assert.That(result.ExitCode, Is.Zero))
++
++let conditionalFailures = [|
++    "10 divisor%=0\n20 FOR i%=1 TO 2\n30 IF (i%=0) AND (1 DIV divisor%=0) THEN x%=1\n40 END FOR i%\n50 STOP"
++    "10 value%=32000\n20 FOR i%=1 TO 2\n30 IF (i%=0) AND (value%+1000>0) THEN x%=1\n40 END FOR i%\n50 STOP"
++    "10 DIM a%(1),indexes%(0):indexes%(0)=3\n20 FOR i%=0 TO 1\n30 IF (i%=99) AND (a%(indexes%(0))=0) THEN x%=1\n40 END FOR i%\n50 STOP"
++|]
++let conditionalFailureModes = [|
++    for index in 0..conditionalFailures.Length-1 do
++        for hir in [false;true] do
++            for native,registers in [false,false;true,false;true,true] do
++                yield TestCaseData(index,hir,native,registers).SetName($"ConditionalFor error {index} (HIR {hir}, native {native}, registers {registers})") |]
++
++[<TestCaseSource(nameof conditionalFailureModes)>]
++let ``ConditionalFor eager conditions retain checked arithmetic and bounds errors`` (index:int,hir:bool,native:bool,registers:bool) =
++    withCompiledProgramMode hir [(if native then "--native-regions" else "--no-native-regions");(if registers then "--regalloc" else "--no-regalloc")] ".bas" conditionalFailures[index] (fun executable ->
++        let error=Assert.Throws<M68kFault>(fun () -> run 4000000L executable |> ignore)
++        Assert.That(error.Message, Does.Contain("Runtime error message:")))
++
++[<TestCase(0,1)>]
++[<TestCase(1,1)>]
++[<TestCase(2,1)>]
++[<TestCase(3,1)>]
++[<TestCase(4,1)>]
++[<TestCase(5,1)>]
++[<TestCase(6,1)>]
++[<TestCase(7,1)>]
++[<TestCase(8,0)>]
++[<TestCase(9,0)>]
++let ``ConditionalFor reports select integer control flow and preserve conservative fallbacks`` (index:int,loops:int) =
++    let directory=Path.Combine(Path.GetTempPath(),$"conditional-report-{Guid.NewGuid():N}")
++    Directory.CreateDirectory directory |> ignore
++    try
++        let prefix=Path.Combine(directory,"if")
++        let source,expected=conditionalForPrograms[index]
++        withCompiledProgramMode true ["--native-regions";"--regalloc";"--dump-hir="+prefix] ".bas" source (fun executable ->
++            Assert.That((run 4000000L executable).Output, Is.EqualTo(expected)))
++        let report=File.ReadAllText(prefix+".native-ir.txt")
++        Assert.That(report, Does.Contain($"Native integer FOR loops: selected={loops};"))
++        if loops>0 then Assert.That(report, Does.Contain("conditional body:"))
++    finally Directory.Delete(directory,true)
++let localForModes = [|
++    for index in 0..localForPrograms.Length-1 do
++        for hir in [false;true] do
++            for native,registers in [false,false;true,false;true,true] do
++                yield TestCaseData(index,hir,native,registers).SetName($"LocalFor execution {index} (HIR {hir}, native {native}, registers {registers})") |]
++
++[<TestCaseSource(nameof localForModes)>]
++let ``LocalFor certificates preserve bindings recursion captured bounds and alias fallbacks`` (index:int,hir:bool,native:bool,registers:bool) =
++    let source,expected=localForPrograms[index]
++    withCompiledProgramMode hir [(if native then "--native-regions" else "--no-native-regions");(if registers then "--regalloc" else "--no-regalloc")] ".bas" source (fun executable ->
++        let result=run 3000000L executable
++        Assert.That(result.ExitCode, Is.Zero)
++        Assert.That(result.Output, Is.EqualTo(expected)))
++
++[<TestCase(0,1)>]
++[<TestCase(2,1)>]
++[<TestCase(3,1)>]
++[<TestCase(4,0)>]
++[<TestCase(5,0)>]
++[<TestCase(6,1)>]
++[<TestCase(7,1)>]
++[<TestCase(8,2)>]
++let ``LocalFor plans select certified loops and retain alias barriers`` (index:int,expectedLoops:int) =
++    let directory=Path.Combine(Path.GetTempPath(),$"local-for-report-{Guid.NewGuid():N}")
++    Directory.CreateDirectory directory |> ignore
++    try
++        let prefix=Path.Combine(directory,"loops")
++        let source,expected=localForPrograms[index]
++        let capture registers=withCompiledProgramMode true ["--native-regions";(if registers then "--regalloc" else "--no-regalloc");"--dump-hir="+prefix] ".bas" source (fun executable -> run 3000000L executable)
++        let before=capture false
++        let after=capture true
++        Assert.That(after.Output, Is.EqualTo(expected))
++        Assert.That(after.Output, Is.EqualTo(before.Output))
++        let report=File.ReadAllText(prefix+".native-ir.txt")
++        Assert.That(report, Does.Contain($"Native integer FOR loops: selected={expectedLoops};"))
++        if expectedLoops>0 then
++            Assert.That(report, Does.Contain("certified binding=True"))
++    finally Directory.Delete(directory,true)
++
++[<TestCase(false)>]
++[<TestCase(true)>]
++let ``LocalFor error handlers retain the runtime path and restore LOCAL bindings`` (hir:bool) =
++    let source="10 i%=77\n20 WHEN ERROR\n30 PRINT ERNUM;\":\";i%:STOP\n60 END WHEN\n70 work\n80 STOP\n100 DEFine PROCedure work\n110 LOCal i%,x%\n120 x%=32000\n130 FOR i%=1 TO 10\n140 x%=x%+1000\n150 END FOR i%\n160 END DEFine"
++    withCompiledProgramMode hir [] ".bas" source (fun executable ->
++        let result=run 3000000L executable
++        Assert.That(result.Output, Is.EqualTo("-18:77\n")))
++
+ let divmodPrograms = [|
+     "10 a%=-7:b%=3\n20 q%=a% DIV b%:r%=a% MOD b%\n30 PRINT q%;\":\";r%;\":\";q%*b%+r%\n40 a%=7:b%=-3\n50 q%=a% DIV b%:r%=a% MOD b%\n60 PRINT q%;\":\";r%;\":\";q%*b%+r%\n70 STOP", "-3:2:-7\n-3:-2:7\n"
+     "10 q%=0:r%=0\n20 FOR i%=-7 TO 7 STEP 2\n30 q%=q%+(i% DIV 3):r%=r%+(i% MOD 3)\n40 END FOR i%\n50 PRINT q%;\":\";r%;\":\";i%\n60 STOP", "-3:9:7\n"
+diff --git a/SBTests/Optimization/HirAnalysisTests.fs b/SBTests/Optimization/HirAnalysisTests.fs
+index 9bac675..80e362d 100644
+--- a/SBTests/Optimization/HirAnalysisTests.fs
++++ b/SBTests/Optimization/HirAnalysisTests.fs
+@@ -26,6 +26,75 @@ let private print expr = BuiltInCall(Print,None,[expr],pos)
+ let private routine symbol name parameters body = {Symbol=symbol;Name=name;Parameters=parameters;Locals=[];Body=body;ReturnType=None;EndLineNumber=None;Position=pos}
+ let private parameter owner symbol name = {Storage=storage symbol name (RoutineParameterStorage owner);Binding=FlexibleBinding}
+ 
++let private localCounter=SymbolId 80
++let private localRoutine body =
++    let work=routine (SymbolId 81) "WORK" [] body
++    {work with Locals=[storage localCounter "I%" (RoutineLocalStorage "WORK")]}
++let private localLoop body=For(LoopId 80,localCounter,number 1,number 10,number 1,body,pos)
++let private localProofs work = analyze {program [] with Routines=[work]} |> _.CertifiedNativeForLoops
++
++[<Test>]
++let ``local FOR certificates keep a fresh LOCAL counter distinct from its global shadow`` () =
++    let work=localRoutine [localLoop [assign x (binary Add (read localCounter) (read y))]]
++    let proofs=localProofs work
++    Assert.That(proofs.Count, Is.EqualTo(1))
++    Assert.That(proofs[Some work.Symbol,LoopId 80], Is.EquivalentTo(["I%";"X%";"Y%"]))
++
++[<Test>]
++let ``local FOR proof metadata does not change the serialized Turbo IR`` () =
++    let work=localRoutine [localLoop [assign x (read localCounter)]]
++    let p={program [ProcCall(work.Symbol,None,[],pos)] with Routines=[work]}
++    let generate options=HirTurboIrBackend.generateTurboIrFromHir options p |> Result.defaultWith(String.concat "; " >> failwith)
++    let plain=generate HirTurboIrBackend.defaultOptions
++    let proven=generate {HirTurboIrBackend.defaultOptions with CertifiedNativeForLoops=(analyze p).CertifiedNativeForLoops}
++    Assert.That(proven.Bytes, Is.EqualTo(box plain.Bytes))
++    Assert.That(proven.Listing, Is.EqualTo(plain.Listing))
++    Assert.That(plain.NativeForLoopProofs, Is.Empty)
++    Assert.That(proven.NativeForLoopProofs.Count, Is.EqualTo(1))
++
++[<Test>]
++let ``local FOR certificates permit parameters in captured bounds but not body aliases`` () =
++    let formal=parameter "WORK" (SymbolId 82) "LIMIT%"
++    let work={localRoutine [] with Parameters=[formal]}
++    let safe={work with Body=[For(LoopId 80,localCounter,number 1,read formal.Storage.Symbol,number 1,[assign x (read localCounter)],pos)]}
++    Assert.That((localProofs safe).Count, Is.EqualTo(1))
++    let unsafe={work with Body=[localLoop [assign x (read formal.Storage.Symbol)]]}
++    Assert.That(localProofs unsafe, Is.Empty)
++
++[<TestCase(0)>]
++[<TestCase(1)>]
++[<TestCase(2)>]
++[<TestCase(3)>]
++let ``local FOR certificates reject counter writes and calls in conditional bodies`` (kind:int) =
++    let body=match kind with
++             | 0 -> [assign localCounter (number 2)]
++             | 1 -> [Assign(DynamicWriteVar("I%",HirType.Int,pos),number 2,pos)]
++             | 2 -> [ProcCall(SymbolId 99,None,[],pos)]
++             | _ -> [If(read flag,[assign localCounter (number 1)],None,pos)]
++    Assert.That(localProofs (localRoutine [localLoop body]), Is.Empty)
++
++[<Test>]
++let ``conditional FOR binding certificates include condition and both arm effects`` () =
++    let work=localRoutine [localLoop [If(binary LessThan (read localCounter) (read y),[assign x (number 1)],Some[assign z (number 2)],pos)]]
++    let proof=(localProofs work)[Some work.Symbol,LoopId 80]
++    Assert.That(proof, Is.EquivalentTo(["I%";"X%";"Y%";"Z%"]))
++
++[<Test>]
++let ``local FOR certificates reject formal counters and escaping LOCAL references`` () =
++    let formal=parameter "WORK" localCounter "I%"
++    let work={localRoutine [localLoop [assign x (read localCounter)]] with Locals=[];Parameters=[formal]}
++    Assert.That(localProofs work, Is.Empty)
++    let escaping=localRoutine [ProcCall(SymbolId 99,None,[RefArg(target localCounter)],pos);localLoop [assign x (read localCounter)]]
++    Assert.That(localProofs escaping, Is.Empty)
++
++[<Test>]
++let ``per-loop certificates permit independent globals in programs with other LOCAL bindings`` () =
++    let work=localRoutine [assign localCounter (number 99)]
++    let p={program [For(LoopId 90,x,number 1,number 3,number 1,[assign y (read x)],pos)] with Routines=[work]}
++    Assert.That((analyze p).CertifiedNativeForLoops.ContainsKey(None,LoopId 90), Is.True)
++    let shadow={work with Locals=[storage localCounter "X%" (RoutineLocalStorage "WORK")]}
++    Assert.That((analyze {p with Routines=[shadow]}).CertifiedNativeForLoops, Is.Empty)
++
+ [<Test>]
+ let ``widening thresholds retain a bounded loop invariant that classical widening loses`` () =
+     let plus=binary Add (read x) (number 1)
+@@ -39,6 +108,72 @@ let ``widening thresholds retain a bounded loop invariant that classical widenin
+     Assert.That((main refined).WideningThresholds, Does.Contain(8191L))
+     Assert.That((main refined).Certified, Is.True)
+ 
++[<Test>]
++let ``local GOSUB uncertainty cannot disable proofs in an independent procedure`` () =
++    let expression=binary Multiply (read localCounter) (number 3)
++    let work=localRoutine [localLoop [assign x expression]]
++    let p={program [Gosub(number 100,pos);Goto(number 200,pos);LineNumber(100,pos);Return(None,pos);LineNumber(200,pos)] with Routines=[work]}
++    let facts=analyze p
++    Assert.That(facts.ProofEligibleScopes.Contains MainScope, Is.False)
++    Assert.That(facts.ProofEligibleScopes.Contains(RoutineScope work.Symbol), Is.True)
++    proven expression facts
++    Assert.That(facts.CertifiedNativeForLoops.ContainsKey(Some work.Symbol,LoopId 80), Is.True)
++
++[<Test>]
++let ``a native loop region can certify despite local GOSUB elsewhere in its scope`` () =
++    let body=[Gosub(number 100,pos);For(LoopId 90,i,number 1,number 3,number 1,[assign x (read i)],pos)
++              Goto(number 200,pos);LineNumber(100,pos);Return(None,pos);LineNumber(200,pos)]
++    let facts=analyze(program body)
++    Assert.That(facts.ProofEligibleScopes.Contains MainScope, Is.False)
++    Assert.That(facts.CertifiedNativeForLoops.ContainsKey(None,LoopId 90), Is.True)
++
++[<Test>]
++let ``native loop binding proof rejects a numbered entry that bypasses its initialiser`` () =
++    let p=program [Goto(number 30,pos);For(LoopId 90,i,number 1,number 3,number 1,[LineNumber(30,pos);assign x (read i)],pos)]
++    let facts=analyze p
++    Assert.That(facts.CertifiedNativeForLoops, Is.Empty)
++    Assert.That(facts.NativeForRejections[None,LoopId 90], Does.Contain("loop has an external entry or untrusted FOR continuation"))
++
++[<TestCase(0)>]
++[<TestCase(1)>]
++[<TestCase(2)>]
++[<TestCase(3)>]
++[<TestCase(4)>]
++let ``persistent and nonlocal hazards still block native certificates in other procedures`` (kind:int) =
++    let work=localRoutine [localLoop [assign x (read localCounter)]]
++    let other=match kind with
++              | 0 -> [WhenError([Return(None,pos)],pos)]
++              | 1 -> [BuiltInCall(NamedBuiltIn "POKE",None,[number 100;number 0],pos)]
++              | 2 -> [Goto(read flag,pos)]
++              | 3 -> [Goto(number 30,pos)]
++              | _ -> [assign z (CallFunc(SymbolId 999,[],HirType.Int,pos))]
++    let work={work with Body=LineNumber(30,pos)::work.Body}
++    let hazard=routine (SymbolId 99) "HAZARD" [] other
++    let facts=analyze {program [] with Routines=[work;hazard]}
++    Assert.That(facts.CertifiedNativeForLoops, Is.Empty)
++    Assert.That(facts.GlobalControlBarriers, Is.Not.Empty)
++    Assert.That(facts.NativeForRejections.ContainsKey(Some work.Symbol,LoopId 80), Is.True)
++
++[<Test>]
++let ``ABS has nonmutating ROM effects but a user ABS retains its actual writes`` () =
++    let absSymbol=SymbolId 999
++    let p={program [] with SymbolNames=Map.ofList[absSymbol,"ABS"]}
++    let context=HirEffects.analyze p
++    let effect=HirEffects.call context MainScope absSymbol [ValueArg(read x)]
++    Assert.That(effect.Reads.Contains x && effect.MayThrow && effect.Calls.Contains absSymbol, Is.True)
++    Assert.That(effect.WritesUnknown || effect.DescriptorWritesUnknown || effect.LoopMetadataWritesUnknown, Is.False)
++    let own=routine absSymbol "ABS" [] [assign x (number 7)]
++    let context=HirEffects.analyze {p with Routines=[own]}
++    Assert.That((HirEffects.call context MainScope absSymbol []).Writes.Contains x, Is.True)
++
++[<Test>]
++let ``independent loop certificates survive an unrelated enumerated FOR scope`` () =
++    let enumeration=ForSequence(LoopId 1,i,[],number 1,number 3,[number 5],number 1,[],pos)
++    let work=localRoutine [localLoop [assign x (read localCounter)]]
++    let facts=analyze {program [enumeration] with Routines=[work]}
++    Assert.That(facts.ProofEligibleScopes.Contains MainScope, Is.False)
++    Assert.That(facts.CertifiedNativeForLoops.ContainsKey(Some work.Symbol,LoopId 80), Is.True)
++
+ [<Test>]
+ let ``narrowing recovers an invariant whose bound is computed before the loop`` () =
+     let plus=binary Add (read x) (number 1)
+@@ -360,7 +495,8 @@ let ``a callee that replaces a FOR vector invalidates its hidden continuation``
+     let expr=binary Multiply (read i) (number 3)
+     let p=program [For(LoopId 1,i,number 1,number 10,number 1,[ProcCall(proc,None,[],pos);assign y expr],pos)]
+     let a={p with Routines=[clobber]} |> analyze
+-    Assert.That(a.ArithmeticProofsEnabled, Is.False)
++    Assert.That(a.ProofEligibleScopes.Contains MainScope, Is.False)
++    Assert.That(a.ProofEligibleScopes.Contains(RoutineScope proc), Is.True)
+     Assert.That((main a).Graph.Edges |> List.exists (fun e -> e.Kind=UnknownTransfer && e.Havoc), Is.True)
+     unproven expr a
+ 
+@@ -596,7 +732,7 @@ let ``procedure FOR initialization maps hidden metadata writes to references onl
+     let facts={source with Routines=[setter]} |> analyze
+     let effect=HirEffects.call facts.Effects MainScope proc [arg]
+     Assert.That(effect.LoopMetadataWrites.Contains i, Is.EqualTo(byReference))
+-    Assert.That(facts.ArithmeticProofsEnabled, Is.EqualTo(not byReference))
++    Assert.That(facts.ProofEligibleScopes.Contains MainScope, Is.EqualTo(not byReference))
+ 
+ [<Test>]
+ let ``procedure private LOCAL bindings do not leak metadata writes to a caller's same-named vector`` () =
+@@ -832,3 +968,19 @@ let ``range proofs are consumed by native instruction selection`` () =
+             Assert.That(comment, Is.EqualTo(HirTurboIrBackend.rangeProvenIntegerComment))
+         | _ -> ()
+     Assert.That(nativeAdd, Is.True)
++
++[<Test>]
++let ``untrusted call sites contribute unknown shapes without disabling independent callees`` () =
++    let unsafeCallee=routine (SymbolId 100) "UNSAFE_INPUT" [] [assign x (arrayRead [number 2])]
++    let safeCallee=routine (SymbolId 101) "SAFE_INPUT" [] [assign y (arrayRead [number 3])]
++    let caller=routine (SymbolId 102) "UNTRUSTED" []
++                    [Gosub(number 100,pos);ProcCall(unsafeCallee.Symbol,None,[],pos);Goto(number 200,pos)
++                     LineNumber(100,pos);Return(None,pos);LineNumber(200,pos)]
++    let p=arrayProgram [Dim(arraySymbol,[number 10],pos);ProcCall(unsafeCallee.Symbol,None,[],pos);ProcCall(safeCallee.Symbol,None,[],pos)]
++    let facts=analyze {p with Routines=[unsafeCallee;safeCallee;caller]}
++    Assert.That(facts.EntryShapePasses, Is.GreaterThan(0))
++    Assert.That(facts.ProofEligibleScopes.Contains(RoutineScope caller.Symbol), Is.False)
++    arrayChecked [number 2] facts
++    Assert.That(facts.OneDimensionalIntegerAccesses.Contains("A%",[number 2]), Is.False)
++    arraySafe [number 3] facts
++    Assert.That(facts.OneDimensionalIntegerAccesses.Contains("A%",[number 3]), Is.True)
+diff --git a/SBTests/Optimization/TurboNativeLoopsTests.fs b/SBTests/Optimization/TurboNativeLoopsTests.fs
+index bdf8b57..dcf5556 100644
+--- a/SBTests/Optimization/TurboNativeLoopsTests.fs
++++ b/SBTests/Optimization/TurboNativeLoopsTests.fs
+@@ -46,6 +46,68 @@ let private read v (cpu:Cpu) = int(int16(uint16(cpu.ReadWord(uint32(0x6000+v*32)
+ 
+ let private codeWord (code:byte[]) offset = (int code[offset] <<< 8) ||| int code[offset+1]
+ 
++let comparisonCases = [|
++    for op in [9;10;11;12;13;14;15] do
++        for left,right in [-32768,32767;32767,-32768;-32768,-32768;32767,32767;-1,0;0,-1;0,0;1,1;123,124] do
++            yield TestCaseData(op,left,right) |]
++
++[<TestCaseSource(nameof comparisonCases)>]
++let ``conditional native FOR comparisons retain signed word boundaries and QL truth`` (opcode:int,left:int,right:int) =
++    let expected=match opcode with 9 -> left>=right | 10 -> left>right | 11|12 -> left=right | 13 -> left<>right | 14 -> left<=right | _ -> left<right
++    let body=[op 106 [0];op 118 [2];op 106 [left];op 106 [right];op opcode [];
++              Instruction(239,[LabelRef 2010],"");op 106 [1];op 118 [2];LabelDef(2010,"")]
++    let loop=selected body
++    Assert.That(loop.ControlFlow.IsSome, Is.True)
++    let cpu=executeLoop loop false 1 1 1
++    Assert.That(read 2 cpu, Is.EqualTo(if expected then 1 else 0))
++    Assert.That(cpu.A[1], Is.EqualTo(0x5000u))
++
++[<Test>]
++let ``conditional native FOR joins reload stores and retain the pinned counter`` () =
++    let body=[op 109 [1];op 106 [3];op 15 [];Instruction(239,[LabelRef 2010],"");
++              op 109 [2];op 109 [1];op 1005 [];op 118 [2];Instruction(242,[LabelRef 2011],"");
++              LabelDef(2010,"");op 109 [3];op 109 [1];op 1005 [];op 118 [3];LabelDef(2011,"")]
++    let cpu=execute false 1 5 1 body
++    Assert.That(read 2 cpu, Is.EqualTo(3))
++    Assert.That(read 3 cpu, Is.EqualTo(12))
++    Assert.That(read 1 cpu, Is.EqualTo(5))
++
++[<TestCase(0)>]
++[<TestCase(1)>]
++let ``conditional native FOR does not short circuit errors or lose pending float booleans`` (left:int) =
++    let body=[op 106 [left];op 106 [1];op 12 [];op 106 [1];op 106 [0];op 8 [];
++              op 106 [0];op 12 [];op 54 [];Instruction(239,[LabelRef 2010],"");op 106 [99];op 118 [2];LabelDef(2010,"")]
++    let cpu=execute true 1 2 1 body
++    Assert.That(cpu.A[1], Is.EqualTo(0x4FF8u))
++    Assert.That(cpu.ReadWord 0x4FF8u, Is.EqualTo(1u))
++    Assert.That(cpu.ReadLong 0x4FFAu, Is.EqualTo(if left=1 then 0x08014000u else 0u))
++    Assert.That(cpu.ReadWord 0x4FFEu, Is.Zero)
++
++[<Test>]
++let ``conditional native FOR rejects external entries backward edges and nonempty joins`` () =
++    let comparison=[op 109 [1];op 106 [3];op 15 []]
++    let external=[Instruction(242,[LabelRef 2010],"")]
++    let body=comparison@[Instruction(239,[LabelRef 2010],"");op 106 [1];op 118 [2];LabelDef(2010,"")]
++    Assert.That((plan 140 external body).Loops, Is.Empty)
++    Assert.That((plan 140 [] [LabelDef(2010,"");Instruction(242,[LabelRef 2010],"")]).Loops, Is.Empty)
++    Assert.That((plan 140 [] (comparison@[Instruction(239,[LabelRef 2010],"");op 106 [1];LabelDef(2010,"")])).Loops, Is.Empty)
++
++[<Test>]
++let ``conditional native FOR reserves conversion helper saves and return depth`` () =
++    let body=[op 109 [1];op 320 [];Instruction(239,[LabelRef 2010],"");op 106 [7];op 118 [2];LabelDef(2010,"")]
++    Assert.That((plan 23 [] body).Loops, Is.Empty)
++    let report=plan 24 [] body
++    Assert.That(report.Loops.Length, Is.EqualTo(1))
++    Assert.That(report.StackExtraBytes, Is.EqualTo(24))
++
++[<Test>]
++let ``conditional native FOR internal branches retain word displacement fallback`` () =
++    let body=[op 109 [1];op 106 [3];op 15 [];Instruction(239,[LabelRef 2010],"")] @
++             (List.replicate 40 [op 106 [7];op 118 [2]] |> List.concat) @ [LabelDef(2010,"")]
++    let loop=selected body
++    Assert.That([0..2..loop.Code.Length-4] |> List.exists(fun i -> codeWord loop.Code i=0x6700 && int(int16(uint16(codeWord loop.Code (i+2))))>127), Is.True)
++    Assert.That(read 2 (executeLoop loop false 1 4 1), Is.EqualTo(7))
++
+ [<TestCase(false,15,2)>]
+ [<TestCase(true,18,1)>]
+ let ``native FOR backedges use the inclusive minus 128 byte limit`` (literalStep:bool,copies:int,literals:int) =
+@@ -190,7 +252,6 @@ let rejectedBodies = [|
+     [op 109 [1];op 106 [0];op 12 []] // comparisons/branches are a later milestone
+     [op 109 [1];op 1111 [2];op 118 [3]]
+     [op 236 [2004]]
+-    [LabelDef(2005,"");op 109 [1];op 118 [2]]
+     [op 106 [1]] // unbalanced expression stack
+     [op 118 [2]] // incoming expression-stack values
+     [op 26 [1;2000]] // nested loops
+@@ -218,6 +279,81 @@ let ``tight stack headroom retains the original loop`` () =
+     Assert.That((plan 11 [] [op 109 [1];op 118 [2]]).Loops, Is.Empty)
+     Assert.That((plan 12 [] [op 109 [1];op 118 [2]]).Loops.Length, Is.EqualTo(1))
+ 
++let private certifiedPlan proofs extra body =
++    TurboNativeLoops.planWithProofs proofs 140 -256 (stream extra body) |> Result.defaultWith failwith
++let private bindingProof counter scalars = Map.ofList[2000,{Counter=counter;ScalarVectors=Set.ofList scalars}]
++
++[<Test>]
++let ``per-loop certificates allow stable local bindings without weakening the byte-only path`` () =
++    let body=[op 109 [1];op 118 [2]]
++    let raw=stream [op 102 [1];op 110 [2]] body
++    Assert.That((TurboNativeLoops.plan 140 -256 raw |> Result.defaultWith failwith).Loops, Is.Empty)
++    let report=certifiedPlan (bindingProof 1 [1;2]) [op 102 [1];op 110 [2]] body
++    Assert.That(report.Loops.Length, Is.EqualTo(1))
++    Assert.That(report.Loops.Head.CertifiedBinding, Is.True)
++    let cpu=executeLoop report.Loops.Head false 1 4 1
++    Assert.That(read 1 cpu, Is.EqualTo(4))
++    Assert.That(read 2 cpu, Is.EqualTo(4))
++
++[<TestCase(2,1)>]
++[<TestCase(1,0)>]
++let ``per-loop certificates must match the counter and every scalar operand`` (counter:int,includeDestination:int) =
++    let scalars=if includeDestination=1 then [1;2] else [1]
++    Assert.That((certifiedPlan (bindingProof counter scalars) [op 102 [1]] [op 109 [1];op 118 [2]]).Loops, Is.Empty)
++
++[<TestCaseSource(nameof rejectedBodies)>]
++let ``binding certificates never expand the audited native body instruction set`` (body:IrItem list) =
++    Assert.That((certifiedPlan (bindingProof 1 [1;2;3]) [op 102 [1]] body).Loops, Is.Empty)
++
++[<TestCase(327)>]
++[<TestCase(325)>]
++[<TestCase(364)>]
++[<TestCase(227)>]
++[<TestCase(278)>]
++let ``certified loops still reject error continuations and opaque memory mutation`` (opcode:int) =
++    let item=match opcode with 327 -> op opcode [3] | 227 -> Instruction(227,[Word 0;Bytes8 [||]],"") | _ -> op opcode []
++    Assert.That((certifiedPlan (bindingProof 1 [1;2]) [item] [op 109 [1];op 118 [2]]).Loops, Is.Empty)
++
++[<TestCase(false)>]
++[<TestCase(true)>]
++let ``only a certified loop may coexist with the exact nonmutating ABS ROM call`` (certified:bool) =
++    let extra=[Instruction(224,[Word 2;Word 7;Bytes8 [|2uy|]],"");Instruction(261,[Word 7;Bytes8 [|65uy;66uy;83uy|]],"")]
++    let body=[op 109 [1];op 118 [2]]
++    let report=if certified then certifiedPlan (bindingProof 1 [1;2]) extra body else plan 140 extra body
++    Assert.That(report.Loops.Length, Is.EqualTo(if certified then 1 else 0))
++
++[<TestCase(0)>]
++[<TestCase(1)>]
++[<TestCase(2)>]
++let ``ROM exceptions require the exact name arity descriptor and no duplicate linkage`` (kind:int) =
++    let name=if kind=0 then [|80uy;79uy;75uy;69uy|] else [|65uy;66uy;83uy|]
++    let descriptors=if kind=1 then [|2uy;2uy|] else [|2uy|]
++    let extra=[Instruction(224,[Word 2;Word 7;Bytes8 descriptors],"");Instruction(261,[Word 7;Bytes8 name],"")]
++    let extra=if kind=2 then extra@[Instruction(261,[Word 7;Bytes8 name],"")] else extra
++    Assert.That((certifiedPlan (bindingProof 1 [1;2]) extra [op 109 [1];op 118 [2]]).Loops, Is.Empty)
++
++[<TestCase(0,"insufficient stack budget")>]
++[<TestCase(1,"unsupported body opcode 16")>]
++[<TestCase(2,"body writes the pinned counter")>]
++let ``native loop diagnostics identify the actual failed eligibility check`` (kind:int,reason:string) =
++    let body=match kind with 1 -> [op 16 []] | 2 -> [op 106 [1];op 118 [1]] | _ -> [op 109 [1];op 118 [2]]
++    let report=plan (if kind=0 then 11 else 140) [] body
++    Assert.That(report.RejectedLoops, Is.EqualTo(report.Rejections.Length))
++    Assert.That(TurboNativeLoops.format report, Does.Contain(reason))
++
++[<TestCase(8)>]
++[<TestCase(20)>]
++[<TestCase(1005)>]
++let ``certified local counter failures release frames and commit the current counter`` (opcode:int) =
++    let first=if opcode=1005 then 32767 else 1
++    let operand=if opcode=1005 then 1 else 0
++    let report=certifiedPlan (bindingProof 1 [1;2]) [op 102 [1];op 110 [2]]
++                   [op 106 [17];op 118 [2];op 109 [1];op 106 [operand];op opcode [];op 118 [2]]
++    Assert.That(report.Loops.Length, Is.EqualTo(1))
++    let cpu=executeLoop report.Loops.Head true first first 1
++    Assert.That(read 1 cpu, Is.EqualTo(first))
++    Assert.That(read 2 cpu, Is.EqualTo(17))
++
+ [<Test>]
+ let ``oversized loop bodies retain the original path`` () =
+     Assert.That((plan 140 [] (List.replicate 257 (op 2 []))).Loops, Is.Empty)
+diff --git a/SBTests/TurboCodegenTests.fs b/SBTests/TurboCodegenTests.fs
+index 81b949b..275f30d 100644
+--- a/SBTests/TurboCodegenTests.fs
++++ b/SBTests/TurboCodegenTests.fs
+@@ -501,7 +501,7 @@ let ``DIVMOD native loops preserve live accumulators and reserve both frame dept
+     // positive literals are now infallible single-register operations.
+     let raw=irOf "10 q%=0:r%=0:divisor%=3\n20 FOR i%=-99 TO 99 STEP 2\n30 q%=q%+(i% DIV divisor%):r%=r%+(i% MOD divisor%)\n40 END FOR i%\n50 PRINT q%;\":\";r%;\":\";i%\n60 STOP"
+     let items=decode raw |> Result.defaultWith failwith
+-    let ir=TurboNativeRegions.select true {Items=items;Bytes=raw;Listing=formatListing items;Warnings=[]} |> Result.defaultWith(String.concat "; " >> failwith)
++    let ir=TurboNativeRegions.select true {Items=items;Bytes=raw;Listing=formatListing items;Warnings=[];NativeForLoopProofs=Map.empty} |> Result.defaultWith(String.concat "; " >> failwith)
+     let options={portOptions with LocalRegisterAllocation=true}
+     let before=generateFromIr options ir.Bytes |> Result.defaultWith(String.concat "; " >> failwith)
+     let after=generateFromIr {options with NativeIntegerForLoops=true} ir.Bytes |> Result.defaultWith(String.concat "; " >> failwith)
+@@ -533,7 +533,7 @@ let ``DIVMOD register clobbers force a template fallback when no spill frame can
+ let private rankOneIr proven source =
+     let raw=irOf source
+     let items=decode raw |> Result.defaultWith failwith
+-    let selected=TurboNativeRegions.select true {Items=items;Bytes=raw;Listing=formatListing items;Warnings=[]} |> Result.defaultWith(String.concat "; " >> failwith)
++    let selected=TurboNativeRegions.select true {Items=items;Bytes=raw;Listing=formatListing items;Warnings=[];NativeForLoopProofs=Map.empty} |> Result.defaultWith(String.concat "; " >> failwith)
+     let items=selected.Items |> List.map(function
+         | Instruction(1111,args,comment) -> Instruction((if proven then 1811 else 1711),args,comment)
+         | Instruction(1112,args,comment) -> Instruction((if proven then 1812 else 1712),args,comment)
+@@ -574,7 +574,7 @@ let ``rank-one array pressure falls back without exceeding configured stack head
+ let private rankTwoIr mask stride source =
+     let raw=irOf source
+     let items=decode raw |> Result.defaultWith failwith
+-    let selected=TurboNativeRegions.select true {Items=items;Bytes=raw;Listing=formatListing items;Warnings=[]} |> Result.defaultWith(String.concat "; " >> failwith)
++    let selected=TurboNativeRegions.select true {Items=items;Bytes=raw;Listing=formatListing items;Warnings=[];NativeForLoopProofs=Map.empty} |> Result.defaultWith(String.concat "; " >> failwith)
+     selected.Items |> List.map(function
+         | Instruction((1111|1112 as op),args,comment) -> Instruction(op+800,args@[Word mask;Word stride],comment)
+         | item -> item) |> serialize
+@@ -664,7 +664,7 @@ let ``range-proven arrays can fall back to checked inline code at the stack limi
+ let ``legacy mixed mode encoding retains the reference machine code layout`` (name: string) =
+     let bytes = irOf (programs |> List.find (fun (n, _) -> n = name) |> snd)
+     let items = decode bytes |> Result.defaultWith failwith
+-    let output = {Items=items; Bytes=bytes; Listing=formatListing items; Warnings=[]}
++    let output = {Items=items; Bytes=bytes; Listing=formatListing items; Warnings=[];NativeForLoopProofs=Map.empty}
+     let selected = TurboNativeRegions.select true output |> Result.defaultWith (String.concat "; " >> failwith)
+     // The genuine generator cannot express checked native arithmetic: it
+     // discards +1000 and emits unchecked N bodies. Compare the legacy encoding
+diff --git a/SB/Optimization/TurboNativeControlFlow.fs b/SB/Optimization/TurboNativeControlFlow.fs
+new file mode 100644
+index 0000000..a8f0330
+--- /dev/null
++++ b/SB/Optimization/TurboNativeControlFlow.fs
+@@ -0,0 +1,154 @@
++module TurboNativeControlFlow
++
++// Acyclic integer IF bodies inside a native FOR. Scalar stores and maths-stack
++// state are canonical at joins; only the certified counter remains pinned.
++open System
++open System.Collections.Generic
++open System.IO
++open HirTurboIrBackend
++
++type Test = FloatTop | WordTop | Register of int
++type Part =
++    | Leaf of TurboNativeIr.Block * TurboNativeIr.Allocation
++    | Bytes of byte[]
++    | Label of int
++    | Branch of condition:int * target:int * test:Test option
++type Plan = {Parts:Part list;SpillSlots:int;CallStackBytes:int;Branches:int}
++type private Kind = IntegerWord | BooleanFloat | NumericFloat
++exception private Unsupported
++
++let private words values=values |> List.collect(fun n -> [byte(n >>> 8);byte n]) |> List.toArray
++let private templates=lazy(
++    use stream=typeof<NativeForLoopProof>.Assembly.GetManifestResourceStream("lib537.bin")
++    use memory=new MemoryStream()
++    stream.CopyTo memory
++    let data=memory.ToArray()
++    let word i=(int data[i] <<< 8) ||| int data[i+1]
++    [4;36;53;54;55] |> List.map(fun opcode ->
++        let offset=[10..8..2306] |> List.find(fun i -> word i=opcode)
++        let first=10+int(int16(uint16(word(offset+4))))
++        opcode,data[first..first+(word(offset+2) &&& 0xFFFE)-1]) |> Map.ofList)
++
++let supports = function
++    | Instruction((4|9|10|11|12|13|14|15|36|53|54|55|320|334),[],_)
++    | Instruction((239|242|245),[LabelRef _],_)
++    | Instruction(377,[Word _;Word _],_)
++    | Instruction(138,[Word _;Word _;Word _],_)
++    | LabelDef _ -> true
++    | item -> TurboNativeIr.supports item
++
++/// Reject external entries, backward edges, unequal/nonempty join stacks and
++/// unmodeled types. The whole plan falls back if any leaf/frame cannot fit.
++let plan maxFrameBytes counter (references:Dictionary<int,int>) (items:IrItem list) =
++    try
++        let items=List.toArray items
++        let labels=Dictionary<int,int>()
++        let localRefs=Dictionary<int,int>()
++        for i in 0..items.Length-1 do
++            match items[i] with
++            | LabelDef(label,_) -> if labels.ContainsKey label then raise Unsupported else labels[label]<-i
++            | Instruction((239|242|245),[LabelRef label],_) -> localRefs[label]<-(match localRefs.TryGetValue label with true,n -> n+1 | _ -> 1)
++            | _ -> ()
++        for KeyValue(label,index) in labels do
++            let count=match localRefs.TryGetValue label with true,n -> n | _ -> 0
++            let total=match references.TryGetValue label with true,n -> n | _ -> 0
++            if total<>count then raise Unsupported
++        for i in 0..items.Length-1 do
++            match items[i] with
++            | Instruction((239|242|245),[LabelRef label],_) when not(labels.ContainsKey label) || labels[label]<=i -> raise Unsupported
++            | _ -> ()
++        let states=Dictionary<int,Kind list>()
++        let feed index stack =
++            match states.TryGetValue index with
++            | true,previous when previous<>stack -> raise Unsupported
++            | _ -> states[index]<-stack
++        feed 0 []
++        let parts=ResizeArray<Part>()
++        let pending=ResizeArray<IrItem>()
++        let mutable spills=0
++        let mutable calls=0
++        let mutable branches=0
++        let flush comparison =
++            if pending.Count>0 then
++                let lower=if comparison then TurboNativeIr.lowerComparison else TurboNativeIr.lower
++                let ir=lower 0 0 (List.ofSeq pending) |> TurboNativeIr.optimize
++                match TurboNativeIr.allocateWithContext maxFrameBytes (Map.ofList[counter,2]) ir with
++                | None -> raise Unsupported
++                | Some allocation -> spills<-max spills allocation.SpillSlots;parts.Add(Leaf(ir,allocation))
++                pending.Clear()
++        for i in 0..items.Length-1 do
++            let item=items[i]
++            let mutable stack=match states.TryGetValue i with true,state -> state | _ -> []
++            let reachable=states.ContainsKey i
++            let popWord () = match stack with IntegerWord::rest -> stack<-rest | _ -> raise Unsupported
++            let popFloat () = match stack with (BooleanFloat|NumericFloat)::rest -> stack<-rest | _ -> raise Unsupported
++            let empty () = if not stack.IsEmpty then raise Unsupported
++            let mutable falls=true
++            if not reachable then
++                match item with Instruction(2,[],_) -> () | _ -> raise Unsupported
++            else
++                match item with
++                | LabelDef(label,_) -> empty();flush false;parts.Add(Label label)
++                | Instruction((239|245 as op),[LabelRef target],_) ->
++                    popFloat();empty();flush false
++                    let mutable test=FloatTop
++                    // An immediately consumed comparison needs no float stack
++                    // traffic. LEA releases its frame without changing flags.
++                    if parts.Count>0 then
++                        match parts[parts.Count-1] with
++                        | Leaf(ir,allocation) ->
++                            match List.tryLast allocation.Instructions with
++                            | Some(TurboNativeIr.PushBoolean r) ->
++                                parts[parts.Count-1]<-Leaf(ir,{allocation with Instructions=allocation.Instructions |> List.take(allocation.Instructions.Length-1)})
++                                test<-Register r
++                            | _ -> ()
++                        | _ -> ()
++                    parts.Add(Branch((if op=239 then 7 else 6),target,Some test));branches<-branches+1
++                    feed labels[target] stack
++                | Instruction(242,[LabelRef target],_) ->
++                    empty();flush false;parts.Add(Branch(0,target,None));branches<-branches+1
++                    feed labels[target] stack;falls<-false
++                | Instruction((9|10|11|12|13|14|15),[],_) ->
++                    popWord();popWord();pending.Add item;flush true;stack<-BooleanFloat::stack
++                | Instruction(320,[],_) ->
++                    popWord();flush false
++                    // lib537's exact conversion clobbers D2/D3. Preserve the
++                    // pinned counter/bound and charge its return address too.
++                    parts.Add(Bytes(words [0x2F02;0x2F03;0x4EAE;0x8934;0x2301;0x3300;0x261F;0x241F]))
++                    calls<-12;stack<-NumericFloat::stack
++                | Instruction(334,[],_) ->
++                    match stack with BooleanFloat::rest -> stack<-IntegerWord::rest | _ -> raise Unsupported
++                    flush false
++                    parts.Add(Bytes(words [0x7000;0x4AA9;2;0x56C0;0x0240;1;0x43E9;6;0x3300]))
++                | Instruction(4,[],_) ->
++                    popWord();flush false;parts.Add(Bytes templates.Value[4]);stack<-IntegerWord::stack
++                | Instruction(36,[],_) ->
++                    popFloat();flush false;parts.Add(Bytes templates.Value[36]);stack<-BooleanFloat::stack
++                | Instruction((53|54|55 as op),[],_) ->
++                    popFloat();popFloat();flush false;parts.Add(Bytes templates.Value[op]);stack<-BooleanFloat::stack
++                | Instruction((377|138),args,_) ->
++                    let exponent,high,low=match args with [Word e;Word h] -> e,h,0 | [Word e;Word h;Word l] -> e,h,l | _ -> raise Unsupported
++                    flush false
++                    parts.Add(Bytes(words [0x333C;low;0x233C;exponent;high]))
++                    stack<-(if low=0 && ((exponent=0 && high=0)||(exponent=0x801 && high=0x4000)) then BooleanFloat else NumericFloat)::stack
++                | _ when TurboNativeIr.supports item ->
++                    match item with
++                    | Instruction((106|109|263),_,_) -> stack<-IntegerWord::stack
++                    | Instruction(268,_,_) -> popWord();stack<-IntegerWord::IntegerWord::stack
++                    | Instruction((5|6|7|8|20|1005|1006|1007),_,_) -> popWord();popWord();stack<-IntegerWord::stack
++                    | Instruction((1|1001|1711|1811),_,_) -> popWord();stack<-IntegerWord::stack
++                    | Instruction(118,_,_) -> popWord()
++                    | Instruction((1712|1812),_,_) -> popWord();popWord()
++                    | Instruction(1911,_,_) -> popWord();popWord();stack<-IntegerWord::stack
++                    | Instruction(1912,_,_) -> popWord();popWord();popWord()
++                    | _ -> ()
++                    pending.Add item
++                | _ -> raise Unsupported
++                if falls then feed (i+1) stack
++        match states.TryGetValue items.Length with true,[] -> () | _ -> raise Unsupported
++        flush false
++        if max(spills*2) calls>maxFrameBytes then None
++        else Some{Parts=List.ofSeq parts;SpillSlots=spills;CallStackBytes=calls;Branches=branches}
++    with Unsupported | :? ArgumentException -> None
++
++let allocations plan=plan.Parts |> List.choose(function Leaf(_,allocation) -> Some allocation | _ -> None)

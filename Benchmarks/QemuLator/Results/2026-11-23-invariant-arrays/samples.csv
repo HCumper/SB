@@ -1,0 +1,33 @@
+sequence,benchmark,compiler,trial,passes,expected,checksum,ticks,seconds,hostJobSeconds,stdout,status
+r005,matrix_multiply,SB,0,10,1094,1094,109,2.18,2.2205467224121094,"matrix_multiply:1094
+",passed
+r006,matrix_multiply,Turbo FAST,0,10,1094,1094,183,3.66,3.6995766162872314,"matrix_multiply:1094
+",passed
+r015,route_planner,Turbo FAST,0,1,4701,4701,1803,36.06,36.09847354888916,"route_planner:4701
+",passed
+r016,route_planner,SB,0,1,4701,4701,730,14.6,14.640929698944092,"route_planner:4701
+",passed
+r023,matrix_multiply,Turbo FAST,1,10,1094,1094,183,3.66,3.698601007461548,"matrix_multiply:1094
+",passed
+r024,matrix_multiply,SB,1,10,1094,1094,105,2.1,2.1387174129486084,"matrix_multiply:1094
+",passed
+r033,route_planner,SB,1,1,4701,4701,730,14.6,14.619884729385376,"route_planner:4701
+",passed
+r034,route_planner,Turbo FAST,1,1,4701,4701,1803,36.06,36.10040354728699,"route_planner:4701
+",passed
+r041,matrix_multiply,SB,2,10,1094,1094,104,2.08,2.140082359313965,"matrix_multiply:1094
+",passed
+r042,matrix_multiply,Turbo FAST,2,10,1094,1094,183,3.66,3.6802780628204346,"matrix_multiply:1094
+",passed
+r051,route_planner,Turbo FAST,2,1,4701,4701,1803,36.06,36.10048294067383,"route_planner:4701
+",passed
+r052,route_planner,SB,2,1,4701,4701,730,14.6,14.639963865280151,"route_planner:4701
+",passed
+r059,matrix_multiply,Turbo FAST,3,10,1094,1094,183,3.66,3.6996498107910156,"matrix_multiply:1094
+",passed
+r060,matrix_multiply,SB,3,10,1094,1094,105,2.1,2.1403849124908447,"matrix_multiply:1094
+",passed
+r069,route_planner,SB,3,1,4701,4701,730,14.6,14.619593858718872,"route_planner:4701
+",passed
+r070,route_planner,Turbo FAST,3,1,4701,4701,1803,36.06,36.09957528114319,"route_planner:4701
+",passed

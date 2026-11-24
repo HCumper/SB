@@ -1,0 +1,10 @@
+{
+  "ProcessId": 44144,
+  "ExecutablePath": "C:\\Program Files (x86)\\Q-emuLator\\QemuLator.exe",
+  "CommandLine": "\"C:\\Program Files (x86)\\Q-emuLator\\QemuLator.exe\" \"C:\\Source\\codex-workspace\\.scratch\\turbo-direct-conditions\\qemulator-conditions\\benchmark.QCF\"",
+  "CreationDate": "2026-11-23T14:11:40.413375-05:00",
+  "WindowStyle": "Hidden",
+  "ConfigurationSha256": "E69DBA929E80C0F03B240E6CCED82363055618B7F3C325C39144E54A44006C0B",
+  "Speed": "QL",
+  "Timing": "external unmodified whole jobs"
+}

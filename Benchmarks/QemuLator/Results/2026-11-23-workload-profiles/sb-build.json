@@ -1,0 +1,6 @@
+{
+  "CompilerDll": "C:\\Source\\SB\\SB\\bin\\Debug\\net10.0\\SB.dll",
+  "CompilerSha256": "12F7395A57F72A44887603AD7F47553F5537505F19CA3B6E895BD59EE32CAAF8",
+  "Flags": "--hir-opt --native-regions --regalloc",
+  "RecordedUtc": "2026-11-23T19:35:38.3220121Z"
+}

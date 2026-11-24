@@ -96,6 +96,11 @@ type RankTwoIntegerAccess = {
     ExactLengths: (int * int) option
 }
 
+/// Trusted HIR binding proof, keyed by the emitted FOR body label. Kept out of
+/// serialized IR: byte-only/programmatic generation retains conservative rules.
+type NativeForBindings = { Scalars:Set<string>; InvariantScalars:Set<string>; InvariantArrays:Set<string> }
+type NativeForLoopProof = { Counter:int; ScalarVectors:Set<int>; InvariantScalarVectors:Set<int>; InvariantArrayVectors:Set<int> }
+
 type TurboIrOptions = {
     /// Startup windows to open, as Turbo's windows% setting (0-3). TURBO_windo n overrides it.
     WindowCount: int
@@ -119,6 +124,10 @@ type TurboIrOptions = {
     SafeArrayAccesses: Set<string * HirExpr list>
     OneDimensionalIntegerAccesses: Set<string * HirExpr list>
     TwoDimensionalIntegerAccesses: Map<string * HirExpr list, RankTwoIntegerAccess>
+    CertifiedNativeForLoops: Map<SymbolId option * LoopId,NativeForBindings>
+    /// Memory-counter loops may observe scalar aliases across audited calls.
+    /// This proof must never be supplied to the register-pinning planner.
+    CertifiedMemoryForLoops: Set<SymbolId option * LoopId>
 }
 
 type TurboIrOutput = {
@@ -126,6 +135,10 @@ type TurboIrOutput = {
     Bytes: byte[]
     Listing: string
     Warnings: string list
+    NativeForLoopProofs: Map<int,NativeForLoopProof>
+    MemoryForLoops: Map<int,int>
+    /// Known procedure entry -> integer value argument count (no return value).
+    NativeProcedureCalls: Map<int,int>
 }
 
 // Turbo's parser copies the geometry and colours of its own open windows (P 18062-18146),
@@ -154,6 +167,8 @@ let defaultOptions = {
     SafeArrayAccesses = Set.empty
     OneDimensionalIntegerAccesses = Set.empty
     TwoDimensionalIntegerAccesses = Map.empty
+    CertifiedNativeForLoops = Map.empty
+    CertifiedMemoryForLoops = Set.empty
 }
 
 /// Internal listing annotation consumed by native-region selection. The binary
@@ -916,6 +931,9 @@ type private Emitter(options: TurboIrOptions, program: HirProgram) =
     let variantEntries = Dictionary<SymbolId * Set<SymbolId>, int>()
     let routineVariants = ResizeArray<HirRoutine * Set<SymbolId> * int>()
     let localForSymbols = HashSet<SymbolId>()
+    let nativeForLoopProofs = Dictionary<int,NativeForLoopProof>()
+    let memoryForLoops = Dictionary<int,int>()
+    let nativeProcedureCalls = Dictionary<int,int>()
     let declaredLines = SortedSet<int>()
     let referencedLines = HashSet<int>()
     let restoreLabels = Dictionary<int, int>()
@@ -2045,6 +2063,13 @@ type private Emitter(options: TurboIrOptions, program: HirProgram) =
         let vector = this.ForVector(symbol, scope, pos)
         let top = newLabel pos
         let endLabel = newLabel pos
+        match options.CertifiedNativeForLoops.TryFind(scope.Routine |> Option.map _.Symbol,loopId) with
+        | Some bindings when vector.Type=TurboInt ->
+            let vectors names=names |> Set.map(fun name -> (this.NamedVector(name,pos)).Id)
+            nativeForLoopProofs[top]<-{Counter=vector.Id;ScalarVectors=vectors bindings.Scalars;InvariantScalarVectors=vectors bindings.InvariantScalars;InvariantArrayVectors=vectors bindings.InvariantArrays}
+        | _ -> ()
+        if vector.Type=TurboInt && options.CertifiedMemoryForLoops.Contains(scope.Routine |> Option.map _.Symbol,loopId) then
+            memoryForLoops[top]<-vector.Id
         emitList vector top endLabel
         op0 Op.doneFor
         define top $"FOR {vector.Name}"
@@ -2095,6 +2120,10 @@ type private Emitter(options: TurboIrOptions, program: HirProgram) =
                     fail pos $"function '{routine.Name}' is called as a procedure."
                 let vector = this.Vector(routine.Name, RoutineVector, pos)
                 let entry = this.EmitRoutineArguments(scope, routine, args, pos)
+                if not options.CertifiedMemoryForLoops.IsEmpty &&
+                   (routine.Parameters |> List.forall(fun p -> not(this.IsReferenceFormal p) && this.TypeOfName p.Storage.Name=TurboInt)) &&
+                   (args |> List.forall(function ValueArg _ -> true | _ -> false)) then
+                    nativeProcedureCalls[entry]<-routine.Parameters.Length
                 opc Op.gosub [ LabelRef entry ] vector.Name
             | _ -> fail pos $"'{this.SymbolName symbol}' is not a compiled procedure."
         | BuiltInCall(Print, channel, args, pos) -> this.EmitPrint(scope, channel, args, pos)
@@ -2687,7 +2716,10 @@ type private Emitter(options: TurboIrOptions, program: HirProgram) =
                     { Items = items
                       Bytes = bytes
                       Listing = formatListing items
-                      Warnings = List.ofSeq warnings }
+                      Warnings = List.ofSeq warnings
+                      NativeForLoopProofs = nativeForLoopProofs |> Seq.map(fun pair -> pair.Key,pair.Value) |> Map.ofSeq
+                      MemoryForLoops = memoryForLoops |> Seq.map(fun pair -> pair.Key,pair.Value) |> Map.ofSeq
+                      NativeProcedureCalls = nativeProcedureCalls |> Seq.map(fun pair -> pair.Key,pair.Value) |> Map.ofSeq }
             | problems, roundTripOk ->
                 let roundTripProblem = if roundTripOk then [] else [ "the stream does not decode back to the emitted records." ]
                 Result.Error(problems @ roundTripProblem |> List.map (fun problem -> $"Internal Turbo IR error: {problem}"))

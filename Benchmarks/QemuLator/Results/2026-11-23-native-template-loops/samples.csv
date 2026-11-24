@@ -1,0 +1,49 @@
+sequence,benchmark,compiler,trial,passes,expected,checksum,ticks,seconds,hostJobSeconds,stdout,status
+r007,string_operations,Turbo FAST,0,80,880,880,207,4.14,4.18082332611084,"string_operations:880
+",passed
+r008,string_operations,SB,0,80,880,880,210,4.2,4.239904165267944,"string_operations:880
+",passed
+r009,float_polynomial,SB,0,4,9252,9252,641,12.82,12.86066198348999,"float_polynomial:9252
+",passed
+r010,float_polynomial,Turbo FAST,0,4,9252,9252,641,12.82,12.859928607940674,"float_polynomial:9252
+",passed
+r017,concordance,SB,0,4,7936,7936,2733,54.66,54.69949531555176,"concordance:7936
+",passed
+r018,concordance,Turbo FAST,0,4,7936,7936,2482,49.64,49.680752992630005,"concordance:7936
+",passed
+r025,string_operations,SB,1,80,880,880,210,4.2,4.241218090057373,"string_operations:880
+",passed
+r026,string_operations,Turbo FAST,1,80,880,880,202,4.04,4.080514907836914,"string_operations:880
+",passed
+r027,float_polynomial,Turbo FAST,1,4,9252,9252,642,12.84,12.860791206359863,"float_polynomial:9252
+",passed
+r028,float_polynomial,SB,1,4,9252,9252,641,12.82,12.864354133605957,"float_polynomial:9252
+",passed
+r035,concordance,Turbo FAST,1,4,7936,7936,2483,49.66,49.681106090545654,"concordance:7936
+",passed
+r036,concordance,SB,1,4,7936,7936,2734,54.68,54.72023797035217,"concordance:7936
+",passed
+r043,string_operations,Turbo FAST,2,80,880,880,202,4.04,4.118904113769531,"string_operations:880
+",passed
+r044,string_operations,SB,2,80,880,880,209,4.18,4.215414762496948,"string_operations:880
+",passed
+r045,float_polynomial,SB,2,4,9252,9252,641,12.82,12.869517087936401,"float_polynomial:9252
+",passed
+r046,float_polynomial,Turbo FAST,2,4,9252,9252,642,12.84,12.890473365783691,"float_polynomial:9252
+",passed
+r053,concordance,SB,2,4,7936,7936,2733,54.66,54.70123243331909,"concordance:7936
+",passed
+r054,concordance,Turbo FAST,2,4,7936,7936,2482,49.64,49.69137930870056,"concordance:7936
+",passed
+r061,string_operations,SB,3,80,880,880,210,4.2,4.2385573387146,"string_operations:880
+",passed
+r062,string_operations,Turbo FAST,3,80,880,880,203,4.06,4.091311931610107,"string_operations:880
+",passed
+r063,float_polynomial,Turbo FAST,3,4,9252,9252,642,12.84,12.852697610855103,"float_polynomial:9252
+",passed
+r064,float_polynomial,SB,3,4,9252,9252,641,12.82,12.864177227020264,"float_polynomial:9252
+",passed
+r071,concordance,Turbo FAST,3,4,7936,7936,2483,49.66,49.68195605278015,"concordance:7936
+",passed
+r072,concordance,SB,3,4,7936,7936,2733,54.66,54.69035720825195,"concordance:7936
+",passed

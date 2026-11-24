@@ -1,0 +1,2 @@
+benchmark,category,passes,checksum,turboSamples,turboMedian,turboMin,turboMax,turboBytes,sbSamples,sbMedian,sbMin,sbMax,sbBytes,sbSpeedup,sbTimeReductionPercent
+route_planner,application,1,4701,3,36.06,36.06,36.06,13192,3,32.18,32.18,32.18,9542,1.1205717837165943,10.75984470327233

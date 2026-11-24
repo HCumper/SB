@@ -88,6 +88,15 @@ No reload or spill can be inserted there. General cross-block register
 allocation and floating-point allocation are not performed. Native integer FOR
 plans retain only their explicitly pinned counter/END/STEP registers.
 
+Within a certified native FOR condition, an allocated final comparison can be
+replaced by `CompareFlags`. It emits only CMP.W/CMPI.W, leaving operands intact.
+The following LEA spill-frame release preserves flags for a direct signed Bcc.
+Value-producing comparisons retain their exact QL Boolean materialization.
+Integer truth tails forward their final register where possible and remove the
+word-to-float helper. Eager AND/OR fusion keeps the original left float live
+through all right-operand checks, so existing error snapshots remain valid.
+This does not extend allocation across arbitrary branches or calls.
+
 Stores commit immediately and invalidate all cached variable loads. Only the
 value just stored to that same vector can subsequently be reused. This preserves
 flexible/reference aliases, including different vectors addressing one cell.

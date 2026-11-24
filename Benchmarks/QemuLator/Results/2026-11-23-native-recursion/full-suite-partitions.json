@@ -1,0 +1,30 @@
+{
+  "Command": "dotnet test",
+  "Configuration": "--no-build --no-restore",
+  "ExpectedTotal": 4328,
+  "Groups": [
+    {
+      "name": "other",
+      "project": "SB.sln",
+      "filter": "FullyQualifiedName~SBTests.AstDiagnosticsTests|FullyQualifiedName~SBTests.AstToHirTests|FullyQualifiedName~SBTests.AstVerificationTests|FullyQualifiedName~SBTests.CompilerPipelineTests|FullyQualifiedName~SBTests.GeneratedCExecutionTests|FullyQualifiedName~SBTests.GeneratedCSharpExecutionTests|FullyQualifiedName~SBTests.HirAnalysisTests|FullyQualifiedName~SBTests.HirCBackendTests|FullyQualifiedName~SBTests.HirCSharpBackendTests|FullyQualifiedName~SBTests.HirTurboIrBackendTests|FullyQualifiedName~SBTests.HirTurboOptimizerTests|FullyQualifiedName~SBTests.ParseTreeVisitorTests|FullyQualifiedName~SBTests.PipelineSourceTests|FullyQualifiedName~SBTests.ProgramFixtureTests|FullyQualifiedName~SBTests.SemanticAnalyzerTests|FullyQualifiedName~SBTests.Ssb280Tests|FullyQualifiedName~SBTests.SsbCorrectnessTests|FullyQualifiedName~SBTests.TurboCodegenTests|FullyQualifiedName~SBTests.TurboNativeArraysTests|FullyQualifiedName~SBTests.TurboNativeIrTests|FullyQualifiedName~SBTests.TurboNativeLoopsTests|FullyQualifiedName~SBTests.TurboNativeRegionsTests|FullyQualifiedName~SBTests.TurboNativeTemplateLoopsTests|FullyQualifiedName~SBTests.UtilityTests|FullyQualifiedName~SBRuntimeTests"
+    },
+    {
+      "name": "loops",
+      "project": "SBTests/SBTests.fsproj",
+      "filter": "FullyQualifiedName~SBTests.GeneratedTurboExecutionTests&(FullyQualifiedName~loop|FullyQualifiedName~Loop|FullyQualifiedName~FOR|FullyQualifiedName~For|FullyQualifiedName~recursive|FullyQualifiedName~Recursive)"
+    },
+    {
+      "name": "arrays",
+      "project": "SBTests/SBTests.fsproj",
+      "filter": "FullyQualifiedName~SBTests.GeneratedTurboExecutionTests&(FullyQualifiedName!~loop&FullyQualifiedName!~Loop&FullyQualifiedName!~FOR&FullyQualifiedName!~For&FullyQualifiedName!~recursive&FullyQualifiedName!~Recursive)&(FullyQualifiedName~array|FullyQualifiedName~Array|FullyQualifiedName~rank|FullyQualifiedName~Rank|FullyQualifiedName~checked|FullyQualifiedName~Checked|FullyQualifiedName~DIV|FullyQualifiedName~MOD|FullyQualifiedName~arithmetic|FullyQualifiedName~Arithmetic)"
+    },
+    {
+      "name": "remaining",
+      "project": "SBTests/SBTests.fsproj",
+      "filter": "FullyQualifiedName~SBTests.GeneratedTurboExecutionTests&(FullyQualifiedName!~loop&FullyQualifiedName!~Loop&FullyQualifiedName!~FOR&FullyQualifiedName!~For&FullyQualifiedName!~recursive&FullyQualifiedName!~Recursive)&(FullyQualifiedName!~array&FullyQualifiedName!~Array&FullyQualifiedName!~rank&FullyQualifiedName!~Rank&FullyQualifiedName!~checked&FullyQualifiedName!~Checked&FullyQualifiedName!~DIV&FullyQualifiedName!~MOD&FullyQualifiedName!~arithmetic&FullyQualifiedName!~Arithmetic)"
+    }
+  ],
+  "SupersededOtherFilter": "FullyQualifiedName!~SBTests.GeneratedTurboExecutionTests",
+  "OtherFixtureCount": 24,
+  "ReplacementReason": "Exclusion-only NUnit execution included generated cases; final non-Turbo run uses an explicit positive fixture list."
+}

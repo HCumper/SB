@@ -1,0 +1,78 @@
+{
+  "IncludedGroups": [
+    "native-template:slow",
+    "runtime:go_slow",
+    "runtime:interpreter",
+    "runtime:native_to_p",
+    "runtime:p_to_p_short",
+    "shared-P:fast",
+    "thread-dispatch"
+  ],
+  "Comparisons": [
+    {
+      "Benchmark": "string_operations",
+      "TurboInstructions": 859067,
+      "SBInstructions": 946785,
+      "ExtraInstructions": 87718,
+      "SBExtraPercent": 10.210845021401125,
+      "SBModeInstructions": 77533,
+      "TurboModeInstructions": 40,
+      "SBModePercent": 8.189081998552998,
+      "ModeShareOfExtraPercent": 88.34332748124672,
+      "SameRomInstructionCount": true,
+      "SameRomCalls": true
+    },
+    {
+      "Benchmark": "float_polynomial",
+      "TurboInstructions": 2977799,
+      "SBInstructions": 3224499,
+      "ExtraInstructions": 246700,
+      "SBExtraPercent": 8.284642449003442,
+      "SBModeInstructions": 216269,
+      "TurboModeInstructions": 42,
+      "SBModePercent": 6.707057437449973,
+      "ModeShareOfExtraPercent": 87.64775030401297,
+      "SameRomInstructionCount": true,
+      "SameRomCalls": true
+    },
+    {
+      "Benchmark": "float_transcendentals",
+      "TurboInstructions": 4478927,
+      "SBInstructions": 4587878,
+      "ExtraInstructions": 108951,
+      "SBExtraPercent": 2.43252457564055,
+      "SBModeInstructions": 89765,
+      "TurboModeInstructions": 42,
+      "SBModePercent": 1.9565690282086838,
+      "ModeShareOfExtraPercent": 82.35169938779818,
+      "SameRomInstructionCount": true,
+      "SameRomCalls": true
+    },
+    {
+      "Benchmark": "eight_queens",
+      "TurboInstructions": 3654790,
+      "SBInstructions": 4292463,
+      "ExtraInstructions": 637673,
+      "SBExtraPercent": 17.4475961683161,
+      "SBModeInstructions": 519226,
+      "TurboModeInstructions": 68,
+      "SBModePercent": 12.09622540718464,
+      "ModeShareOfExtraPercent": 81.41445537132668,
+      "SameRomInstructionCount": true,
+      "SameRomCalls": true
+    },
+    {
+      "Benchmark": "concordance",
+      "TurboInstructions": 11260160,
+      "SBInstructions": 12729163,
+      "ExtraInstructions": 1469003,
+      "SBExtraPercent": 13.046022436626123,
+      "SBModeInstructions": 1151883,
+      "TurboModeInstructions": 72,
+      "SBModePercent": 9.049165290757923,
+      "ModeShareOfExtraPercent": 78.40766833015317,
+      "SameRomInstructionCount": true,
+      "SameRomCalls": true
+    }
+  ]
+}

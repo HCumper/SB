@@ -1,0 +1,14 @@
+Test run for C:\Source\SB\SBRuntimeTests\bin\Debug\net10.0\SBRuntimeTests.dll (.NETCoreApp,Version=v10.0)
+Test run for C:\Source\SB\SBTests\bin\Debug\net10.0\SBTests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.A total of 1 test files matched the specified pattern.
+
+Results File: C:\Source\codex-workspace\.scratch\turbo-local-for\full-tests\full-final_net10.0_20261123094013.trx
+
+Passed!  - Failed:     0, Passed:   248, Skipped:     0, Total:   248, Duration: 14 s - SBRuntimeTests.dll (net10.0)
+Turbo IR generation failed:
+line 10 (1:3): RUN has no Turbo IR equivalent in the specification.
+line 861:25 missing Newline at '<EOF>'
+line 861:25 missing Newline at '<EOF>'
+Results File: C:\Source\codex-workspace\.scratch\turbo-local-for\full-tests\full-final_net10.0_20261123095159.trx
+
+Passed!  - Failed:     0, Passed:  3198, Skipped:     0, Total:  3198, Duration: 11 m 59 s - SBTests.dll (net10.0)

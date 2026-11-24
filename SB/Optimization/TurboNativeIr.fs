@@ -1,7 +1,8 @@
 module TurboNativeIr
 
 // Leaf integer lowering after Turbo's improver. Values are immutable virtual
-// words. There are no calls or hidden template clobbers in a block. Checked
+// words. Whole-loop comparison leaves additionally materialize QL float booleans.
+// There are no calls or hidden template clobbers in a block. Checked
 // operations have explicit non-returning exits to the runtime error handlers.
 // D0/D1 and A2 are scratch; all other registers are preserved. The maths stack
 // is canonical and the private CPU-stack spill frame is gone at every edge.
@@ -26,11 +27,13 @@ type Instruction =
     | LoadArrayWord2 of Value * vector:int * checks:int * columns:int * row:Value * column:Value * stack:Value list
     | StoreArrayWord2 of vector:int * checks:int * columns:int * row:Value * column:Value * value:Value * stack:Value list
     | Negate of Value * Value
+    | CompareWord of Value * opcode:int * Value * Value
     // Snapshot in bottom-to-top maths-stack order at the failing P template.
     // A checked increment also commits its wrapped destination before trapping.
     | OverflowCheck of product:Value option * stack:Value list * store:(int * Value) option
     | StoreVector of int * Value
     | PushMaths of Value
+    | PushBooleanMaths of Value
 
 type Block = {
     StartOffset:int
@@ -68,11 +71,19 @@ type AllocatedInstruction =
     | LoadElement2 of vector:int * checks:int * columns:int * row:RecoveryLocation * column:RecoveryLocation * accumulator:int * stack:RecoveryLocation list
     | StoreElement2 of vector:int * checks:int * columns:int * row:RecoveryLocation * column:RecoveryLocation * value:RecoveryLocation * accumulator:int * stack:RecoveryLocation list
     | Negative of register:int
+    | Comparison of opcode:int * destination:int * right:RecoveryLocation
+    // Final comparison consumed by an adjacent native branch. The leaf frame
+    // is released with LEA, which preserves these signed comparison flags.
+    | CompareFlags of destination:int * right:RecoveryLocation
     | Check of productRegister:int option * stack:RecoveryLocation list * store:(int * RecoveryLocation) option
     | Store of vector:int * value:RecoveryLocation
     | Push of register:int
+    | PushBoolean of register:int
 
 type Allocation = { Instructions:AllocatedInstruction list; SpillSlots:int; Registers:Set<int> }
+// Whole-loop planner owns these registers and proves descriptor/row stability.
+// A validity bit is set only after the original access's checks have succeeded.
+type ArrayRowCache = { AddressRegister:int; ValidBit:int }
 type CompiledBlock = { Ir:Block; Allocation:Allocation; Code:byte[] }
 type Report = { Blocks:CompiledBlock list; RejectedBlocks:int; StackExtraBytes:int }
 
@@ -87,6 +98,8 @@ let supports = function
     | _ -> false
 
 let private legacyCost = function
+    | HirTurboIrBackend.Instruction((9|10|14|15),_,_) -> 24,8
+    | HirTurboIrBackend.Instruction((11|12|13),_,_) -> 22,8
     | HirTurboIrBackend.Instruction((1|268),_,_) -> 2,2
     | HirTurboIrBackend.Instruction(2,_,_) -> 0,0
     | HirTurboIrBackend.Instruction((5|6|7),_,_) -> 8,3
@@ -112,7 +125,7 @@ let private legacyCost = function
 /// Lower a straight-line, native-mode sequence. A store invalidates every cached
 /// variable load, then records only its own value: two different vectors may
 /// point to the same cell through flexible/reference parameter bindings.
-let lower startOffset endOffset items =
+let private lowerCore booleanResult startOffset endOffset items =
     let code=ResizeArray<Instruction>()
     let variables=Dictionary<int,Value>()
     let constants=Dictionary<int,Value>()
@@ -194,10 +207,25 @@ let lower startOffset endOffset items =
             let value,column,row=pop(),pop(),pop()
             code.Add(StoreArrayWord2(vector,mask,columns,row,column,value,(if mask<>0 then List.rev stack else [])))
             variables.Clear()
+        | HirTurboIrBackend.Instruction((9|10|11|12|13|14|15 as op),[],_) when booleanResult ->
+            let right,left=pop(),pop()
+            let value=fresh()
+            code.Add(CompareWord(value,op,left,right))
+            push value
         | _ -> invalidArg "items" "Only audited leaf integer operations are supported."
-    for value in List.rev stack do code.Add(PushMaths value)
+    for index,value in List.rev stack |> List.indexed do
+        code.Add(if booleanResult && index=stack.Length-1 then PushBooleanMaths value else PushMaths value)
     let bytes,words=items |> List.map legacyCost |> List.fold (fun (bytes,words) (b,w) -> bytes+b,words+w) (0,0)
     {StartOffset=startOffset;EndOffset=endOffset;Instructions=List.ofSeq code;LegacyBytes=bytes;LegacyDataWords=words}
+
+let lower startOffset endOffset items = lowerCore false startOffset endOffset items
+/// Only the whole-loop typed CFG uses this: its final integer comparison must
+/// materialize the exact six-byte QL boolean before any following operation.
+let lowerComparison startOffset endOffset items = lowerCore true startOffset endOffset items
+
+let comparisonCondition = function
+    | 9 -> 12 | 10 -> 14 | 11|12 -> 7 | 13 -> 6 | 14 -> 15 | 15 -> 13
+    | _ -> invalidArg "op" "Unsupported integer comparison."
 
 let private sources = function
     | Binary(_,_,a,b) -> [a;b]
@@ -206,12 +234,13 @@ let private sources = function
     | StoreArrayWord(_,_,index,value,stack) -> index::value::stack
     | LoadArrayWord2(_,_,_,_,row,column,stack) -> row::column::stack
     | StoreArrayWord2(_,_,_,row,column,value,stack) -> row::column::value::stack
-    | Negate(_,a) | StoreVector(_,a) | PushMaths a -> [a]
+    | CompareWord(_,_,a,b) -> [a;b]
+    | Negate(_,a) | StoreVector(_,a) | PushMaths a | PushBooleanMaths a -> [a]
     | OverflowCheck(product,stack,store) -> (Option.toList product)@stack@(store |> Option.map (snd >> List.singleton) |> Option.defaultValue [])
     | _ -> []
 
 let private destination = function
-    | Constant(v,_) | LoadVector(v,_) | PopMaths v | Binary(v,_,_,_) | Divide(v,_,_,_,_) | LoadArrayWord(v,_,_,_,_) | LoadArrayWord2(v,_,_,_,_,_,_) | Negate(v,_) -> Some v
+    | Constant(v,_) | LoadVector(v,_) | PopMaths v | Binary(v,_,_,_) | Divide(v,_,_,_,_) | LoadArrayWord(v,_,_,_,_) | LoadArrayWord2(v,_,_,_,_,_,_) | Negate(v,_) | CompareWord(v,_,_,_) -> Some v
     | _ -> None
 
 type private ExpressionKey =
@@ -268,6 +297,8 @@ let optimize (block:Block) =
             | OverflowCheck(product,stack,store) -> OverflowCheck(Option.map resolve product,List.map resolve stack,store |> Option.map(fun (vector,value) -> vector,resolve value))
             | StoreVector(vector,value) -> StoreVector(vector,resolve value)
             | PushMaths value -> PushMaths(resolve value)
+            | PushBooleanMaths value -> PushBooleanMaths(resolve value)
+            | CompareWord(v,op,a,b) -> CompareWord(v,op,resolve a,resolve b)
             | instruction -> instruction
         let fitsWord n = n>= -32768L && n<=32767L
         let mutable index=0
@@ -444,6 +475,12 @@ let allocateWithContext maxFrameBytes (vectorRegisters:Map<int,int>) (block:Bloc
             | PopMaths value -> code.Add(Pop(define value))
             | StoreVector(vector,value) -> code.Add(Store(vector,recoveryLocation value))
             | PushMaths value -> code.Add(Push(ensure value Set.empty))
+            | PushBooleanMaths value -> code.Add(PushBoolean(ensure value Set.empty))
+            | CompareWord(value,op,left,right) ->
+                let lhs=ensure left Set.empty
+                let source=recoveryLocation right
+                overwrite index left value lhs
+                code.Add(Comparison(op,lhs,source))
             | OverflowCheck(product,stack,store) ->
                 // No reloads or spills may be inserted between arithmetic and
                 // its check: MOVE would destroy V. Recovery reads the current
@@ -586,7 +623,7 @@ let private recoveryBytes frame stack store =
 
 /// Only word operations and signed A6-relative vector displacements are emitted.
 /// LEA reserves/releases the spill frame without changing the condition codes.
-let emitWithContext vectorTableOffset (vectorRegisters:Map<int,int>) (recoverySuffix:byte[]) allocation =
+let emitWithArrayContext vectorTableOffset (vectorRegisters:Map<int,int>) (recoverySuffix:byte[]) (rowCaches:Map<int,ArrayRowCache>) allocation =
     let bytes=ResizeArray<byte>()
     let word n = bytes.Add(byte(n >>> 8));bytes.Add(byte n)
     let displacement vector = word(vectorTableOffset+4*vector)
@@ -624,8 +661,12 @@ let emitWithContext vectorTableOffset (vectorRegisters:Map<int,int>) (recoverySu
         | RecoveryRegister source -> word(0x3000 ||| (r <<< 9) ||| source)
         | RecoverySlot slot -> word(0x302F ||| (r <<< 9));word(slot*2)
         | RecoveryImmediate n -> word(0x303C ||| (r <<< 9));word n
-    let elementAddress2 vector mask columns row column accumulator stack =
-        word 0x246E;displacement vector
+    let compareWord dst = function
+        | RecoveryRegister r -> word(0xB040 ||| (dst <<< 9) ||| r)
+        | RecoverySlot slot -> word(0xB06F ||| (dst <<< 9));word(slot*2)
+        | RecoveryImmediate n -> word(0x0C40 ||| dst);word n
+    let elementAddress2 cache vector mask columns row column accumulator stack =
+        let descriptor () = word 0x246E;displacement vector
         let check location bound snapshot =
             let r=match location with RecoveryRegister r -> r | _ -> moveWord accumulator location;accumulator
             let failureBytes=recoveryBytes frame snapshot None + recoverySuffix.Length
@@ -634,17 +675,36 @@ let emitWithContext vectorTableOffset (vectorRegisters:Map<int,int>) (recoverySu
             word(0xB06A ||| (r <<< 9));word bound
             word 0x6B00;word(failureBytes+2)
             recovery 0x8AE0 snapshot None
-        // lib537 consumes/checks the last source subscript first. On a column
-        // failure the row is still on the maths stack; the value is consumed.
-        if mask &&& 2<>0 then check column 10 (stack@[row])
-        if mask &&& 1<>0 then check row 12 stack
-        moveWord accumulator row
-        if columns=0 then word(0xC0EA ||| (accumulator <<< 9));word 10
-        else word(0xC0FC ||| (accumulator <<< 9));word columns
-        word 0x2452 // reload current data pointer after descriptor accesses
-        // Long address additions reproduce Turbo's modulo-32-bit offset rules.
-        // They are not checked BASIC arithmetic, and do not truncate at 16 bits.
-        word(0xD5C0 ||| accumulator);word(0xD5C0 ||| accumulator)
+        let rowAddress () =
+            if mask &&& 1<>0 then check row 12 stack
+            moveWord accumulator row
+            if columns=0 then word(0xC0EA ||| (accumulator <<< 9));word 10
+            else word(0xC0FC ||| (accumulator <<< 9));word columns
+            word 0x2452
+            // Long offset arithmetic reproduces Turbo's modulo-32-bit rules.
+            word(0xD5C0 ||| accumulator);word(0xD5C0 ||| accumulator)
+        // lib537 checks the column first, leaving the row in its error snapshot.
+        // Do this even on a cache hit; a failing first column must not evaluate
+        // the row check, fetch data, or mark the row address initialized.
+        match cache with
+        | None ->
+            descriptor()
+            if mask &&& 2<>0 then check column 10 (stack@[row])
+            rowAddress()
+        | Some cache ->
+            if mask &&& 2<>0 then descriptor();check column 10 (stack@[row])
+            word 0x0805;word cache.ValidBit // BTST #bit,D5
+            word 0x6600
+            let skip=bytes.Count
+            word 0
+            if mask &&& 2=0 then descriptor()
+            rowAddress()
+            word(0x204A ||| (cache.AddressRegister <<< 9)) // MOVEA.L A2,An
+            word 0x08C5;word cache.ValidBit // BSET #bit,D5, after all checks
+            let distance=bytes.Count-skip
+            if distance>32767 then invalidArg "allocation" "Invariant row initialization exceeds a word branch."
+            bytes[skip]<-byte(distance >>> 8);bytes[skip+1]<-byte distance
+            word(0x2448 ||| cache.AddressRegister) // MOVEA.L An,A2
         let addColumn () =
             match column with
             | RecoveryRegister r -> word(0xD4C0 ||| r)
@@ -652,7 +712,7 @@ let emitWithContext vectorTableOffset (vectorRegisters:Map<int,int>) (recoverySu
             | RecoveryImmediate n -> word 0xD4FC;word n
         addColumn();addColumn()
     if frame>0 then word 0x4FEF;word(-frame)
-    for instruction in allocation.Instructions do
+    for index,instruction in allocation.Instructions |> List.indexed do
         match instruction with
         | Immediate(r,n) when n>= -128 && n<=127 -> word(0x7000 ||| (r <<< 9) ||| (n &&& 255))
         | Immediate(r,n) -> word(0x303C ||| (r <<< 9));word n
@@ -663,6 +723,17 @@ let emitWithContext vectorTableOffset (vectorRegisters:Map<int,int>) (recoverySu
         | Store(vector,value) -> word 0x246E;displacement vector;writeWord value
         | Pop r -> word(0x3019 ||| (r <<< 9))
         | Push r -> word(0x3300 ||| r)
+        | PushBoolean r ->
+            word 0x4261 // low mantissa word
+            word(0x4A40 ||| r);word 0x6708
+            word 0x233C;word 0x0801;word 0x4000
+            word 0x6002;word 0x42A1
+        | Comparison(op,dst,right) ->
+            compareWord dst right
+            let condition=comparisonCondition op
+            word(0x50C0 ||| (condition <<< 8) ||| dst)
+            word(0x0240 ||| dst);word 1
+        | CompareFlags(dst,right) -> compareWord dst right
         | Copy(dst,src) -> word(0x3000 ||| (dst <<< 9) ||| src)
         | Spill(r,slot) -> word(0x3F40 ||| r);word(slot*2)
         | Reload(r,slot) -> word(0x302F ||| (r <<< 9));word(slot*2)
@@ -726,10 +797,10 @@ let emitWithContext vectorTableOffset (vectorRegisters:Map<int,int>) (recoverySu
             elementAddress vector checkedBounds index stack
             writeWord value
         | LoadElement2(vector,mask,columns,row,column,accumulator,stack) ->
-            elementAddress2 vector mask columns row column accumulator stack
+            elementAddress2 (rowCaches.TryFind index) vector mask columns row column accumulator stack
             word(0x3012 ||| (accumulator <<< 9))
         | StoreElement2(vector,mask,columns,row,column,value,accumulator,stack) ->
-            elementAddress2 vector mask columns row column accumulator stack
+            elementAddress2 (rowCaches.TryFind index) vector mask columns row column accumulator stack
             writeWord value
         | Check(product,stack,store) ->
             let failureBytes=recoveryBytes frame stack store + recoverySuffix.Length
@@ -747,6 +818,9 @@ let emitWithContext vectorTableOffset (vectorRegisters:Map<int,int>) (recoverySu
             recovery 0x8AD8 stack store
     if frame>0 then word 0x4FEF;word frame
     bytes.ToArray()
+
+let emitWithContext vectorTableOffset vectorRegisters recoverySuffix allocation =
+    emitWithArrayContext vectorTableOffset vectorRegisters recoverySuffix Map.empty allocation
 
 let emit vectorTableOffset allocation = emitWithContext vectorTableOffset Map.empty [||] allocation
 

@@ -1,0 +1,145 @@
+999 9 ; vector table
+255
+242 10001
+254
+10000: ; DATA
+251
+255
+10001: ; first initialisation: windows, arrays, strings
+242 10005
+255
+10002: ; program body
+326
+346
+254 ; audited native region
+106 4
+118 3 ; PASSES_I
+263
+118 1 ; CHECK_I
+255 ; resume threaded code
+106 1
+109 3 ; PASSES_I
+106 1
+357 2001
+26 4 2000 ; PASS_I
+355
+2000: ; FOR PASS_I
+377 0 0 ; 0
+150 6 ; TOTAL
+106 1
+106 1000
+106 1
+357 2003
+26 2 2002 ; I_I
+355
+2002: ; FOR I_I
+254 ; audited native region
+109 2 ; I_I
+320
+150 7 ; X
+255 ; resume threaded code
+141 7 ; X
+377 2058 32000 ; 1000
+40
+150 7 ; X
+377 2049 20480 ; 1.25
+141 7 ; X
+39
+377 2048 24576 ; 0.75
+38
+141 7 ; X
+39
+377 2048 16384 ; 0.5
+37
+141 7 ; X
+39
+377 2050 16384 ; 2
+37
+150 8 ; Y
+141 6 ; TOTAL
+141 8 ; Y
+37
+150 6 ; TOTAL
+230 2 ; I_I
+378 2003
+141 6 ; TOTAL
+138 2060 18503 55050 ; 2312.98
+47
+141 6 ; TOTAL
+138 2060 18504 10486 ; 2313.02
+42
+53
+239 2004
+106 1
+281
+170 "FAIL float_polynomial result"
+186
+203
+220
+2004: ; END IF
+141 6 ; TOTAL
+334
+254 ; audited native region
+118 5 ; RESULT_I
+109 1 ; CHECK_I
+109 5 ; RESULT_I
+1005 ; checked native integer arithmetic
+106 10000
+20
+118 1 ; CHECK_I
+255 ; resume threaded code
+230 4 ; PASS_I
+378 2001
+254 ; audited native region
+109 3 ; PASSES_I
+106 4
+12
+109 1 ; CHECK_I
+106 9252
+13
+255 ; resume threaded code
+54
+239 2005
+106 1
+281
+170 "FAIL float_polynomial checksum"
+186
+203
+220
+2005: ; END IF
+106 1
+281
+170 "float_polynomial:"
+186
+109 1 ; CHECK_I
+312
+186
+203
+220
+220
+242 10007
+254
+10006: ; GLOBAL/EXTERNAL linkage list (empty)
+261 -1 "" ; end of list
+255
+10007:
+255
+10005: ; second initialisation: scalars
+114 1 ; CHECK_I
+101 2 ; I_I
+114 3 ; PASSES_I
+101 4 ; PASS_I
+114 5 ; RESULT_I
+146 6 ; TOTAL
+146 7 ; X
+146 8 ; Y
+267
+237 10000
+242 10002
+254
+10003: ; resident routine names
+261 -1 "" ; end of list
+243 10003 ; startup trailer
+358 0 ; own module number
+243 10006
+0

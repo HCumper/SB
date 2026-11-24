@@ -21,6 +21,8 @@ def main():
     parser.add_argument("--collection",type=Path,default=ROOT/"Programs")
     parser.add_argument("--trials",type=int,default=3)
     parser.add_argument("--warmups",type=int,default=1)
+    parser.add_argument("--speed",choices=["GoldCard","QL"],default="GoldCard",
+                        help="Timing speed (default: GoldCard); QL reproduces historical runs")
     parser.add_argument("--name",action="append",default=[])
     parser.add_argument("--turbo-directory",type=Path,default=Path(r"I:\QL\Turbo"))
     parser.add_argument("--toolkit",type=Path,default=Path(r"C:\Source\codex-workspace\ql-records-demo\turbo_tk"))
@@ -112,14 +114,14 @@ def main():
     configuration='\n'.join(['Ram=640K',f'MainRom={args.rom}',f'BackRom={args.toolkit_rom}',
         'BackRomActive=Yes','ExpRomActive=No','UseFloppyName=Yes','FloppyName=FLP',
         'UseHardDiskName=Yes','HardDiskName=WIN','HasRamDisk=Yes','RamDiskName=RAM',
-        'HasParPort=No','TCP=Off','Subdirs=Off','Speed=QL','FastStartup=Yes',
+        'HasParPort=No','TCP=Off','Subdirs=Off',f'Speed={args.speed}','FastStartup=Yes',
         'AutoStartSession=Yes','FirstKey=F1','DisplayMode=Window','AcceleratedGraphics=No',
         'Sound=Off','SampledSound=Off','Joystick1=None','SER1=None','SER2=None','SER3=None',
         'SER4=None',f'Slot1={drive}',*[f'Slot{i}=Empty' for i in range(2,9)]])+'\n'
     write_text(run/"benchmark.QCF",configuration)
-    write_text(run/"compile.QCF",configuration.replace('Speed=QL','Speed=Full'))
+    write_text(run/"compile.QCF",configuration.replace(f'Speed={args.speed}','Speed=Full'))
     (run/"plan.json").write_text(json.dumps(dict(formatVersion=2,timingMethod="external-qdos-job",
-        trials=args.trials,warmups=args.warmups,timerHz=50,expectedResults=sequence,
+        trials=args.trials,warmups=args.warmups,timerHz=50,timingSpeed=args.speed,expectedResults=sequence,
         benchmarks=plan,scope=SCOPE,outputChannel=1,inheritedChannels=31),indent=2)+"\n")
     (run/"compile-commands.json").write_text(json.dumps(commands,indent=2)+"\n")
     print(f"Prepared {len(cases)} unchanged programs and {sequence} external job timings in {run}")

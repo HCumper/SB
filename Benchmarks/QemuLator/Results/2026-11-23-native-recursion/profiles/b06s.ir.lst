@@ -1,0 +1,364 @@
+999 26 ; vector table
+255
+242 10001
+254
+10000: ; DATA
+251
+255
+10001: ; first initialisation: windows, arrays, strings
+234 1 3 ; COLUMN_I
+234 1 6 ; FALLING_I
+234 1 7 ; FIRST_I
+234 1 10 ; QUEEN_I
+234 1 11 ; RISING_I
+242 10005
+255
+10002: ; program body
+326
+346
+106 1
+118 8 ; PASSES_I
+106 8
+126 0 10 ; QUEEN_I
+106 8
+126 0 3 ; COLUMN_I
+106 16
+126 0 11 ; RISING_I
+106 16
+126 0 6 ; FALLING_I
+106 8
+126 0 7 ; FIRST_I
+254 ; audited native region
+263
+118 2 ; CHECK_I
+263
+118 5 ; FAILED_I
+255 ; resume threaded code
+106 1
+109 8 ; PASSES_I
+106 1
+357 2001
+26 9 2000 ; PASS_I
+355
+2000: ; FOR PASS_I
+236 65523 ; CLEAR_BOARD
+254 ; audited native region
+263
+118 12 ; SOLUTIONS_I
+263
+118 1 ; BOARD_SUM_I
+255 ; resume threaded code
+106 1
+236 65521 ; SEARCH_BOARD
+254 ; audited native region
+109 12 ; SOLUTIONS_I
+106 92
+13
+255 ; resume threaded code
+239 2002
+106 1
+118 5 ; FAILED_I
+2002: ; END IF
+106 1
+106 8
+106 1
+357 2004
+26 4 2003 ; COL_I
+355
+2003: ; FOR COL_I
+254 ; audited native region
+109 4 ; COL_I
+1811 7 ; range-proven rank-one integer array access
+106 9
+109 4 ; COL_I
+6 ; range-proven integer arithmetic
+1811 7 ; range-proven rank-one integer array access
+13
+255 ; resume threaded code
+239 2005
+106 1
+118 5 ; FAILED_I
+2005: ; END IF
+254 ; audited native region
+109 1 ; BOARD_SUM_I
+109 4 ; COL_I
+1811 7 ; range-proven rank-one integer array access
+109 4 ; COL_I
+1007 ; checked native integer arithmetic
+1005 ; checked native integer arithmetic
+106 10000
+20
+118 1 ; BOARD_SUM_I
+255 ; resume threaded code
+230 4 ; COL_I
+378 2004
+254 ; audited native region
+109 2 ; CHECK_I
+109 1 ; BOARD_SUM_I
+1005 ; checked native integer arithmetic
+109 12 ; SOLUTIONS_I
+1005 ; checked native integer arithmetic
+106 10000
+20
+118 2 ; CHECK_I
+255 ; resume threaded code
+230 9 ; PASS_I
+378 2001
+109 5 ; FAILED_I
+320
+239 2006
+106 -1
+118 2 ; CHECK_I
+2006: ; END IF
+106 1
+281
+169 "eight_queens:"
+186
+109 2 ; CHECK_I
+312
+186
+203
+220
+220
+65523: ; DEFine PROCedure CLEAR_BOARD
+102 14 ; SLOT_I
+263
+106 8
+106 1
+357 2008
+26 14 2007 ; SLOT_I
+355
+2007: ; FOR SLOT_I
+254 ; audited native region
+109 14 ; SLOT_I
+263
+1812 10 ; range-proven rank-one integer array access
+109 14 ; SLOT_I
+263
+1812 3 ; range-proven rank-one integer array access
+109 14 ; SLOT_I
+263
+1812 7 ; range-proven rank-one integer array access
+255 ; resume threaded code
+230 14 ; SLOT_I
+378 2008
+263
+106 16
+106 1
+357 2010
+26 14 2009 ; SLOT_I
+355
+2009: ; FOR SLOT_I
+254 ; audited native region
+109 14 ; SLOT_I
+263
+1812 11 ; range-proven rank-one integer array access
+109 14 ; SLOT_I
+263
+1812 6 ; range-proven rank-one integer array access
+255 ; resume threaded code
+230 14 ; SLOT_I
+378 2010
+244
+65521: ; DEFine PROCedure SEARCH_BOARD
+110 16 ; ROW_I
+118 16 ; ROW_I
+102 17 ; CHOICE_I
+110 18 ; DOWN_I
+110 19 ; UP_I
+254 ; audited native region
+109 16 ; ROW_I
+106 9
+12
+255 ; resume threaded code
+239 2011
+236 65516 ; RECORD_BOARD
+244
+2011: ; END IF
+106 1
+106 8
+106 1
+254 ; audited memory-counter native FOR
+357 2013
+26 17 2012 ; CHOICE_I
+355
+2012: ; FOR CHOICE_I
+109 16 ; ROW_I
+109 17 ; CHOICE_I
+1005 ; checked native integer arithmetic
+118 19 ; UP_I
+109 16 ; ROW_I
+109 17 ; CHOICE_I
+1006 ; checked native integer arithmetic
+106 8
+1005 ; checked native integer arithmetic
+118 18 ; DOWN_I
+109 17 ; CHOICE_I
+1111 3 ; compact checked native array access
+263
+12
+109 19 ; UP_I
+1111 11 ; compact checked native array access
+263
+12
+54
+109 18 ; DOWN_I
+1111 6 ; compact checked native array access
+263
+12
+54
+239 2014
+109 16 ; ROW_I
+109 17 ; CHOICE_I
+1112 10 ; compact checked native array access
+109 17 ; CHOICE_I
+106 1
+1112 3 ; compact checked native array access
+109 19 ; UP_I
+106 1
+1112 11 ; compact checked native array access
+109 18 ; DOWN_I
+106 1
+1112 6 ; compact checked native array access
+109 16 ; ROW_I
+106 1
+1005 ; checked native integer arithmetic
+255 ; audited memory-counter procedure call
+236 65521 ; SEARCH_BOARD
+254 ; resume memory-counter loop after call
+109 17 ; CHOICE_I
+263
+1112 3 ; compact checked native array access
+109 19 ; UP_I
+263
+1112 11 ; compact checked native array access
+109 18 ; DOWN_I
+263
+1112 6 ; compact checked native array access
+2014: ; END IF
+230 17 ; CHOICE_I
+378 2013
+255 ; resume threaded code after memory-counter FOR
+244
+65516: ; DEFine PROCedure RECORD_BOARD
+110 21 ; CODE_I
+102 22 ; LEFT_I
+102 23 ; RIGHT_I
+110 24 ; SEPARATION_I
+263
+118 21 ; CODE_I
+106 1
+106 8
+106 1
+357 2016
+26 22 2015 ; LEFT_I
+355
+2015: ; FOR LEFT_I
+254 ; audited native region
+109 21 ; CODE_I
+109 22 ; LEFT_I
+1111 10 ; compact checked native array access
+109 22 ; LEFT_I
+1007 ; checked native integer arithmetic
+109 22 ; LEFT_I
+1007 ; checked native integer arithmetic
+1005 ; checked native integer arithmetic
+106 10000
+20
+118 21 ; CODE_I
+109 22 ; LEFT_I
+106 1
+5 ; range-proven integer arithmetic
+255 ; resume threaded code
+106 8
+106 1
+357 2018
+26 23 2017 ; RIGHT_I
+355
+2017: ; FOR RIGHT_I
+254 ; audited native region
+109 22 ; LEFT_I
+1111 10 ; compact checked native array access
+109 23 ; RIGHT_I
+1111 10 ; compact checked native array access
+1006 ; checked native integer arithmetic
+320
+255 ; resume threaded code
+224 2 25 [02] ; ABS
+334
+254 ; audited native region
+118 24 ; SEPARATION_I
+109 24 ; SEPARATION_I
+263
+12
+109 24 ; SEPARATION_I
+109 23 ; RIGHT_I
+109 22 ; LEFT_I
+6 ; range-proven integer arithmetic
+12
+255 ; resume threaded code
+53
+239 2019
+106 1
+118 5 ; FAILED_I
+2019: ; END IF
+230 23 ; RIGHT_I
+378 2018
+230 22 ; LEFT_I
+378 2016
+254 ; audited native region
+109 12 ; SOLUTIONS_I
+106 1
+1005 ; checked native integer arithmetic
+118 12 ; SOLUTIONS_I
+106 1
+1111 10 ; compact checked native array access
+106 1
+1111 10 ; compact checked native array access
+1111 7 ; compact checked native array access
+106 1
+1005 ; checked native integer arithmetic
+1112 7 ; compact checked native array access
+109 1 ; BOARD_SUM_I
+109 21 ; CODE_I
+1005 ; checked native integer arithmetic
+106 10000
+20
+118 1 ; BOARD_SUM_I
+255 ; resume threaded code
+244
+242 10007
+254
+10006: ; GLOBAL/EXTERNAL linkage list (empty)
+261 -1 "" ; end of list
+255
+10007:
+255
+10005: ; second initialisation: scalars
+114 1 ; BOARD_SUM_I
+114 2 ; CHECK_I
+101 4 ; COL_I
+114 5 ; FAILED_I
+114 8 ; PASSES_I
+101 9 ; PASS_I
+114 12 ; SOLUTIONS_I
+114 14 ; SLOT_I
+114 16 ; ROW_I
+114 17 ; CHOICE_I
+114 18 ; DOWN_I
+114 19 ; UP_I
+114 21 ; CODE_I
+114 22 ; LEFT_I
+114 23 ; RIGHT_I
+114 24 ; SEPARATION_I
+267
+237 10000
+242 10002
+254
+10003: ; resident routine names
+261 25 "ABS" ; ABS
+261 -1 "" ; end of list
+243 10003 ; startup trailer
+358 0 ; own module number
+243 10006
+0

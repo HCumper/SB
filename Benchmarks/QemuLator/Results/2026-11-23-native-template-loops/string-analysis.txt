@@ -1,0 +1,20 @@
+HIR control-flow, range, effect and alias analysis (checked QL)
+Unchecked arithmetic proofs enabled: True; proven expressions: 0
+Proven numeric array accesses: 0
+Rank-one integer array accesses: 0
+Rank-two integer array accesses: 0
+Global array call-entry analysis: passes=0; certified=True
+Certified native FOR bindings: 2
+Proof-eligible scopes: 1/1
+Native FOR binding rejected: routine=; loop=LoopId 0; reasons=body contains calls, nested loops or unsupported control; body may replace FOR metadata
+Address taken: []; escaped to unknown callees: []
+Scope MainScope: blocks=72 edges=96 natural-loops=3 uncertain-control=False
+  certified-postfixed=True; captured-FOR-control=True; narrowing-passes=1; widening-thresholds=[-32768,-1,0,1,2,3,31,32,33,63,64,65,79,80,81,879,880,881,9999,10000,10001,32767]
+  block 0: Entry
+    in: unknown (full QL word range)
+    out: unknown (full QL word range)
+    reads=[] writes=[] descriptors=[] loop-metadata=[] unknown-read=False unknown-write=False unknown-descriptors=False unknown-loop-metadata=False throw=False io=False allocate=False control=False
+    live-in=[] live-out=[] dominators=set [0]
+    -> 71 FallThrough Unconditional havoc=False
+  block 1: Finish
+    in: unknown (full QL word range)

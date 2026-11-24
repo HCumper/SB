@@ -42,6 +42,127 @@ let private withCompiledProgramMode enabled extraArguments extension (source: st
 
 let private withCompiledProgram extension source action = withCompiledProgramMode true [] extension source action
 
+let recursiveBoundaryPrograms = [|
+    "10 total%=0:work\n20 PRINT total%\n30 STOP\n100 DEFine PROCedure work\n110 LOCal i%\n120 FOR i%=1 TO 3\n130 collect (i%),(i%+1),(i%+2)\n140 END FOR i%\n150 END DEFine\n200 DEFine PROCedure collect(a%,b%,c%)\n210 total%=total%+a%*100+b%*10+c%\n220 END DEFine", "702\n", 1
+    "10 value%=0:total%=0:bump value%:work\n20 PRINT value%;\":\";total%\n30 STOP\n100 DEFine PROCedure bump(x%)\n110 x%=x%+1:total%=total%+x%\n120 END DEFine\n200 DEFine PROCedure work\n210 LOCal i%\n220 FOR i%=1 TO 3\n230 bump (i%)\n240 END FOR i%\n250 END DEFine", "1:10\n", 1
+    "10 i%=77:walk (3):walk (2)\n20 PRINT total%;\":\";leaves%;\":\";i%\n30 STOP\n100 DEFine PROCedure walk(depth%)\n110 LOCal i%,up%,down%\n120 IF depth%=0 THEN leaves%=leaves%+1:RETurn\n130 FOR i%=1 TO 2\n140 up%=depth%*10+i%:down%=depth%*10-i%\n150 walk (depth%-1)\n160 IF up%<>depth%*10+i% THEN total%=-30000\n170 IF down%<>depth%*10-i% THEN total%=-30000\n180 total%=total%+up%\n190 END FOR i%\n200 END DEFine", "330:12:77\n", 1
+    "10 first (3)\n20 PRINT total%;\":\";leaves%\n30 STOP\n100 DEFine PROCedure first(depth%)\n110 LOCal i%,saved%\n120 IF depth%=0 THEN leaves%=leaves%+1:RETurn\n130 FOR i%=1 TO 2\n140 saved%=depth%*10+i%\n150 second (depth%-1)\n160 total%=total%+saved%\n170 END FOR i%\n180 END DEFine\n200 DEFine PROCedure second(depth%)\n210 LOCal i%,saved%\n220 IF depth%=0 THEN leaves%=leaves%+1:RETurn\n230 FOR i%=1 TO 2\n240 saved%=depth%*10+i%\n250 first (depth%-1)\n260 total%=total%+saved%\n270 END FOR i%\n280 END DEFine", "241:8\n", 2
+    "10 DIM shared%(0):walk (2)\n20 PRINT total%;\":\";shared%(0)\n30 STOP\n100 DEFine PROCedure walk(depth%)\n110 LOCal i%\n120 IF depth%=0 THEN shared%(0)=shared%(0)+1:RETurn\n130 FOR i%=1 TO 2\n140 previous%=shared%(0)\n150 walk (depth%-1)\n160 total%=total%+shared%(0)\n170 END FOR i%\n180 END DEFine", "16:4\n", 1
+    "10 last%=3:stride%=1:work\n20 PRINT total%;\":\";last%;\":\";stride%\n30 STOP\n100 DEFine PROCedure work\n110 LOCal i%\n120 FOR i%=1 TO last% STEP stride%\n130 change (0)\n140 total%=total%+i%\n150 END FOR i%\n160 END DEFine\n200 DEFine PROCedure change(unused%)\n210 last%=-100:stride%=-1\n220 END DEFine", "6:-100:-1\n", 1
+    "10 FOR i%=1 TO 5\n20 change (0)\n30 total%=total%+i%\n40 END FOR i%\n50 PRINT total%;\":\";i%\n60 STOP\n100 DEFine PROCedure change(unused%)\n110 i%=i%+2\n120 END DEFine", "9:6\n", 1
+    "10 work (3),(1),(1):work (1),(3),(-1):work (1),(3),(1)\n20 PRINT total%;\":\";calls%\n30 STOP\n100 DEFine PROCedure work(first%,last%,step%)\n110 LOCal i%\n120 FOR i%=first% TO last% STEP step%\n130 tick\n140 total%=total%+i%\n150 END FOR i%\n160 END DEFine\n200 DEFine PROCedure tick\n210 calls%=calls%+1\n220 END DEFine", "6:3\n", 1
+    "10 walk (3)\n20 PRINT total%;\":\";leaves%\n30 STOP\n100 DEFine PROCedure walk(depth%)\n110 LOCal i%,text$(8)\n120 text$=\"d\" & depth%\n130 IF depth%=0 THEN leaves%=leaves%+1:RETurn\n140 FOR i%=1 TO 2\n150 walk (depth%-1)\n160 total%=total%+CODE(text$(2))\n170 END FOR i%\n180 END DEFine", "694:8\n", 1
+    "10 total%=0:i%=0:work\n20 PRINT total%;\":\";i%\n30 STOP\n100 DEFine PROCedure work\n110 LOCal j%\n120 FOR j%=1 TO 3\n130 bump total%\n140 END FOR j%\n150 END DEFine\n200 DEFine PROCedure bump(value%)\n210 value%=value%+1\n220 END DEFine", "3:0\n", 0
+    "10 WHEN ERROR\n20 PRINT ERNUM:STOP\n30 END WHEN\n40 walk (3)\n50 STOP\n100 DEFine PROCedure walk(depth%)\n110 LOCal i%\n120 IF depth%=0 THEN answer%=1 DIV zero%:RETurn\n130 FOR i%=1 TO 2\n140 walk (depth%-1)\n150 END FOR i%\n160 END DEFine", "-18\n", 0
+|]
+let recursiveBoundaryModes = [|
+    for index in 0..recursiveBoundaryPrograms.Length-1 do
+        for hir in [false;true] do
+            for native,registers in [false,false;true,false;true,true] do
+                yield TestCaseData(index,hir,native,registers).SetName($"Recursive boundary {index} (HIR {hir}, native {native}, registers {registers})") |]
+
+[<TestCaseSource(nameof recursiveBoundaryModes)>]
+let ``recursive native boundaries preserve activation bindings captured loops and shared writes`` (index:int,hir:bool,native:bool,registers:bool) =
+    let source,expected,_=recursiveBoundaryPrograms[index]
+    withCompiledProgramMode hir [(if native then "--native-regions" else "--no-native-regions");(if registers then "--regalloc" else "--no-regalloc")] ".bas" source (fun executable ->
+        let result=run 6000000L executable
+        Assert.That(result.ExitCode, Is.Zero)
+        Assert.That(result.Output, Is.EqualTo(expected)))
+
+[<TestCase(false)>]
+[<TestCase(true)>]
+let ``recursive native diagnostics confirm selected and rejected call boundaries`` (hir:bool) =
+    let directory=Path.Combine(Path.GetTempPath(),$"recursive-boundary-report-{Guid.NewGuid():N}")
+    Directory.CreateDirectory directory |> ignore
+    try
+        for index in 0..recursiveBoundaryPrograms.Length-1 do
+            let source,_,count=recursiveBoundaryPrograms[index]
+            let prefix=Path.Combine(directory,string index)
+            withCompiledProgramMode hir ["--native-regions";"--regalloc";"--dump-hir="+prefix] ".bas" source ignore
+            Assert.That(File.ReadAllText(prefix+".native-ir.txt"), Does.Contain($"Memory-counter native procedure call boundaries: {count}"), $"fixture {index}")
+    finally Directory.Delete(directory,true)
+
+let recursiveBoundaryErrors = [|
+    "10 DIM a%(1):work\n20 STOP\n100 DEFine PROCedure work\n110 LOCal i%\n120 FOR i%=1 TO 2\n130 resize (i%)\n140 a%(2)=i%\n150 END FOR i%\n160 END DEFine\n200 DEFine PROCedure resize(pass%)\n210 IF pass%=1 THEN DIM a%(3):ELSE DIM a%(0)\n220 END DEFine"
+    "10 walk (3)\n20 STOP\n100 DEFine PROCedure walk(depth%)\n110 LOCal i%\n120 IF depth%=0 THEN answer%=1 DIV zero%:RETurn\n130 FOR i%=1 TO 2\n140 walk (depth%-1)\n150 END FOR i%\n160 END DEFine"
+    "10 walk (3)\n20 STOP\n100 DEFine PROCedure walk(depth%)\n110 LOCal i%\n120 FOR i%=1 TO 2\n130 IF depth%=0 THEN answer%=32767+i%\n140 walk (depth%-1)\n150 END FOR i%\n160 END DEFine"
+    "10 DIM a%(1):index%=3:walk (3)\n20 STOP\n100 DEFine PROCedure walk(depth%)\n110 LOCal i%\n120 IF depth%=0 THEN answer%=a%(index%):RETurn\n130 FOR i%=1 TO 2\n140 walk (depth%-1)\n150 END FOR i%\n160 END DEFine"
+    "10 walk (1000)\n20 STOP\n100 DEFine PROCedure walk(depth%)\n110 LOCal i%,space$(128)\n120 IF depth%=0 THEN RETurn\n130 FOR i%=1 TO 1\n140 walk (depth%-1)\n150 END FOR i%\n160 END DEFine"
+|]
+
+[<TestCase(0)>]
+[<TestCase(1)>]
+[<TestCase(2)>]
+[<TestCase(3)>]
+[<TestCase(4)>]
+let ``recursive native failures match threaded arithmetic bounds and out-of-memory errors`` (index:int) =
+    let capture native =
+        let mutable number=0
+        withCompiledProgramMode true [(if native then "--native-regions" else "--no-native-regions");"--regalloc"] ".bas" recursiveBoundaryErrors[index] (fun executable ->
+            let error=Assert.Throws<M68kFault>(fun () -> run 6000000L executable |> ignore)
+            Assert.That(error.Message, Does.Contain("Runtime error message:"))
+            let parsed=System.Text.RegularExpressions.Regex.Match(error.Message,@"ERNUM=(-?\d+)")
+            Assert.That(parsed.Success, Is.True)
+            number<-int parsed.Groups[1].Value
+            Assert.That(number, Is.EqualTo([|-4;-18;-18;-4;-3|][index])))
+        number
+    Assert.That(capture true, Is.EqualTo(capture false))
+
+let memoryCounterPrograms = [|
+    "10 DIM a$(8)\n20 FOR i%=1 TO 8\n30 a$=a$ & CHR$(64+i%)\n40 END FOR i%\n50 PRINT a$;\":\";i%\n60 STOP", "ABCDEFGH:8\n"
+    "10 DIM a$(5)\n20 a$=\"AB\"\n30 FOR i%=1 TO 8\n40 a$=a$ & a$\n50 END FOR i%\n60 PRINT a$;\":\";LEN(a$);\":\";i%\n70 STOP", "ABABAB:6:8\n"
+    "10 DIM a$(8)\n20 a$=\"ABCD\"\n30 FOR i%=1 TO 5\n40 a$=a$(2 TO) & a$(1)\n50 END FOR i%\n60 PRINT a$;\":\";i%\n70 STOP", "BCDA:5\n"
+    "10 DIM a$(8)\n20 FOR i%=1 TO 4\n30 IF i% MOD 2 THEN a$=a$ & \"a\" : ELSE a$=a$ & \"b\"\n40 END FOR i%\n50 PRINT a$;\":\";i%\n60 STOP", "abab:4\n"
+    "10 DIM a$(8)\n20 last%=3:stride%=-1\n30 FOR i%=last% TO 1 STEP stride%\n40 last%=-100:stride%=32767:a$=a$ & i%\n50 END FOR i%\n60 PRINT a$;\":\";i%\n70 STOP", "321:1\n"
+    "10 DIM a$(8)\n20 a$=\"ok\"\n30 FOR i%=3 TO 1\n40 a$=\"wrong\"\n50 END FOR i%\n60 PRINT a$;\":\";i%\n70 STOP", "ok:3\n"
+    "10 DIM a$(8)\n20 FOR i%=1 TO 4\n30 x=i%:y=x:answer%=y:a$=a$ & answer%\n40 END FOR i%\n50 PRINT a$;\":\";i%\n60 STOP", "1234:4\n"
+    "10 DIM a$(8)\n20 a$=\"abcd\"\n30 FOR i%=1 TO 4\n40 a$(i%)=CHR$(64+i%):sum%=sum%+CODE(a$(i%))\n50 END FOR i%\n60 PRINT a$;\":\";sum%;\":\";i%\n70 STOP", "ABCD:266:4\n"
+    "10 work:work\n20 STOP\n100 DEFine PROCedure work\n110 LOCal a$(8),i%\n120 a$=\"\"\n130 FOR i%=1 TO 4\n140 a$=a$ & i%\n150 END FOR i%\n160 PRINT a$;\":\";i%\n170 END DEFine", "1234:4\n1234:4\n"
+    "10 DIM a$(1,8)\n20 FOR i%=0 TO 1\n30 a$(i%)=\"ABC\":a$(i%,2)=\"x\"\n40 END FOR i%\n50 PRINT a$(0);\":\";a$(1);\":\";i%\n60 STOP", "AxC:AxC:1\n"
+|]
+let memoryCounterModes = [|
+    for index in 0..memoryCounterPrograms.Length-1 do
+        for hir in [false;true] do
+            for native,registers in [false,false;true,false;true,true] do
+                yield TestCaseData(index,hir,native,registers).SetName($"Memory-counter loop {index} (HIR {hir}, native {native}, registers {registers})") |]
+
+[<TestCaseSource(nameof memoryCounterModes)>]
+let ``memory-counter native loops preserve strings counters captures and local bindings`` (index:int,hir:bool,native:bool,registers:bool) =
+    let source,expected=memoryCounterPrograms[index]
+    withCompiledProgramMode hir [(if native then "--native-regions" else "--no-native-regions");(if registers then "--regalloc" else "--no-regalloc")] ".bas" source (fun executable ->
+        let result=run 4000000L executable
+        Assert.That(result.ExitCode, Is.Zero)
+        Assert.That(result.Output, Is.EqualTo(expected)))
+
+[<TestCase(false)>]
+[<TestCase(true)>]
+let ``memory-counter reports confirm selection for all audited execution fixtures`` (hir:bool) =
+    let directory=Path.Combine(Path.GetTempPath(),$"memory-counter-report-{Guid.NewGuid():N}")
+    Directory.CreateDirectory directory |> ignore
+    try
+        for index in 0..memoryCounterPrograms.Length-1 do
+            let prefix=Path.Combine(directory,string index)
+            let source,_=memoryCounterPrograms[index]
+            withCompiledProgramMode hir ["--native-regions";"--regalloc";"--dump-hir="+prefix] ".bas" source ignore
+            Assert.That(File.ReadAllText(prefix+".native-ir.txt"), Does.Contain("Audited memory-counter native FOR loops: 1"), $"fixture {index}")
+    finally Directory.Delete(directory,true)
+
+let memoryCounterErrors = [|
+    "10 DIM a$(4)\n20 last%=2\n30 FOR i%=1 TO last%\n40 a$=\"x\":answer%=32767+i%\n50 END FOR i%\n60 STOP"
+    "10 DIM a$(4)\n20 zero%=0\n30 FOR i%=1 TO 2\n40 a$=CHR$(i% DIV zero%)\n50 END FOR i%\n60 STOP"
+    "10 DIM a$(4),b%(0)\n20 index%=3\n30 FOR i%=1 TO 2\n40 a$=\"x\":answer%=b%(index%)\n50 END FOR i%\n60 STOP"
+    "10 DIM a$(4)\n20 index%=5\n30 FOR i%=1 TO 2\n40 a$=a$(index%)\n50 END FOR i%\n60 STOP"
+|]
+let memoryCounterErrorModes = [|
+    for index in 0..memoryCounterErrors.Length-1 do
+        for native in [false;true] do yield TestCaseData(index,native) |]
+
+[<TestCaseSource(nameof memoryCounterErrorModes)>]
+let ``memory-counter loops retain arithmetic division bounds and slice failures`` (index:int,native:bool) =
+    withCompiledProgramMode true [(if native then "--native-regions" else "--no-native-regions");"--regalloc"] ".bas" memoryCounterErrors[index] (fun executable ->
+        let error=Assert.Throws<M68kFault>(fun () -> run 2000000L executable |> ignore)
+        Assert.That(error.Message, Does.Contain("Runtime error message:")))
+
 let stringAppendPrograms = [|
     // Turbo rounds the declared odd maximum up to an even byte count.
     "10 DIM a$(5)\n20 a$=\"AB\":a$=a$ & \"CDEF\":a$=a$ & \"ignored\"\n30 PRINT a$\n40 STOP", "ABCDEF\n"
@@ -304,6 +425,309 @@ let ``CallEntry native plans include checked and proven global arrays inside pro
         Assert.That(analysis, Does.Match("Global array call-entry analysis: passes=[1-9][0-9]*; certified=True"))
         TestContext.WriteLine($"CallEntry arrays: executable bytes {beforeSize}->{afterSize}; instructions {before.Steps}->{after.Steps}.")
     finally Directory.Delete(directory,true)
+
+let scopedEligibilityPrograms = [|
+    "10 GOSUB 200\n20 work\n30 PRINT total%;\":\";z%\n40 STOP\n100 DEFine PROCedure work\n110 LOCal i%\n120 total%=0\n130 FOR i%=1 TO 10\n140 total%=total%+i%\n150 END FOR i%\n160 END DEFine\n200 z%=1\n210 RETurn", "55:1\n",1
+    "10 GOSUB 100:total%=0\n20 FOR i%=1 TO 10\n30 total%=total%+i%\n40 END FOR i%\n50 PRINT total%;\":\";z%\n60 STOP\n100 z%=1\n110 RETurn", "55:1\n",1
+    "10 GOSUB 200:work\n20 PRINT a%(3)\n30 STOP\n100 DEFine PROCedure work\n110 LOCal i%\n115 DIM a%(3)\n120 FOR i%=0 TO 3\n130 a%(i%)=i%\n140 END FOR i%\n150 END DEFine\n200 z%=1\n210 RETurn", "3\n",1
+    "10 GOSUB 300:total%=0:visit (3)\n20 PRINT total%\n30 STOP\n100 DEFine PROCedure visit(depth%)\n110 LOCal i%\n120 FOR i%=1 TO 3\n130 total%=total%+i%\n140 END FOR i%\n150 IF depth%>0 THEN visit (depth%-1)\n160 END DEFine\n300 z%=1\n310 RETurn", "24\n",1
+    "10 WHEN ERROR\n20 PRINT \"error\":STOP\n30 END WHEN\n40 total%=0\n50 FOR i%=1 TO 3\n60 total%=total%+i%\n70 END FOR i%\n80 PRINT total%\n90 STOP", "6\n",0
+    "10 total%=0\n20 FOR i%=1 TO 3\n30 total%=total%+i%\n40 END FOR i%\n50 PRINT total%\n60 STOP\n100 DEFine PROCedure opaque\n110 POKE 0,0\n120 END DEFine", "6\n",0
+|]
+
+let scopedEligibilityModes = [|
+    for index in 0..scopedEligibilityPrograms.Length-1 do
+        for hir in [false;true] do
+            for native,registers in [false,false;true,false;true,true] do
+                yield TestCaseData(index,hir,native,registers).SetName($"ScopedEligibility execution {index} (HIR {hir}, native {native}, registers {registers})") |]
+
+[<TestCaseSource(nameof scopedEligibilityModes)>]
+let ``ScopedEligibility preserves procedures recursion arrays and persistent barriers`` (index:int,hir:bool,native:bool,registers:bool) =
+    let source,expected,_=scopedEligibilityPrograms[index]
+    withCompiledProgramMode hir [(if native then "--native-regions" else "--no-native-regions");(if registers then "--regalloc" else "--no-regalloc")] ".bas" source (fun executable ->
+        let result=run 2000000L executable
+        Assert.That(result.Output, Is.EqualTo(expected))
+        Assert.That(result.ExitCode, Is.Zero))
+
+[<TestCase(0)>]
+[<TestCase(1)>]
+[<TestCase(2)>]
+[<TestCase(3)>]
+[<TestCase(4)>]
+[<TestCase(5)>]
+let ``ScopedEligibility reports select independent loops and explain persistent fallbacks`` (index:int) =
+    let source,expected,loops=scopedEligibilityPrograms[index]
+    let directory=Path.Combine(Path.GetTempPath(),$"scoped-eligibility-{Guid.NewGuid():N}")
+    Directory.CreateDirectory directory |> ignore
+    try
+        let prefix=Path.Combine(directory,"scope")
+        withCompiledProgramMode true ["--native-regions";"--regalloc";"--dump-hir="+prefix] ".bas" source (fun executable ->
+            Assert.That((run 2000000L executable).Output, Is.EqualTo(expected)))
+        let report=File.ReadAllText(prefix+".native-ir.txt")
+        Assert.That(report, Does.Contain($"Native integer FOR loops: selected={loops};"))
+        if loops=0 then
+            Assert.That(report, Does.Contain("Native FOR rejected at IR byte"))
+            Assert.That(File.ReadAllText(prefix+".analysis.txt"), Does.Contain("Global control barrier:"))
+    finally Directory.Delete(directory,true)
+
+[<Test>]
+let ``ScopedEligibility compiles native array loops beside ROM ABS without altering IR format`` () =
+    // The functional CPU cannot link this ROM resident. The unchanged
+    // eight-queens job exercises ABS and the new array proofs in Q-emuLator.
+    let source="10 DIM a%(3):x%=-7:amount=ABS(x%):work\n20 PRINT a%(3);\":\";amount\n30 STOP\n100 DEFine PROCedure work\n110 LOCal i%\n120 FOR i%=0 TO 3\n130 a%(i%)=i%\n140 END FOR i%\n150 END DEFine"
+    let directory=Path.Combine(Path.GetTempPath(),$"scoped-abs-{Guid.NewGuid():N}")
+    Directory.CreateDirectory directory |> ignore
+    try
+        let prefix=Path.Combine(directory,"abs")
+        withCompiledProgramMode true ["--native-regions";"--regalloc";"--dump-hir="+prefix] ".bas" source (fun executable -> Assert.That(executable.Length, Is.GreaterThan(0)))
+        Assert.That(File.ReadAllText(prefix+".native-ir.txt"), Does.Contain("Native integer FOR loops: selected=1;"))
+        Assert.That(File.ReadAllText(prefix+".analysis.txt"), Does.Contain("Global array call-entry analysis: passes=2; certified=True"))
+    finally Directory.Delete(directory,true)
+
+let localForPrograms = [|
+    "10 i%=77:work:work\n20 PRINT i%;\":\";total%\n30 STOP\n100 DEFine PROCedure work\n110 LOCal i%,last%,stride%,term%\n120 last%=5:stride%=1:total%=0\n130 FOR i%=1 TO last% STEP stride%\n140 last%=99:stride%=-1:term%=i%*2:total%=total%+term%\n150 END FOR i%\n160 PRINT i%;\":\";total%\n170 END DEFine", "5:30\n5:30\n77:30\n"
+    "10 work (5),(-1),(-2):work (5),(1),(1):work (32767),(32760),(-2)\n20 STOP\n100 DEFine PROCedure work(first%,last%,stride%)\n110 LOCal i%,total%\n120 total%=0\n130 FOR i%=first% TO last% STEP stride%\n140 total%=total%+(i% MOD 10)\n150 END FOR i%\n160 PRINT i%;\":\";total%\n170 END DEFine", "-1:18\n5:0\n32761:16\n"
+    "10 i%=88:total%=0:visit (3)\n20 PRINT i%;\":\";total%\n30 STOP\n100 DEFine PROCedure visit(depth%)\n110 LOCal i%\n120 FOR i%=1 TO 3\n130 total%=total%+i%\n140 END FOR i%\n150 IF depth%>0 THEN visit (depth%-1)\n160 PRINT i%\n170 END DEFine", "3\n3\n3\n3\n88:24\n"
+    "10 DIM a%(5),b%(1,5):work\n20 PRINT a%(5);\":\";b%(1,5)\n30 STOP\n100 DEFine PROCedure work\n110 LOCal i%\n120 FOR i%=0 TO 5\n130 a%(i%)=i%:b%(1,i%)=a%(i%)+1\n140 END FOR i%\n150 END DEFine", "5:6\n"
+    // A formal may alias visible memory. This body must keep the old loop path.
+    "10 value%=0:work value%\n20 PRINT value%\n30 STOP\n100 DEFine PROCedure work(p%)\n110 LOCal i%\n120 FOR i%=1 TO 4\n130 p%=p%+i%\n140 END FOR i%\n150 END DEFine", "10\n"
+    "10 i%=0:visits%=0:work i%\n20 PRINT i%;\":\";visits%\n30 STOP\n100 DEFine PROCedure work(p%)\n110 FOR i%=1 TO 3\n120 p%=p%+1:visits%=visits%+1\n130 END FOR i%\n140 END DEFine", "4:2\n"
+    // Procedure bindings elsewhere must not exclude this independent main loop.
+    "10 work:total%=0\n20 FOR j%=1 TO 4\n30 total%=total%+j%\n40 END FOR j%\n50 PRINT total%;\":\";j%\n60 STOP\n100 DEFine PROCedure work\n110 LOCal private%\n120 private%=99\n130 END DEFine", "10:4\n"
+    "10 PRINT answer%(4);\":\";answer%(2)\n20 STOP\n100 DEFine FuNction answer%(limit%)\n110 LOCal i%,total%\n120 total%=0\n130 FOR i%=1 TO limit%\n140 total%=total%+i%\n150 END FOR i%\n160 RETurn total%\n170 END DEFine", "10:3\n"
+    "10 n%=4:work n%:work (2)\n20 PRINT n%\n30 STOP\n100 DEFine PROCedure work(limit%)\n110 LOCal i%,total%\n120 total%=0\n130 FOR i%=1 TO limit%\n140 total%=total%+i%\n150 END FOR i%\n160 PRINT i%;\":\";total%\n170 END DEFine", "4:10\n2:3\n4\n"
+|]
+
+let invariantArrayPrograms = [|
+    "10 DIM a%(2,3):row%=1:total%=0\n20 FOR i%=0 TO 3\n30 a%(row%,i%)=i%:total%=total%+a%(row%,i%)\n40 END FOR i%\n50 PRINT total%;\":\";a%(1,3)\n60 STOP", "6:3\n"
+    "10 DIM a%(2,3):row%=1:work\n20 PRINT a%(1,3)\n30 DIM a%(2,7):row%=2:work\n40 PRINT a%(2,3)\n50 STOP\n100 DEFine PROCedure work\n110 LOCal i%\n120 FOR i%=0 TO 3\n130 a%(row%,i%)=i%+row%\n140 END FOR i%\n150 END DEFine", "4\n5\n"
+    "10 DIM a%(1,3),index%(0):index%(0)=99:row%=index%(0):total%=0\n20 FOR i%=0 TO 3\n30 IF i%<0 THEN total%=total%+a%(row%,i%)\n40 END FOR i%\n50 FOR j%=3 TO 0\n60 total%=total%+a%(row%,j%)\n70 END FOR j%\n80 PRINT total%\n90 STOP", "0\n"
+    "10 DIM a%(1,3):row%=1:total%=0\n20 FOR i%=0 TO 3\n30 IF i%>1 THEN a%(row%,i%)=i%:total%=total%+a%(row%,i%)\n40 END FOR i%\n50 PRINT total%;\":\";a%(1,3)\n60 STOP", "5:3\n"
+    "10 DIM a%(1,3):total%=0\n20 FOR i%=0 TO 3\n30 row%=i% MOD 2:a%(row%,i%)=i%:total%=total%+a%(row%,i%)\n40 END FOR i%\n50 PRINT total%;\":\";a%(0,2);\":\";a%(1,3)\n60 STOP", "6:2:3\n"
+    "10 DIM index%(0):index%(0)=1:flag%=index%(0)\n20 IF flag% THEN DIM a%(2,7):ELSE DIM a%(2,3)\n30 row%=1:total%=0\n40 FOR i%=0 TO 3\n50 a%(row%,i%)=i%:total%=total%+a%(row%,i%)\n60 END FOR i%\n70 PRINT total%;\":\";a%(1,3)\n80 STOP", "6:3\n"
+|]
+let invariantArrayModes = [|
+    for index in 0..invariantArrayPrograms.Length-1 do
+        for hir in [false;true] do
+            for native,registers in [false,false;true,false;true,true] do
+                yield TestCaseData(index,hir,native,registers).SetName($"InvariantArray execution {index} (HIR {hir}, native {native}, registers {registers})") |]
+
+[<TestCaseSource(nameof invariantArrayModes)>]
+let ``InvariantArray lazy rows agree across all modes repeated calls DIM joins and changing row fallback`` (index:int,hir:bool,native:bool,registers:bool) =
+    let source,expected=invariantArrayPrograms[index]
+    withCompiledProgramMode hir [(if native then "--native-regions" else "--no-native-regions");(if registers then "--regalloc" else "--no-regalloc")] ".bas" source (fun executable ->
+        let result=run 4000000L executable
+        Assert.That(result.Output, Is.EqualTo(expected))
+        Assert.That(result.ExitCode, Is.Zero))
+
+[<TestCase(0)>]
+[<TestCase(1)>]
+[<TestCase(2)>]
+[<TestCase(3)>]
+[<TestCase(4)>]
+[<TestCase(5)>]
+let ``InvariantArray reports show retention only when the row and descriptor are invariant`` (index:int) =
+    let source,expected=invariantArrayPrograms[index]
+    let directory=Path.Combine(Path.GetTempPath(),$"invariant-array-{Guid.NewGuid():N}")
+    Directory.CreateDirectory directory |> ignore
+    try
+        let prefix=Path.Combine(directory,"array")
+        withCompiledProgramMode true ["--native-regions";"--regalloc";"--dump-hir="+prefix] ".bas" source (fun executable ->
+            Assert.That((run 4000000L executable).Output, Is.EqualTo(expected)))
+        let report=File.ReadAllText(prefix+".native-ir.txt")
+        if index=2 then Assert.That(report, Does.Contain("Native integer FOR loops: selected=0;"))
+        else Assert.That(report, Does.Match("Native integer FOR loops: selected=[1-9]"))
+        if index=2 || index=4 then Assert.That(report, Does.Not.Match("invariant array rows: retained=[1-9]"))
+        else Assert.That(report, Does.Match("invariant array rows: retained=[1-9]"))
+        if index=5 then Assert.That(report, Does.Contain("Columns = 0"))
+    finally Directory.Delete(directory,true)
+
+let invariantArrayFailurePrograms = [|
+    "10 DIM a%(1,3),index%(0):index%(0)=2:row%=index%(0)\n20 FOR i%=0 TO 3\n30 a%(row%,i%)=i%\n40 END FOR i%\n50 STOP"
+    "10 DIM a%(1,3),index%(2):index%(0)=0:index%(1)=1:index%(2)=99:row%=1\n20 FOR i%=0 TO 2\n30 a%(row%,index%(i%))=i%\n40 END FOR i%\n50 STOP"
+|]
+let invariantArrayFailureModes = [|
+    for index in 0..invariantArrayFailurePrograms.Length-1 do
+        for hir in [false;true] do
+            for native,registers in [false,false;true,false;true,true] do
+                yield TestCaseData(index,hir,native,registers).SetName($"InvariantArray error {index} (HIR {hir}, native {native}, registers {registers})") |]
+
+[<TestCaseSource(nameof invariantArrayFailureModes)>]
+let ``InvariantArray preserves first row and later column runtime errors`` (index:int,hir:bool,native:bool,registers:bool) =
+    withCompiledProgramMode hir [(if native then "--native-regions" else "--no-native-regions");(if registers then "--regalloc" else "--no-regalloc")] ".bas" invariantArrayFailurePrograms[index] (fun executable ->
+        let error=Assert.Throws<M68kFault>(fun () -> run 4000000L executable |> ignore)
+        Assert.That(error.Message, Does.Contain("Runtime error message:")))
+
+let directConditionPrograms = [|
+    "10 total%=0\n20 FOR i%=-3 TO 3\n30 IF i% THEN total%=total%+1\n40 IF NOT i% THEN total%=total%+10\n50 IF NOT(NOT i%) THEN total%=total%+100\n60 IF NOT(NOT(NOT i%)) THEN total%=total%+1000\n70 END FOR i%\n80 PRINT total%\n90 STOP", "1616\n"
+    "10 total%=0\n20 FOR i%=-1 TO 1\n30 IF i%>=0 THEN total%=total%+1\n40 IF NOT(i%>=0) THEN total%=total%+10\n50 IF i%<>0 THEN total%=total%+100\n60 IF i%<=0 THEN total%=total%+1000\n70 END FOR i%\n80 PRINT total%\n90 STOP", "2212\n"
+    "10 total%=0\n20 FOR i%=-2 TO 2\n30 IF (i%<0) AND (i%<>-1) THEN total%=total%+1\n40 IF (i%>0) OR (i%=0) THEN total%=total%+10\n50 IF NOT((i%>0) AND NOT(i%=2)) THEN total%=total%+100\n60 IF NOT((i%<0) OR (i%=0)) THEN total%=total%+1000\n70 END FOR i%\n80 PRINT total%\n90 STOP", "2431\n"
+    "10 total%=0\n20 FOR i%=-2 TO 2\n30 IF i% AND -3 THEN total%=total%+1\n40 IF i% OR 0 THEN total%=total%+10\n50 IF NOT(i% AND NOT i%) THEN total%=total%+100\n60 IF i% XOR NOT i% THEN total%=total%+1000\n70 END FOR i%\n80 PRINT total%\n90 STOP", "5544\n"
+    "10 DIM a%(3):total%=0\n20 FOR i%=0 TO 3\n30 a%(i%)=(i%>1)\n40 IF a%(i%) THEN total%=total%+i%\n50 IF NOT(a%(i%)=0) THEN total%=total%+10\n60 END FOR i%\n70 PRINT total%;\":\";a%(0);\":\";a%(1);\":\";a%(2);\":\";a%(3)\n80 STOP", "25:0:0:1:1\n"
+|]
+
+let directConditionModes = [|
+    for index in 0..directConditionPrograms.Length-1 do
+        for hir in [false;true] do
+            for native,registers in [false,false;true,false;true,true] do
+                yield TestCaseData(index,hir,native,registers).SetName($"DirectCondition execution {index} (HIR {hir}, native {native}, registers {registers})") |]
+
+[<TestCaseSource(nameof directConditionModes)>]
+let ``DirectCondition signed comparisons integer truth eager logic and stored booleans agree in all modes`` (index:int,hir:bool,native:bool,registers:bool) =
+    let source,expected=directConditionPrograms[index]
+    withCompiledProgramMode hir [(if native then "--native-regions" else "--no-native-regions");(if registers then "--regalloc" else "--no-regalloc")] ".bas" source (fun executable ->
+        let result=run 4000000L executable
+        Assert.That(result.Output, Is.EqualTo(expected))
+        Assert.That(result.ExitCode, Is.Zero))
+
+[<TestCase(0)>]
+[<TestCase(1)>]
+[<TestCase(2)>]
+[<TestCase(3)>]
+[<TestCase(4)>]
+let ``DirectCondition reports confirm direct comparisons truth tests and eager branches execute`` (index:int) =
+    let source,expected=directConditionPrograms[index]
+    let directory=Path.Combine(Path.GetTempPath(),$"direct-condition-{Guid.NewGuid():N}")
+    Directory.CreateDirectory directory |> ignore
+    try
+        let prefix=Path.Combine(directory,"condition")
+        withCompiledProgramMode true ["--native-regions";"--regalloc";"--dump-hir="+prefix] ".bas" source (fun executable ->
+            Assert.That((run 4000000L executable).Output, Is.EqualTo(expected)))
+        let report=File.ReadAllText(prefix+".native-ir.txt")
+        Assert.That(report, Does.Contain("Native integer FOR loops: selected=1;"))
+        let marker=if index=0 then "integer truth=[1-9]" elif index=2 || index=3 then "eager AND/OR=[1-9]" else "direct conditions: comparisons=[1-9]"
+        Assert.That(report, Does.Match(marker))
+    finally Directory.Delete(directory,true)
+
+let directConditionFailures = [|
+    "10 value%=32000\n20 FOR i%=1 TO 2\n30 IF value%+1000>0 THEN x%=1\n40 END FOR i%\n50 STOP"
+    "10 divisor%=0\n20 FOR i%=1 TO 2\n30 IF 1 DIV divisor% THEN x%=1\n40 END FOR i%\n50 STOP"
+    "10 divisor%=0\n20 FOR i%=1 TO 2\n30 IF (i%>0) OR (1 DIV divisor%=0) THEN x%=1\n40 END FOR i%\n50 STOP"
+    "10 DIM a%(1),indexes%(0):indexes%(0)=3\n20 FOR i%=1 TO 2\n30 IF a%(indexes%(0)) THEN x%=1\n40 END FOR i%\n50 STOP"
+|]
+let directConditionFailureModes = [|
+    for index in 0..directConditionFailures.Length-1 do
+        for hir in [false;true] do
+            for native,registers in [false,false;true,false;true,true] do
+                yield TestCaseData(index,hir,native,registers).SetName($"DirectCondition error {index} (HIR {hir}, native {native}, registers {registers})") |]
+
+[<TestCaseSource(nameof directConditionFailureModes)>]
+let ``DirectCondition preserves overflow division and eager OR array error handling`` (index:int,hir:bool,native:bool,registers:bool) =
+    withCompiledProgramMode hir [(if native then "--native-regions" else "--no-native-regions");(if registers then "--regalloc" else "--no-regalloc")] ".bas" directConditionFailures[index] (fun executable ->
+        let error=Assert.Throws<M68kFault>(fun () -> run 4000000L executable |> ignore)
+        Assert.That(error.Message, Does.Contain("Runtime error message:")))
+
+let conditionalForPrograms = [|
+    "10 total%=0\n20 FOR i%=-3 TO 3\n30 IF i%<0 THEN total%=total%+1:ELSE total%=total%+10\n40 END FOR i%\n50 PRINT total%;\":\";i%\n60 STOP", "43:3\n"
+    "10 total%=0\n20 FOR i%=-2 TO 2\n30 IF i% THEN\n40 IF NOT(i%<0) THEN total%=total%+10:ELSE total%=total%+1\n50 ELSE\n60 total%=total%+100\n70 END IF\n80 END FOR i%\n90 PRINT total%\n100 STOP", "122\n"
+    "10 total%=0\n20 FOR i%=-2 TO 2\n30 flag%=(i%>=0) AND (i%<2)\n40 other%=(i%<0) OR (i%>0)\n50 different%=(i%<0) XOR (i%>0)\n60 total%=total%+flag%+other%+different%\n70 END FOR i%\n80 PRINT total%;\":\";flag%;\":\";other%\n90 STOP", "10:0:1\n"
+    "10 DIM a%(3):total%=0\n20 FOR i%=1 TO 3\n30 a%(i%)=(i%<>2):total%=total%+a%(i%)\n40 END FOR i%\n50 PRINT total%;\":\";a%(1);\":\";a%(2);\":\";a%(3)\n60 STOP", "2:1:0:1\n"
+    "10 x%=0:total%=0\n20 FOR i%=1 TO 3\n30 IF i%=2 THEN x%=7\n40 total%=total%+x%\n50 END FOR i%\n60 PRINT total%;\":\";x%\n70 STOP", "14:7\n"
+    "10 total%=0\n20 FOR i%=1 TO 4\n30 IF i%<3 THEN\n40 REMark empty true arm exercises the improver's opposite branch\n50 ELSE\n60 total%=total%+i%\n70 END IF\n80 END FOR i%\n90 PRINT total%\n100 STOP", "7\n"
+    "10 total%=0\n20 FOR i%=-2 TO 2\n30 flag%=NOT i%\n40 IF i% AND -3 THEN total%=total%+10\n50 total%=total%+flag%\n60 END FOR i%\n70 PRINT total%\n80 STOP", "41\n"
+    "10 i%=77:work\n20 PRINT i%;\":\";total%\n30 STOP\n100 DEFine PROCedure work\n110 LOCal i%,limit%,stride%\n120 limit%=4:stride%=1:total%=0\n130 FOR i%=1 TO limit% STEP stride%\n140 IF i%=2 THEN limit%=-1:stride%=-1\n150 IF i%<=2 THEN total%=total%+i%:ELSE total%=total%+10*i%\n160 END FOR i%\n170 END DEFine", "77:73\n"
+    "10 value%=0:work value%\n20 PRINT value%\n30 STOP\n100 DEFine PROCedure work(p%)\n110 LOCal i%\n120 FOR i%=1 TO 4\n130 IF i%<3 THEN p%=p%+i%:ELSE p%=p%+10\n140 END FOR i%\n150 END DEFine", "23\n"
+    "10 flag=0\n20 FOR i%=1 TO 3\n30 IF i%>1.5 THEN flag=flag+1\n40 END FOR i%\n50 PRINT flag\n60 STOP", "2\n"
+|]
+let conditionalForModes = [|
+    for index in 0..conditionalForPrograms.Length-1 do
+        for hir in [false;true] do
+            for native,registers in [false,false;true,false;true,true] do
+                yield TestCaseData(index,hir,native,registers).SetName($"ConditionalFor execution {index} (HIR {hir}, native {native}, registers {registers})") |]
+
+[<TestCaseSource(nameof conditionalForModes)>]
+let ``ConditionalFor integer comparisons logic and joins preserve QL values`` (index:int,hir:bool,native:bool,registers:bool) =
+    let source,expected=conditionalForPrograms[index]
+    withCompiledProgramMode hir [(if native then "--native-regions" else "--no-native-regions");(if registers then "--regalloc" else "--no-regalloc")] ".bas" source (fun executable ->
+        let result=run 4000000L executable
+        Assert.That(result.Output, Is.EqualTo(expected))
+        Assert.That(result.ExitCode, Is.Zero))
+
+let conditionalFailures = [|
+    "10 divisor%=0\n20 FOR i%=1 TO 2\n30 IF (i%=0) AND (1 DIV divisor%=0) THEN x%=1\n40 END FOR i%\n50 STOP"
+    "10 value%=32000\n20 FOR i%=1 TO 2\n30 IF (i%=0) AND (value%+1000>0) THEN x%=1\n40 END FOR i%\n50 STOP"
+    "10 DIM a%(1),indexes%(0):indexes%(0)=3\n20 FOR i%=0 TO 1\n30 IF (i%=99) AND (a%(indexes%(0))=0) THEN x%=1\n40 END FOR i%\n50 STOP"
+|]
+let conditionalFailureModes = [|
+    for index in 0..conditionalFailures.Length-1 do
+        for hir in [false;true] do
+            for native,registers in [false,false;true,false;true,true] do
+                yield TestCaseData(index,hir,native,registers).SetName($"ConditionalFor error {index} (HIR {hir}, native {native}, registers {registers})") |]
+
+[<TestCaseSource(nameof conditionalFailureModes)>]
+let ``ConditionalFor eager conditions retain checked arithmetic and bounds errors`` (index:int,hir:bool,native:bool,registers:bool) =
+    withCompiledProgramMode hir [(if native then "--native-regions" else "--no-native-regions");(if registers then "--regalloc" else "--no-regalloc")] ".bas" conditionalFailures[index] (fun executable ->
+        let error=Assert.Throws<M68kFault>(fun () -> run 4000000L executable |> ignore)
+        Assert.That(error.Message, Does.Contain("Runtime error message:")))
+
+[<TestCase(0,1)>]
+[<TestCase(1,1)>]
+[<TestCase(2,1)>]
+[<TestCase(3,1)>]
+[<TestCase(4,1)>]
+[<TestCase(5,1)>]
+[<TestCase(6,1)>]
+[<TestCase(7,1)>]
+[<TestCase(8,0)>]
+[<TestCase(9,0)>]
+let ``ConditionalFor reports select integer control flow and preserve conservative fallbacks`` (index:int,loops:int) =
+    let directory=Path.Combine(Path.GetTempPath(),$"conditional-report-{Guid.NewGuid():N}")
+    Directory.CreateDirectory directory |> ignore
+    try
+        let prefix=Path.Combine(directory,"if")
+        let source,expected=conditionalForPrograms[index]
+        withCompiledProgramMode true ["--native-regions";"--regalloc";"--dump-hir="+prefix] ".bas" source (fun executable ->
+            Assert.That((run 4000000L executable).Output, Is.EqualTo(expected)))
+        let report=File.ReadAllText(prefix+".native-ir.txt")
+        Assert.That(report, Does.Contain($"Native integer FOR loops: selected={loops};"))
+        if loops>0 then Assert.That(report, Does.Contain("conditional body:"))
+    finally Directory.Delete(directory,true)
+let localForModes = [|
+    for index in 0..localForPrograms.Length-1 do
+        for hir in [false;true] do
+            for native,registers in [false,false;true,false;true,true] do
+                yield TestCaseData(index,hir,native,registers).SetName($"LocalFor execution {index} (HIR {hir}, native {native}, registers {registers})") |]
+
+[<TestCaseSource(nameof localForModes)>]
+let ``LocalFor certificates preserve bindings recursion captured bounds and alias fallbacks`` (index:int,hir:bool,native:bool,registers:bool) =
+    let source,expected=localForPrograms[index]
+    withCompiledProgramMode hir [(if native then "--native-regions" else "--no-native-regions");(if registers then "--regalloc" else "--no-regalloc")] ".bas" source (fun executable ->
+        let result=run 3000000L executable
+        Assert.That(result.ExitCode, Is.Zero)
+        Assert.That(result.Output, Is.EqualTo(expected)))
+
+[<TestCase(0,1)>]
+[<TestCase(2,1)>]
+[<TestCase(3,1)>]
+[<TestCase(4,0)>]
+[<TestCase(5,0)>]
+[<TestCase(6,1)>]
+[<TestCase(7,1)>]
+[<TestCase(8,2)>]
+let ``LocalFor plans select certified loops and retain alias barriers`` (index:int,expectedLoops:int) =
+    let directory=Path.Combine(Path.GetTempPath(),$"local-for-report-{Guid.NewGuid():N}")
+    Directory.CreateDirectory directory |> ignore
+    try
+        let prefix=Path.Combine(directory,"loops")
+        let source,expected=localForPrograms[index]
+        let capture registers=withCompiledProgramMode true ["--native-regions";(if registers then "--regalloc" else "--no-regalloc");"--dump-hir="+prefix] ".bas" source (fun executable -> run 3000000L executable)
+        let before=capture false
+        let after=capture true
+        Assert.That(after.Output, Is.EqualTo(expected))
+        Assert.That(after.Output, Is.EqualTo(before.Output))
+        let report=File.ReadAllText(prefix+".native-ir.txt")
+        Assert.That(report, Does.Contain($"Native integer FOR loops: selected={expectedLoops};"))
+        if expectedLoops>0 then
+            Assert.That(report, Does.Contain("certified binding=True"))
+    finally Directory.Delete(directory,true)
+
+[<TestCase(false)>]
+[<TestCase(true)>]
+let ``LocalFor error handlers retain the runtime path and restore LOCAL bindings`` (hir:bool) =
+    let source="10 i%=77\n20 WHEN ERROR\n30 PRINT ERNUM;\":\";i%:STOP\n60 END WHEN\n70 work\n80 STOP\n100 DEFine PROCedure work\n110 LOCal i%,x%\n120 x%=32000\n130 FOR i%=1 TO 10\n140 x%=x%+1000\n150 END FOR i%\n160 END DEFine"
+    withCompiledProgramMode hir [] ".bas" source (fun executable ->
+        let result=run 3000000L executable
+        Assert.That(result.Output, Is.EqualTo("-18:77\n")))
 
 let divmodPrograms = [|
     "10 a%=-7:b%=3\n20 q%=a% DIV b%:r%=a% MOD b%\n30 PRINT q%;\":\";r%;\":\";q%*b%+r%\n40 a%=7:b%=-3\n50 q%=a% DIV b%:r%=a% MOD b%\n60 PRINT q%;\":\";r%;\":\";q%*b%+r%\n70 STOP", "-3:2:-7\n-3:-2:7\n"

@@ -1,0 +1,192 @@
+[
+  {
+    "Benchmark": "native_truth_for",
+    "Status": "passed",
+    "BeforeBytes": 6992,
+    "AfterBytes": 6992,
+    "BeforeInstructions": 1672252,
+    "AfterInstructions": 1672252,
+    "BeforeFetchWords": 2013071,
+    "AfterFetchWords": 2013071
+  },
+  {
+    "Benchmark": "scoped_integer_for",
+    "Status": "passed",
+    "BeforeBytes": 6856,
+    "AfterBytes": 6856,
+    "BeforeInstructions": 389175,
+    "AfterInstructions": 389175,
+    "BeforeFetchWords": 491774,
+    "AfterFetchWords": 491774
+  },
+  {
+    "Benchmark": "native_conditional_for",
+    "Status": "passed",
+    "BeforeBytes": 6908,
+    "AfterBytes": 6908,
+    "BeforeInstructions": 455905,
+    "AfterInstructions": 455905,
+    "BeforeFetchWords": 578520,
+    "AfterFetchWords": 578520
+  },
+  {
+    "Benchmark": "local_integer_for",
+    "Status": "passed",
+    "BeforeBytes": 6846,
+    "AfterBytes": 6846,
+    "BeforeInstructions": 389115,
+    "AfterInstructions": 389115,
+    "BeforeFetchWords": 491699,
+    "AfterFetchWords": 491699
+  },
+  {
+    "Benchmark": "regalloc_copy_chain",
+    "Status": "passed",
+    "BeforeBytes": 6564,
+    "AfterBytes": 6564,
+    "BeforeInstructions": 285295,
+    "AfterInstructions": 285295,
+    "BeforeFetchWords": 366941,
+    "AfterFetchWords": 366941
+  },
+  {
+    "Benchmark": "regalloc_arithmetic",
+    "Status": "passed",
+    "BeforeBytes": 6616,
+    "AfterBytes": 6616,
+    "BeforeInstructions": 385499,
+    "AfterInstructions": 385499,
+    "BeforeFetchWords": 487251,
+    "AfterFetchWords": 487251
+  },
+  {
+    "Benchmark": "native_constant_chain",
+    "Status": "passed",
+    "BeforeBytes": 6584,
+    "AfterBytes": 6584,
+    "BeforeInstructions": 345337,
+    "AfterInstructions": 345337,
+    "BeforeFetchWords": 526993,
+    "AfterFetchWords": 526993
+  },
+  {
+    "Benchmark": "native_repeated_expression",
+    "Status": "passed",
+    "BeforeBytes": 6558,
+    "AfterBytes": 6558,
+    "BeforeInstructions": 325276,
+    "AfterInstructions": 325276,
+    "BeforeFetchWords": 366913,
+    "AfterFetchWords": 366913
+  },
+  {
+    "Benchmark": "integer_arithmetic",
+    "Status": "passed",
+    "BeforeBytes": 6550,
+    "AfterBytes": 6550,
+    "BeforeInstructions": 405352,
+    "AfterInstructions": 405352,
+    "BeforeFetchWords": 507005,
+    "AfterFetchWords": 507005
+  },
+  {
+    "Benchmark": "constant_expressions",
+    "Status": "passed",
+    "BeforeBytes": 6534,
+    "AfterBytes": 6534,
+    "BeforeInstructions": 265322,
+    "AfterInstructions": 265322,
+    "BeforeFetchWords": 346967,
+    "AfterFetchWords": 346967
+  },
+  {
+    "Benchmark": "sieve",
+    "Status": "passed",
+    "BeforeBytes": 7534,
+    "AfterBytes": 7534,
+    "BeforeInstructions": 239026,
+    "AfterInstructions": 239026,
+    "BeforeFetchWords": 275774,
+    "AfterFetchWords": 275774
+  },
+  {
+    "Benchmark": "matrix_multiply",
+    "Status": "passed",
+    "BeforeBytes": 8076,
+    "AfterBytes": 8076,
+    "BeforeInstructions": 373821,
+    "AfterInstructions": 373821,
+    "BeforeFetchWords": 539109,
+    "AfterFetchWords": 539109
+  },
+  {
+    "Benchmark": "bubble_sort",
+    "Status": "passed",
+    "BeforeBytes": 7704,
+    "AfterBytes": 7704,
+    "BeforeInstructions": 399986,
+    "AfterInstructions": 399986,
+    "BeforeFetchWords": 471477,
+    "AfterFetchWords": 471477
+  },
+  {
+    "Benchmark": "procedure_calls",
+    "Status": "passed",
+    "BeforeBytes": 6770,
+    "AfterBytes": 6770,
+    "BeforeInstructions": 2645558,
+    "AfterInstructions": 2645558,
+    "BeforeFetchWords": 3407225,
+    "AfterFetchWords": 3407225
+  },
+  {
+    "Benchmark": "recursion",
+    "Status": "passed",
+    "BeforeBytes": 6750,
+    "AfterBytes": 6750,
+    "BeforeInstructions": 613113,
+    "AfterInstructions": 613113,
+    "BeforeFetchWords": 763538,
+    "AfterFetchWords": 763538
+  },
+  {
+    "Benchmark": "string_operations",
+    "Status": "passed",
+    "BeforeBytes": 7782,
+    "AfterBytes": 8264,
+    "BeforeInstructions": 241204,
+    "AfterInstructions": 227768,
+    "BeforeFetchWords": 284210,
+    "AfterFetchWords": 265935
+  },
+  {
+    "Benchmark": "float_dyadic",
+    "Status": "passed",
+    "BeforeBytes": 6714,
+    "AfterBytes": 6792,
+    "BeforeInstructions": 1167811,
+    "AfterInstructions": 907807,
+    "BeforeFetchWords": 1530060,
+    "AfterFetchWords": 1210115
+  },
+  {
+    "Benchmark": "float_polynomial",
+    "Status": "compiled-only",
+    "BeforeBytes": 7186,
+    "AfterBytes": 7440,
+    "BeforeInstructions": null,
+    "AfterInstructions": null,
+    "BeforeFetchWords": null,
+    "AfterFetchWords": null
+  },
+  {
+    "Benchmark": "float_transcendentals",
+    "Status": "compiled-only",
+    "BeforeBytes": 7230,
+    "AfterBytes": 7230,
+    "BeforeInstructions": null,
+    "AfterInstructions": null,
+    "BeforeFetchWords": null,
+    "AfterFetchWords": null
+  }
+]

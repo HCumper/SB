@@ -1,0 +1,62 @@
+[
+  {
+    "AfterBytes": 9650,
+    "AfterFetchWords": 5145743,
+    "AfterInstructions": 3864403,
+    "BeforeBytes": 9644,
+    "BeforeFetchWords": 7897840,
+    "BeforeInstructions": 5954147,
+    "Benchmark": "route_planner",
+    "FetchReductionPercent": 34.846198454260914,
+    "InstructionReductionPercent": 35.09728597564017,
+    "Output": "route_planner:4701\n"
+  },
+  {
+    "AfterBytes": 6846,
+    "AfterFetchWords": 491699,
+    "AfterInstructions": 389115,
+    "BeforeBytes": 6846,
+    "BeforeFetchWords": 491699,
+    "BeforeInstructions": 389115,
+    "Benchmark": "local_integer_for",
+    "FetchReductionPercent": 0,
+    "InstructionReductionPercent": 0,
+    "Output": "local_integer_for:270\n"
+  },
+  {
+    "AfterBytes": 6918,
+    "AfterFetchWords": 678525,
+    "AfterInstructions": 515925,
+    "BeforeBytes": 6892,
+    "BeforeFetchWords": 1638080,
+    "BeforeInstructions": 1255613,
+    "Benchmark": "native_conditional_for",
+    "FetchReductionPercent": 58.57803037702676,
+    "InstructionReductionPercent": 58.91050825373741,
+    "Output": "native_conditional_for:6870\n"
+  },
+  {
+    "AfterBytes": 7558,
+    "AfterFetchWords": 406859,
+    "AfterInstructions": 348439,
+    "BeforeBytes": 7500,
+    "BeforeFetchWords": 544799,
+    "BeforeInstructions": 447318,
+    "Benchmark": "sieve",
+    "FetchReductionPercent": 25.319429734636078,
+    "InstructionReductionPercent": 22.104856053188115,
+    "Output": "sieve:840\n"
+  },
+  {
+    "AfterBytes": 7712,
+    "AfterFetchWords": 511817,
+    "AfterInstructions": 430242,
+    "BeforeBytes": 7720,
+    "BeforeFetchWords": 970044,
+    "BeforeInstructions": 754019,
+    "Benchmark": "bubble_sort",
+    "FetchReductionPercent": 47.23775416372865,
+    "InstructionReductionPercent": 42.940164637761114,
+    "Output": "bubble_sort:121\n"
+  }
+]

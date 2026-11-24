@@ -1,0 +1,11 @@
+  SBLib -> C:\Source\SB\SBLib\bin\Debug\net10.0\SBLib.dll
+  SBRuntime -> C:\Source\SB\SBRuntime\bin\Debug\net10.0\SBRuntime.dll
+  SB.CSharpRuntime -> C:\Source\SB\SB.CSharpRuntime\bin\Debug\net10.0\SB.CSharpRuntime.dll
+  SB.AvaloniaHost -> C:\Source\SB\SB.AvaloniaHost\bin\Debug\net10.0\SB.AvaloniaHost.dll
+  SB -> C:\Source\SB\SB\bin\Debug\net10.0\SB.dll
+  SBTests -> C:\Source\SB\SBTests\bin\Debug\net10.0\SBTests.dll
+Test run for C:\Source\SB\SBTests\bin\Debug\net10.0\SBTests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Results File: C:\Source\codex-workspace\.scratch\turbo-local-for\abi-tests\final.trx
+
+Passed!  - Failed:     0, Passed:    65, Skipped:     0, Total:    65, Duration: 38 s - SBTests.dll (net10.0)

@@ -1,0 +1,147 @@
+999 8 ; vector table
+255
+242 10001
+254
+10000: ; DATA
+251
+255
+10001: ; first initialisation: windows, arrays, strings
+234 1 5 ; PIECE$
+234 1 7 ; TEXT$
+242 10005
+255
+10002: ; program body
+326
+346
+106 80
+118 3 ; PASSES_I
+106 80
+253 7 ; TEXT$
+106 2
+253 5 ; PIECE$
+263
+118 1 ; CHECK_I
+106 1
+109 3 ; PASSES_I
+106 1
+357 2001
+26 4 2000 ; PASS_I
+355
+2000: ; FOR PASS_I
+254 ; audited native region
+109 4 ; PASS_I
+106 2
+20
+106 1
+12
+255 ; resume threaded code
+239 2002
+169 "ab"
+264 5 ; PIECE$
+242 2003
+2002: ; ELSE
+169 "cd"
+264 5 ; PIECE$
+2003: ; END IF
+169 ""
+264 7 ; TEXT$
+106 1
+106 32
+106 1
+357 2005
+26 2 2004 ; I_I
+355
+2004: ; FOR I_I
+265 5 ; PIECE$
+374 7 ; TEXT$
+230 2 ; I_I
+378 2005
+106 1
+106 32
+106 1
+357 2007
+26 2 2006 ; I_I
+355
+2006: ; FOR I_I
+106 2
+263
+175 7 ; TEXT$
+106 1
+268
+175 7 ; TEXT$
+84
+264 7 ; TEXT$
+230 2 ; I_I
+378 2007
+375 7 ; TEXT$
+106 1
+268
+175 7 ; TEXT$
+269
+5
+106 64
+268
+175 7 ; TEXT$
+269
+254 ; audited native region
+1005 ; checked native integer arithmetic
+118 6 ; RESULT_I
+109 1 ; CHECK_I
+109 6 ; RESULT_I
+1005 ; checked native integer arithmetic
+106 10000
+20
+118 1 ; CHECK_I
+255 ; resume threaded code
+230 4 ; PASS_I
+378 2001
+254 ; audited native region
+109 3 ; PASSES_I
+106 80
+12
+109 1 ; CHECK_I
+106 880
+13
+255 ; resume threaded code
+54
+239 2008
+106 1
+281
+170 "FAIL string_operations checksum"
+186
+203
+220
+2008: ; END IF
+106 1
+281
+170 "string_operations:"
+186
+109 1 ; CHECK_I
+312
+186
+203
+220
+220
+242 10007
+254
+10006: ; GLOBAL/EXTERNAL linkage list (empty)
+261 -1 "" ; end of list
+255
+10007:
+255
+10005: ; second initialisation: scalars
+114 1 ; CHECK_I
+101 2 ; I_I
+114 3 ; PASSES_I
+101 4 ; PASS_I
+114 6 ; RESULT_I
+267
+237 10000
+242 10002
+254
+10003: ; resident routine names
+261 -1 "" ; end of list
+243 10003 ; startup trailer
+358 0 ; own module number
+243 10006
+0

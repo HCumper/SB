@@ -73,7 +73,12 @@ let run (maxSteps: int64) (executable: byte[]) =
     // Runtime errors must fail the test, even though Turbo ultimately removes the job.
     hook 0xCAu 2u (fun cpu -> raise (M68kFault $"Runtime QDOS error {int32 cpu.D[0]}."))
     hook 0xCCu 3u (fun cpu -> raise (M68kFault $"Runtime QDOS error {int32 cpu.D[0]}."))
-    hook 0xD0u 4u (fun cpu -> raise (M68kFault $"Runtime error message: {readName cpu.A[1]}"))
+    hook 0xD0u 4u (fun cpu ->
+        // lib537 error_trap records ERNUM at signed A6+$8154 before fatal
+        // prints its task prefix. Read it without changing emulated state.
+        let errorAddress=cpu.A[6]+uint32(int32(int16 0x8154us))
+        let errorNumber=int16(uint16(cpu.ReadWord errorAddress))
+        raise (M68kFault $"Runtime error message: {readName cpu.A[1]}; ERNUM={errorNumber}"))
     hook 0x11Cu 5u (fun _ -> raise (M68kFault "Unsupported ROM arithmetic service RI.EXEC."))
 
     cpu.TrapHandler <- fun cpu number ->

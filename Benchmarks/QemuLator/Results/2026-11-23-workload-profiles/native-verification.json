@@ -1,0 +1,62 @@
+[
+  {
+    "CompatibilityBytes": 9184,
+    "CompatibilityExecutableIdentical": true,
+    "FastSelections": 5,
+    "IrBytes": 588,
+    "NativeIntegerOperations": 5,
+    "NativeOperations": 106,
+    "Tag": "b03",
+    "ThreadedIntegerOperations": 0,
+    "ThreadedOperations": 14,
+    "TurboBytes": 9184
+  },
+  {
+    "CompatibilityBytes": 7856,
+    "CompatibilityExecutableIdentical": true,
+    "FastSelections": 5,
+    "IrBytes": 596,
+    "NativeIntegerOperations": 2,
+    "NativeOperations": 104,
+    "Tag": "b04",
+    "ThreadedIntegerOperations": 0,
+    "ThreadedOperations": 15,
+    "TurboBytes": 7856
+  },
+  {
+    "CompatibilityBytes": 7788,
+    "CompatibilityExecutableIdentical": true,
+    "FastSelections": 5,
+    "IrBytes": 622,
+    "NativeIntegerOperations": 3,
+    "NativeOperations": 100,
+    "Tag": "b05",
+    "ThreadedIntegerOperations": 0,
+    "ThreadedOperations": 15,
+    "TurboBytes": 7788
+  },
+  {
+    "CompatibilityBytes": 12718,
+    "CompatibilityExecutableIdentical": true,
+    "FastSelections": 5,
+    "IrBytes": 1358,
+    "NativeIntegerOperations": 23,
+    "NativeOperations": 277,
+    "Tag": "b06",
+    "ThreadedIntegerOperations": 0,
+    "ThreadedOperations": 28,
+    "TurboBytes": 12718
+  },
+  {
+    "CompatibilityBytes": 17920,
+    "CompatibilityExecutableIdentical": true,
+    "FastSelections": 5,
+    "IrBytes": 2716,
+    "NativeIntegerOperations": 26,
+    "NativeOperations": 393,
+    "Tag": "b08",
+    "ThreadedIntegerOperations": 0,
+    "ThreadedOperations": 30,
+    "TurboBytes": 17920
+  }
+]

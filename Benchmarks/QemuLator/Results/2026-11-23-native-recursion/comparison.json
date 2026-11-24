@@ -1,0 +1,15 @@
+{
+  "Benchmark": "eight_queens",
+  "Speed": "GoldCard",
+  "BeforeSBMedian": 2.98,
+  "AfterSBMedian": 2.72,
+  "BeforeTurboMedian": 2.54,
+  "AfterTurboMedian": 2.56,
+  "SBElapsedReductionPercent": 8.724832214765089,
+  "SBRelativeToTurboPercent": 6.25,
+  "InstructionReductionPercent": 8.70651651511032,
+  "FetchReductionPercent": 8.293002272943328,
+  "BeforeBytes": 9022,
+  "AfterBytes": 9108,
+  "AddedBytes": 86
+}

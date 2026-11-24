@@ -1,0 +1,11 @@
+{
+  "ProcessId": 45268,
+  "Executable": "C:\\Program Files (x86)\\Q-emuLator\\QemuLator.exe",
+  "CommandLine": "\"C:\\Program Files (x86)\\Q-emuLator\\QemuLator.exe\" \"C:\\Source\\codex-workspace\\.scratch\\turbo-native-template-loops\\qemulator-timings\\benchmark.QCF\"",
+  "CreationDateUtc": "2026-11-23T21:53:09.3629110Z",
+  "WindowStyle": "Hidden",
+  "Config": "C:\\Source\\codex-workspace\\.scratch\\turbo-native-template-loops\\qemulator-timings\\benchmark.QCF",
+  "ConfigSha256": "5704AB75063434443859B96ED1569DF22832618722FFECB7A935F75105D9C351",
+  "Speed": "QL",
+  "FullSuiteCompletedBeforeLaunch": true
+}

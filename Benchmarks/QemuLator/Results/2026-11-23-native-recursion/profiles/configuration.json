@@ -1,0 +1,11 @@
+{
+  "CodeMapsByteIdentical": true,
+  "CompilerSha256": "504851652E8EDE12985EE83A39E22C35E80759C6C5026A6131D35D57467A6228",
+  "Inputs": "C:\\Source\\codex-workspace\\.scratch\\turbo-native-recursive-calls\\qemulator",
+  "InstructionCountsAreNotCycles": true,
+  "OsUtilitiesAreHostHooks": true,
+  "ProfiledUnmodifiedJobs": true,
+  "RealRomExecuted": true,
+  "Rom": "C:\\Program Files (x86)\\Q-emuLator\\QL ROMs\\QL_ROM_JS",
+  "RomSha256": "FC6A683E44570D7E4A144580729E25FF4B3BD293A9EFF5313CFDAE11520D5EFC"
+}

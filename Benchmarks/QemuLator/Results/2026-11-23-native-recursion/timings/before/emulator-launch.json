@@ -1,0 +1,12 @@
+{
+  "ProcessId": 26216,
+  "Executable": "C:\\Program Files (x86)\\Q-emuLator\\QemuLator.exe",
+  "CommandLine": "\"C:\\Program Files (x86)\\Q-emuLator\\QemuLator.exe\" \"C:\\Source\\codex-workspace\\.scratch\\turbo-native-recursive-calls\\qemulator-baseline-goldcard\\benchmark.QCF\"",
+  "CreationDateUtc": "2026-11-23T23:03:00.3483390Z",
+  "WindowStyle": "Hidden",
+  "Config": "C:\\Source\\codex-workspace\\.scratch\\turbo-native-recursive-calls\\qemulator-baseline-goldcard\\benchmark.QCF",
+  "ConfigSha256": "D5A5867AEF898B63FF8821B9F86A366723983D60D16B5EB13736872F57028F3B",
+  "Speed": "GoldCard",
+  "FullSuiteCompletedBeforeLaunch": true,
+  "CompilerSha256": "3CF85C2AE537BCE03B74A7831B7CD3041F30AFBA60D29CD795C6987577EEDB56"
+}

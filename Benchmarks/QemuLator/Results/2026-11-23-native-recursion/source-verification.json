@@ -1,0 +1,112 @@
+{
+  "BaseRevision": "0b2cb4093f2cf0366815131731e26ed93c76cc9b",
+  "WorkingTreeUncommitted": true,
+  "CompilerSha256": "504851652E8EDE12985EE83A39E22C35E80759C6C5026A6131D35D57467A6228",
+  "BaselineCompilerSha256": "3CF85C2AE537BCE03B74A7831B7CD3041F30AFBA60D29CD795C6987577EEDB56",
+  "FullSuitePassed": 4328,
+  "CompilerTestsPassed": 4080,
+  "RuntimeTestsPassed": 248,
+  "FocusedTestsPassed": 207,
+  "ProfilesPassed": 10,
+  "CorruptProfilesRejected": 8,
+  "QemuLatorJobs": 16,
+  "TimingSpeed": "GoldCard",
+  "SourceFiles": [
+    {
+      "Path": "SB/CompilerPipeline.fs",
+      "Sha256": "D24402DEB4E891C78D754EB4877919867A4CE83C19AB8F14331294BBEDBF85E4"
+    },
+    {
+      "Path": "SB/HirTurboIrBackend.fs",
+      "Sha256": "08A7A0E06BFAECD2359F598B6B1D795F0693D233932814AC3B04BA28873C64A9"
+    },
+    {
+      "Path": "SB/Optimization/HIR-ANALYSIS.md",
+      "Sha256": "EACD22CAEA11902A77821A845CC18CDD366B585BAD0501A071E7BA258E2298FF"
+    },
+    {
+      "Path": "SB/Optimization/HirAnalysis.fs",
+      "Sha256": "EB41DDAC3AA776CC6C0801BE14568791BBD4DB7DC0ABB39A799F8B0727F035B5"
+    },
+    {
+      "Path": "SB/Optimization/HirControlFlow.fs",
+      "Sha256": "CCC8E3DF80C2D9154F5EF00A8202E876248FD8CA101CB3518929A066EE90770D"
+    },
+    {
+      "Path": "SB/Optimization/HirEffects.fs",
+      "Sha256": "0DAD47459D2D747FC64A144EAF27F62E2149EDC5D1613D59677389E77D7E460E"
+    },
+    {
+      "Path": "SB/Optimization/TURBO-NATIVE-LOOPS.md",
+      "Sha256": "4A58F27E7AFDFBEB86BAFC995C74ED2581AD735928A550761ED90F5715F4E839"
+    },
+    {
+      "Path": "SB/Optimization/TURBO-REGISTER-ALLOCATION.md",
+      "Sha256": "23DB54BA07F8960C22A8C5B774A0494EB26A7AE0A0D1BA16046464A776FED7A5"
+    },
+    {
+      "Path": "SB/Optimization/TurboNativeControlFlow.fs",
+      "Sha256": "809E34A76C56883C69D00174F3ADE0655875624EA4653714D91BF188E309A9D7"
+    },
+    {
+      "Path": "SB/Optimization/TurboNativeInvariants.fs",
+      "Sha256": "2C203E9C82E6E5AF6EEF02E3C91C9E3FA5BAE8D2C52A3FDE054A225965E6B36C"
+    },
+    {
+      "Path": "SB/Optimization/TurboNativeIr.fs",
+      "Sha256": "A527A71FC0ADB664C5BD090C7BA9A714A7692FFBD60A526E25742B2B375D1A13"
+    },
+    {
+      "Path": "SB/Optimization/TurboNativeLoops.fs",
+      "Sha256": "34A677A3A22D851180BB26D2EF78654714426B7EF537EDA6B0F738B6313930E7"
+    },
+    {
+      "Path": "SB/Optimization/TurboNativeRegions.fs",
+      "Sha256": "02E51B09EF71420E3CF704664BEACC71D574AA99D1C05DBC2AD2030240F7C6E6"
+    },
+    {
+      "Path": "SB/Optimization/TurboNativeTemplateLoops.fs",
+      "Sha256": "23CC96FCC3B6C98CE8C6692C9BF2701F1A58DDF564D1D45504AB3F648F7FB3CA"
+    },
+    {
+      "Path": "SB/SB.fsproj",
+      "Sha256": "2F27C0FA956D6E22A19E07075BFCDAE963F088B202B2900AFC0921851A1DF019"
+    },
+    {
+      "Path": "SB/TurboCodegen.fs",
+      "Sha256": "9A4FE96A34019650D8DD09407DA827D7A669FB0E34A762DE91E3A55132E00894"
+    },
+    {
+      "Path": "SBTests/GeneratedTurboExecutionTests.fs",
+      "Sha256": "03050AB9D9C0682F1B4928110EFDC6BE09E6BA1680D3676899E762E33B6EBF97"
+    },
+    {
+      "Path": "SBTests/Optimization/HirAnalysisTests.fs",
+      "Sha256": "29768DC7B47DBF22E9B54A342397C37A0673D39B50EE6D2790E12FC253B94610"
+    },
+    {
+      "Path": "SBTests/Optimization/TurboNativeIrTests.fs",
+      "Sha256": "E15CE721C0CEDE1C2346B4F8074D5D86FA31ED15C3401146FF5248F504CB8DC0"
+    },
+    {
+      "Path": "SBTests/Optimization/TurboNativeLoopsTests.fs",
+      "Sha256": "35A626ADA5B39C44C24246C13479A76CF1C467CBA8E5DDFC5362C10606F4E473"
+    },
+    {
+      "Path": "SBTests/Optimization/TurboNativeTemplateLoopsTests.fs",
+      "Sha256": "DCE67C0184497E7AFD6857DDFF8488A7DC1FE40DAF62274DDA872F97CB4C5578"
+    },
+    {
+      "Path": "SBTests/SBTests.fsproj",
+      "Sha256": "67075F7D9AFB8DCCB2F1F9DD062A8E04EF82BA9AFD52DA26237BBFAFD088EB71"
+    },
+    {
+      "Path": "SBTests/TurboCodegenTests.fs",
+      "Sha256": "A07279187075905BDAB8B5BBE7A791C346C97C5946A40825B3008E3C7BB8F182"
+    },
+    {
+      "Path": "SBTests/TurboExecutionHarness.fs",
+      "Sha256": "34BC92C54BD56EA85F2F7E07ECA62493758983A4957854BD5D866C9A253C48C4"
+    }
+  ]
+}

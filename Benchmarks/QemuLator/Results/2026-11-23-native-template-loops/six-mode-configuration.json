@@ -1,0 +1,27 @@
+{
+  "AppsettingsSha256": "91894586C2809998DE849E64622BF63A1CE299934778E59F04112CD0F5025607",
+  "CodeMode": "Threaded, native templates, allocated native IR",
+  "CompilerSha256": "3CF85C2AE537BCE03B74A7831B7CD3041F30AFBA60D29CD795C6987577EEDB56",
+  "FetchModel": "16-bit opcode and extension words consumed; excludes data reads, host hooks and speculative prefetch",
+  "HarnessSha256": "E6B44431C67A78C54BF8BBE038A9B0A72FABBB2A1C69A5DC4F9FD5EBAD432039",
+  "HirModes": [
+    "--no-hir-opt",
+    "--hir-opt"
+  ],
+  "Host": "Microsoft Windows 10.0.26200",
+  "ManifestSha256": "8240D5BA9D8DFB1DE2B5A120D2EDFAD1BAB26E8BF5D21218F1FB31D82F50492F",
+  "MaxSteps": 50000000,
+  "NativeModes": [
+    "--no-native-regions",
+    "--native-regions"
+  ],
+  "RecordedUtc": "2026-11-23T21:17:37.6102382+00:00",
+  "RegisterModes": [
+    "--no-regalloc",
+    "--regalloc"
+  ],
+  "Runtime": ".NET 11.0.0",
+  "TemplateLibrary": "lib537",
+  "TimingModel": "Functional MC68000 instruction counts; no calibrated MC68008 cycle model",
+  "Workload": "default"
+}

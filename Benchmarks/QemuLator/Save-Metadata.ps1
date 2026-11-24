@@ -20,6 +20,11 @@ $fingerprints['SB.dll']=Hash $CompilerDll
 $fingerprints['lib537.bin']=Hash (Join-Path $RepositoryDirectory 'SB\TurboRuntime\lib537.bin')
 $fingerprints['emulator']=Hash $Emulator
 $config=Get-Content -LiteralPath (Join-Path $run 'benchmark.QCF')
+$speedLines=@($config | Where-Object { $_.StartsWith('Speed=') })
+if ($speedLines.Count -ne 1 -or $speedLines[0] -notin @('Speed=GoldCard','Speed=QL')) { throw 'Timing requires GoldCard or QL speed.' }
+$timingSpeed=$speedLines[0].Substring(6)
+if ($plan.timingSpeed -and $timingSpeed -ne $plan.timingSpeed) { throw 'Timing speed differs from the prepared plan.' }
+$speedName=if ($timingSpeed -eq 'GoldCard') { 'GoldCard' } else { 'Original QL' }
 foreach ($key in @('MainRom','BackRom')) {
     $line=@($config | Where-Object { $_.StartsWith($key+'=') })
     if ($line.Count -ne 1) { throw "Missing $key setting." }
@@ -68,7 +73,7 @@ $revision=(& git -C $RepositoryDirectory rev-parse HEAD).Trim()
 if ($LASTEXITCODE -ne 0) { throw 'Cannot identify SB revision.' }
 [pscustomobject]@{ FormatVersion=2; TimingMethod=$plan.timingMethod; RecordedUtc=[DateTime]::UtcNow.ToString('o')
     Emulator='Q-emuLator'; EmulatorVersion=(Get-Item -LiteralPath $Emulator).VersionInfo.FileVersion
-    TimingSpeed='Original QL (Speed=QL)'; CompilationSpeed='Full; compilation excluded'; RamKiB=640; Rom='JS'
+    TimingSpeed="$speedName (Speed=$timingSpeed)"; CompilationSpeed='Full; compilation excluded'; RamKiB=640; Rom='JS'
     TurboParserVersion='5.09'; TurboCodeGeneratorVersion='3.27 (generator 4.10, library 5.37)'; TurboToolkitVersion='3.44'
     TurboOptions='FAST (TURBO_optim 2), large addressing, no copied windows, no line numbers, structured, 20 KiB dataspace, base stack 350 bytes'
     SbRevision=$revision; SbOptions=$build.Flags; HostOs=[Environment]::OSVersion.VersionString

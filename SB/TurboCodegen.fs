@@ -45,6 +45,8 @@ type TurboCodegenOptions = {
     /// Lower eligible integer FOR bodies and NEXT into a native loop. Requires
     /// local allocation; false retains compatibility with the original generator.
     NativeIntegerForLoops: bool
+    /// Trusted, nonserialized HIR binding certificates. Empty keeps legacy rules.
+    NativeForLoopProofs: Map<int,HirTurboIrBackend.NativeForLoopProof>
 }
 
 let defaultCodegenOptions = {
@@ -55,6 +57,7 @@ let defaultCodegenOptions = {
     SmallCode = false
     LocalRegisterAllocation = false
     NativeIntegerForLoops = false
+    NativeForLoopProofs = Map.empty
 }
 
 type TurboCodegenOutput = {
@@ -764,7 +767,7 @@ type private Generator(sourceLibrary: byte[], options: TurboCodegenOptions, sour
         if options.LocalRegisterAllocation && options.NativeIntegerForLoops then
             let requested=defaultArg options.StackSize 0 &&& ~~~1
             let stack=if requested>=minStack && requested<=maxStack then requested else (word lib maxStackOffset + 1) &&& ~~~1
-            match TurboNativeLoops.plan (maxStack-stack) vectTabAd ir with
+            match TurboNativeLoops.planWithProofs options.NativeForLoopProofs (maxStack-stack) vectTabAd ir with
             | Error message -> fail $"Native FOR lowering: {message}"
             | Ok report ->
                 nativeLoopReport<-Some report

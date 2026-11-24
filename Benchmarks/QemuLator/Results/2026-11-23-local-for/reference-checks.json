@@ -1,0 +1,9 @@
+PASS integer_arithmetic: 6430
+PASS sieve: 840
+PASS matrix_multiply: 1094
+PASS string_operations: 880
+PASS float_polynomial: 9252
+PASS float_transcendentals: 1280
+PASS eight_queens: 4962
+PASS route_planner: 4701
+PASS concordance: 7936

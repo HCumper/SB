@@ -1,0 +1,28 @@
+Native register IR: blocks=2; rejected=3; extra-stack=0 bytes
+Scratch registers: D0,D1,A2. All values are materialized and frames released at every boundary.
+Block IR bytes 34..48: native bytes 18->16; spill slots=0
+  virtual: Constant (Value 0, 4)
+  virtual: StoreVector (3, Value 0)
+  virtual: Constant (Value 1, 0)
+  virtual: StoreVector (1, Value 1)
+  allocated: Store (3, RecoveryImmediate 4)
+  allocated: Store (1, RecoveryImmediate 0)
+Block IR bytes 304..328: native bytes 74->48; spill slots=0
+  virtual: PopMaths (Value 0)
+  virtual: StoreVector (5, Value 0)
+  virtual: LoadVector (Value 1, 1)
+  virtual: Binary (Value 2, AddWord, Value 1, Value 0)
+  virtual: OverflowCheck (None, [Value 1], None)
+  virtual: Constant (Value 3, 10000)
+  virtual: Divide (Value 4, ModuloWord, Value 2, Value 3, [Value 2])
+  virtual: StoreVector (1, Value 4)
+  allocated: Pop 0
+  allocated: Store (5, RecoveryRegister 0)
+  allocated: Load (1, 1)
+  allocated: Arithmetic (AddWord, 0, 1)
+  allocated: Check (None, [RecoveryRegister 1], None)
+  allocated: PositiveDivision (ModuloWord, 0, 10000)
+  allocated: Store (1, RecoveryRegister 0)
+Native integer FOR loops: selected=0; rejected=1; extra-stack=0 bytes
+Native FOR rejected at IR byte 76: counter vector=4; reasons=unsupported body opcode 150 at IR byte 82; matching threaded NEXT was not reached; NEXT is not followed by its end marker
+Audited memory-counter native FOR loops: 1

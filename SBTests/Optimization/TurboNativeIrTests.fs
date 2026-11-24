@@ -42,6 +42,21 @@ let private execute allocation aliases incoming = executeTo false allocation ali
 
 let private readVector vector (cpu:Cpu) = int(int16(uint16(cpu.ReadWord(uint32(0x6000+vector*8)))))
 
+let compareFlagCases = [|
+    for left,right in [-32768,32767;32767,-32768;-32768,-32768;32767,32767;-1,0;0,-1;0,0;1,1;123,124] do
+        for location in [0;1;2] do yield TestCaseData(left,right,location) |]
+
+[<TestCaseSource(nameof compareFlagCases)>]
+let ``CompareFlags preserves signed CMP state and operands across register slot and immediate sources`` (left:int,right:int,location:int) =
+    let source=match location with 0 -> RecoveryRegister 1 | 1 -> RecoverySlot 0 | _ -> RecoveryImmediate right
+    let allocation={Instructions=[Immediate(0,left);Immediate(1,right);Spill(1,0);CompareFlags(0,source)];SpillSlots=1;Registers=Set.ofList[0;1]}
+    let cpu=execute allocation Map.empty []
+    let sr=cpu.StatusRegister
+    Assert.That(((sr &&& 8u)<>0u)<>((sr &&& 2u)<>0u), Is.EqualTo((left<right)))
+    Assert.That((sr &&& 4u)<>0u, Is.EqualTo((left=right)))
+    Assert.That(int(int16(uint16 cpu.D[0])), Is.EqualTo(left))
+    Assert.That(int(int16(uint16 cpu.D[1])), Is.EqualTo(right))
+
 [<TestCase(5,7,3,10)>]
 [<TestCase(6,7,3,4)>]
 [<TestCase(6,3,7,-4)>]

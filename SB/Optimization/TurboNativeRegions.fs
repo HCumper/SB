@@ -33,6 +33,23 @@ let private saving item =
     | 106 | 138 | 263 | 268 | 283 | 320 | 376 | 377 -> Some 2
     | _ -> None
 
+/// Checked lowering shared by straight runs and memory-counter loops.
+let internal nativeInstruction = function
+    | Instruction((111|112 as op),[Word vector],comment) when (tryRankTwoIntegerArrayComment comment).IsSome ->
+        let checks,columns=(tryRankTwoIntegerArrayComment comment).Value
+        Instruction(op+1800,[Word vector;Word checks;Word columns],comment)
+    | Instruction((1|5|6|7 as op),args,comment) when comment<>rangeProvenIntegerComment ->
+        Instruction(op+1000,args,"checked native integer arithmetic")
+    | Instruction((111|112 as op),args,comment) when comment=provenRankOneIntegerArrayComment ->
+        Instruction(op+1700,args,comment)
+    | Instruction((111|112 as op),args,comment) when comment=rankOneIntegerArrayComment ->
+        Instruction(op+1600,args,comment)
+    | Instruction((111|112|143|144 as op),args,comment) when comment=rangeProvenArrayComment ->
+        Instruction(op+1500,args,rangeProvenArrayComment)
+    | Instruction((111|112|143|144 as op),args,_) ->
+        Instruction(op+1000,args,"compact checked native array access")
+    | item -> item
+
 let private completesValue opcode =
     match opcode with
     | 1 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 20 | 111 | 112 | 118 | 143 | 144 | 150 | 320 -> true
@@ -84,21 +101,7 @@ let select enabled (output: TurboIrOutput) : Result<TurboIrOutput, string list> 
                 let benefit = regionBenefit prefix
                 if benefit > 6 then
                     items.Add(Instruction(254, [], "audited native region"))
-                    items.AddRange(prefix |> Array.map (function
-                        | Instruction((111|112 as op),[Word vector],comment) when (tryRankTwoIntegerArrayComment comment).IsSome ->
-                            let checks,columns=(tryRankTwoIntegerArrayComment comment).Value
-                            Instruction(op+1800,[Word vector;Word checks;Word columns],comment)
-                        | Instruction((1|5|6|7 as op),args,comment) when comment<>rangeProvenIntegerComment ->
-                            Instruction(op+1000,args,"checked native integer arithmetic")
-                        | Instruction((111|112 as op),args,comment) when comment=provenRankOneIntegerArrayComment ->
-                            Instruction(op+1700,args,comment)
-                        | Instruction((111|112 as op),args,comment) when comment=rankOneIntegerArrayComment ->
-                            Instruction(op+1600,args,comment)
-                        | Instruction((111|112|143|144 as op),args,comment) when comment=rangeProvenArrayComment ->
-                            Instruction(op+1500,args,rangeProvenArrayComment)
-                        | Instruction((111|112|143|144 as op),args,_) ->
-                            Instruction(op+1000,args,"compact checked native array access")
-                        | item -> item))
+                    items.AddRange(prefix |> Array.map nativeInstruction)
                     items.Add(Instruction(255, [], "resume threaded code"))
                     items.AddRange(pending |> Seq.skip finish)
                 else items.AddRange pending

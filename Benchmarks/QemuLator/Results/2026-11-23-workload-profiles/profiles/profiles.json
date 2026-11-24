@@ -1,0 +1,7039 @@
+[
+  {
+    "Benchmark": "string_operations",
+    "Bytes": 7644,
+    "Compiler": "SB",
+    "Costs": [
+      {
+        "FetchWords": 258240,
+        "Group": "shared-P:extr_string_p",
+        "Instructions": 226560,
+        "Percent": 23.929403190798332
+      },
+      {
+        "FetchWords": 174099,
+        "Group": "runtime:byte_table",
+        "Instructions": 174099,
+        "Percent": 18.38844088150953
+      },
+      {
+        "FetchWords": 114585,
+        "Group": "thread-dispatch",
+        "Instructions": 76390,
+        "Percent": 8.06835765247654
+      },
+      {
+        "FetchWords": 72800,
+        "Group": "shared-P:st_str_var_1d_p",
+        "Instructions": 61920,
+        "Percent": 6.540027566976663
+      },
+      {
+        "FetchWords": 71680,
+        "Group": "shared-P:xtend_str_1d_p",
+        "Instructions": 61440,
+        "Percent": 6.489329678860565
+      },
+      {
+        "FetchWords": 62030,
+        "Group": "shared-P:for_range_int_p",
+        "Instructions": 50503,
+        "Percent": 5.33415717401522
+      },
+      {
+        "FetchWords": 53763,
+        "Group": "runtime:move_how_many",
+        "Instructions": 46083,
+        "Percent": 4.8673141209461495
+      },
+      {
+        "FetchWords": 43520,
+        "Group": "runtime:long_table",
+        "Instructions": 43520,
+        "Percent": 4.596608522526234
+      },
+      {
+        "FetchWords": 35847,
+        "Group": "runtime:minimove",
+        "Instructions": 25605,
+        "Percent": 2.7044154691931115
+      },
+      {
+        "FetchWords": 31200,
+        "Group": "shared-P:next_for_int_p",
+        "Instructions": 20800,
+        "Percent": 2.1969084850309204
+      },
+      {
+        "FetchWords": 25600,
+        "Group": "shared-P:fch_string_1d_p",
+        "Instructions": 20480,
+        "Percent": 2.1631098929535217
+      },
+      {
+        "FetchWords": 17920,
+        "Group": "runtime:odd_block",
+        "Instructions": 17920,
+        "Percent": 1.8927211563343314
+      },
+      {
+        "FetchWords": 15362,
+        "Group": "runtime:mega_move",
+        "Instructions": 15362,
+        "Percent": 1.622543660915625
+      },
+      {
+        "FetchWords": 17927,
+        "Group": "runtime:mega_check",
+        "Instructions": 12805,
+        "Percent": 1.3524717860971605
+      },
+      {
+        "FetchWords": 17920,
+        "Group": "runtime:last_block",
+        "Instructions": 12800,
+        "Percent": 1.351943683095951
+      },
+      {
+        "FetchWords": 15360,
+        "Group": "runtime:big_move",
+        "Instructions": 10240,
+        "Percent": 1.0815549464767609
+      },
+      {
+        "FetchWords": 10240,
+        "Group": "shared-P:concat_string",
+        "Instructions": 10240,
+        "Percent": 1.0815549464767609
+      },
+      {
+        "FetchWords": 10240,
+        "Group": "runtime:source_even",
+        "Instructions": 7680,
+        "Percent": 0.8111662098575706
+      },
+      {
+        "FetchWords": 7680,
+        "Group": "runtime:big_block",
+        "Instructions": 7680,
+        "Percent": 0.8111662098575706
+      },
+      {
+        "FetchWords": 5766,
+        "Group": "shared-P:constant_int_p",
+        "Instructions": 5766,
+        "Percent": 0.6090083809946292
+      },
+      {
+        "FetchWords": 10240,
+        "Group": "runtime:one_odd",
+        "Instructions": 5120,
+        "Percent": 0.5407774732383804
+      },
+      {
+        "FetchWords": 7680,
+        "Group": "runtime:last_part",
+        "Instructions": 5120,
+        "Percent": 0.5407774732383804
+      },
+      {
+        "FetchWords": 7680,
+        "Group": "runtime:even_words",
+        "Instructions": 5120,
+        "Percent": 0.5407774732383804
+      },
+      {
+        "FetchWords": 5976,
+        "Group": "runtime:ex_2",
+        "Instructions": 4781,
+        "Percent": 0.5049720897563861
+      },
+      {
+        "FetchWords": 2720,
+        "Group": "shared-P:duplicate_int",
+        "Instructions": 2720,
+        "Percent": 0.2872880326578896
+      },
+      {
+        "FetchWords": 2561,
+        "Group": "shared-P:quick_zero",
+        "Instructions": 2561,
+        "Percent": 0.2704943572194321
+      },
+      {
+        "FetchWords": 2560,
+        "Group": "runtime:move_last",
+        "Instructions": 2560,
+        "Percent": 0.2703887366191902
+      },
+      {
+        "FetchWords": 2560,
+        "Group": "runtime:even_bytes",
+        "Instructions": 2560,
+        "Percent": 0.2703887366191902
+      },
+      {
+        "FetchWords": 2480,
+        "Group": "native-block",
+        "Instructions": 1840,
+        "Percent": 0.19434190444504296
+      },
+      {
+        "FetchWords": 1680,
+        "Group": "shared-P:short_string_p",
+        "Instructions": 1440,
+        "Percent": 0.1520936643482945
+      },
+      {
+        "FetchWords": 960,
+        "Group": "shared-P:code",
+        "Instructions": 960,
+        "Percent": 0.10139577623219632
+      },
+      {
+        "FetchWords": 689,
+        "Group": "native-template:eq_int",
+        "Instructions": 526,
+        "Percent": 0.05555643572722424
+      },
+      {
+        "FetchWords": 560,
+        "Group": "shared-P:str_len_1d_p",
+        "Instructions": 480,
+        "Percent": 0.05069788811609816
+      },
+      {
+        "FetchWords": 615,
+        "Group": "runtime:interpreter",
+        "Instructions": 410,
+        "Percent": 0.043304446099167185
+      },
+      {
+        "FetchWords": 406,
+        "Group": "shared-P:if_false_p",
+        "Instructions": 406,
+        "Percent": 0.042881963698199695
+      },
+      {
+        "FetchWords": 324,
+        "Group": "runtime:go_slow",
+        "Instructions": 324,
+        "Percent": 0.03422107447836626
+      },
+      {
+        "FetchWords": 322,
+        "Group": "shared-P:remember_end_p",
+        "Instructions": 322,
+        "Percent": 0.03400983327788252
+      },
+      {
+        "FetchWords": 400,
+        "Group": "shared-P:add_int_p",
+        "Instructions": 320,
+        "Percent": 0.03379859207739878
+      },
+      {
+        "FetchWords": 324,
+        "Group": "native-template:slow",
+        "Instructions": 162,
+        "Percent": 0.01711053723918313
+      },
+      {
+        "FetchWords": 161,
+        "Group": "shared-P:fast",
+        "Instructions": 161,
+        "Percent": 0.01700491663894126
+      },
+      {
+        "FetchWords": 161,
+        "Group": "shared-P:done_for_p",
+        "Instructions": 161,
+        "Percent": 0.01700491663894126
+      },
+      {
+        "FetchWords": 197,
+        "Group": "runtime:clear_sys",
+        "Instructions": 132,
+        "Percent": 0.013941919231926996
+      },
+      {
+        "FetchWords": 155,
+        "Group": "runtime:conn_pipes",
+        "Instructions": 124,
+        "Percent": 0.013096954429992026
+      },
+      {
+        "FetchWords": 153,
+        "Group": "shared-P:gl_arr_str_1d_p",
+        "Instructions": 121,
+        "Percent": 0.012780092629266411
+      },
+      {
+        "FetchWords": 86,
+        "Group": "runtime:p_to_p_short",
+        "Instructions": 86,
+        "Percent": 0.009083371620800921
+      },
+      {
+        "FetchWords": 101,
+        "Group": "runtime:check_id",
+        "Instructions": 74,
+        "Percent": 0.007815924417898468
+      },
+      {
+        "FetchWords": 88,
+        "Group": "shared-P:print_string",
+        "Instructions": 70,
+        "Percent": 0.007393442016930982
+      },
+      {
+        "FetchWords": 28,
+        "Group": "shared-P:array_p",
+        "Instructions": 22,
+        "Percent": 0.0023236532053211656
+      },
+      {
+        "FetchWords": 22,
+        "Group": "runtime:init1",
+        "Instructions": 15,
+        "Percent": 0.0015843090036280676
+      },
+      {
+        "FetchWords": 17,
+        "Group": "shared-P:make_string_from_int",
+        "Instructions": 15,
+        "Percent": 0.0015843090036280676
+      },
+      {
+        "FetchWords": 18,
+        "Group": "shared-P:print_slash",
+        "Instructions": 14,
+        "Percent": 0.0014786884033861965
+      },
+      {
+        "FetchWords": 19,
+        "Group": "runtime:link_names",
+        "Instructions": 13,
+        "Percent": 0.0013730678031443253
+      },
+      {
+        "FetchWords": 17,
+        "Group": "runtime:init3",
+        "Instructions": 12,
+        "Percent": 0.001267447202902454
+      },
+      {
+        "FetchWords": 15,
+        "Group": "shared-P:chan_op_on",
+        "Instructions": 10,
+        "Percent": 0.0010562060024187118
+      },
+      {
+        "FetchWords": 18,
+        "Group": "shared-P:global_for_int_p",
+        "Instructions": 10,
+        "Percent": 0.0010562060024187118
+      },
+      {
+        "FetchWords": 18,
+        "Group": "runtime:point_chans",
+        "Instructions": 9,
+        "Percent": 0.0009505854021768405
+      },
+      {
+        "FetchWords": 11,
+        "Group": "shared-P:const_string_p",
+        "Instructions": 9,
+        "Percent": 0.0009505854021768405
+      },
+      {
+        "FetchWords": 12,
+        "Group": "shared-P:global_int_p",
+        "Instructions": 9,
+        "Percent": 0.0009505854021768405
+      },
+      {
+        "FetchWords": 13,
+        "Group": "runtime:next_name",
+        "Instructions": 8,
+        "Percent": 0.0008449648019349694
+      },
+      {
+        "FetchWords": 10,
+        "Group": "runtime:ope_erch",
+        "Instructions": 8,
+        "Percent": 0.0008449648019349694
+      },
+      {
+        "FetchWords": 10,
+        "Group": "shared-P:l_and_float",
+        "Instructions": 7,
+        "Percent": 0.0007393442016930983
+      },
+      {
+        "FetchWords": 8,
+        "Group": "native-template:neq_int",
+        "Instructions": 7,
+        "Percent": 0.0007393442016930983
+      },
+      {
+        "FetchWords": 7,
+        "Group": "runtime:initialise",
+        "Instructions": 6,
+        "Percent": 0.000633723601451227
+      },
+      {
+        "FetchWords": 9,
+        "Group": "shared-P:retry_here",
+        "Instructions": 6,
+        "Percent": 0.000633723601451227
+      },
+      {
+        "FetchWords": 9,
+        "Group": "shared-P:retry1_here",
+        "Instructions": 6,
+        "Percent": 0.000633723601451227
+      },
+      {
+        "FetchWords": 8,
+        "Group": "shared-P:store_int_var_p",
+        "Instructions": 6,
+        "Percent": 0.000633723601451227
+      },
+      {
+        "FetchWords": 8,
+        "Group": "shared-P:fch_int_var_p",
+        "Instructions": 6,
+        "Percent": 0.000633723601451227
+      },
+      {
+        "FetchWords": 6,
+        "Group": "runtime:next_name1",
+        "Instructions": 5,
+        "Percent": 0.0005281030012093559
+      },
+      {
+        "FetchWords": 5,
+        "Group": "runtime:shut_down",
+        "Instructions": 4,
+        "Percent": 0.0004224824009674847
+      },
+      {
+        "FetchWords": 6,
+        "Group": "native-template:fch_int_var",
+        "Instructions": 4,
+        "Percent": 0.0004224824009674847
+      },
+      {
+        "FetchWords": 4,
+        "Group": "runtime:set_sysvars",
+        "Instructions": 3,
+        "Percent": 0.0003168618007256135
+      },
+      {
+        "FetchWords": 5,
+        "Group": "shared-P:restore_p",
+        "Instructions": 3,
+        "Percent": 0.0003168618007256135
+      },
+      {
+        "FetchWords": 2,
+        "Group": "runtime:init2",
+        "Instructions": 2,
+        "Percent": 0.00021124120048374235
+      },
+      {
+        "FetchWords": 3,
+        "Group": "runtime:no_pipes",
+        "Instructions": 2,
+        "Percent": 0.00021124120048374235
+      },
+      {
+        "FetchWords": 3,
+        "Group": "runtime:ex_5",
+        "Instructions": 2,
+        "Percent": 0.00021124120048374235
+      },
+      {
+        "FetchWords": 4,
+        "Group": "shared-P:last_global",
+        "Instructions": 2,
+        "Percent": 0.00021124120048374235
+      },
+      {
+        "FetchWords": 4,
+        "Group": "native-template:constant_int",
+        "Instructions": 2,
+        "Percent": 0.00021124120048374235
+      },
+      {
+        "FetchWords": 0,
+        "Group": "QDOS host hook",
+        "Instructions": 1,
+        "Percent": 0.00010562060024187118
+      },
+      {
+        "FetchWords": 1,
+        "Group": "runtime:entry_routine",
+        "Instructions": 1,
+        "Percent": 0.00010562060024187118
+      },
+      {
+        "FetchWords": 1,
+        "Group": "runtime:initiali",
+        "Instructions": 1,
+        "Percent": 0.00010562060024187118
+      },
+      {
+        "FetchWords": 1,
+        "Group": "runtime:not_pe",
+        "Instructions": 1,
+        "Percent": 0.00010562060024187118
+      },
+      {
+        "FetchWords": 2,
+        "Group": "shared-P:prog_end",
+        "Instructions": 1,
+        "Percent": 0.00010562060024187118
+      }
+    ],
+    "ExecutableSha256": "733FE14F92F90B69B68245A850EFBE7BC9E15751908685D7C7083FA71E4D585D",
+    "ExitCode": 0,
+    "FetchWords": 1113942,
+    "HostHooks": 1,
+    "Instructions": 946785,
+    "MappedCodeIdentical": true,
+    "Output": "string_operations:880\n",
+    "RomCalls": {},
+    "RomInstructions": 0,
+    "RomServices": {},
+    "Routines": [
+      {
+        "DispatchInstructions": 76390,
+        "Instructions": 946785,
+        "Percent": 100,
+        "RomInstructions": 0,
+        "Routine": "\u003Cmain/startup\u003E"
+      }
+    ],
+    "SegmentEntries": {
+      "runtime:entry_routine": 1,
+      "shared-P:fast": 161,
+      "shared-P:array_p": 2,
+      "thread-dispatch": 38195,
+      "shared-P:retry_here": 1,
+      "shared-P:retry1_here": 1,
+      "shared-P:constant_int_p": 5766,
+      "shared-P:store_int_var_p": 2,
+      "shared-P:gl_arr_str_1d_p": 2,
+      "shared-P:quick_zero": 2561,
+      "shared-P:fch_int_var_p": 2,
+      "shared-P:remember_end_p": 161,
+      "shared-P:for_range_int_p": 161,
+      "shared-P:done_for_p": 161,
+      "shared-P:if_false_p": 81,
+      "shared-P:short_string_p": 160,
+      "shared-P:st_str_var_1d_p": 2720,
+      "shared-P:fch_string_1d_p": 2560,
+      "shared-P:xtend_str_1d_p": 2560,
+      "shared-P:next_for_int_p": 5200,
+      "shared-P:extr_string_p": 5280,
+      "shared-P:duplicate_int": 2720,
+      "shared-P:concat_string": 2560,
+      "shared-P:str_len_1d_p": 80,
+      "shared-P:code": 160,
+      "shared-P:add_int_p": 80,
+      "shared-P:l_and_float": 1,
+      "shared-P:chan_op_on": 1,
+      "shared-P:const_string_p": 1,
+      "shared-P:print_string": 2,
+      "shared-P:print_slash": 1,
+      "shared-P:prog_end": 1,
+      "shared-P:make_string_from_int": 1,
+      "shared-P:global_int_p": 3,
+      "shared-P:global_for_int_p": 2,
+      "shared-P:last_global": 1,
+      "shared-P:restore_p": 1,
+      "native-template:slow": 162,
+      "native-block": 160,
+      "native-template:eq_int": 81,
+      "native-template:fch_int_var": 2,
+      "native-template:constant_int": 2,
+      "native-template:neq_int": 1
+    },
+    "StepsIncludingHostHooks": 946786,
+    "UnmodifiedExecutable": true
+  },
+  {
+    "Benchmark": "string_operations",
+    "Bytes": 9184,
+    "Compiler": "Turbo FAST",
+    "Costs": [
+      {
+        "FetchWords": 231840,
+        "Group": "native-template:extr_string",
+        "Instructions": 205440,
+        "Percent": 23.91431634552369
+      },
+      {
+        "FetchWords": 174099,
+        "Group": "runtime:byte_table",
+        "Instructions": 174099,
+        "Percent": 20.266056081772433
+      },
+      {
+        "FetchWords": 70080,
+        "Group": "native-template:st_str_var_1d",
+        "Instructions": 59200,
+        "Percent": 6.891197077759942
+      },
+      {
+        "FetchWords": 66560,
+        "Group": "native-template:xtend_str_1d",
+        "Instructions": 56320,
+        "Percent": 6.555949652355404
+      },
+      {
+        "FetchWords": 65942,
+        "Group": "native-template:for_range_int",
+        "Instructions": 54415,
+        "Percent": 6.334197449093027
+      },
+      {
+        "FetchWords": 53763,
+        "Group": "runtime:move_how_many",
+        "Instructions": 46083,
+        "Percent": 5.364308022540733
+      },
+      {
+        "FetchWords": 43520,
+        "Group": "runtime:long_table",
+        "Instructions": 43520,
+        "Percent": 5.065961095001903
+      },
+      {
+        "FetchWords": 35847,
+        "Group": "runtime:minimove",
+        "Instructions": 25605,
+        "Percent": 2.980559141487218
+      },
+      {
+        "FetchWords": 35847,
+        "Group": "runtime:mega_check",
+        "Instructions": 25605,
+        "Percent": 2.980559141487218
+      },
+      {
+        "FetchWords": 36400,
+        "Group": "native-template:next_for_int",
+        "Instructions": 20800,
+        "Percent": 2.421231405699439
+      },
+      {
+        "FetchWords": 17920,
+        "Group": "runtime:odd_block",
+        "Instructions": 17920,
+        "Percent": 2.0859839802949014
+      },
+      {
+        "FetchWords": 23040,
+        "Group": "native-template:fch_string_1d",
+        "Instructions": 17920,
+        "Percent": 2.0859839802949014
+      },
+      {
+        "FetchWords": 15362,
+        "Group": "runtime:mega_move",
+        "Instructions": 15362,
+        "Percent": 1.7882190795362876
+      },
+      {
+        "FetchWords": 17920,
+        "Group": "runtime:last_block",
+        "Instructions": 12800,
+        "Percent": 1.489988557353501
+      },
+      {
+        "FetchWords": 15360,
+        "Group": "runtime:big_move",
+        "Instructions": 10240,
+        "Percent": 1.1919908458828008
+      },
+      {
+        "FetchWords": 10240,
+        "Group": "native-template:concat_string",
+        "Instructions": 10240,
+        "Percent": 1.1919908458828008
+      },
+      {
+        "FetchWords": 9826,
+        "Group": "runtime:ex_2",
+        "Instructions": 7861,
+        "Percent": 0.9150625038559275
+      },
+      {
+        "FetchWords": 10240,
+        "Group": "runtime:source_even",
+        "Instructions": 7680,
+        "Percent": 0.8939931344121006
+      },
+      {
+        "FetchWords": 7680,
+        "Group": "runtime:big_block",
+        "Instructions": 7680,
+        "Percent": 0.8939931344121006
+      },
+      {
+        "FetchWords": 12016,
+        "Group": "native-template:constant_int",
+        "Instructions": 6008,
+        "Percent": 0.6993633791077996
+      },
+      {
+        "FetchWords": 10240,
+        "Group": "runtime:one_odd",
+        "Instructions": 5120,
+        "Percent": 0.5959954229414004
+      },
+      {
+        "FetchWords": 7680,
+        "Group": "runtime:last_part",
+        "Instructions": 5120,
+        "Percent": 0.5959954229414004
+      },
+      {
+        "FetchWords": 7680,
+        "Group": "runtime:even_words",
+        "Instructions": 5120,
+        "Percent": 0.5959954229414004
+      },
+      {
+        "FetchWords": 2720,
+        "Group": "native-template:duplicate_int",
+        "Instructions": 2720,
+        "Percent": 0.31662256843761893
+      },
+      {
+        "FetchWords": 2561,
+        "Group": "native-template:quick_zero",
+        "Instructions": 2561,
+        "Percent": 0.29811411682674344
+      },
+      {
+        "FetchWords": 2560,
+        "Group": "runtime:move_last",
+        "Instructions": 2560,
+        "Percent": 0.2979977114707002
+      },
+      {
+        "FetchWords": 2560,
+        "Group": "runtime:even_bytes",
+        "Instructions": 2560,
+        "Percent": 0.2979977114707002
+      },
+      {
+        "FetchWords": 1840,
+        "Group": "native-template:mod_int",
+        "Instructions": 1840,
+        "Percent": 0.21418585511956575
+      },
+      {
+        "FetchWords": 2160,
+        "Group": "native-template:short_string",
+        "Instructions": 1760,
+        "Percent": 0.2048734266361064
+      },
+      {
+        "FetchWords": 960,
+        "Group": "native-template:code",
+        "Instructions": 960,
+        "Percent": 0.11174914180151257
+      },
+      {
+        "FetchWords": 960,
+        "Group": "native-template:add_int",
+        "Instructions": 720,
+        "Percent": 0.08381185635113443
+      },
+      {
+        "FetchWords": 689,
+        "Group": "native-template:eq_int",
+        "Instructions": 526,
+        "Percent": 0.06122921727874543
+      },
+      {
+        "FetchWords": 732,
+        "Group": "native-template:fch_int_var",
+        "Instructions": 488,
+        "Percent": 0.05680581374910222
+      },
+      {
+        "FetchWords": 448,
+        "Group": "native-template:if_false",
+        "Instructions": 325,
+        "Percent": 0.037831740714053735
+      },
+      {
+        "FetchWords": 486,
+        "Group": "native-template:store_int_var",
+        "Instructions": 324,
+        "Percent": 0.03771533535801049
+      },
+      {
+        "FetchWords": 644,
+        "Group": "native-template:remember_end",
+        "Instructions": 322,
+        "Percent": 0.037482524645924005
+      },
+      {
+        "FetchWords": 320,
+        "Group": "native-template:str_len_1d",
+        "Instructions": 240,
+        "Percent": 0.027937285450378144
+      },
+      {
+        "FetchWords": 161,
+        "Group": "native-template:done_for",
+        "Instructions": 161,
+        "Percent": 0.018741262322962002
+      },
+      {
+        "FetchWords": 197,
+        "Group": "runtime:clear_sys",
+        "Instructions": 132,
+        "Percent": 0.015365506997707978
+      },
+      {
+        "FetchWords": 155,
+        "Group": "runtime:conn_pipes",
+        "Instructions": 124,
+        "Percent": 0.01443426414936204
+      },
+      {
+        "FetchWords": 139,
+        "Group": "native-template:gl_arr_str_1d",
+        "Instructions": 109,
+        "Percent": 0.012688183808713406
+      },
+      {
+        "FetchWords": 200,
+        "Group": "native-template:jump",
+        "Instructions": 80,
+        "Percent": 0.009312428483459381
+      },
+      {
+        "FetchWords": 101,
+        "Group": "runtime:check_id",
+        "Instructions": 74,
+        "Percent": 0.008613996347199927
+      },
+      {
+        "FetchWords": 88,
+        "Group": "native-template:print_string",
+        "Instructions": 70,
+        "Percent": 0.008148374923026959
+      },
+      {
+        "FetchWords": 28,
+        "Group": "shared-P:array_p",
+        "Instructions": 22,
+        "Percent": 0.0025609178329513297
+      },
+      {
+        "FetchWords": 33,
+        "Group": "thread-dispatch",
+        "Instructions": 22,
+        "Percent": 0.0025609178329513297
+      },
+      {
+        "FetchWords": 22,
+        "Group": "runtime:init1",
+        "Instructions": 15,
+        "Percent": 0.001746080340648634
+      },
+      {
+        "FetchWords": 17,
+        "Group": "native-template:make_string_from_int",
+        "Instructions": 15,
+        "Percent": 0.001746080340648634
+      },
+      {
+        "FetchWords": 18,
+        "Group": "native-template:print_slash",
+        "Instructions": 14,
+        "Percent": 0.0016296749846053916
+      },
+      {
+        "FetchWords": 19,
+        "Group": "runtime:link_names",
+        "Instructions": 13,
+        "Percent": 0.0015132696285621494
+      },
+      {
+        "FetchWords": 17,
+        "Group": "runtime:init3",
+        "Instructions": 12,
+        "Percent": 0.0013968642725189072
+      },
+      {
+        "FetchWords": 18,
+        "Group": "shared-P:global_for_int_p",
+        "Instructions": 10,
+        "Percent": 0.0011640535604324227
+      },
+      {
+        "FetchWords": 15,
+        "Group": "native-template:chan_op_on",
+        "Instructions": 10,
+        "Percent": 0.0011640535604324227
+      },
+      {
+        "FetchWords": 18,
+        "Group": "runtime:point_chans",
+        "Instructions": 9,
+        "Percent": 0.0010476482043891803
+      },
+      {
+        "FetchWords": 12,
+        "Group": "shared-P:global_int_p",
+        "Instructions": 9,
+        "Percent": 0.0010476482043891803
+      },
+      {
+        "FetchWords": 13,
+        "Group": "native-template:const_string",
+        "Instructions": 9,
+        "Percent": 0.0010476482043891803
+      },
+      {
+        "FetchWords": 13,
+        "Group": "runtime:next_name",
+        "Instructions": 8,
+        "Percent": 0.0009312428483459381
+      },
+      {
+        "FetchWords": 12,
+        "Group": "runtime:interpreter",
+        "Instructions": 8,
+        "Percent": 0.0009312428483459381
+      },
+      {
+        "FetchWords": 10,
+        "Group": "runtime:ope_erch",
+        "Instructions": 8,
+        "Percent": 0.0009312428483459381
+      },
+      {
+        "FetchWords": 8,
+        "Group": "native-template:neq_int",
+        "Instructions": 7,
+        "Percent": 0.0008148374923026958
+      },
+      {
+        "FetchWords": 10,
+        "Group": "native-template:l_and_float",
+        "Instructions": 7,
+        "Percent": 0.0008148374923026958
+      },
+      {
+        "FetchWords": 7,
+        "Group": "runtime:initialise",
+        "Instructions": 6,
+        "Percent": 0.0006984321362594536
+      },
+      {
+        "FetchWords": 6,
+        "Group": "runtime:p_to_p_short",
+        "Instructions": 6,
+        "Percent": 0.0006984321362594536
+      },
+      {
+        "FetchWords": 9,
+        "Group": "shared-P:retry_here",
+        "Instructions": 6,
+        "Percent": 0.0006984321362594536
+      },
+      {
+        "FetchWords": 9,
+        "Group": "shared-P:retry1_here",
+        "Instructions": 6,
+        "Percent": 0.0006984321362594536
+      },
+      {
+        "FetchWords": 6,
+        "Group": "runtime:next_name1",
+        "Instructions": 5,
+        "Percent": 0.0005820267802162113
+      },
+      {
+        "FetchWords": 5,
+        "Group": "runtime:shut_down",
+        "Instructions": 4,
+        "Percent": 0.00046562142417296904
+      },
+      {
+        "FetchWords": 4,
+        "Group": "runtime:set_sysvars",
+        "Instructions": 3,
+        "Percent": 0.0003492160681297268
+      },
+      {
+        "FetchWords": 5,
+        "Group": "shared-P:restore_p",
+        "Instructions": 3,
+        "Percent": 0.0003492160681297268
+      },
+      {
+        "FetchWords": 2,
+        "Group": "runtime:init2",
+        "Instructions": 2,
+        "Percent": 0.00023281071208648452
+      },
+      {
+        "FetchWords": 3,
+        "Group": "runtime:no_pipes",
+        "Instructions": 2,
+        "Percent": 0.00023281071208648452
+      },
+      {
+        "FetchWords": 3,
+        "Group": "runtime:ex_5",
+        "Instructions": 2,
+        "Percent": 0.00023281071208648452
+      },
+      {
+        "FetchWords": 2,
+        "Group": "runtime:go_slow",
+        "Instructions": 2,
+        "Percent": 0.00023281071208648452
+      },
+      {
+        "FetchWords": 4,
+        "Group": "shared-P:last_global",
+        "Instructions": 2,
+        "Percent": 0.00023281071208648452
+      },
+      {
+        "FetchWords": 0,
+        "Group": "QDOS host hook",
+        "Instructions": 1,
+        "Percent": 0.00011640535604324226
+      },
+      {
+        "FetchWords": 1,
+        "Group": "runtime:entry_routine",
+        "Instructions": 1,
+        "Percent": 0.00011640535604324226
+      },
+      {
+        "FetchWords": 1,
+        "Group": "runtime:initiali",
+        "Instructions": 1,
+        "Percent": 0.00011640535604324226
+      },
+      {
+        "FetchWords": 1,
+        "Group": "runtime:not_pe",
+        "Instructions": 1,
+        "Percent": 0.00011640535604324226
+      },
+      {
+        "FetchWords": 1,
+        "Group": "shared-P:fast",
+        "Instructions": 1,
+        "Percent": 0.00011640535604324226
+      },
+      {
+        "FetchWords": 2,
+        "Group": "native-template:slow",
+        "Instructions": 1,
+        "Percent": 0.00011640535604324226
+      },
+      {
+        "FetchWords": 2,
+        "Group": "native-template:prog_end",
+        "Instructions": 1,
+        "Percent": 0.00011640535604324226
+      }
+    ],
+    "ExecutableSha256": "19C1E60E327D1BC1BD19DF3FDD6FDD3BA53DD3A20CEB8237DC0308651B9876D1",
+    "ExitCode": 0,
+    "FetchWords": 1000139,
+    "HostHooks": 1,
+    "Instructions": 859067,
+    "MappedCodeIdentical": true,
+    "Output": "string_operations:880\n",
+    "RomCalls": {},
+    "RomInstructions": 0,
+    "RomServices": {},
+    "Routines": [
+      {
+        "DispatchInstructions": 22,
+        "Instructions": 859067,
+        "Percent": 100,
+        "RomInstructions": 0,
+        "Routine": "\u003Cmain/startup\u003E"
+      }
+    ],
+    "SegmentEntries": {
+      "runtime:entry_routine": 1,
+      "shared-P:fast": 1,
+      "shared-P:array_p": 2,
+      "thread-dispatch": 11,
+      "shared-P:retry_here": 1,
+      "shared-P:retry1_here": 1,
+      "shared-P:global_int_p": 3,
+      "shared-P:global_for_int_p": 2,
+      "shared-P:last_global": 1,
+      "shared-P:restore_p": 1,
+      "native-template:slow": 1,
+      "native-template:constant_int": 6008,
+      "native-template:store_int_var": 162,
+      "native-template:gl_arr_str_1d": 2,
+      "native-template:quick_zero": 2561,
+      "native-template:fch_int_var": 244,
+      "native-template:remember_end": 161,
+      "native-template:for_range_int": 161,
+      "native-template:done_for": 161,
+      "native-template:mod_int": 160,
+      "native-template:eq_int": 81,
+      "native-template:if_false": 122,
+      "native-template:short_string": 160,
+      "native-template:st_str_var_1d": 2720,
+      "native-template:jump": 40,
+      "native-template:fch_string_1d": 2560,
+      "native-template:xtend_str_1d": 2560,
+      "native-template:next_for_int": 5200,
+      "native-template:extr_string": 5280,
+      "native-template:duplicate_int": 2720,
+      "native-template:concat_string": 2560,
+      "native-template:str_len_1d": 80,
+      "native-template:code": 160,
+      "native-template:add_int": 240,
+      "native-template:neq_int": 1,
+      "native-template:l_and_float": 1,
+      "native-template:chan_op_on": 1,
+      "native-template:const_string": 1,
+      "native-template:print_string": 2,
+      "native-template:make_string_from_int": 1,
+      "native-template:print_slash": 1,
+      "native-template:prog_end": 1
+    },
+    "StepsIncludingHostHooks": 859068,
+    "UnmodifiedExecutable": true
+  },
+  {
+    "Benchmark": "float_polynomial",
+    "Bytes": 7096,
+    "Compiler": "SB",
+    "Costs": [
+      {
+        "FetchWords": 2081040,
+        "Group": "QL ROM",
+        "Instructions": 1687584,
+        "Percent": 52.33631643241322
+      },
+      {
+        "FetchWords": 288324,
+        "Group": "thread-dispatch",
+        "Instructions": 192216,
+        "Percent": 5.9611120983445804
+      },
+      {
+        "FetchWords": 182616,
+        "Group": "runtime:normalise",
+        "Instructions": 182616,
+        "Percent": 5.663391429180161
+      },
+      {
+        "FetchWords": 204048,
+        "Group": "shared-P:times_float",
+        "Instructions": 144032,
+        "Percent": 4.466802439696833
+      },
+      {
+        "FetchWords": 147813,
+        "Group": "shared-P:divide_float",
+        "Instructions": 119799,
+        "Percent": 3.715274838044608
+      },
+      {
+        "FetchWords": 127364,
+        "Group": "runtime:denorm_nos",
+        "Instructions": 107444,
+        "Percent": 3.3321145393439413
+      },
+      {
+        "FetchWords": 144072,
+        "Group": "shared-P:fch_float_var_p",
+        "Instructions": 96048,
+        "Percent": 2.9786952949900125
+      },
+      {
+        "FetchWords": 95960,
+        "Group": "runtime:far_out_man",
+        "Instructions": 95960,
+        "Percent": 2.975966188856005
+      },
+      {
+        "FetchWords": 80000,
+        "Group": "runtime:fast_add",
+        "Instructions": 64000,
+        "Percent": 1.9848044610961268
+      },
+      {
+        "FetchWords": 59024,
+        "Group": "runtime:must_normalise",
+        "Instructions": 59024,
+        "Percent": 1.830485914245903
+      },
+      {
+        "FetchWords": 69144,
+        "Group": "runtime:nos_biggest",
+        "Instructions": 56332,
+        "Percent": 1.7470000766010472
+      },
+      {
+        "FetchWords": 60020,
+        "Group": "shared-P:st_float_var_p",
+        "Instructions": 48016,
+        "Percent": 1.4890995469373691
+      },
+      {
+        "FetchWords": 40008,
+        "Group": "shared-P:long_float_p",
+        "Instructions": 40008,
+        "Percent": 1.2407508887427163
+      },
+      {
+        "FetchWords": 44194,
+        "Group": "shared-P:for_range_int_p",
+        "Instructions": 36151,
+        "Percent": 1.12113540739197
+      },
+      {
+        "FetchWords": 48000,
+        "Group": "shared-P:add_float",
+        "Instructions": 36000,
+        "Percent": 1.1164525093665714
+      },
+      {
+        "FetchWords": 47940,
+        "Group": "runtime:registered_1",
+        "Instructions": 28764,
+        "Percent": 0.8920455549838905
+      },
+      {
+        "FetchWords": 32000,
+        "Group": "runtime:long_to_float",
+        "Instructions": 20000,
+        "Percent": 0.6202513940925396
+      },
+      {
+        "FetchWords": 32000,
+        "Group": "runtime:fast_sub",
+        "Instructions": 20000,
+        "Percent": 0.6202513940925396
+      },
+      {
+        "FetchWords": 19944,
+        "Group": "runtime:good_exit",
+        "Instructions": 19944,
+        "Percent": 0.6185146901890806
+      },
+      {
+        "FetchWords": 19192,
+        "Group": "runtime:normalise1",
+        "Instructions": 19192,
+        "Percent": 0.595193237771201
+      },
+      {
+        "FetchWords": 24024,
+        "Group": "shared-P:next_for_int_p",
+        "Instructions": 16016,
+        "Percent": 0.49669731638930575
+      },
+      {
+        "FetchWords": 15992,
+        "Group": "runtime:check_register",
+        "Instructions": 15992,
+        "Percent": 0.4959530147163947
+      },
+      {
+        "FetchWords": 15948,
+        "Group": "runtime:normalise_d1",
+        "Instructions": 15948,
+        "Percent": 0.49458846164939113
+      },
+      {
+        "FetchWords": 19212,
+        "Group": "runtime:registered_2",
+        "Instructions": 12808,
+        "Percent": 0.3972089927768624
+      },
+      {
+        "FetchWords": 16000,
+        "Group": "shared-P:sub_float",
+        "Instructions": 12000,
+        "Percent": 0.37215083645552377
+      },
+      {
+        "FetchWords": 16000,
+        "Group": "native-template:int_to_float",
+        "Instructions": 12000,
+        "Percent": 0.37215083645552377
+      },
+      {
+        "FetchWords": 16000,
+        "Group": "native-template:st_float_var",
+        "Instructions": 12000,
+        "Percent": 0.37215083645552377
+      },
+      {
+        "FetchWords": 12030,
+        "Group": "runtime:interpreter",
+        "Instructions": 8020,
+        "Percent": 0.2487208090311084
+      },
+      {
+        "FetchWords": 8014,
+        "Group": "runtime:go_slow",
+        "Instructions": 8014,
+        "Percent": 0.24853473361288064
+      },
+      {
+        "FetchWords": 12006,
+        "Group": "native-template:fch_int_var",
+        "Instructions": 8004,
+        "Percent": 0.24822460791583437
+      },
+      {
+        "FetchWords": 5596,
+        "Group": "runtime:well_rounded",
+        "Instructions": 5596,
+        "Percent": 0.1735463400670926
+      },
+      {
+        "FetchWords": 8014,
+        "Group": "native-template:slow",
+        "Instructions": 4007,
+        "Percent": 0.12426736680644032
+      },
+      {
+        "FetchWords": 4006,
+        "Group": "shared-P:fast",
+        "Instructions": 4006,
+        "Percent": 0.1242363542367357
+      },
+      {
+        "FetchWords": 4000,
+        "Group": "runtime:fast_int_to_float",
+        "Instructions": 4000,
+        "Percent": 0.12405027881850793
+      },
+      {
+        "FetchWords": 4000,
+        "Group": "runtime:fast_d1_to_float",
+        "Instructions": 4000,
+        "Percent": 0.12405027881850793
+      },
+      {
+        "FetchWords": 8000,
+        "Group": "runtime:negated",
+        "Instructions": 4000,
+        "Percent": 0.12405027881850793
+      },
+      {
+        "FetchWords": 4606,
+        "Group": "runtime:ex_2",
+        "Instructions": 3685,
+        "Percent": 0.11428131936155043
+      },
+      {
+        "FetchWords": 264,
+        "Group": "runtime:a_bit_bigger",
+        "Instructions": 220,
+        "Percent": 0.006822765335017936
+      },
+      {
+        "FetchWords": 197,
+        "Group": "runtime:clear_sys",
+        "Instructions": 132,
+        "Percent": 0.004093659201010761
+      },
+      {
+        "FetchWords": 155,
+        "Group": "runtime:conn_pipes",
+        "Instructions": 124,
+        "Percent": 0.003845558643373746
+      },
+      {
+        "FetchWords": 101,
+        "Group": "runtime:check_id",
+        "Instructions": 74,
+        "Percent": 0.002294930158142397
+      },
+      {
+        "FetchWords": 88,
+        "Group": "shared-P:print_string",
+        "Instructions": 70,
+        "Percent": 0.0021708798793238886
+      },
+      {
+        "FetchWords": 76,
+        "Group": "shared-P:less_float",
+        "Instructions": 64,
+        "Percent": 0.0019848044610961267
+      },
+      {
+        "FetchWords": 76,
+        "Group": "shared-P:gt_float",
+        "Instructions": 64,
+        "Percent": 0.0019848044610961267
+      },
+      {
+        "FetchWords": 84,
+        "Group": "native-block",
+        "Instructions": 60,
+        "Percent": 0.0018607541822776188
+      },
+      {
+        "FetchWords": 48,
+        "Group": "runtime:return_tos",
+        "Instructions": 40,
+        "Percent": 0.0012405027881850794
+      },
+      {
+        "FetchWords": 30,
+        "Group": "shared-P:if_false_p",
+        "Instructions": 30,
+        "Percent": 0.0009303770911388094
+      },
+      {
+        "FetchWords": 32,
+        "Group": "shared-P:const_float_p",
+        "Instructions": 24,
+        "Percent": 0.0007443016729110476
+      },
+      {
+        "FetchWords": 28,
+        "Group": "shared-P:l_or_float",
+        "Instructions": 20,
+        "Percent": 0.0006202513940925397
+      },
+      {
+        "FetchWords": 18,
+        "Group": "runtime:byte_table",
+        "Instructions": 18,
+        "Percent": 0.0005582262546832856
+      },
+      {
+        "FetchWords": 20,
+        "Group": "runtime:fast_float_to_int",
+        "Instructions": 16,
+        "Percent": 0.0004962011152740317
+      },
+      {
+        "FetchWords": 24,
+        "Group": "runtime:significant",
+        "Instructions": 16,
+        "Percent": 0.0004962011152740317
+      },
+      {
+        "FetchWords": 22,
+        "Group": "runtime:init1",
+        "Instructions": 15,
+        "Percent": 0.0004651885455694047
+      },
+      {
+        "FetchWords": 15,
+        "Group": "shared-P:constant_int_p",
+        "Instructions": 15,
+        "Percent": 0.0004651885455694047
+      },
+      {
+        "FetchWords": 17,
+        "Group": "shared-P:make_string_from_int",
+        "Instructions": 15,
+        "Percent": 0.0004651885455694047
+      },
+      {
+        "FetchWords": 18,
+        "Group": "shared-P:print_slash",
+        "Instructions": 14,
+        "Percent": 0.00043417597586477774
+      },
+      {
+        "FetchWords": 19,
+        "Group": "runtime:link_names",
+        "Instructions": 13,
+        "Percent": 0.00040316340616015076
+      },
+      {
+        "FetchWords": 17,
+        "Group": "runtime:init3",
+        "Instructions": 12,
+        "Percent": 0.0003721508364555238
+      },
+      {
+        "FetchWords": 12,
+        "Group": "runtime:valid_int",
+        "Instructions": 12,
+        "Percent": 0.0003721508364555238
+      },
+      {
+        "FetchWords": 15,
+        "Group": "shared-P:global_float_p",
+        "Instructions": 12,
+        "Percent": 0.0003721508364555238
+      },
+      {
+        "FetchWords": 10,
+        "Group": "shared-P:remember_end_p",
+        "Instructions": 10,
+        "Percent": 0.00031012569704626984
+      },
+      {
+        "FetchWords": 15,
+        "Group": "shared-P:chan_op_on",
+        "Instructions": 10,
+        "Percent": 0.00031012569704626984
+      },
+      {
+        "FetchWords": 12,
+        "Group": "shared-P:const_string_p",
+        "Instructions": 10,
+        "Percent": 0.00031012569704626984
+      },
+      {
+        "FetchWords": 18,
+        "Group": "shared-P:global_for_int_p",
+        "Instructions": 10,
+        "Percent": 0.00031012569704626984
+      },
+      {
+        "FetchWords": 18,
+        "Group": "runtime:point_chans",
+        "Instructions": 9,
+        "Percent": 0.0002791131273416428
+      },
+      {
+        "FetchWords": 12,
+        "Group": "shared-P:global_int_p",
+        "Instructions": 9,
+        "Percent": 0.0002791131273416428
+      },
+      {
+        "FetchWords": 13,
+        "Group": "runtime:next_name",
+        "Instructions": 8,
+        "Percent": 0.00024810055763701584
+      },
+      {
+        "FetchWords": 10,
+        "Group": "runtime:ope_erch",
+        "Instructions": 8,
+        "Percent": 0.00024810055763701584
+      },
+      {
+        "FetchWords": 8,
+        "Group": "runtime:rounded1",
+        "Instructions": 8,
+        "Percent": 0.00024810055763701584
+      },
+      {
+        "FetchWords": 8,
+        "Group": "runtime:result_zero",
+        "Instructions": 8,
+        "Percent": 0.00024810055763701584
+      },
+      {
+        "FetchWords": 10,
+        "Group": "shared-P:l_and_float",
+        "Instructions": 7,
+        "Percent": 0.00021708798793238887
+      },
+      {
+        "FetchWords": 8,
+        "Group": "native-template:neq_int",
+        "Instructions": 7,
+        "Percent": 0.00021708798793238887
+      },
+      {
+        "FetchWords": 7,
+        "Group": "runtime:initialise",
+        "Instructions": 6,
+        "Percent": 0.0001860754182277619
+      },
+      {
+        "FetchWords": 6,
+        "Group": "runtime:p_to_p_short",
+        "Instructions": 6,
+        "Percent": 0.0001860754182277619
+      },
+      {
+        "FetchWords": 9,
+        "Group": "shared-P:retry_here",
+        "Instructions": 6,
+        "Percent": 0.0001860754182277619
+      },
+      {
+        "FetchWords": 9,
+        "Group": "shared-P:retry1_here",
+        "Instructions": 6,
+        "Percent": 0.0001860754182277619
+      },
+      {
+        "FetchWords": 8,
+        "Group": "shared-P:fch_int_var_p",
+        "Instructions": 6,
+        "Percent": 0.0001860754182277619
+      },
+      {
+        "FetchWords": 9,
+        "Group": "native-template:eq_int",
+        "Instructions": 6,
+        "Percent": 0.0001860754182277619
+      },
+      {
+        "FetchWords": 6,
+        "Group": "runtime:next_name1",
+        "Instructions": 5,
+        "Percent": 0.00015506284852313492
+      },
+      {
+        "FetchWords": 7,
+        "Group": "runtime:minimove",
+        "Instructions": 5,
+        "Percent": 0.00015506284852313492
+      },
+      {
+        "FetchWords": 7,
+        "Group": "runtime:mega_check",
+        "Instructions": 5,
+        "Percent": 0.00015506284852313492
+      },
+      {
+        "FetchWords": 5,
+        "Group": "shared-P:done_for_p",
+        "Instructions": 5,
+        "Percent": 0.00015506284852313492
+      },
+      {
+        "FetchWords": 5,
+        "Group": "runtime:shut_down",
+        "Instructions": 4,
+        "Percent": 0.00012405027881850792
+      },
+      {
+        "FetchWords": 8,
+        "Group": "shared-P:make_int_from_float",
+        "Instructions": 4,
+        "Percent": 0.00012405027881850792
+      },
+      {
+        "FetchWords": 4,
+        "Group": "runtime:set_sysvars",
+        "Instructions": 3,
+        "Percent": 9.303770911388095E-05
+      },
+      {
+        "FetchWords": 3,
+        "Group": "runtime:move_how_many",
+        "Instructions": 3,
+        "Percent": 9.303770911388095E-05
+      },
+      {
+        "FetchWords": 5,
+        "Group": "shared-P:restore_p",
+        "Instructions": 3,
+        "Percent": 9.303770911388095E-05
+      },
+      {
+        "FetchWords": 2,
+        "Group": "runtime:init2",
+        "Instructions": 2,
+        "Percent": 6.202513940925396E-05
+      },
+      {
+        "FetchWords": 3,
+        "Group": "runtime:no_pipes",
+        "Instructions": 2,
+        "Percent": 6.202513940925396E-05
+      },
+      {
+        "FetchWords": 3,
+        "Group": "runtime:ex_5",
+        "Instructions": 2,
+        "Percent": 6.202513940925396E-05
+      },
+      {
+        "FetchWords": 2,
+        "Group": "runtime:mega_move",
+        "Instructions": 2,
+        "Percent": 6.202513940925396E-05
+      },
+      {
+        "FetchWords": 4,
+        "Group": "shared-P:last_global",
+        "Instructions": 2,
+        "Percent": 6.202513940925396E-05
+      },
+      {
+        "FetchWords": 4,
+        "Group": "native-template:constant_int",
+        "Instructions": 2,
+        "Percent": 6.202513940925396E-05
+      },
+      {
+        "FetchWords": 0,
+        "Group": "QDOS host hook",
+        "Instructions": 1,
+        "Percent": 3.101256970462698E-05
+      },
+      {
+        "FetchWords": 1,
+        "Group": "runtime:entry_routine",
+        "Instructions": 1,
+        "Percent": 3.101256970462698E-05
+      },
+      {
+        "FetchWords": 1,
+        "Group": "runtime:initiali",
+        "Instructions": 1,
+        "Percent": 3.101256970462698E-05
+      },
+      {
+        "FetchWords": 1,
+        "Group": "runtime:not_pe",
+        "Instructions": 1,
+        "Percent": 3.101256970462698E-05
+      },
+      {
+        "FetchWords": 2,
+        "Group": "shared-P:prog_end",
+        "Instructions": 1,
+        "Percent": 3.101256970462698E-05
+      }
+    ],
+    "ExecutableSha256": "6E836D0A7D37CC345B95117C6E685CECAAB39E7C20430ABE8D05627E71F2678F",
+    "ExitCode": 0,
+    "FetchWords": 4017790,
+    "HostHooks": 1,
+    "Instructions": 3224499,
+    "MappedCodeIdentical": true,
+    "Output": "float_polynomial:9252\n",
+    "RomCalls": {
+      "entry RI.EXEC arithmetic": 15916,
+      "RI.EXEC divide": 3980,
+      "RI.EXEC multiply": 11936
+    },
+    "RomInstructions": 1687584,
+    "RomServices": {
+      "RI.EXEC divide": 877228,
+      "RI.EXEC multiply": 810356
+    },
+    "Routines": [
+      {
+        "DispatchInstructions": 192216,
+        "Instructions": 3224499,
+        "Percent": 100,
+        "RomInstructions": 1687584,
+        "Routine": "\u003Cmain/startup\u003E"
+      }
+    ],
+    "SegmentEntries": {
+      "runtime:entry_routine": 1,
+      "shared-P:fast": 4006,
+      "shared-P:retry_here": 1,
+      "thread-dispatch": 96108,
+      "shared-P:retry1_here": 1,
+      "shared-P:constant_int_p": 15,
+      "shared-P:fch_int_var_p": 2,
+      "shared-P:remember_end_p": 5,
+      "shared-P:for_range_int_p": 5,
+      "shared-P:done_for_p": 5,
+      "shared-P:long_float_p": 20004,
+      "shared-P:st_float_var_p": 12004,
+      "shared-P:fch_float_var_p": 24012,
+      "shared-P:divide_float": 4000,
+      "shared-P:times_float": 12000,
+      "shared-P:sub_float": 4000,
+      "shared-P:add_float": 12000,
+      "shared-P:next_for_int_p": 4004,
+      "shared-P:const_float_p": 8,
+      "shared-P:less_float": 4,
+      "shared-P:gt_float": 4,
+      "shared-P:l_or_float": 4,
+      "shared-P:if_false_p": 5,
+      "shared-P:chan_op_on": 1,
+      "shared-P:const_string_p": 1,
+      "shared-P:print_string": 2,
+      "shared-P:print_slash": 1,
+      "shared-P:prog_end": 1,
+      "shared-P:make_int_from_float": 4,
+      "shared-P:l_and_float": 1,
+      "shared-P:make_string_from_int": 1,
+      "shared-P:global_int_p": 3,
+      "shared-P:global_for_int_p": 2,
+      "shared-P:global_float_p": 3,
+      "shared-P:last_global": 1,
+      "shared-P:restore_p": 1,
+      "native-template:slow": 4007,
+      "native-block": 5,
+      "native-template:fch_int_var": 4002,
+      "native-template:int_to_float": 4000,
+      "native-template:st_float_var": 4000,
+      "native-template:constant_int": 2,
+      "native-template:eq_int": 1,
+      "native-template:neq_int": 1
+    },
+    "StepsIncludingHostHooks": 3224500,
+    "UnmodifiedExecutable": true
+  },
+  {
+    "Benchmark": "float_polynomial",
+    "Bytes": 7856,
+    "Compiler": "Turbo FAST",
+    "Costs": [
+      {
+        "FetchWords": 2081040,
+        "Group": "QL ROM",
+        "Instructions": 1687584,
+        "Percent": 56.67219311981769
+      },
+      {
+        "FetchWords": 182616,
+        "Group": "runtime:normalise",
+        "Instructions": 182616,
+        "Percent": 6.132583159575243
+      },
+      {
+        "FetchWords": 204048,
+        "Group": "native-template:times_float",
+        "Instructions": 144032,
+        "Percent": 4.836861050729079
+      },
+      {
+        "FetchWords": 147813,
+        "Group": "native-template:divide_float",
+        "Instructions": 119799,
+        "Percent": 4.0230720743743955
+      },
+      {
+        "FetchWords": 127364,
+        "Group": "runtime:denorm_nos",
+        "Instructions": 107444,
+        "Percent": 3.6081683149198454
+      },
+      {
+        "FetchWords": 95960,
+        "Group": "runtime:far_out_man",
+        "Instructions": 95960,
+        "Percent": 3.22251434700596
+      },
+      {
+        "FetchWords": 120060,
+        "Group": "native-template:fch_float_var",
+        "Instructions": 72036,
+        "Percent": 2.4191021623689175
+      },
+      {
+        "FetchWords": 80000,
+        "Group": "runtime:fast_add",
+        "Instructions": 64000,
+        "Percent": 2.1492384140098104
+      },
+      {
+        "FetchWords": 59024,
+        "Group": "runtime:must_normalise",
+        "Instructions": 59024,
+        "Percent": 1.9821351273205479
+      },
+      {
+        "FetchWords": 69144,
+        "Group": "runtime:nos_biggest",
+        "Instructions": 56332,
+        "Percent": 1.89173278653126
+      },
+      {
+        "FetchWords": 64016,
+        "Group": "native-template:st_float_var",
+        "Instructions": 48012,
+        "Percent": 1.6123317927099847
+      },
+      {
+        "FetchWords": 48158,
+        "Group": "native-template:for_range_int",
+        "Instructions": 40115,
+        "Percent": 1.3471359215313055
+      },
+      {
+        "FetchWords": 80000,
+        "Group": "native-template:long_float",
+        "Instructions": 40000,
+        "Percent": 1.3432740087561317
+      },
+      {
+        "FetchWords": 48000,
+        "Group": "native-template:add_float",
+        "Instructions": 36000,
+        "Percent": 1.2089466078805184
+      },
+      {
+        "FetchWords": 47940,
+        "Group": "runtime:registered_1",
+        "Instructions": 28764,
+        "Percent": 0.9659483396965343
+      },
+      {
+        "FetchWords": 32012,
+        "Group": "runtime:long_to_float",
+        "Instructions": 20008,
+        "Percent": 0.671905659179817
+      },
+      {
+        "FetchWords": 32000,
+        "Group": "runtime:fast_sub",
+        "Instructions": 20000,
+        "Percent": 0.6716370043780658
+      },
+      {
+        "FetchWords": 19944,
+        "Group": "runtime:good_exit",
+        "Instructions": 19944,
+        "Percent": 0.6697564207658072
+      },
+      {
+        "FetchWords": 19192,
+        "Group": "runtime:normalise1",
+        "Instructions": 19192,
+        "Percent": 0.644502869401192
+      },
+      {
+        "FetchWords": 28028,
+        "Group": "native-template:next_for_int",
+        "Instructions": 16016,
+        "Percent": 0.5378469131059551
+      },
+      {
+        "FetchWords": 15992,
+        "Group": "runtime:check_register",
+        "Instructions": 15992,
+        "Percent": 0.5370409487007014
+      },
+      {
+        "FetchWords": 15948,
+        "Group": "runtime:normalise_d1",
+        "Instructions": 15948,
+        "Percent": 0.5355633472910697
+      },
+      {
+        "FetchWords": 19212,
+        "Group": "runtime:registered_2",
+        "Instructions": 12808,
+        "Percent": 0.4301163376037134
+      },
+      {
+        "FetchWords": 16016,
+        "Group": "native-template:int_to_float",
+        "Instructions": 12012,
+        "Percent": 0.40338518482946634
+      },
+      {
+        "FetchWords": 16000,
+        "Group": "native-template:sub_float",
+        "Instructions": 12000,
+        "Percent": 0.4029822026268395
+      },
+      {
+        "FetchWords": 12036,
+        "Group": "native-template:fch_int_var",
+        "Instructions": 8024,
+        "Percent": 0.26946076615648
+      },
+      {
+        "FetchWords": 5596,
+        "Group": "runtime:well_rounded",
+        "Instructions": 5596,
+        "Percent": 0.18792403382498282
+      },
+      {
+        "FetchWords": 6506,
+        "Group": "runtime:ex_2",
+        "Instructions": 5205,
+        "Percent": 0.17479353038939163
+      },
+      {
+        "FetchWords": 4004,
+        "Group": "runtime:fast_int_to_float",
+        "Instructions": 4004,
+        "Percent": 0.13446172827648878
+      },
+      {
+        "FetchWords": 4004,
+        "Group": "runtime:fast_d1_to_float",
+        "Instructions": 4004,
+        "Percent": 0.13446172827648878
+      },
+      {
+        "FetchWords": 8000,
+        "Group": "runtime:negated",
+        "Instructions": 4000,
+        "Percent": 0.13432740087561315
+      },
+      {
+        "FetchWords": 264,
+        "Group": "runtime:a_bit_bigger",
+        "Instructions": 220,
+        "Percent": 0.007388007048158724
+      },
+      {
+        "FetchWords": 197,
+        "Group": "runtime:clear_sys",
+        "Instructions": 132,
+        "Percent": 0.004432804228895235
+      },
+      {
+        "FetchWords": 155,
+        "Group": "runtime:conn_pipes",
+        "Instructions": 124,
+        "Percent": 0.004164149427144008
+      },
+      {
+        "FetchWords": 101,
+        "Group": "runtime:check_id",
+        "Instructions": 74,
+        "Percent": 0.0024850569161988436
+      },
+      {
+        "FetchWords": 88,
+        "Group": "native-template:print_string",
+        "Instructions": 70,
+        "Percent": 0.0023507295153232305
+      },
+      {
+        "FetchWords": 76,
+        "Group": "native-template:less_float",
+        "Instructions": 64,
+        "Percent": 0.0021492384140098107
+      },
+      {
+        "FetchWords": 76,
+        "Group": "native-template:gt_float",
+        "Instructions": 64,
+        "Percent": 0.0021492384140098107
+      },
+      {
+        "FetchWords": 48,
+        "Group": "native-template:mod_int",
+        "Instructions": 48,
+        "Percent": 0.001611928810507358
+      },
+      {
+        "FetchWords": 48,
+        "Group": "runtime:return_tos",
+        "Instructions": 40,
+        "Percent": 0.0013432740087561317
+      },
+      {
+        "FetchWords": 40,
+        "Group": "native-template:if_false",
+        "Instructions": 25,
+        "Percent": 0.0008395462554725823
+      },
+      {
+        "FetchWords": 36,
+        "Group": "thread-dispatch",
+        "Instructions": 24,
+        "Percent": 0.000805964405253679
+      },
+      {
+        "FetchWords": 44,
+        "Group": "native-template:constant_int",
+        "Instructions": 22,
+        "Percent": 0.0007388007048158724
+      },
+      {
+        "FetchWords": 30,
+        "Group": "native-template:store_int_var",
+        "Instructions": 20,
+        "Percent": 0.0006716370043780658
+      },
+      {
+        "FetchWords": 28,
+        "Group": "native-template:l_or_float",
+        "Instructions": 20,
+        "Percent": 0.0006716370043780658
+      },
+      {
+        "FetchWords": 18,
+        "Group": "runtime:byte_table",
+        "Instructions": 18,
+        "Percent": 0.0006044733039402593
+      },
+      {
+        "FetchWords": 20,
+        "Group": "runtime:fast_float_to_int",
+        "Instructions": 16,
+        "Percent": 0.0005373096035024527
+      },
+      {
+        "FetchWords": 24,
+        "Group": "runtime:significant",
+        "Instructions": 16,
+        "Percent": 0.0005373096035024527
+      },
+      {
+        "FetchWords": 16,
+        "Group": "runtime:result_zero",
+        "Instructions": 16,
+        "Percent": 0.0005373096035024527
+      },
+      {
+        "FetchWords": 40,
+        "Group": "native-template:const_float",
+        "Instructions": 16,
+        "Percent": 0.0005373096035024527
+      },
+      {
+        "FetchWords": 22,
+        "Group": "runtime:init1",
+        "Instructions": 15,
+        "Percent": 0.0005037277532835494
+      },
+      {
+        "FetchWords": 17,
+        "Group": "native-template:make_string_from_int",
+        "Instructions": 15,
+        "Percent": 0.0005037277532835494
+      },
+      {
+        "FetchWords": 18,
+        "Group": "native-template:print_slash",
+        "Instructions": 14,
+        "Percent": 0.00047014590306464606
+      },
+      {
+        "FetchWords": 19,
+        "Group": "runtime:link_names",
+        "Instructions": 13,
+        "Percent": 0.00043656405284574277
+      },
+      {
+        "FetchWords": 17,
+        "Group": "runtime:init3",
+        "Instructions": 12,
+        "Percent": 0.0004029822026268395
+      },
+      {
+        "FetchWords": 12,
+        "Group": "runtime:valid_int",
+        "Instructions": 12,
+        "Percent": 0.0004029822026268395
+      },
+      {
+        "FetchWords": 15,
+        "Group": "shared-P:global_float_p",
+        "Instructions": 12,
+        "Percent": 0.0004029822026268395
+      },
+      {
+        "FetchWords": 16,
+        "Group": "native-template:add_int",
+        "Instructions": 12,
+        "Percent": 0.0004029822026268395
+      },
+      {
+        "FetchWords": 18,
+        "Group": "shared-P:global_for_int_p",
+        "Instructions": 10,
+        "Percent": 0.0003358185021890329
+      },
+      {
+        "FetchWords": 20,
+        "Group": "native-template:remember_end",
+        "Instructions": 10,
+        "Percent": 0.0003358185021890329
+      },
+      {
+        "FetchWords": 15,
+        "Group": "native-template:chan_op_on",
+        "Instructions": 10,
+        "Percent": 0.0003358185021890329
+      },
+      {
+        "FetchWords": 14,
+        "Group": "native-template:const_string",
+        "Instructions": 10,
+        "Percent": 0.0003358185021890329
+      },
+      {
+        "FetchWords": 18,
+        "Group": "runtime:point_chans",
+        "Instructions": 9,
+        "Percent": 0.00030223665197012963
+      },
+      {
+        "FetchWords": 12,
+        "Group": "shared-P:global_int_p",
+        "Instructions": 9,
+        "Percent": 0.00030223665197012963
+      },
+      {
+        "FetchWords": 13,
+        "Group": "runtime:next_name",
+        "Instructions": 8,
+        "Percent": 0.00026865480175122634
+      },
+      {
+        "FetchWords": 12,
+        "Group": "runtime:interpreter",
+        "Instructions": 8,
+        "Percent": 0.00026865480175122634
+      },
+      {
+        "FetchWords": 10,
+        "Group": "runtime:ope_erch",
+        "Instructions": 8,
+        "Percent": 0.00026865480175122634
+      },
+      {
+        "FetchWords": 8,
+        "Group": "runtime:rounded1",
+        "Instructions": 8,
+        "Percent": 0.00026865480175122634
+      },
+      {
+        "FetchWords": 8,
+        "Group": "native-template:neq_int",
+        "Instructions": 7,
+        "Percent": 0.00023507295153232303
+      },
+      {
+        "FetchWords": 10,
+        "Group": "native-template:l_and_float",
+        "Instructions": 7,
+        "Percent": 0.00023507295153232303
+      },
+      {
+        "FetchWords": 7,
+        "Group": "runtime:initialise",
+        "Instructions": 6,
+        "Percent": 0.00020149110131341974
+      },
+      {
+        "FetchWords": 6,
+        "Group": "runtime:p_to_p_short",
+        "Instructions": 6,
+        "Percent": 0.00020149110131341974
+      },
+      {
+        "FetchWords": 9,
+        "Group": "shared-P:retry_here",
+        "Instructions": 6,
+        "Percent": 0.00020149110131341974
+      },
+      {
+        "FetchWords": 9,
+        "Group": "shared-P:retry1_here",
+        "Instructions": 6,
+        "Percent": 0.00020149110131341974
+      },
+      {
+        "FetchWords": 9,
+        "Group": "native-template:eq_int",
+        "Instructions": 6,
+        "Percent": 0.00020149110131341974
+      },
+      {
+        "FetchWords": 6,
+        "Group": "runtime:next_name1",
+        "Instructions": 5,
+        "Percent": 0.00016790925109451646
+      },
+      {
+        "FetchWords": 7,
+        "Group": "runtime:minimove",
+        "Instructions": 5,
+        "Percent": 0.00016790925109451646
+      },
+      {
+        "FetchWords": 7,
+        "Group": "runtime:mega_check",
+        "Instructions": 5,
+        "Percent": 0.00016790925109451646
+      },
+      {
+        "FetchWords": 5,
+        "Group": "native-template:quick_zero",
+        "Instructions": 5,
+        "Percent": 0.00016790925109451646
+      },
+      {
+        "FetchWords": 5,
+        "Group": "native-template:done_for",
+        "Instructions": 5,
+        "Percent": 0.00016790925109451646
+      },
+      {
+        "FetchWords": 5,
+        "Group": "runtime:shut_down",
+        "Instructions": 4,
+        "Percent": 0.00013432740087561317
+      },
+      {
+        "FetchWords": 8,
+        "Group": "native-template:make_int_from_float",
+        "Instructions": 4,
+        "Percent": 0.00013432740087561317
+      },
+      {
+        "FetchWords": 4,
+        "Group": "runtime:set_sysvars",
+        "Instructions": 3,
+        "Percent": 0.00010074555065670987
+      },
+      {
+        "FetchWords": 3,
+        "Group": "runtime:move_how_many",
+        "Instructions": 3,
+        "Percent": 0.00010074555065670987
+      },
+      {
+        "FetchWords": 5,
+        "Group": "shared-P:restore_p",
+        "Instructions": 3,
+        "Percent": 0.00010074555065670987
+      },
+      {
+        "FetchWords": 2,
+        "Group": "runtime:init2",
+        "Instructions": 2,
+        "Percent": 6.716370043780659E-05
+      },
+      {
+        "FetchWords": 3,
+        "Group": "runtime:no_pipes",
+        "Instructions": 2,
+        "Percent": 6.716370043780659E-05
+      },
+      {
+        "FetchWords": 3,
+        "Group": "runtime:ex_5",
+        "Instructions": 2,
+        "Percent": 6.716370043780659E-05
+      },
+      {
+        "FetchWords": 2,
+        "Group": "runtime:go_slow",
+        "Instructions": 2,
+        "Percent": 6.716370043780659E-05
+      },
+      {
+        "FetchWords": 2,
+        "Group": "runtime:mega_move",
+        "Instructions": 2,
+        "Percent": 6.716370043780659E-05
+      },
+      {
+        "FetchWords": 4,
+        "Group": "shared-P:last_global",
+        "Instructions": 2,
+        "Percent": 6.716370043780659E-05
+      },
+      {
+        "FetchWords": 0,
+        "Group": "QDOS host hook",
+        "Instructions": 1,
+        "Percent": 3.358185021890329E-05
+      },
+      {
+        "FetchWords": 1,
+        "Group": "runtime:entry_routine",
+        "Instructions": 1,
+        "Percent": 3.358185021890329E-05
+      },
+      {
+        "FetchWords": 1,
+        "Group": "runtime:initiali",
+        "Instructions": 1,
+        "Percent": 3.358185021890329E-05
+      },
+      {
+        "FetchWords": 1,
+        "Group": "runtime:not_pe",
+        "Instructions": 1,
+        "Percent": 3.358185021890329E-05
+      },
+      {
+        "FetchWords": 1,
+        "Group": "shared-P:fast",
+        "Instructions": 1,
+        "Percent": 3.358185021890329E-05
+      },
+      {
+        "FetchWords": 2,
+        "Group": "native-template:slow",
+        "Instructions": 1,
+        "Percent": 3.358185021890329E-05
+      },
+      {
+        "FetchWords": 2,
+        "Group": "native-template:prog_end",
+        "Instructions": 1,
+        "Percent": 3.358185021890329E-05
+      }
+    ],
+    "ExecutableSha256": "8C59EE0C86AC942AF1A4B01B740274436A08851819DBE7FE06AED1A1E60D87F5",
+    "ExitCode": 0,
+    "FetchWords": 3711435,
+    "HostHooks": 1,
+    "Instructions": 2977799,
+    "MappedCodeIdentical": true,
+    "Output": "float_polynomial:9252\n",
+    "RomCalls": {
+      "entry RI.EXEC arithmetic": 15916,
+      "RI.EXEC divide": 3980,
+      "RI.EXEC multiply": 11936
+    },
+    "RomInstructions": 1687584,
+    "RomServices": {
+      "RI.EXEC divide": 877228,
+      "RI.EXEC multiply": 810356
+    },
+    "Routines": [
+      {
+        "DispatchInstructions": 24,
+        "Instructions": 2977799,
+        "Percent": 100,
+        "RomInstructions": 1687584,
+        "Routine": "\u003Cmain/startup\u003E"
+      }
+    ],
+    "SegmentEntries": {
+      "runtime:entry_routine": 1,
+      "shared-P:fast": 1,
+      "shared-P:retry_here": 1,
+      "thread-dispatch": 12,
+      "shared-P:retry1_here": 1,
+      "shared-P:global_int_p": 3,
+      "shared-P:global_for_int_p": 2,
+      "shared-P:global_float_p": 3,
+      "shared-P:last_global": 1,
+      "shared-P:restore_p": 1,
+      "native-template:slow": 1,
+      "native-template:constant_int": 22,
+      "native-template:store_int_var": 10,
+      "native-template:quick_zero": 5,
+      "native-template:fch_int_var": 4012,
+      "native-template:remember_end": 5,
+      "native-template:for_range_int": 5,
+      "native-template:done_for": 5,
+      "native-template:int_to_float": 4004,
+      "native-template:st_float_var": 16004,
+      "native-template:fch_float_var": 24012,
+      "native-template:long_float": 20000,
+      "native-template:divide_float": 4000,
+      "native-template:times_float": 12000,
+      "native-template:sub_float": 4000,
+      "native-template:add_float": 12000,
+      "native-template:next_for_int": 4004,
+      "native-template:const_float": 8,
+      "native-template:less_float": 4,
+      "native-template:gt_float": 4,
+      "native-template:l_or_float": 4,
+      "native-template:if_false": 10,
+      "native-template:make_int_from_float": 4,
+      "native-template:add_int": 4,
+      "native-template:mod_int": 4,
+      "native-template:eq_int": 1,
+      "native-template:neq_int": 1,
+      "native-template:l_and_float": 1,
+      "native-template:chan_op_on": 1,
+      "native-template:const_string": 1,
+      "native-template:print_string": 2,
+      "native-template:make_string_from_int": 1,
+      "native-template:print_slash": 1,
+      "native-template:prog_end": 1
+    },
+    "StepsIncludingHostHooks": 2977800,
+    "UnmodifiedExecutable": true
+  },
+  {
+    "Benchmark": "float_transcendentals",
+    "Bytes": 7140,
+    "Compiler": "SB",
+    "Costs": [
+      {
+        "FetchWords": 5069112,
+        "Group": "QL ROM",
+        "Instructions": 3861857,
+        "Percent": 84.17523308161202
+      },
+      {
+        "FetchWords": 149760,
+        "Group": "runtime:go_rom",
+        "Instructions": 96000,
+        "Percent": 2.0924706367518926
+      },
+      {
+        "FetchWords": 111360,
+        "Group": "runtime:heap_even",
+        "Instructions": 88320,
+        "Percent": 1.9250729858117412
+      },
+      {
+        "FetchWords": 111564,
+        "Group": "thread-dispatch",
+        "Instructions": 74376,
+        "Percent": 1.621141625823529
+      },
+      {
+        "FetchWords": 53760,
+        "Group": "shared-P:fch_float_var_p",
+        "Instructions": 35840,
+        "Percent": 0.7811890377207066
+      },
+      {
+        "FetchWords": 31251,
+        "Group": "runtime:normalise",
+        "Instructions": 31251,
+        "Percent": 0.6811645819701396
+      },
+      {
+        "FetchWords": 43520,
+        "Group": "shared-P:times_float",
+        "Instructions": 30720,
+        "Percent": 0.6695906037606056
+      },
+      {
+        "FetchWords": 30720,
+        "Group": "runtime:got_param_ptr",
+        "Instructions": 26880,
+        "Percent": 0.58589177829053
+      },
+      {
+        "FetchWords": 33288,
+        "Group": "native-block",
+        "Instructions": 24324,
+        "Percent": 0.5301797475870108
+      },
+      {
+        "FetchWords": 30720,
+        "Group": "runtime:no_params",
+        "Instructions": 23040,
+        "Percent": 0.5021929528204543
+      },
+      {
+        "FetchWords": 29440,
+        "Group": "shared-P:divide_float",
+        "Instructions": 20480,
+        "Percent": 0.44639373584040376
+      },
+      {
+        "FetchWords": 25600,
+        "Group": "shared-P:st_float_var_p",
+        "Instructions": 20480,
+        "Percent": 0.44639373584040376
+      },
+      {
+        "FetchWords": 24320,
+        "Group": "shared-P:gt_float",
+        "Instructions": 20480,
+        "Percent": 0.44639373584040376
+      },
+      {
+        "FetchWords": 23040,
+        "Group": "shared-P:less_float",
+        "Instructions": 19200,
+        "Percent": 0.41849412735037855
+      },
+      {
+        "FetchWords": 16484,
+        "Group": "runtime:denorm_nos",
+        "Instructions": 13924,
+        "Percent": 0.3034954286055558
+      },
+      {
+        "FetchWords": 12800,
+        "Group": "runtime:far_out_man",
+        "Instructions": 12800,
+        "Percent": 0.27899608490025235
+      },
+      {
+        "FetchWords": 14315,
+        "Group": "shared-P:for_range_int_p",
+        "Instructions": 11703,
+        "Percent": 0.2550852485615354
+      },
+      {
+        "FetchWords": 11520,
+        "Group": "runtime:thread_rom_fn",
+        "Instructions": 11520,
+        "Percent": 0.25109647641022714
+      },
+      {
+        "FetchWords": 11520,
+        "Group": "runtime:no_error",
+        "Instructions": 11520,
+        "Percent": 0.25109647641022714
+      },
+      {
+        "FetchWords": 11520,
+        "Group": "runtime:thread_returns",
+        "Instructions": 11520,
+        "Percent": 0.25109647641022714
+      },
+      {
+        "FetchWords": 7686,
+        "Group": "shared-P:if_false_p",
+        "Instructions": 7686,
+        "Percent": 0.1675284303549484
+      },
+      {
+        "FetchWords": 11520,
+        "Group": "runtime:not_stretched",
+        "Instructions": 7680,
+        "Percent": 0.1673976509401514
+      },
+      {
+        "FetchWords": 7680,
+        "Group": "runtime:coerce",
+        "Instructions": 7680,
+        "Percent": 0.1673976509401514
+      },
+      {
+        "FetchWords": 11520,
+        "Group": "runtime:check_string",
+        "Instructions": 7680,
+        "Percent": 0.1673976509401514
+      },
+      {
+        "FetchWords": 7680,
+        "Group": "runtime:correctly_stacked",
+        "Instructions": 7680,
+        "Percent": 0.1673976509401514
+      },
+      {
+        "FetchWords": 11520,
+        "Group": "shared-P:rom_fn_p",
+        "Instructions": 7680,
+        "Percent": 0.1673976509401514
+      },
+      {
+        "FetchWords": 10240,
+        "Group": "shared-P:const_float_p",
+        "Instructions": 7680,
+        "Percent": 0.1673976509401514
+      },
+      {
+        "FetchWords": 10240,
+        "Group": "runtime:long_to_float",
+        "Instructions": 6400,
+        "Percent": 0.13949804245012618
+      },
+      {
+        "FetchWords": 8960,
+        "Group": "shared-P:l_or_float",
+        "Instructions": 6400,
+        "Percent": 0.13949804245012618
+      },
+      {
+        "FetchWords": 7470,
+        "Group": "runtime:a_bit_bigger",
+        "Instructions": 6225,
+        "Percent": 0.13568364285188053
+      },
+      {
+        "FetchWords": 7710,
+        "Group": "shared-P:next_for_int_p",
+        "Instructions": 5140,
+        "Percent": 0.11203436534275758
+      },
+      {
+        "FetchWords": 7698,
+        "Group": "runtime:interpreter",
+        "Instructions": 5132,
+        "Percent": 0.11185999278969493
+      },
+      {
+        "FetchWords": 5126,
+        "Group": "runtime:go_slow",
+        "Instructions": 5126,
+        "Percent": 0.11172921337489794
+      },
+      {
+        "FetchWords": 6400,
+        "Group": "runtime:fast_add",
+        "Instructions": 5120,
+        "Percent": 0.11159843396010094
+      },
+      {
+        "FetchWords": 10240,
+        "Group": "shared-P:duplicate_flt",
+        "Instructions": 5120,
+        "Percent": 0.11159843396010094
+      },
+      {
+        "FetchWords": 3840,
+        "Group": "runtime:got_type_1",
+        "Instructions": 3840,
+        "Percent": 0.0836988254700757
+      },
+      {
+        "FetchWords": 3840,
+        "Group": "runtime:go_coerce",
+        "Instructions": 3840,
+        "Percent": 0.0836988254700757
+      },
+      {
+        "FetchWords": 6400,
+        "Group": "runtime:registered_1",
+        "Instructions": 3840,
+        "Percent": 0.0836988254700757
+      },
+      {
+        "FetchWords": 5120,
+        "Group": "shared-P:add_float",
+        "Instructions": 3840,
+        "Percent": 0.0836988254700757
+      },
+      {
+        "FetchWords": 5120,
+        "Group": "native-template:int_to_float",
+        "Instructions": 3840,
+        "Percent": 0.0836988254700757
+      },
+      {
+        "FetchWords": 5120,
+        "Group": "native-template:st_float_var",
+        "Instructions": 3840,
+        "Percent": 0.0836988254700757
+      },
+      {
+        "FetchWords": 4666,
+        "Group": "runtime:ex_2",
+        "Instructions": 3733,
+        "Percent": 0.08136659257286266
+      },
+      {
+        "FetchWords": 5126,
+        "Group": "native-template:slow",
+        "Instructions": 2563,
+        "Percent": 0.05586460668744897
+      },
+      {
+        "FetchWords": 2562,
+        "Group": "shared-P:fast",
+        "Instructions": 2562,
+        "Percent": 0.055842810118316134
+      },
+      {
+        "FetchWords": 2560,
+        "Group": "runtime:normalise1",
+        "Instructions": 2560,
+        "Percent": 0.05579921698005047
+      },
+      {
+        "FetchWords": 2560,
+        "Group": "shared-P:long_float_p",
+        "Instructions": 2560,
+        "Percent": 0.05579921698005047
+      },
+      {
+        "FetchWords": 1315,
+        "Group": "runtime:good_exit",
+        "Instructions": 1315,
+        "Percent": 0.028662488409674364
+      },
+      {
+        "FetchWords": 1280,
+        "Group": "runtime:fast_int_to_float",
+        "Instructions": 1280,
+        "Percent": 0.027899608490025235
+      },
+      {
+        "FetchWords": 1280,
+        "Group": "runtime:fast_d1_to_float",
+        "Instructions": 1280,
+        "Percent": 0.027899608490025235
+      },
+      {
+        "FetchWords": 1280,
+        "Group": "runtime:check_register",
+        "Instructions": 1280,
+        "Percent": 0.027899608490025235
+      },
+      {
+        "FetchWords": 197,
+        "Group": "runtime:clear_sys",
+        "Instructions": 132,
+        "Percent": 0.0028771471255338524
+      },
+      {
+        "FetchWords": 155,
+        "Group": "runtime:conn_pipes",
+        "Instructions": 124,
+        "Percent": 0.002702774572471195
+      },
+      {
+        "FetchWords": 105,
+        "Group": "runtime:must_normalise",
+        "Instructions": 105,
+        "Percent": 0.0022886397589473827
+      },
+      {
+        "FetchWords": 101,
+        "Group": "runtime:check_id",
+        "Instructions": 74,
+        "Percent": 0.0016129461158295839
+      },
+      {
+        "FetchWords": 88,
+        "Group": "shared-P:print_string",
+        "Instructions": 70,
+        "Percent": 0.001525759839298255
+      },
+      {
+        "FetchWords": 81,
+        "Group": "runtime:check_a_byte",
+        "Instructions": 59,
+        "Percent": 0.0012859975788371007
+      },
+      {
+        "FetchWords": 63,
+        "Group": "runtime:try_name",
+        "Instructions": 45,
+        "Percent": 0.0009808456109774498
+      },
+      {
+        "FetchWords": 35,
+        "Group": "runtime:normalise_d1",
+        "Instructions": 35,
+        "Percent": 0.0007628799196491275
+      },
+      {
+        "FetchWords": 36,
+        "Group": "runtime:skip_null",
+        "Instructions": 30,
+        "Percent": 0.0006538970739849664
+      },
+      {
+        "FetchWords": 23,
+        "Group": "runtime:byte_table",
+        "Instructions": 23,
+        "Percent": 0.000501321090055141
+      },
+      {
+        "FetchWords": 33,
+        "Group": "runtime:valid_num1",
+        "Instructions": 21,
+        "Percent": 0.00045772795178947656
+      },
+      {
+        "FetchWords": 18,
+        "Group": "shared-P:constant_int_p",
+        "Instructions": 18,
+        "Percent": 0.0003923382443909799
+      },
+      {
+        "FetchWords": 20,
+        "Group": "shared-P:global_float_p",
+        "Instructions": 16,
+        "Percent": 0.0003487451061253154
+      },
+      {
+        "FetchWords": 22,
+        "Group": "runtime:init1",
+        "Instructions": 15,
+        "Percent": 0.0003269485369924832
+      },
+      {
+        "FetchWords": 17,
+        "Group": "shared-P:make_string_from_int",
+        "Instructions": 15,
+        "Percent": 0.0003269485369924832
+      },
+      {
+        "FetchWords": 19,
+        "Group": "runtime:next_name",
+        "Instructions": 14,
+        "Percent": 0.000305151967859651
+      },
+      {
+        "FetchWords": 18,
+        "Group": "shared-P:print_slash",
+        "Instructions": 14,
+        "Percent": 0.000305151967859651
+      },
+      {
+        "FetchWords": 19,
+        "Group": "runtime:link_names",
+        "Instructions": 13,
+        "Percent": 0.0002833553987268188
+      },
+      {
+        "FetchWords": 17,
+        "Group": "runtime:init3",
+        "Instructions": 12,
+        "Percent": 0.0002615588295939866
+      },
+      {
+        "FetchWords": 18,
+        "Group": "runtime:matched",
+        "Instructions": 12,
+        "Percent": 0.0002615588295939866
+      },
+      {
+        "FetchWords": 12,
+        "Group": "shared-P:remember_end_p",
+        "Instructions": 12,
+        "Percent": 0.0002615588295939866
+      },
+      {
+        "FetchWords": 15,
+        "Group": "runtime:find_next",
+        "Instructions": 11,
+        "Percent": 0.00023976226046115438
+      },
+      {
+        "FetchWords": 15,
+        "Group": "shared-P:chan_op_on",
+        "Instructions": 10,
+        "Percent": 0.00021796569132832215
+      },
+      {
+        "FetchWords": 18,
+        "Group": "shared-P:global_for_int_p",
+        "Instructions": 10,
+        "Percent": 0.00021796569132832215
+      },
+      {
+        "FetchWords": 12,
+        "Group": "runtime:valid_num",
+        "Instructions": 9,
+        "Percent": 0.00019616912219548994
+      },
+      {
+        "FetchWords": 18,
+        "Group": "runtime:point_chans",
+        "Instructions": 9,
+        "Percent": 0.00019616912219548994
+      },
+      {
+        "FetchWords": 11,
+        "Group": "shared-P:const_string_p",
+        "Instructions": 9,
+        "Percent": 0.00019616912219548994
+      },
+      {
+        "FetchWords": 10,
+        "Group": "runtime:ope_erch",
+        "Instructions": 8,
+        "Percent": 0.0001743725530626577
+      },
+      {
+        "FetchWords": 10,
+        "Group": "shared-P:l_and_float",
+        "Instructions": 7,
+        "Percent": 0.0001525759839298255
+      },
+      {
+        "FetchWords": 8,
+        "Group": "native-template:neq_int",
+        "Instructions": 7,
+        "Percent": 0.0001525759839298255
+      },
+      {
+        "FetchWords": 7,
+        "Group": "runtime:initialise",
+        "Instructions": 6,
+        "Percent": 0.0001307794147969933
+      },
+      {
+        "FetchWords": 12,
+        "Group": "runtime:type_ok",
+        "Instructions": 6,
+        "Percent": 0.0001307794147969933
+      },
+      {
+        "FetchWords": 6,
+        "Group": "runtime:p_to_p_short",
+        "Instructions": 6,
+        "Percent": 0.0001307794147969933
+      },
+      {
+        "FetchWords": 9,
+        "Group": "shared-P:retry_here",
+        "Instructions": 6,
+        "Percent": 0.0001307794147969933
+      },
+      {
+        "FetchWords": 9,
+        "Group": "shared-P:retry1_here",
+        "Instructions": 6,
+        "Percent": 0.0001307794147969933
+      },
+      {
+        "FetchWords": 8,
+        "Group": "shared-P:fch_int_var_p",
+        "Instructions": 6,
+        "Percent": 0.0001307794147969933
+      },
+      {
+        "FetchWords": 6,
+        "Group": "shared-P:done_for_p",
+        "Instructions": 6,
+        "Percent": 0.0001307794147969933
+      },
+      {
+        "FetchWords": 8,
+        "Group": "shared-P:global_int_p",
+        "Instructions": 6,
+        "Percent": 0.0001307794147969933
+      },
+      {
+        "FetchWords": 9,
+        "Group": "native-template:eq_int",
+        "Instructions": 6,
+        "Percent": 0.0001307794147969933
+      },
+      {
+        "FetchWords": 6,
+        "Group": "runtime:next_name1",
+        "Instructions": 5,
+        "Percent": 0.00010898284566416107
+      },
+      {
+        "FetchWords": 7,
+        "Group": "runtime:minimove",
+        "Instructions": 5,
+        "Percent": 0.00010898284566416107
+      },
+      {
+        "FetchWords": 7,
+        "Group": "runtime:mega_check",
+        "Instructions": 5,
+        "Percent": 0.00010898284566416107
+      },
+      {
+        "FetchWords": 5,
+        "Group": "runtime:shut_down",
+        "Instructions": 4,
+        "Percent": 8.718627653132886E-05
+      },
+      {
+        "FetchWords": 6,
+        "Group": "native-template:fch_int_var",
+        "Instructions": 4,
+        "Percent": 8.718627653132886E-05
+      },
+      {
+        "FetchWords": 4,
+        "Group": "runtime:set_sysvars",
+        "Instructions": 3,
+        "Percent": 6.538970739849665E-05
+      },
+      {
+        "FetchWords": 3,
+        "Group": "runtime:move_how_many",
+        "Instructions": 3,
+        "Percent": 6.538970739849665E-05
+      },
+      {
+        "FetchWords": 5,
+        "Group": "shared-P:restore_p",
+        "Instructions": 3,
+        "Percent": 6.538970739849665E-05
+      },
+      {
+        "FetchWords": 2,
+        "Group": "runtime:init2",
+        "Instructions": 2,
+        "Percent": 4.359313826566443E-05
+      },
+      {
+        "FetchWords": 3,
+        "Group": "runtime:no_pipes",
+        "Instructions": 2,
+        "Percent": 4.359313826566443E-05
+      },
+      {
+        "FetchWords": 3,
+        "Group": "runtime:ex_5",
+        "Instructions": 2,
+        "Percent": 4.359313826566443E-05
+      },
+      {
+        "FetchWords": 2,
+        "Group": "runtime:mega_move",
+        "Instructions": 2,
+        "Percent": 4.359313826566443E-05
+      },
+      {
+        "FetchWords": 4,
+        "Group": "shared-P:last_global",
+        "Instructions": 2,
+        "Percent": 4.359313826566443E-05
+      },
+      {
+        "FetchWords": 4,
+        "Group": "native-template:constant_int",
+        "Instructions": 2,
+        "Percent": 4.359313826566443E-05
+      },
+      {
+        "FetchWords": 0,
+        "Group": "QDOS host hook",
+        "Instructions": 1,
+        "Percent": 2.1796569132832214E-05
+      },
+      {
+        "FetchWords": 1,
+        "Group": "runtime:entry_routine",
+        "Instructions": 1,
+        "Percent": 2.1796569132832214E-05
+      },
+      {
+        "FetchWords": 1,
+        "Group": "runtime:initiali",
+        "Instructions": 1,
+        "Percent": 2.1796569132832214E-05
+      },
+      {
+        "FetchWords": 1,
+        "Group": "runtime:not_pe",
+        "Instructions": 1,
+        "Percent": 2.1796569132832214E-05
+      },
+      {
+        "FetchWords": 2,
+        "Group": "shared-P:prog_end",
+        "Instructions": 1,
+        "Percent": 2.1796569132832214E-05
+      }
+    ],
+    "ExecutableSha256": "2A25D51F0CA6D915A2D62DAE92D07BAF740F2EBBB9469F34AE97F0A03658C5EF",
+    "ExitCode": 0,
+    "FetchWords": 6030727,
+    "HostHooks": 1,
+    "Instructions": 4587878,
+    "MappedCodeIdentical": true,
+    "Output": "float_transcendentals:1280\n",
+    "RomCalls": {
+      "entry ROM entry $808A": 1280,
+      "resident SIN": 1280,
+      "entry ROM entry $806C": 1280,
+      "resident COS": 1280,
+      "entry RI.EXEC arithmetic": 2560,
+      "RI.EXEC multiply": 2560,
+      "entry ROM entry $8090": 1280,
+      "resident SQRT": 1280
+    },
+    "RomInstructions": 3861857,
+    "RomServices": {
+      "resident SIN": 1252129,
+      "resident COS": 1519833,
+      "RI.EXEC multiply": 160780,
+      "resident SQRT": 929115
+    },
+    "Routines": [
+      {
+        "DispatchInstructions": 74376,
+        "Instructions": 4587878,
+        "Percent": 100,
+        "RomInstructions": 3861857,
+        "Routine": "\u003Cmain/startup\u003E"
+      }
+    ],
+    "SegmentEntries": {
+      "runtime:entry_routine": 1,
+      "shared-P:fast": 2562,
+      "shared-P:retry_here": 1,
+      "thread-dispatch": 37188,
+      "shared-P:retry1_here": 1,
+      "shared-P:constant_int_p": 18,
+      "shared-P:fch_int_var_p": 2,
+      "shared-P:remember_end_p": 6,
+      "shared-P:for_range_int_p": 6,
+      "shared-P:done_for_p": 6,
+      "shared-P:fch_float_var_p": 8960,
+      "shared-P:long_float_p": 1280,
+      "shared-P:divide_float": 1280,
+      "shared-P:st_float_var_p": 5120,
+      "shared-P:rom_fn_p": 3840,
+      "shared-P:duplicate_flt": 2560,
+      "shared-P:times_float": 2560,
+      "shared-P:add_float": 1280,
+      "shared-P:const_float_p": 2560,
+      "shared-P:less_float": 1280,
+      "shared-P:gt_float": 1280,
+      "shared-P:l_or_float": 1280,
+      "shared-P:if_false_p": 1281,
+      "shared-P:chan_op_on": 1,
+      "shared-P:const_string_p": 1,
+      "shared-P:print_string": 2,
+      "shared-P:print_slash": 1,
+      "shared-P:prog_end": 1,
+      "shared-P:next_for_int_p": 1285,
+      "shared-P:l_and_float": 1,
+      "shared-P:make_string_from_int": 1,
+      "shared-P:global_float_p": 4,
+      "shared-P:global_int_p": 2,
+      "shared-P:global_for_int_p": 2,
+      "shared-P:last_global": 1,
+      "shared-P:restore_p": 1,
+      "native-template:slow": 2563,
+      "native-block": 2561,
+      "native-template:int_to_float": 1280,
+      "native-template:st_float_var": 1280,
+      "native-template:fch_int_var": 2,
+      "native-template:constant_int": 2,
+      "native-template:eq_int": 1,
+      "native-template:neq_int": 1
+    },
+    "StepsIncludingHostHooks": 4587879,
+    "UnmodifiedExecutable": true
+  },
+  {
+    "Benchmark": "float_transcendentals",
+    "Bytes": 7788,
+    "Compiler": "Turbo FAST",
+    "Costs": [
+      {
+        "FetchWords": 5069112,
+        "Group": "QL ROM",
+        "Instructions": 3861857,
+        "Percent": 86.22281631292495
+      },
+      {
+        "FetchWords": 149760,
+        "Group": "runtime:go_rom",
+        "Instructions": 96000,
+        "Percent": 2.143370499228945
+      },
+      {
+        "FetchWords": 111360,
+        "Group": "runtime:heap_even",
+        "Instructions": 88320,
+        "Percent": 1.9719008592906293
+      },
+      {
+        "FetchWords": 31251,
+        "Group": "runtime:normalise",
+        "Instructions": 31251,
+        "Percent": 0.6977340778271224
+      },
+      {
+        "FetchWords": 43520,
+        "Group": "native-template:times_float",
+        "Instructions": 30720,
+        "Percent": 0.6858785597532623
+      },
+      {
+        "FetchWords": 30720,
+        "Group": "runtime:got_param_ptr",
+        "Instructions": 26880,
+        "Percent": 0.6001437397841045
+      },
+      {
+        "FetchWords": 44800,
+        "Group": "native-template:fch_float_var",
+        "Instructions": 26880,
+        "Percent": 0.6001437397841045
+      },
+      {
+        "FetchWords": 30720,
+        "Group": "runtime:no_params",
+        "Instructions": 23040,
+        "Percent": 0.5144089198149467
+      },
+      {
+        "FetchWords": 29440,
+        "Group": "native-template:divide_float",
+        "Instructions": 20480,
+        "Percent": 0.45725237316884154
+      },
+      {
+        "FetchWords": 24320,
+        "Group": "native-template:gt_float",
+        "Instructions": 20480,
+        "Percent": 0.45725237316884154
+      },
+      {
+        "FetchWords": 25600,
+        "Group": "native-template:st_float_var",
+        "Instructions": 19200,
+        "Percent": 0.42867409984578897
+      },
+      {
+        "FetchWords": 23040,
+        "Group": "native-template:less_float",
+        "Instructions": 19200,
+        "Percent": 0.42867409984578897
+      },
+      {
+        "FetchWords": 15360,
+        "Group": "native-template:mod_int",
+        "Instructions": 15360,
+        "Percent": 0.34293927987663114
+      },
+      {
+        "FetchWords": 16484,
+        "Group": "runtime:denorm_nos",
+        "Instructions": 13924,
+        "Percent": 0.3108780294923315
+      },
+      {
+        "FetchWords": 15552,
+        "Group": "native-template:for_range_int",
+        "Instructions": 12940,
+        "Percent": 0.2889084818752348
+      },
+      {
+        "FetchWords": 12800,
+        "Group": "runtime:far_out_man",
+        "Instructions": 12800,
+        "Percent": 0.285782733230526
+      },
+      {
+        "FetchWords": 11520,
+        "Group": "runtime:no_error",
+        "Instructions": 11520,
+        "Percent": 0.25720445990747337
+      },
+      {
+        "FetchWords": 11532,
+        "Group": "native-template:fch_int_var",
+        "Instructions": 7688,
+        "Percent": 0.17164825414658466
+      },
+      {
+        "FetchWords": 11520,
+        "Group": "runtime:not_stretched",
+        "Instructions": 7680,
+        "Percent": 0.17146963993831557
+      },
+      {
+        "FetchWords": 7680,
+        "Group": "runtime:coerce",
+        "Instructions": 7680,
+        "Percent": 0.17146963993831557
+      },
+      {
+        "FetchWords": 11520,
+        "Group": "runtime:check_string",
+        "Instructions": 7680,
+        "Percent": 0.17146963993831557
+      },
+      {
+        "FetchWords": 7680,
+        "Group": "runtime:correctly_stacked",
+        "Instructions": 7680,
+        "Percent": 0.17146963993831557
+      },
+      {
+        "FetchWords": 10240,
+        "Group": "native-template:add_int",
+        "Instructions": 7680,
+        "Percent": 0.17146963993831557
+      },
+      {
+        "FetchWords": 11520,
+        "Group": "native-template:rom_fn",
+        "Instructions": 7680,
+        "Percent": 0.17146963993831557
+      },
+      {
+        "FetchWords": 10248,
+        "Group": "native-template:if_false",
+        "Instructions": 6405,
+        "Percent": 0.14300300049543116
+      },
+      {
+        "FetchWords": 10240,
+        "Group": "runtime:long_to_float",
+        "Instructions": 6400,
+        "Percent": 0.142891366615263
+      },
+      {
+        "FetchWords": 8960,
+        "Group": "native-template:l_or_float",
+        "Instructions": 6400,
+        "Percent": 0.142891366615263
+      },
+      {
+        "FetchWords": 7470,
+        "Group": "runtime:a_bit_bigger",
+        "Instructions": 6225,
+        "Percent": 0.13898418080937688
+      },
+      {
+        "FetchWords": 8995,
+        "Group": "native-template:next_for_int",
+        "Instructions": 5140,
+        "Percent": 0.11475962881288308
+      },
+      {
+        "FetchWords": 6400,
+        "Group": "runtime:fast_add",
+        "Instructions": 5120,
+        "Percent": 0.11431309329221039
+      },
+      {
+        "FetchWords": 10240,
+        "Group": "native-template:duplicate_flt",
+        "Instructions": 5120,
+        "Percent": 0.11431309329221039
+      },
+      {
+        "FetchWords": 12800,
+        "Group": "native-template:const_float",
+        "Instructions": 5120,
+        "Percent": 0.11431309329221039
+      },
+      {
+        "FetchWords": 6286,
+        "Group": "runtime:ex_2",
+        "Instructions": 5029,
+        "Percent": 0.11228135667314962
+      },
+      {
+        "FetchWords": 3840,
+        "Group": "runtime:call_rom_fn",
+        "Instructions": 3840,
+        "Percent": 0.08573481996915779
+      },
+      {
+        "FetchWords": 3840,
+        "Group": "runtime:native_returns",
+        "Instructions": 3840,
+        "Percent": 0.08573481996915779
+      },
+      {
+        "FetchWords": 3840,
+        "Group": "runtime:got_type_1",
+        "Instructions": 3840,
+        "Percent": 0.08573481996915779
+      },
+      {
+        "FetchWords": 3840,
+        "Group": "runtime:go_coerce",
+        "Instructions": 3840,
+        "Percent": 0.08573481996915779
+      },
+      {
+        "FetchWords": 6400,
+        "Group": "runtime:registered_1",
+        "Instructions": 3840,
+        "Percent": 0.08573481996915779
+      },
+      {
+        "FetchWords": 5120,
+        "Group": "native-template:int_to_float",
+        "Instructions": 3840,
+        "Percent": 0.08573481996915779
+      },
+      {
+        "FetchWords": 5120,
+        "Group": "native-template:add_float",
+        "Instructions": 3840,
+        "Percent": 0.08573481996915779
+      },
+      {
+        "FetchWords": 5162,
+        "Group": "native-template:constant_int",
+        "Instructions": 2581,
+        "Percent": 0.057625408942811526
+      },
+      {
+        "FetchWords": 3846,
+        "Group": "native-template:store_int_var",
+        "Instructions": 2564,
+        "Percent": 0.05724585375023973
+      },
+      {
+        "FetchWords": 2560,
+        "Group": "runtime:normalise1",
+        "Instructions": 2560,
+        "Percent": 0.05715654664610519
+      },
+      {
+        "FetchWords": 5120,
+        "Group": "native-template:long_float",
+        "Instructions": 2560,
+        "Percent": 0.05715654664610519
+      },
+      {
+        "FetchWords": 1315,
+        "Group": "runtime:good_exit",
+        "Instructions": 1315,
+        "Percent": 0.029359710484229817
+      },
+      {
+        "FetchWords": 1280,
+        "Group": "runtime:fast_int_to_float",
+        "Instructions": 1280,
+        "Percent": 0.028578273323052596
+      },
+      {
+        "FetchWords": 1280,
+        "Group": "runtime:fast_d1_to_float",
+        "Instructions": 1280,
+        "Percent": 0.028578273323052596
+      },
+      {
+        "FetchWords": 1280,
+        "Group": "runtime:check_register",
+        "Instructions": 1280,
+        "Percent": 0.028578273323052596
+      },
+      {
+        "FetchWords": 197,
+        "Group": "runtime:clear_sys",
+        "Instructions": 132,
+        "Percent": 0.002947134436439799
+      },
+      {
+        "FetchWords": 155,
+        "Group": "runtime:conn_pipes",
+        "Instructions": 124,
+        "Percent": 0.00276852022817072
+      },
+      {
+        "FetchWords": 105,
+        "Group": "runtime:must_normalise",
+        "Instructions": 105,
+        "Percent": 0.0023443114835316583
+      },
+      {
+        "FetchWords": 101,
+        "Group": "runtime:check_id",
+        "Instructions": 74,
+        "Percent": 0.0016521814264889782
+      },
+      {
+        "FetchWords": 88,
+        "Group": "native-template:print_string",
+        "Instructions": 70,
+        "Percent": 0.0015628743223544388
+      },
+      {
+        "FetchWords": 81,
+        "Group": "runtime:check_a_byte",
+        "Instructions": 59,
+        "Percent": 0.0013172797859844557
+      },
+      {
+        "FetchWords": 63,
+        "Group": "runtime:try_name",
+        "Instructions": 45,
+        "Percent": 0.0010047049215135679
+      },
+      {
+        "FetchWords": 35,
+        "Group": "runtime:normalise_d1",
+        "Instructions": 35,
+        "Percent": 0.0007814371611772194
+      },
+      {
+        "FetchWords": 36,
+        "Group": "runtime:skip_null",
+        "Instructions": 30,
+        "Percent": 0.0006698032810090452
+      },
+      {
+        "FetchWords": 36,
+        "Group": "thread-dispatch",
+        "Instructions": 24,
+        "Percent": 0.0005358426248072362
+      },
+      {
+        "FetchWords": 23,
+        "Group": "runtime:byte_table",
+        "Instructions": 23,
+        "Percent": 0.0005135158487736014
+      },
+      {
+        "FetchWords": 33,
+        "Group": "runtime:valid_num1",
+        "Instructions": 21,
+        "Percent": 0.00046886229670633166
+      },
+      {
+        "FetchWords": 20,
+        "Group": "shared-P:global_float_p",
+        "Instructions": 16,
+        "Percent": 0.00035722841653815744
+      },
+      {
+        "FetchWords": 22,
+        "Group": "runtime:init1",
+        "Instructions": 15,
+        "Percent": 0.0003349016405045226
+      },
+      {
+        "FetchWords": 17,
+        "Group": "native-template:make_string_from_int",
+        "Instructions": 15,
+        "Percent": 0.0003349016405045226
+      },
+      {
+        "FetchWords": 19,
+        "Group": "runtime:next_name",
+        "Instructions": 14,
+        "Percent": 0.00031257486447088776
+      },
+      {
+        "FetchWords": 18,
+        "Group": "native-template:print_slash",
+        "Instructions": 14,
+        "Percent": 0.00031257486447088776
+      },
+      {
+        "FetchWords": 19,
+        "Group": "runtime:link_names",
+        "Instructions": 13,
+        "Percent": 0.00029024808843725297
+      },
+      {
+        "FetchWords": 17,
+        "Group": "runtime:init3",
+        "Instructions": 12,
+        "Percent": 0.0002679213124036181
+      },
+      {
+        "FetchWords": 18,
+        "Group": "runtime:matched",
+        "Instructions": 12,
+        "Percent": 0.0002679213124036181
+      },
+      {
+        "FetchWords": 24,
+        "Group": "native-template:remember_end",
+        "Instructions": 12,
+        "Percent": 0.0002679213124036181
+      },
+      {
+        "FetchWords": 15,
+        "Group": "runtime:find_next",
+        "Instructions": 11,
+        "Percent": 0.0002455945363699833
+      },
+      {
+        "FetchWords": 18,
+        "Group": "shared-P:global_for_int_p",
+        "Instructions": 10,
+        "Percent": 0.0002232677603363484
+      },
+      {
+        "FetchWords": 15,
+        "Group": "native-template:chan_op_on",
+        "Instructions": 10,
+        "Percent": 0.0002232677603363484
+      },
+      {
+        "FetchWords": 12,
+        "Group": "runtime:valid_num",
+        "Instructions": 9,
+        "Percent": 0.00020094098430271357
+      },
+      {
+        "FetchWords": 18,
+        "Group": "runtime:point_chans",
+        "Instructions": 9,
+        "Percent": 0.00020094098430271357
+      },
+      {
+        "FetchWords": 13,
+        "Group": "native-template:const_string",
+        "Instructions": 9,
+        "Percent": 0.00020094098430271357
+      },
+      {
+        "FetchWords": 12,
+        "Group": "runtime:interpreter",
+        "Instructions": 8,
+        "Percent": 0.00017861420826907872
+      },
+      {
+        "FetchWords": 10,
+        "Group": "runtime:ope_erch",
+        "Instructions": 8,
+        "Percent": 0.00017861420826907872
+      },
+      {
+        "FetchWords": 8,
+        "Group": "native-template:neq_int",
+        "Instructions": 7,
+        "Percent": 0.00015628743223544388
+      },
+      {
+        "FetchWords": 10,
+        "Group": "native-template:l_and_float",
+        "Instructions": 7,
+        "Percent": 0.00015628743223544388
+      },
+      {
+        "FetchWords": 7,
+        "Group": "runtime:initialise",
+        "Instructions": 6,
+        "Percent": 0.00013396065620180906
+      },
+      {
+        "FetchWords": 12,
+        "Group": "runtime:type_ok",
+        "Instructions": 6,
+        "Percent": 0.00013396065620180906
+      },
+      {
+        "FetchWords": 6,
+        "Group": "runtime:p_to_p_short",
+        "Instructions": 6,
+        "Percent": 0.00013396065620180906
+      },
+      {
+        "FetchWords": 9,
+        "Group": "shared-P:retry_here",
+        "Instructions": 6,
+        "Percent": 0.00013396065620180906
+      },
+      {
+        "FetchWords": 9,
+        "Group": "shared-P:retry1_here",
+        "Instructions": 6,
+        "Percent": 0.00013396065620180906
+      },
+      {
+        "FetchWords": 8,
+        "Group": "shared-P:global_int_p",
+        "Instructions": 6,
+        "Percent": 0.00013396065620180906
+      },
+      {
+        "FetchWords": 6,
+        "Group": "native-template:done_for",
+        "Instructions": 6,
+        "Percent": 0.00013396065620180906
+      },
+      {
+        "FetchWords": 9,
+        "Group": "native-template:eq_int",
+        "Instructions": 6,
+        "Percent": 0.00013396065620180906
+      },
+      {
+        "FetchWords": 6,
+        "Group": "runtime:next_name1",
+        "Instructions": 5,
+        "Percent": 0.0001116338801681742
+      },
+      {
+        "FetchWords": 7,
+        "Group": "runtime:minimove",
+        "Instructions": 5,
+        "Percent": 0.0001116338801681742
+      },
+      {
+        "FetchWords": 7,
+        "Group": "runtime:mega_check",
+        "Instructions": 5,
+        "Percent": 0.0001116338801681742
+      },
+      {
+        "FetchWords": 5,
+        "Group": "runtime:shut_down",
+        "Instructions": 4,
+        "Percent": 8.930710413453936E-05
+      },
+      {
+        "FetchWords": 4,
+        "Group": "runtime:set_sysvars",
+        "Instructions": 3,
+        "Percent": 6.698032810090453E-05
+      },
+      {
+        "FetchWords": 3,
+        "Group": "runtime:move_how_many",
+        "Instructions": 3,
+        "Percent": 6.698032810090453E-05
+      },
+      {
+        "FetchWords": 5,
+        "Group": "shared-P:restore_p",
+        "Instructions": 3,
+        "Percent": 6.698032810090453E-05
+      },
+      {
+        "FetchWords": 2,
+        "Group": "runtime:init2",
+        "Instructions": 2,
+        "Percent": 4.465355206726968E-05
+      },
+      {
+        "FetchWords": 3,
+        "Group": "runtime:no_pipes",
+        "Instructions": 2,
+        "Percent": 4.465355206726968E-05
+      },
+      {
+        "FetchWords": 3,
+        "Group": "runtime:ex_5",
+        "Instructions": 2,
+        "Percent": 4.465355206726968E-05
+      },
+      {
+        "FetchWords": 2,
+        "Group": "runtime:go_slow",
+        "Instructions": 2,
+        "Percent": 4.465355206726968E-05
+      },
+      {
+        "FetchWords": 2,
+        "Group": "runtime:mega_move",
+        "Instructions": 2,
+        "Percent": 4.465355206726968E-05
+      },
+      {
+        "FetchWords": 4,
+        "Group": "shared-P:last_global",
+        "Instructions": 2,
+        "Percent": 4.465355206726968E-05
+      },
+      {
+        "FetchWords": 0,
+        "Group": "QDOS host hook",
+        "Instructions": 1,
+        "Percent": 2.232677603363484E-05
+      },
+      {
+        "FetchWords": 1,
+        "Group": "runtime:entry_routine",
+        "Instructions": 1,
+        "Percent": 2.232677603363484E-05
+      },
+      {
+        "FetchWords": 1,
+        "Group": "runtime:initiali",
+        "Instructions": 1,
+        "Percent": 2.232677603363484E-05
+      },
+      {
+        "FetchWords": 1,
+        "Group": "runtime:not_pe",
+        "Instructions": 1,
+        "Percent": 2.232677603363484E-05
+      },
+      {
+        "FetchWords": 1,
+        "Group": "shared-P:fast",
+        "Instructions": 1,
+        "Percent": 2.232677603363484E-05
+      },
+      {
+        "FetchWords": 2,
+        "Group": "native-template:slow",
+        "Instructions": 1,
+        "Percent": 2.232677603363484E-05
+      },
+      {
+        "FetchWords": 1,
+        "Group": "native-template:quick_zero",
+        "Instructions": 1,
+        "Percent": 2.232677603363484E-05
+      },
+      {
+        "FetchWords": 2,
+        "Group": "native-template:prog_end",
+        "Instructions": 1,
+        "Percent": 2.232677603363484E-05
+      }
+    ],
+    "ExecutableSha256": "8AA1F9C631E5ED20D2CB1AC65CCCDBDA79E9A6D63EE2437401EC83FBD1AED843",
+    "ExitCode": 0,
+    "FetchWords": 5893919,
+    "HostHooks": 1,
+    "Instructions": 4478927,
+    "MappedCodeIdentical": true,
+    "Output": "float_transcendentals:1280\n",
+    "RomCalls": {
+      "entry ROM entry $808A": 1280,
+      "resident SIN": 1280,
+      "entry ROM entry $806C": 1280,
+      "resident COS": 1280,
+      "entry RI.EXEC arithmetic": 2560,
+      "RI.EXEC multiply": 2560,
+      "entry ROM entry $8090": 1280,
+      "resident SQRT": 1280
+    },
+    "RomInstructions": 3861857,
+    "RomServices": {
+      "resident SIN": 1252129,
+      "resident COS": 1519833,
+      "RI.EXEC multiply": 160780,
+      "resident SQRT": 929115
+    },
+    "Routines": [
+      {
+        "DispatchInstructions": 24,
+        "Instructions": 4478927,
+        "Percent": 100,
+        "RomInstructions": 3861857,
+        "Routine": "\u003Cmain/startup\u003E"
+      }
+    ],
+    "SegmentEntries": {
+      "runtime:entry_routine": 1,
+      "shared-P:fast": 1,
+      "shared-P:retry_here": 1,
+      "thread-dispatch": 12,
+      "shared-P:retry1_here": 1,
+      "shared-P:global_int_p": 2,
+      "shared-P:global_for_int_p": 2,
+      "shared-P:global_float_p": 4,
+      "shared-P:last_global": 1,
+      "shared-P:restore_p": 1,
+      "native-template:slow": 1,
+      "native-template:constant_int": 2581,
+      "native-template:store_int_var": 1282,
+      "native-template:quick_zero": 1,
+      "native-template:fch_int_var": 3844,
+      "native-template:remember_end": 6,
+      "native-template:for_range_int": 6,
+      "native-template:done_for": 6,
+      "native-template:add_int": 2560,
+      "native-template:int_to_float": 1280,
+      "native-template:st_float_var": 6400,
+      "native-template:fch_float_var": 8960,
+      "native-template:long_float": 1280,
+      "native-template:divide_float": 1280,
+      "native-template:rom_fn": 3840,
+      "native-template:duplicate_flt": 2560,
+      "native-template:times_float": 2560,
+      "native-template:add_float": 1280,
+      "native-template:const_float": 2560,
+      "native-template:less_float": 1280,
+      "native-template:gt_float": 1280,
+      "native-template:l_or_float": 1280,
+      "native-template:if_false": 2562,
+      "native-template:mod_int": 1280,
+      "native-template:next_for_int": 1285,
+      "native-template:eq_int": 1,
+      "native-template:neq_int": 1,
+      "native-template:l_and_float": 1,
+      "native-template:chan_op_on": 1,
+      "native-template:const_string": 1,
+      "native-template:print_string": 2,
+      "native-template:make_string_from_int": 1,
+      "native-template:print_slash": 1,
+      "native-template:prog_end": 1
+    },
+    "StepsIncludingHostHooks": 4478928,
+    "UnmodifiedExecutable": true
+  },
+  {
+    "Benchmark": "eight_queens",
+    "Bytes": 9022,
+    "Compiler": "SB",
+    "Costs": [
+      {
+        "FetchWords": 1302836,
+        "Group": "compact-array-helper",
+        "Instructions": 1167220,
+        "Percent": 27.192313597111962
+      },
+      {
+        "FetchWords": 669416,
+        "Group": "native-block",
+        "Instructions": 444553,
+        "Percent": 10.356594803496268
+      },
+      {
+        "FetchWords": 459954,
+        "Group": "native-template:eq_int",
+        "Instructions": 355581,
+        "Percent": 8.283845428603579
+      },
+      {
+        "FetchWords": 380004,
+        "Group": "thread-dispatch",
+        "Instructions": 253336,
+        "Percent": 5.901879643458779
+      },
+      {
+        "FetchWords": 293276,
+        "Group": "shared-P:for_range_int_p",
+        "Instructions": 235628,
+        "Percent": 5.489342598876216
+      },
+      {
+        "FetchWords": 301162,
+        "Group": "QL ROM",
+        "Instructions": 230828,
+        "Percent": 5.377518687988691
+      },
+      {
+        "FetchWords": 195756,
+        "Group": "shared-P:l_and_float",
+        "Instructions": 135508,
+        "Percent": 3.1568821909472486
+      },
+      {
+        "FetchWords": 192894,
+        "Group": "native-template:fch_int_var",
+        "Instructions": 128596,
+        "Percent": 2.995855759269212
+      },
+      {
+        "FetchWords": 117834,
+        "Group": "shared-P:if_false_p",
+        "Instructions": 117834,
+        "Percent": 2.7451372324001393
+      },
+      {
+        "FetchWords": 213296,
+        "Group": "native-template:extract_int_p",
+        "Instructions": 106648,
+        "Percent": 2.484540926736002
+      },
+      {
+        "FetchWords": 118223,
+        "Group": "shared-P:return",
+        "Instructions": 101026,
+        "Percent": 2.353567171108988
+      },
+      {
+        "FetchWords": 137250,
+        "Group": "runtime:interpreter",
+        "Instructions": 91500,
+        "Percent": 2.1316433012934533
+      },
+      {
+        "FetchWords": 87194,
+        "Group": "runtime:go_slow",
+        "Instructions": 87194,
+        "Percent": 2.031327934568102
+      },
+      {
+        "FetchWords": 82615,
+        "Group": "shared-P:local_int_p",
+        "Instructions": 76260,
+        "Percent": 1.77660238422556
+      },
+      {
+        "FetchWords": 114198,
+        "Group": "shared-P:next_for_int_p",
+        "Instructions": 76132,
+        "Percent": 1.7736204132685593
+      },
+      {
+        "FetchWords": 66792,
+        "Group": "runtime:normalise",
+        "Instructions": 66792,
+        "Percent": 1.5560297199999162
+      },
+      {
+        "FetchWords": 100464,
+        "Group": "runtime:go_rom",
+        "Instructions": 64400,
+        "Percent": 1.500304137740966
+      },
+      {
+        "FetchWords": 74704,
+        "Group": "runtime:heap_even",
+        "Instructions": 59248,
+        "Percent": 1.3802798067216886
+      },
+      {
+        "FetchWords": 53328,
+        "Group": "native-template:quick_zero",
+        "Instructions": 53328,
+        "Percent": 1.2423636499604074
+      },
+      {
+        "FetchWords": 43596,
+        "Group": "shared-P:fast",
+        "Instructions": 43596,
+        "Percent": 1.0156406706359495
+      },
+      {
+        "FetchWords": 87188,
+        "Group": "native-template:slow",
+        "Instructions": 43594,
+        "Percent": 1.0155940773397465
+      },
+      {
+        "FetchWords": 49450,
+        "Group": "shared-P:gosub_p",
+        "Instructions": 40850,
+        "Percent": 0.9516680749490444
+      },
+      {
+        "FetchWords": 40356,
+        "Group": "shared-P:loc_for_int_p",
+        "Instructions": 29146,
+        "Percent": 0.6790041055682949
+      },
+      {
+        "FetchWords": 57936,
+        "Group": "native-template:insert_int_p",
+        "Instructions": 28968,
+        "Percent": 0.6748573022062159
+      },
+      {
+        "FetchWords": 25760,
+        "Group": "runtime:far_out_man",
+        "Instructions": 25760,
+        "Percent": 0.6001216550963864
+      },
+      {
+        "FetchWords": 20608,
+        "Group": "runtime:got_param_ptr",
+        "Instructions": 18032,
+        "Percent": 0.4200851585674705
+      },
+      {
+        "FetchWords": 20608,
+        "Group": "runtime:no_params",
+        "Instructions": 15456,
+        "Percent": 0.36007299305783186
+      },
+      {
+        "FetchWords": 20611,
+        "Group": "runtime:long_to_float",
+        "Instructions": 12882,
+        "Percent": 0.30010742084439634
+      },
+      {
+        "FetchWords": 18032,
+        "Group": "shared-P:l_or_float",
+        "Instructions": 12880,
+        "Percent": 0.3000608275481932
+      },
+      {
+        "FetchWords": 12880,
+        "Group": "runtime:fast_float_to_int",
+        "Instructions": 10304,
+        "Percent": 0.24004866203855454
+      },
+      {
+        "FetchWords": 15456,
+        "Group": "runtime:significant",
+        "Instructions": 10304,
+        "Percent": 0.24004866203855454
+      },
+      {
+        "FetchWords": 12880,
+        "Group": "native-template:sub_int_p",
+        "Instructions": 10304,
+        "Percent": 0.24004866203855454
+      },
+      {
+        "FetchWords": 16820,
+        "Group": "native-template:constant_int",
+        "Instructions": 8410,
+        "Percent": 0.19592481053418515
+      },
+      {
+        "FetchWords": 7728,
+        "Group": "runtime:thread_rom_fn",
+        "Instructions": 7728,
+        "Percent": 0.18003649652891593
+      },
+      {
+        "FetchWords": 7728,
+        "Group": "runtime:no_error",
+        "Instructions": 7728,
+        "Percent": 0.18003649652891593
+      },
+      {
+        "FetchWords": 7728,
+        "Group": "runtime:thread_returns",
+        "Instructions": 7728,
+        "Percent": 0.18003649652891593
+      },
+      {
+        "FetchWords": 7728,
+        "Group": "runtime:valid_int",
+        "Instructions": 7728,
+        "Percent": 0.18003649652891593
+      },
+      {
+        "FetchWords": 10304,
+        "Group": "native-template:int_to_float",
+        "Instructions": 7728,
+        "Percent": 0.18003649652891593
+      },
+      {
+        "FetchWords": 10304,
+        "Group": "native-template:sub_int",
+        "Instructions": 7728,
+        "Percent": 0.18003649652891593
+      },
+      {
+        "FetchWords": 7660,
+        "Group": "shared-P:constant_int_p",
+        "Instructions": 7660,
+        "Percent": 0.1784523244580093
+      },
+      {
+        "FetchWords": 9406,
+        "Group": "runtime:ex_2",
+        "Instructions": 7525,
+        "Percent": 0.17530727696429765
+      },
+      {
+        "FetchWords": 8600,
+        "Group": "shared-P:store_int_var_p",
+        "Instructions": 6450,
+        "Percent": 0.15026338025511227
+      },
+      {
+        "FetchWords": 5594,
+        "Group": "shared-P:remember_end_p",
+        "Instructions": 5594,
+        "Percent": 0.13032144948017024
+      },
+      {
+        "FetchWords": 7728,
+        "Group": "runtime:not_stretched",
+        "Instructions": 5152,
+        "Percent": 0.12002433101927727
+      },
+      {
+        "FetchWords": 5152,
+        "Group": "runtime:coerce",
+        "Instructions": 5152,
+        "Percent": 0.12002433101927727
+      },
+      {
+        "FetchWords": 7728,
+        "Group": "runtime:check_string",
+        "Instructions": 5152,
+        "Percent": 0.12002433101927727
+      },
+      {
+        "FetchWords": 5152,
+        "Group": "runtime:correctly_stacked",
+        "Instructions": 5152,
+        "Percent": 0.12002433101927727
+      },
+      {
+        "FetchWords": 5152,
+        "Group": "runtime:rounded1",
+        "Instructions": 5152,
+        "Percent": 0.12002433101927727
+      },
+      {
+        "FetchWords": 5152,
+        "Group": "runtime:normalise1",
+        "Instructions": 5152,
+        "Percent": 0.12002433101927727
+      },
+      {
+        "FetchWords": 7728,
+        "Group": "shared-P:rom_fn_p",
+        "Instructions": 5152,
+        "Percent": 0.12002433101927727
+      },
+      {
+        "FetchWords": 2794,
+        "Group": "shared-P:done_for_p",
+        "Instructions": 2794,
+        "Percent": 0.06509083479578041
+      },
+      {
+        "FetchWords": 2577,
+        "Group": "runtime:fast_int_to_float",
+        "Instructions": 2577,
+        "Percent": 0.06003546215774021
+      },
+      {
+        "FetchWords": 2577,
+        "Group": "runtime:fast_d1_to_float",
+        "Instructions": 2577,
+        "Percent": 0.06003546215774021
+      },
+      {
+        "FetchWords": 2576,
+        "Group": "runtime:got_type_1",
+        "Instructions": 2576,
+        "Percent": 0.060012165509638636
+      },
+      {
+        "FetchWords": 2576,
+        "Group": "runtime:go_coerce",
+        "Instructions": 2576,
+        "Percent": 0.060012165509638636
+      },
+      {
+        "FetchWords": 2576,
+        "Group": "runtime:good_exit",
+        "Instructions": 2576,
+        "Percent": 0.060012165509638636
+      },
+      {
+        "FetchWords": 5152,
+        "Group": "shared-P:make_int_from_float",
+        "Instructions": 2576,
+        "Percent": 0.060012165509638636
+      },
+      {
+        "FetchWords": 1110,
+        "Group": "native-loop",
+        "Instructions": 846,
+        "Percent": 0.019708964293926354
+      },
+      {
+        "FetchWords": 563,
+        "Group": "shared-P:glob_arr_int_p",
+        "Instructions": 483,
+        "Percent": 0.011252281033057246
+      },
+      {
+        "FetchWords": 460,
+        "Group": "native-template:inc_int_var_p",
+        "Instructions": 276,
+        "Percent": 0.006429874876032711
+      },
+      {
+        "FetchWords": 197,
+        "Group": "runtime:clear_sys",
+        "Instructions": 132,
+        "Percent": 0.003075157549406949
+      },
+      {
+        "FetchWords": 155,
+        "Group": "runtime:conn_pipes",
+        "Instructions": 124,
+        "Percent": 0.0028887843645944065
+      },
+      {
+        "FetchWords": 94,
+        "Group": "shared-P:quick_zero",
+        "Instructions": 94,
+        "Percent": 0.0021898849215473727
+      },
+      {
+        "FetchWords": 101,
+        "Group": "runtime:check_id",
+        "Instructions": 74,
+        "Percent": 0.0017239519595160168
+      },
+      {
+        "FetchWords": 88,
+        "Group": "shared-P:print_string",
+        "Instructions": 70,
+        "Percent": 0.0016307653671097455
+      },
+      {
+        "FetchWords": 70,
+        "Group": "shared-P:array_p",
+        "Instructions": 55,
+        "Percent": 0.0012813156455862287
+      },
+      {
+        "FetchWords": 56,
+        "Group": "shared-P:global_int_p",
+        "Instructions": 42,
+        "Percent": 0.0009784592202658473
+      },
+      {
+        "FetchWords": 49,
+        "Group": "shared-P:short_string_p",
+        "Instructions": 35,
+        "Percent": 0.0008153826835548728
+      },
+      {
+        "FetchWords": 22,
+        "Group": "runtime:init1",
+        "Instructions": 15,
+        "Percent": 0.0003494497215235169
+      },
+      {
+        "FetchWords": 17,
+        "Group": "shared-P:make_string_from_int",
+        "Instructions": 15,
+        "Percent": 0.0003494497215235169
+      },
+      {
+        "FetchWords": 18,
+        "Group": "shared-P:print_slash",
+        "Instructions": 14,
+        "Percent": 0.0003261530734219491
+      },
+      {
+        "FetchWords": 19,
+        "Group": "runtime:link_names",
+        "Instructions": 13,
+        "Percent": 0.00030285642532038135
+      },
+      {
+        "FetchWords": 17,
+        "Group": "runtime:init3",
+        "Instructions": 12,
+        "Percent": 0.00027955977721881353
+      },
+      {
+        "FetchWords": 15,
+        "Group": "runtime:next_name",
+        "Instructions": 10,
+        "Percent": 0.00023296648101567795
+      },
+      {
+        "FetchWords": 15,
+        "Group": "shared-P:chan_op_on",
+        "Instructions": 10,
+        "Percent": 0.00023296648101567795
+      },
+      {
+        "FetchWords": 18,
+        "Group": "shared-P:global_for_int_p",
+        "Instructions": 10,
+        "Percent": 0.00023296648101567795
+      },
+      {
+        "FetchWords": 13,
+        "Group": "runtime:check_a_byte",
+        "Instructions": 9,
+        "Percent": 0.00020966983291411016
+      },
+      {
+        "FetchWords": 18,
+        "Group": "runtime:point_chans",
+        "Instructions": 9,
+        "Percent": 0.00020966983291411016
+      },
+      {
+        "FetchWords": 12,
+        "Group": "shared-P:fch_int_var_p",
+        "Instructions": 9,
+        "Percent": 0.00020966983291411016
+      },
+      {
+        "FetchWords": 10,
+        "Group": "runtime:ope_erch",
+        "Instructions": 8,
+        "Percent": 0.00018637318481254234
+      },
+      {
+        "FetchWords": 11,
+        "Group": "runtime:valid_num1",
+        "Instructions": 7,
+        "Percent": 0.00016307653671097455
+      },
+      {
+        "FetchWords": 8,
+        "Group": "native-template:neq_int",
+        "Instructions": 7,
+        "Percent": 0.00016307653671097455
+      },
+      {
+        "FetchWords": 7,
+        "Group": "runtime:initialise",
+        "Instructions": 6,
+        "Percent": 0.00013977988860940676
+      },
+      {
+        "FetchWords": 6,
+        "Group": "runtime:p_to_p_short",
+        "Instructions": 6,
+        "Percent": 0.00013977988860940676
+      },
+      {
+        "FetchWords": 9,
+        "Group": "shared-P:retry_here",
+        "Instructions": 6,
+        "Percent": 0.00013977988860940676
+      },
+      {
+        "FetchWords": 9,
+        "Group": "shared-P:retry1_here",
+        "Instructions": 6,
+        "Percent": 0.00013977988860940676
+      },
+      {
+        "FetchWords": 6,
+        "Group": "runtime:next_name1",
+        "Instructions": 5,
+        "Percent": 0.00011648324050783898
+      },
+      {
+        "FetchWords": 7,
+        "Group": "runtime:try_name",
+        "Instructions": 5,
+        "Percent": 0.00011648324050783898
+      },
+      {
+        "FetchWords": 6,
+        "Group": "runtime:matched",
+        "Instructions": 4,
+        "Percent": 9.318659240627117E-05
+      },
+      {
+        "FetchWords": 5,
+        "Group": "runtime:shut_down",
+        "Instructions": 4,
+        "Percent": 9.318659240627117E-05
+      },
+      {
+        "FetchWords": 4,
+        "Group": "runtime:valid_num",
+        "Instructions": 3,
+        "Percent": 6.988994430470338E-05
+      },
+      {
+        "FetchWords": 4,
+        "Group": "runtime:find_next",
+        "Instructions": 3,
+        "Percent": 6.988994430470338E-05
+      },
+      {
+        "FetchWords": 4,
+        "Group": "runtime:set_sysvars",
+        "Instructions": 3,
+        "Percent": 6.988994430470338E-05
+      },
+      {
+        "FetchWords": 4,
+        "Group": "shared-P:int_to_float",
+        "Instructions": 3,
+        "Percent": 6.988994430470338E-05
+      },
+      {
+        "FetchWords": 5,
+        "Group": "shared-P:restore_p",
+        "Instructions": 3,
+        "Percent": 6.988994430470338E-05
+      },
+      {
+        "FetchWords": 2,
+        "Group": "runtime:init2",
+        "Instructions": 2,
+        "Percent": 4.6593296203135586E-05
+      },
+      {
+        "FetchWords": 3,
+        "Group": "runtime:no_pipes",
+        "Instructions": 2,
+        "Percent": 4.6593296203135586E-05
+      },
+      {
+        "FetchWords": 4,
+        "Group": "runtime:type_ok",
+        "Instructions": 2,
+        "Percent": 4.6593296203135586E-05
+      },
+      {
+        "FetchWords": 3,
+        "Group": "runtime:ex_5",
+        "Instructions": 2,
+        "Percent": 4.6593296203135586E-05
+      },
+      {
+        "FetchWords": 2,
+        "Group": "runtime:result_zero",
+        "Instructions": 2,
+        "Percent": 4.6593296203135586E-05
+      },
+      {
+        "FetchWords": 4,
+        "Group": "shared-P:last_global",
+        "Instructions": 2,
+        "Percent": 4.6593296203135586E-05
+      },
+      {
+        "FetchWords": 0,
+        "Group": "QDOS host hook",
+        "Instructions": 1,
+        "Percent": 2.3296648101567793E-05
+      },
+      {
+        "FetchWords": 1,
+        "Group": "runtime:entry_routine",
+        "Instructions": 1,
+        "Percent": 2.3296648101567793E-05
+      },
+      {
+        "FetchWords": 1,
+        "Group": "runtime:initiali",
+        "Instructions": 1,
+        "Percent": 2.3296648101567793E-05
+      },
+      {
+        "FetchWords": 1,
+        "Group": "runtime:not_pe",
+        "Instructions": 1,
+        "Percent": 2.3296648101567793E-05
+      },
+      {
+        "FetchWords": 2,
+        "Group": "shared-P:prog_end",
+        "Instructions": 1,
+        "Percent": 2.3296648101567793E-05
+      }
+    ],
+    "ExecutableSha256": "7DAF9ABAF3BA592EF68766C72C08B01CA7F245F8CC7989FEDD1B2BF629D53C73",
+    "ExitCode": 0,
+    "FetchWords": 5554032,
+    "HostHooks": 1,
+    "Instructions": 4292463,
+    "MappedCodeIdentical": true,
+    "Output": "eight_queens:4962\n",
+    "RomCalls": {
+      "entry ROM entry $80C2": 2576,
+      "resident ABS": 2576
+    },
+    "RomInstructions": 230828,
+    "RomServices": {
+      "resident ABS": 230828
+    },
+    "Routines": [
+      {
+        "DispatchInstructions": 209760,
+        "Instructions": 3253378,
+        "Percent": 75.79280240738242,
+        "RomInstructions": 0,
+        "Routine": "SEARCH_BOARD"
+      },
+      {
+        "DispatchInstructions": 43424,
+        "Instructions": 1029020,
+        "Percent": 23.972716829475292,
+        "RomInstructions": 230828,
+        "Routine": "RECORD_BOARD"
+      },
+      {
+        "DispatchInstructions": 130,
+        "Instructions": 9456,
+        "Percent": 0.22029310444842506,
+        "RomInstructions": 0,
+        "Routine": "\u003Cmain/startup\u003E"
+      },
+      {
+        "DispatchInstructions": 22,
+        "Instructions": 609,
+        "Percent": 0.014187658693854787,
+        "RomInstructions": 0,
+        "Routine": "CLEAR_BOARD"
+      }
+    ],
+    "SegmentEntries": {
+      "runtime:entry_routine": 1,
+      "compact-array-helper": 67808,
+      "shared-P:fast": 43596,
+      "shared-P:array_p": 5,
+      "thread-dispatch": 126668,
+      "shared-P:retry_here": 1,
+      "shared-P:retry1_here": 1,
+      "shared-P:constant_int_p": 7660,
+      "shared-P:store_int_var_p": 2150,
+      "shared-P:glob_arr_int_p": 5,
+      "shared-P:fch_int_var_p": 3,
+      "shared-P:remember_end_p": 2797,
+      "shared-P:for_range_int_p": 2797,
+      "shared-P:done_for_p": 2794,
+      "shared-P:gosub_p": 2150,
+      "shared-P:if_false_p": 20355,
+      "shared-P:next_for_int_p": 19033,
+      "shared-P:int_to_float": 1,
+      "shared-P:chan_op_on": 1,
+      "shared-P:short_string_p": 1,
+      "shared-P:print_string": 2,
+      "shared-P:make_string_from_int": 1,
+      "shared-P:print_slash": 1,
+      "shared-P:prog_end": 1,
+      "shared-P:loc_for_int_p": 2242,
+      "shared-P:quick_zero": 94,
+      "shared-P:return": 2150,
+      "shared-P:local_int_p": 6355,
+      "shared-P:l_and_float": 31440,
+      "shared-P:rom_fn_p": 2576,
+      "shared-P:make_int_from_float": 2576,
+      "shared-P:l_or_float": 2576,
+      "shared-P:global_int_p": 14,
+      "shared-P:global_for_int_p": 2,
+      "shared-P:last_global": 1,
+      "shared-P:restore_p": 1,
+      "native-template:slow": 43594,
+      "native-block": 21275,
+      "native-template:fch_int_var": 64298,
+      "native-template:constant_int": 8410,
+      "native-template:neq_int": 1,
+      "native-loop": 6,
+      "native-template:eq_int": 54369,
+      "native-template:extract_int_p": 53324,
+      "native-template:quick_zero": 53328,
+      "native-template:insert_int_p": 14484,
+      "native-template:sub_int_p": 2576,
+      "native-template:int_to_float": 2576,
+      "native-template:sub_int": 2576,
+      "native-template:inc_int_var_p": 92
+    },
+    "StepsIncludingHostHooks": 4292464,
+    "UnmodifiedExecutable": true
+  },
+  {
+    "Benchmark": "eight_queens",
+    "Bytes": 12718,
+    "Compiler": "Turbo FAST",
+    "Costs": [
+      {
+        "FetchWords": 1066960,
+        "Group": "native-template:extract_int",
+        "Instructions": 960264,
+        "Percent": 26.274122453000036
+      },
+      {
+        "FetchWords": 459954,
+        "Group": "native-template:eq_int",
+        "Instructions": 355581,
+        "Percent": 9.729177326193843
+      },
+      {
+        "FetchWords": 450087,
+        "Group": "native-template:fch_int_var",
+        "Instructions": 300058,
+        "Percent": 8.209992913409526
+      },
+      {
+        "FetchWords": 305445,
+        "Group": "native-template:insert_int",
+        "Instructions": 276355,
+        "Percent": 7.5614467589109084
+      },
+      {
+        "FetchWords": 290338,
+        "Group": "native-template:for_range_int",
+        "Instructions": 232625,
+        "Percent": 6.364934784214688
+      },
+      {
+        "FetchWords": 301162,
+        "Group": "QL ROM",
+        "Instructions": 230828,
+        "Percent": 6.315766432544688
+      },
+      {
+        "FetchWords": 195756,
+        "Group": "native-template:l_and_float",
+        "Instructions": 135508,
+        "Percent": 3.707682247133214
+      },
+      {
+        "FetchWords": 140648,
+        "Group": "native-template:add_int",
+        "Instructions": 105486,
+        "Percent": 2.8862397018706956
+      },
+      {
+        "FetchWords": 116073,
+        "Group": "native-template:return",
+        "Instructions": 101026,
+        "Percent": 2.7642080666741453
+      },
+      {
+        "FetchWords": 152164,
+        "Group": "native-template:if_false",
+        "Instructions": 97519,
+        "Percent": 2.668251801061073
+      },
+      {
+        "FetchWords": 133469,
+        "Group": "native-template:next_for_int",
+        "Instructions": 76268,
+        "Percent": 2.086795684567376
+      },
+      {
+        "FetchWords": 111021,
+        "Group": "native-template:store_int_var",
+        "Instructions": 74014,
+        "Percent": 2.0251231944927066
+      },
+      {
+        "FetchWords": 76260,
+        "Group": "native-template:local_int",
+        "Instructions": 69905,
+        "Percent": 1.9126953942634186
+      },
+      {
+        "FetchWords": 66792,
+        "Group": "runtime:normalise",
+        "Instructions": 66792,
+        "Percent": 1.8275195018044812
+      },
+      {
+        "FetchWords": 100464,
+        "Group": "runtime:go_rom",
+        "Instructions": 64400,
+        "Percent": 1.7620711449905466
+      },
+      {
+        "FetchWords": 83520,
+        "Group": "native-template:sub_int",
+        "Instructions": 62640,
+        "Percent": 1.7139151633883205
+      },
+      {
+        "FetchWords": 74704,
+        "Group": "runtime:heap_even",
+        "Instructions": 59248,
+        "Percent": 1.621105453391303
+      },
+      {
+        "FetchWords": 56063,
+        "Group": "native-template:quick_zero",
+        "Instructions": 56063,
+        "Percent": 1.5339595435031834
+      },
+      {
+        "FetchWords": 58050,
+        "Group": "native-template:gosub",
+        "Instructions": 43000,
+        "Percent": 1.17653818687257
+      },
+      {
+        "FetchWords": 71038,
+        "Group": "native-template:constant_int",
+        "Instructions": 35519,
+        "Percent": 0.9718479037099259
+      },
+      {
+        "FetchWords": 38114,
+        "Group": "native-template:loc_for_int",
+        "Instructions": 26904,
+        "Percent": 0.7361298460376656
+      },
+      {
+        "FetchWords": 25760,
+        "Group": "runtime:far_out_man",
+        "Instructions": 25760,
+        "Percent": 0.7048284579962186
+      },
+      {
+        "FetchWords": 20608,
+        "Group": "runtime:got_param_ptr",
+        "Instructions": 18032,
+        "Percent": 0.4933799205973531
+      },
+      {
+        "FetchWords": 20608,
+        "Group": "runtime:no_params",
+        "Instructions": 15456,
+        "Percent": 0.4228970747977312
+      },
+      {
+        "FetchWords": 18646,
+        "Group": "runtime:ex_2",
+        "Instructions": 14917,
+        "Percent": 0.40814930543204947
+      },
+      {
+        "FetchWords": 20611,
+        "Group": "runtime:long_to_float",
+        "Instructions": 12882,
+        "Percent": 0.3524689517044755
+      },
+      {
+        "FetchWords": 18032,
+        "Group": "native-template:l_or_float",
+        "Instructions": 12880,
+        "Percent": 0.3524142289981093
+      },
+      {
+        "FetchWords": 12880,
+        "Group": "runtime:fast_float_to_int",
+        "Instructions": 10304,
+        "Percent": 0.2819313831984875
+      },
+      {
+        "FetchWords": 15456,
+        "Group": "runtime:significant",
+        "Instructions": 10304,
+        "Percent": 0.2819313831984875
+      },
+      {
+        "FetchWords": 10044,
+        "Group": "native-template:mod_int",
+        "Instructions": 10044,
+        "Percent": 0.2748174313708859
+      },
+      {
+        "FetchWords": 10308,
+        "Group": "native-template:int_to_float",
+        "Instructions": 7731,
+        "Percent": 0.21153062145841484
+      },
+      {
+        "FetchWords": 7728,
+        "Group": "runtime:no_error",
+        "Instructions": 7728,
+        "Percent": 0.2114485373988656
+      },
+      {
+        "FetchWords": 7728,
+        "Group": "runtime:valid_int",
+        "Instructions": 7728,
+        "Percent": 0.2114485373988656
+      },
+      {
+        "FetchWords": 11188,
+        "Group": "native-template:remember_end",
+        "Instructions": 5594,
+        "Percent": 0.15305940970616644
+      },
+      {
+        "FetchWords": 7728,
+        "Group": "runtime:not_stretched",
+        "Instructions": 5152,
+        "Percent": 0.14096569159924374
+      },
+      {
+        "FetchWords": 5152,
+        "Group": "runtime:coerce",
+        "Instructions": 5152,
+        "Percent": 0.14096569159924374
+      },
+      {
+        "FetchWords": 7728,
+        "Group": "runtime:check_string",
+        "Instructions": 5152,
+        "Percent": 0.14096569159924374
+      },
+      {
+        "FetchWords": 5152,
+        "Group": "runtime:correctly_stacked",
+        "Instructions": 5152,
+        "Percent": 0.14096569159924374
+      },
+      {
+        "FetchWords": 5152,
+        "Group": "runtime:rounded1",
+        "Instructions": 5152,
+        "Percent": 0.14096569159924374
+      },
+      {
+        "FetchWords": 5152,
+        "Group": "runtime:normalise1",
+        "Instructions": 5152,
+        "Percent": 0.14096569159924374
+      },
+      {
+        "FetchWords": 7728,
+        "Group": "native-template:rom_fn",
+        "Instructions": 5152,
+        "Percent": 0.14096569159924374
+      },
+      {
+        "FetchWords": 5920,
+        "Group": "native-template:times_int",
+        "Instructions": 4440,
+        "Percent": 0.12148440813288862
+      },
+      {
+        "FetchWords": 2797,
+        "Group": "native-template:done_for",
+        "Instructions": 2797,
+        "Percent": 0.07652970485308322
+      },
+      {
+        "FetchWords": 2577,
+        "Group": "runtime:fast_int_to_float",
+        "Instructions": 2577,
+        "Percent": 0.07051020715280495
+      },
+      {
+        "FetchWords": 2577,
+        "Group": "runtime:fast_d1_to_float",
+        "Instructions": 2577,
+        "Percent": 0.07051020715280495
+      },
+      {
+        "FetchWords": 2576,
+        "Group": "runtime:call_rom_fn",
+        "Instructions": 2576,
+        "Percent": 0.07048284579962187
+      },
+      {
+        "FetchWords": 2576,
+        "Group": "runtime:native_returns",
+        "Instructions": 2576,
+        "Percent": 0.07048284579962187
+      },
+      {
+        "FetchWords": 2576,
+        "Group": "runtime:got_type_1",
+        "Instructions": 2576,
+        "Percent": 0.07048284579962187
+      },
+      {
+        "FetchWords": 2576,
+        "Group": "runtime:go_coerce",
+        "Instructions": 2576,
+        "Percent": 0.07048284579962187
+      },
+      {
+        "FetchWords": 2576,
+        "Group": "runtime:good_exit",
+        "Instructions": 2576,
+        "Percent": 0.07048284579962187
+      },
+      {
+        "FetchWords": 5152,
+        "Group": "native-template:make_int_from_float",
+        "Instructions": 2576,
+        "Percent": 0.07048284579962187
+      },
+      {
+        "FetchWords": 533,
+        "Group": "native-template:glob_arr_int",
+        "Instructions": 463,
+        "Percent": 0.01266830652376744
+      },
+      {
+        "FetchWords": 276,
+        "Group": "native-template:qinc_int_var",
+        "Instructions": 184,
+        "Percent": 0.005034488985687276
+      },
+      {
+        "FetchWords": 197,
+        "Group": "runtime:clear_sys",
+        "Instructions": 132,
+        "Percent": 0.003611698620166959
+      },
+      {
+        "FetchWords": 155,
+        "Group": "runtime:conn_pipes",
+        "Instructions": 124,
+        "Percent": 0.0033928077947022947
+      },
+      {
+        "FetchWords": 101,
+        "Group": "runtime:check_id",
+        "Instructions": 74,
+        "Percent": 0.0020247401355481436
+      },
+      {
+        "FetchWords": 88,
+        "Group": "native-template:print_string",
+        "Instructions": 70,
+        "Percent": 0.0019152947228158117
+      },
+      {
+        "FetchWords": 72,
+        "Group": "native-template:neq_int",
+        "Instructions": 63,
+        "Percent": 0.0017237652505342304
+      },
+      {
+        "FetchWords": 70,
+        "Group": "shared-P:array_p",
+        "Instructions": 55,
+        "Percent": 0.0015048744250695661
+      },
+      {
+        "FetchWords": 75,
+        "Group": "thread-dispatch",
+        "Instructions": 50,
+        "Percent": 0.0013680676591541511
+      },
+      {
+        "FetchWords": 52,
+        "Group": "native-template:short_string",
+        "Instructions": 37,
+        "Percent": 0.0010123700677740718
+      },
+      {
+        "FetchWords": 40,
+        "Group": "shared-P:global_int_p",
+        "Instructions": 30,
+        "Percent": 0.0008208405954924907
+      },
+      {
+        "FetchWords": 54,
+        "Group": "shared-P:global_for_int_p",
+        "Instructions": 30,
+        "Percent": 0.0008208405954924907
+      },
+      {
+        "FetchWords": 22,
+        "Group": "runtime:init1",
+        "Instructions": 15,
+        "Percent": 0.00041042029774624535
+      },
+      {
+        "FetchWords": 17,
+        "Group": "native-template:make_string_from_int",
+        "Instructions": 15,
+        "Percent": 0.00041042029774624535
+      },
+      {
+        "FetchWords": 18,
+        "Group": "native-template:print_slash",
+        "Instructions": 14,
+        "Percent": 0.0003830589445631623
+      },
+      {
+        "FetchWords": 19,
+        "Group": "runtime:link_names",
+        "Instructions": 13,
+        "Percent": 0.00035569759138007927
+      },
+      {
+        "FetchWords": 17,
+        "Group": "runtime:init3",
+        "Instructions": 12,
+        "Percent": 0.0003283362381969963
+      },
+      {
+        "FetchWords": 15,
+        "Group": "runtime:next_name",
+        "Instructions": 10,
+        "Percent": 0.0002736135318308302
+      },
+      {
+        "FetchWords": 15,
+        "Group": "native-template:chan_op_on",
+        "Instructions": 10,
+        "Percent": 0.0002736135318308302
+      },
+      {
+        "FetchWords": 13,
+        "Group": "runtime:check_a_byte",
+        "Instructions": 9,
+        "Percent": 0.00024625217864774723
+      },
+      {
+        "FetchWords": 18,
+        "Group": "runtime:point_chans",
+        "Instructions": 9,
+        "Percent": 0.00024625217864774723
+      },
+      {
+        "FetchWords": 12,
+        "Group": "runtime:interpreter",
+        "Instructions": 8,
+        "Percent": 0.0002188908254646642
+      },
+      {
+        "FetchWords": 10,
+        "Group": "runtime:ope_erch",
+        "Instructions": 8,
+        "Percent": 0.0002188908254646642
+      },
+      {
+        "FetchWords": 11,
+        "Group": "runtime:valid_num1",
+        "Instructions": 7,
+        "Percent": 0.00019152947228158115
+      },
+      {
+        "FetchWords": 7,
+        "Group": "runtime:initialise",
+        "Instructions": 6,
+        "Percent": 0.00016416811909849814
+      },
+      {
+        "FetchWords": 6,
+        "Group": "runtime:p_to_p_short",
+        "Instructions": 6,
+        "Percent": 0.00016416811909849814
+      },
+      {
+        "FetchWords": 9,
+        "Group": "shared-P:retry_here",
+        "Instructions": 6,
+        "Percent": 0.00016416811909849814
+      },
+      {
+        "FetchWords": 9,
+        "Group": "shared-P:retry1_here",
+        "Instructions": 6,
+        "Percent": 0.00016416811909849814
+      },
+      {
+        "FetchWords": 6,
+        "Group": "runtime:next_name1",
+        "Instructions": 5,
+        "Percent": 0.0001368067659154151
+      },
+      {
+        "FetchWords": 7,
+        "Group": "runtime:try_name",
+        "Instructions": 5,
+        "Percent": 0.0001368067659154151
+      },
+      {
+        "FetchWords": 6,
+        "Group": "runtime:matched",
+        "Instructions": 4,
+        "Percent": 0.0001094454127323321
+      },
+      {
+        "FetchWords": 5,
+        "Group": "runtime:shut_down",
+        "Instructions": 4,
+        "Percent": 0.0001094454127323321
+      },
+      {
+        "FetchWords": 4,
+        "Group": "runtime:valid_num",
+        "Instructions": 3,
+        "Percent": 8.208405954924907E-05
+      },
+      {
+        "FetchWords": 4,
+        "Group": "runtime:find_next",
+        "Instructions": 3,
+        "Percent": 8.208405954924907E-05
+      },
+      {
+        "FetchWords": 4,
+        "Group": "runtime:set_sysvars",
+        "Instructions": 3,
+        "Percent": 8.208405954924907E-05
+      },
+      {
+        "FetchWords": 5,
+        "Group": "shared-P:restore_p",
+        "Instructions": 3,
+        "Percent": 8.208405954924907E-05
+      },
+      {
+        "FetchWords": 2,
+        "Group": "runtime:init2",
+        "Instructions": 2,
+        "Percent": 5.472270636616605E-05
+      },
+      {
+        "FetchWords": 3,
+        "Group": "runtime:no_pipes",
+        "Instructions": 2,
+        "Percent": 5.472270636616605E-05
+      },
+      {
+        "FetchWords": 4,
+        "Group": "runtime:type_ok",
+        "Instructions": 2,
+        "Percent": 5.472270636616605E-05
+      },
+      {
+        "FetchWords": 3,
+        "Group": "runtime:ex_5",
+        "Instructions": 2,
+        "Percent": 5.472270636616605E-05
+      },
+      {
+        "FetchWords": 2,
+        "Group": "runtime:go_slow",
+        "Instructions": 2,
+        "Percent": 5.472270636616605E-05
+      },
+      {
+        "FetchWords": 2,
+        "Group": "runtime:result_zero",
+        "Instructions": 2,
+        "Percent": 5.472270636616605E-05
+      },
+      {
+        "FetchWords": 4,
+        "Group": "shared-P:last_global",
+        "Instructions": 2,
+        "Percent": 5.472270636616605E-05
+      },
+      {
+        "FetchWords": 0,
+        "Group": "QDOS host hook",
+        "Instructions": 1,
+        "Percent": 2.7361353183083024E-05
+      },
+      {
+        "FetchWords": 1,
+        "Group": "runtime:entry_routine",
+        "Instructions": 1,
+        "Percent": 2.7361353183083024E-05
+      },
+      {
+        "FetchWords": 1,
+        "Group": "runtime:initiali",
+        "Instructions": 1,
+        "Percent": 2.7361353183083024E-05
+      },
+      {
+        "FetchWords": 1,
+        "Group": "runtime:not_pe",
+        "Instructions": 1,
+        "Percent": 2.7361353183083024E-05
+      },
+      {
+        "FetchWords": 1,
+        "Group": "shared-P:fast",
+        "Instructions": 1,
+        "Percent": 2.7361353183083024E-05
+      },
+      {
+        "FetchWords": 2,
+        "Group": "native-template:slow",
+        "Instructions": 1,
+        "Percent": 2.7361353183083024E-05
+      },
+      {
+        "FetchWords": 2,
+        "Group": "native-template:prog_end",
+        "Instructions": 1,
+        "Percent": 2.7361353183083024E-05
+      }
+    ],
+    "ExecutableSha256": "A8BC738953BBD5A31C1B95D87624D04A095461C5B483FB601DD7778653F0BCA0",
+    "ExitCode": 0,
+    "FetchWords": 4625374,
+    "HostHooks": 1,
+    "Instructions": 3654790,
+    "MappedCodeIdentical": true,
+    "Output": "eight_queens:4962\n",
+    "RomCalls": {
+      "entry ROM entry $80C2": 2576,
+      "resident ABS": 2576
+    },
+    "RomInstructions": 230828,
+    "RomServices": {
+      "resident ABS": 230828
+    },
+    "Routines": [
+      {
+        "DispatchInstructions": 50,
+        "Instructions": 3654790,
+        "Percent": 100,
+        "RomInstructions": 230828,
+        "Routine": "\u003Cmain/startup\u003E"
+      }
+    ],
+    "SegmentEntries": {
+      "runtime:entry_routine": 1,
+      "shared-P:fast": 1,
+      "shared-P:array_p": 5,
+      "thread-dispatch": 25,
+      "shared-P:retry_here": 1,
+      "shared-P:retry1_here": 1,
+      "shared-P:global_int_p": 10,
+      "shared-P:global_for_int_p": 6,
+      "shared-P:last_global": 1,
+      "shared-P:restore_p": 1,
+      "native-template:slow": 1,
+      "native-template:constant_int": 35519,
+      "native-template:store_int_var": 37007,
+      "native-template:glob_arr_int": 5,
+      "native-template:quick_zero": 56063,
+      "native-template:fch_int_var": 150029,
+      "native-template:remember_end": 2797,
+      "native-template:for_range_int": 2797,
+      "native-template:done_for": 2797,
+      "native-template:gosub": 2150,
+      "native-template:neq_int": 9,
+      "native-template:if_false": 38578,
+      "native-template:extract_int": 53348,
+      "native-template:sub_int": 20880,
+      "native-template:times_int": 1480,
+      "native-template:add_int": 35162,
+      "native-template:mod_int": 837,
+      "native-template:next_for_int": 19067,
+      "native-template:int_to_float": 2577,
+      "native-template:chan_op_on": 1,
+      "native-template:short_string": 1,
+      "native-template:print_string": 2,
+      "native-template:make_string_from_int": 1,
+      "native-template:print_slash": 1,
+      "native-template:prog_end": 1,
+      "native-template:loc_for_int": 2242,
+      "native-template:insert_int": 14545,
+      "native-template:return": 2150,
+      "native-template:local_int": 6355,
+      "native-template:eq_int": 54369,
+      "native-template:l_and_float": 31440,
+      "native-template:rom_fn": 2576,
+      "native-template:make_int_from_float": 2576,
+      "native-template:l_or_float": 2576,
+      "native-template:qinc_int_var": 92
+    },
+    "StepsIncludingHostHooks": 3654791,
+    "UnmodifiedExecutable": true
+  },
+  {
+    "Benchmark": "concordance",
+    "Bytes": 12068,
+    "Compiler": "SB",
+    "Costs": [
+      {
+        "FetchWords": 3859240,
+        "Group": "QL ROM",
+        "Instructions": 3030380,
+        "Percent": 23.80659278225913
+      },
+      {
+        "FetchWords": 3210976,
+        "Group": "shared-P:extr_string_p",
+        "Instructions": 2682324,
+        "Percent": 21.072273173027952
+      },
+      {
+        "FetchWords": 1254507,
+        "Group": "thread-dispatch",
+        "Instructions": 836338,
+        "Percent": 6.570251319745061
+      },
+      {
+        "FetchWords": 514440,
+        "Group": "runtime:get_up",
+        "Instructions": 462996,
+        "Percent": 3.637285499447214
+      },
+      {
+        "FetchWords": 593936,
+        "Group": "runtime:copy_upstr",
+        "Instructions": 445452,
+        "Percent": 3.499460255163674
+      },
+      {
+        "FetchWords": 531096,
+        "Group": "shared-P:st_string_var_p",
+        "Instructions": 444768,
+        "Percent": 3.4940867675274485
+      },
+      {
+        "FetchWords": 445304,
+        "Group": "compact-array-helper",
+        "Instructions": 399592,
+        "Percent": 3.1391851923021177
+      },
+      {
+        "FetchWords": 405592,
+        "Group": "runtime:similar",
+        "Instructions": 342440,
+        "Percent": 2.6902004475863808
+      },
+      {
+        "FetchWords": 343592,
+        "Group": "runtime:qdos_compare",
+        "Instructions": 310384,
+        "Percent": 2.4383692784828037
+      },
+      {
+        "FetchWords": 306326,
+        "Group": "shared-P:if_false_p",
+        "Instructions": 306326,
+        "Percent": 2.4064897275649626
+      },
+      {
+        "FetchWords": 354038,
+        "Group": "shared-P:for_range_int_p",
+        "Instructions": 287895,
+        "Percent": 2.261696232501697
+      },
+      {
+        "FetchWords": 335960,
+        "Group": "shared-P:fch_string_1d_p",
+        "Instructions": 268768,
+        "Percent": 2.11143497808929
+      },
+      {
+        "FetchWords": 289716,
+        "Group": "native-block",
+        "Instructions": 216552,
+        "Percent": 1.7012273312864326
+      },
+      {
+        "FetchWords": 215396,
+        "Group": "runtime:byte_table",
+        "Instructions": 215396,
+        "Percent": 1.6921458229421684
+      },
+      {
+        "FetchWords": 199248,
+        "Group": "runtime:compare_string",
+        "Instructions": 199248,
+        "Percent": 1.5652875212612172
+      },
+      {
+        "FetchWords": 227116,
+        "Group": "shared-P:fch_int_var_p",
+        "Instructions": 170337,
+        "Percent": 1.3381633969177706
+      },
+      {
+        "FetchWords": 235256,
+        "Group": "runtime:mega_check",
+        "Instructions": 168040,
+        "Percent": 1.3201182198703874
+      },
+      {
+        "FetchWords": 235172,
+        "Group": "runtime:minimove",
+        "Instructions": 167980,
+        "Percent": 1.319646861305806
+      },
+      {
+        "FetchWords": 164124,
+        "Group": "runtime:work_hard",
+        "Instructions": 164124,
+        "Percent": 1.2893542175553883
+      },
+      {
+        "FetchWords": 175968,
+        "Group": "shared-P:next_for_int_p",
+        "Instructions": 117312,
+        "Percent": 0.9216002654691435
+      },
+      {
+        "FetchWords": 171426,
+        "Group": "runtime:interpreter",
+        "Instructions": 114284,
+        "Percent": 0.8978123699099462
+      },
+      {
+        "FetchWords": 136832,
+        "Group": "shared-P:eq_string",
+        "Instructions": 113660,
+        "Percent": 0.8929102408383017
+      },
+      {
+        "FetchWords": 102888,
+        "Group": "runtime:null_upstr",
+        "Instructions": 102888,
+        "Percent": 0.8082856665438254
+      },
+      {
+        "FetchWords": 101628,
+        "Group": "runtime:move_how_many",
+        "Instructions": 101508,
+        "Percent": 0.797444419558458
+      },
+      {
+        "FetchWords": 88877,
+        "Group": "shared-P:quick_zero",
+        "Instructions": 88877,
+        "Percent": 0.6982155857380411
+      },
+      {
+        "FetchWords": 88172,
+        "Group": "runtime:go_slow",
+        "Instructions": 88172,
+        "Percent": 0.6926771226042121
+      },
+      {
+        "FetchWords": 67432,
+        "Group": "runtime:mega_move",
+        "Instructions": 67432,
+        "Percent": 0.5297441787806473
+      },
+      {
+        "FetchWords": 66416,
+        "Group": "runtime:not_null",
+        "Instructions": 66416,
+        "Percent": 0.5217625070870724
+      },
+      {
+        "FetchWords": 73188,
+        "Group": "native-template:less_int",
+        "Instructions": 62700,
+        "Percent": 0.492569699987344
+      },
+      {
+        "FetchWords": 69400,
+        "Group": "shared-P:xtend_str_1d_p",
+        "Instructions": 61072,
+        "Percent": 0.47978017093504105
+      },
+      {
+        "FetchWords": 75408,
+        "Group": "native-template:fch_int_var",
+        "Instructions": 50272,
+        "Percent": 0.39493562931042675
+      },
+      {
+        "FetchWords": 69544,
+        "Group": "shared-P:l_and_float",
+        "Instructions": 45832,
+        "Percent": 0.3600550955314187
+      },
+      {
+        "FetchWords": 88172,
+        "Group": "native-template:slow",
+        "Instructions": 44086,
+        "Percent": 0.34633856130210605
+      },
+      {
+        "FetchWords": 44085,
+        "Group": "shared-P:fast",
+        "Instructions": 44085,
+        "Percent": 0.34633070532602966
+      },
+      {
+        "FetchWords": 51376,
+        "Group": "shared-P:leq_string",
+        "Instructions": 40580,
+        "Percent": 0.3187955091784118
+      },
+      {
+        "FetchWords": 62316,
+        "Group": "native-template:geq_int",
+        "Instructions": 38344,
+        "Percent": 0.3012295466716861
+      },
+      {
+        "FetchWords": 56928,
+        "Group": "native-template:leq_int",
+        "Instructions": 37352,
+        "Percent": 0.29343641840394374
+      },
+      {
+        "FetchWords": 33264,
+        "Group": "shared-P:code",
+        "Instructions": 33264,
+        "Percent": 0.261321188203812
+      },
+      {
+        "FetchWords": 33208,
+        "Group": "runtime:moved",
+        "Instructions": 33208,
+        "Percent": 0.2608812535435362
+      },
+      {
+        "FetchWords": 48400,
+        "Group": "native-template:dec_int_var_p",
+        "Instructions": 29040,
+        "Percent": 0.22813754525729618
+      },
+      {
+        "FetchWords": 24918,
+        "Group": "runtime:p_to_p_short",
+        "Instructions": 24918,
+        "Percent": 0.1957552118705684
+      },
+      {
+        "FetchWords": 47264,
+        "Group": "native-template:extract_int_p",
+        "Instructions": 23632,
+        "Percent": 0.1856524266363782
+      },
+      {
+        "FetchWords": 27900,
+        "Group": "shared-P:st_str_var_1d_p",
+        "Instructions": 22580,
+        "Percent": 0.17738793980405468
+      },
+      {
+        "FetchWords": 44160,
+        "Group": "native-template:insert_int_p",
+        "Instructions": 22080,
+        "Percent": 0.17345995176587808
+      },
+      {
+        "FetchWords": 22107,
+        "Group": "shared-P:return",
+        "Instructions": 18523,
+        "Percent": 0.14551624486228984
+      },
+      {
+        "FetchWords": 17036,
+        "Group": "runtime:ex_2",
+        "Instructions": 13629,
+        "Percent": 0.10706909794461741
+      },
+      {
+        "FetchWords": 23528,
+        "Group": "native-template:constant_int",
+        "Instructions": 11764,
+        "Percent": 0.09241770256221875
+      },
+      {
+        "FetchWords": 13731,
+        "Group": "shared-P:gosub_p",
+        "Instructions": 11343,
+        "Percent": 0.08911033663407406
+      },
+      {
+        "FetchWords": 13880,
+        "Group": "shared-P:chrs",
+        "Instructions": 11104,
+        "Percent": 0.08723275835182565
+      },
+      {
+        "FetchWords": 10840,
+        "Group": "native-template:quick_zero",
+        "Instructions": 10840,
+        "Percent": 0.08515878066766841
+      },
+      {
+        "FetchWords": 10728,
+        "Group": "shared-P:loc_for_int_p",
+        "Instructions": 7748,
+        "Percent": 0.06086810263958439
+      },
+      {
+        "FetchWords": 7800,
+        "Group": "shared-P:local_int_p",
+        "Instructions": 7200,
+        "Percent": 0.05656302774974285
+      },
+      {
+        "FetchWords": 5544,
+        "Group": "shared-P:duplicate_int",
+        "Instructions": 5544,
+        "Percent": 0.043553531367302
+      },
+      {
+        "FetchWords": 5152,
+        "Group": "shared-P:str_len_1d_p",
+        "Instructions": 4416,
+        "Percent": 0.03469199035317562
+      },
+      {
+        "FetchWords": 4485,
+        "Group": "shared-P:short_string_p",
+        "Instructions": 4376,
+        "Percent": 0.03437775131012149
+      },
+      {
+        "FetchWords": 5092,
+        "Group": "native-template:eq_int",
+        "Instructions": 3728,
+        "Percent": 0.029287078812644633
+      },
+      {
+        "FetchWords": 5992,
+        "Group": "shared-P:gt_int",
+        "Instructions": 3540,
+        "Percent": 0.027810155310290238
+      },
+      {
+        "FetchWords": 4880,
+        "Group": "native-template:inc_int_var_p",
+        "Instructions": 2928,
+        "Percent": 0.023002297951562094
+      },
+      {
+        "FetchWords": 2226,
+        "Group": "runtime:long_table",
+        "Instructions": 2226,
+        "Percent": 0.017487402745962166
+      },
+      {
+        "FetchWords": 2082,
+        "Group": "shared-P:remember_end_p",
+        "Instructions": 2082,
+        "Percent": 0.01635614219096731
+      },
+      {
+        "FetchWords": 3484,
+        "Group": "native-template:gt_int",
+        "Instructions": 1944,
+        "Percent": 0.01527201749243057
+      },
+      {
+        "FetchWords": 1920,
+        "Group": "shared-P:geq_string",
+        "Instructions": 1536,
+        "Percent": 0.012066779253278476
+      },
+      {
+        "FetchWords": 1503,
+        "Group": "shared-P:constant_int_p",
+        "Instructions": 1503,
+        "Percent": 0.011807532042758822
+      },
+      {
+        "FetchWords": 1168,
+        "Group": "shared-P:exit_p",
+        "Instructions": 1168,
+        "Percent": 0.009175780057180508
+      },
+      {
+        "FetchWords": 1164,
+        "Group": "shared-P:len",
+        "Instructions": 1164,
+        "Percent": 0.009144356152875096
+      },
+      {
+        "FetchWords": 841,
+        "Group": "shared-P:done_for_p",
+        "Instructions": 841,
+        "Percent": 0.0066068758802130196
+      },
+      {
+        "FetchWords": 1164,
+        "Group": "native-template:store_int_var",
+        "Instructions": 776,
+        "Percent": 0.006096237435250063
+      },
+      {
+        "FetchWords": 804,
+        "Group": "shared-P:store_int_var_p",
+        "Instructions": 603,
+        "Percent": 0.004737153574040964
+      },
+      {
+        "FetchWords": 840,
+        "Group": "runtime:last_block",
+        "Instructions": 600,
+        "Percent": 0.004713585645811904
+      },
+      {
+        "FetchWords": 588,
+        "Group": "native-template:duplicate_int",
+        "Instructions": 588,
+        "Percent": 0.004619313932895667
+      },
+      {
+        "FetchWords": 738,
+        "Group": "shared-P:glob_arr_str_p",
+        "Instructions": 564,
+        "Percent": 0.004430770507063191
+      },
+      {
+        "FetchWords": 720,
+        "Group": "runtime:big_move",
+        "Instructions": 480,
+        "Percent": 0.0037708685166495236
+      },
+      {
+        "FetchWords": 460,
+        "Group": "shared-P:glob_arr_int_p",
+        "Instructions": 444,
+        "Percent": 0.0034880533779008092
+      },
+      {
+        "FetchWords": 480,
+        "Group": "runtime:source_even",
+        "Instructions": 360,
+        "Percent": 0.0028281513874871427
+      },
+      {
+        "FetchWords": 360,
+        "Group": "runtime:big_block",
+        "Instructions": 360,
+        "Percent": 0.0028281513874871427
+      },
+      {
+        "FetchWords": 384,
+        "Group": "shared-P:inc_int_var_p",
+        "Instructions": 320,
+        "Percent": 0.0025139123444330156
+      },
+      {
+        "FetchWords": 420,
+        "Group": "runtime:even_words",
+        "Instructions": 300,
+        "Percent": 0.002356792822905952
+      },
+      {
+        "FetchWords": 412,
+        "Group": "runtime:last_part",
+        "Instructions": 292,
+        "Percent": 0.002293945014295127
+      },
+      {
+        "FetchWords": 192,
+        "Group": "shared-P:concat_string",
+        "Instructions": 192,
+        "Percent": 0.0015083474066598095
+      },
+      {
+        "FetchWords": 228,
+        "Group": "shared-P:gl_arr_str_1d_p",
+        "Instructions": 180,
+        "Percent": 0.0014140756937435714
+      },
+      {
+        "FetchWords": 197,
+        "Group": "runtime:clear_sys",
+        "Instructions": 132,
+        "Percent": 0.001036988842078619
+      },
+      {
+        "FetchWords": 155,
+        "Group": "runtime:conn_pipes",
+        "Instructions": 124,
+        "Percent": 0.0009741410334677936
+      },
+      {
+        "FetchWords": 120,
+        "Group": "runtime:even_bytes",
+        "Instructions": 120,
+        "Percent": 0.0009427171291623809
+      },
+      {
+        "FetchWords": 138,
+        "Group": "shared-P:const_string_p",
+        "Instructions": 114,
+        "Percent": 0.0008955812727042618
+      },
+      {
+        "FetchWords": 96,
+        "Group": "native-template:neq_int",
+        "Instructions": 84,
+        "Percent": 0.0006599019904136666
+      },
+      {
+        "FetchWords": 101,
+        "Group": "runtime:check_id",
+        "Instructions": 74,
+        "Percent": 0.0005813422296501348
+      },
+      {
+        "FetchWords": 88,
+        "Group": "shared-P:print_string",
+        "Instructions": 70,
+        "Percent": 0.0005499183253447222
+      },
+      {
+        "FetchWords": 84,
+        "Group": "shared-P:array_p",
+        "Instructions": 66,
+        "Percent": 0.0005184944210393095
+      },
+      {
+        "FetchWords": 48,
+        "Group": "shared-P:global_int_p",
+        "Instructions": 36,
+        "Percent": 0.0002828151387487143
+      },
+      {
+        "FetchWords": 45,
+        "Group": "shared-P:global_for_int_p",
+        "Instructions": 25,
+        "Percent": 0.00019639940190882937
+      },
+      {
+        "FetchWords": 28,
+        "Group": "shared-P:l_or_float",
+        "Instructions": 20,
+        "Percent": 0.00015711952152706348
+      },
+      {
+        "FetchWords": 22,
+        "Group": "runtime:init1",
+        "Instructions": 15,
+        "Percent": 0.00011783964114529761
+      },
+      {
+        "FetchWords": 17,
+        "Group": "shared-P:make_string_from_int",
+        "Instructions": 15,
+        "Percent": 0.00011783964114529761
+      },
+      {
+        "FetchWords": 18,
+        "Group": "shared-P:print_slash",
+        "Instructions": 14,
+        "Percent": 0.00010998366506894444
+      },
+      {
+        "FetchWords": 19,
+        "Group": "runtime:link_names",
+        "Instructions": 13,
+        "Percent": 0.00010212768899259126
+      },
+      {
+        "FetchWords": 17,
+        "Group": "runtime:init3",
+        "Instructions": 12,
+        "Percent": 9.42717129162381E-05
+      },
+      {
+        "FetchWords": 15,
+        "Group": "shared-P:chan_op_on",
+        "Instructions": 10,
+        "Percent": 7.855976076353174E-05
+      },
+      {
+        "FetchWords": 18,
+        "Group": "runtime:point_chans",
+        "Instructions": 9,
+        "Percent": 7.070378468717857E-05
+      },
+      {
+        "FetchWords": 13,
+        "Group": "runtime:next_name",
+        "Instructions": 8,
+        "Percent": 6.28478086108254E-05
+      },
+      {
+        "FetchWords": 10,
+        "Group": "runtime:ope_erch",
+        "Instructions": 8,
+        "Percent": 6.28478086108254E-05
+      },
+      {
+        "FetchWords": 7,
+        "Group": "runtime:initialise",
+        "Instructions": 6,
+        "Percent": 4.713585645811905E-05
+      },
+      {
+        "FetchWords": 9,
+        "Group": "shared-P:retry_here",
+        "Instructions": 6,
+        "Percent": 4.713585645811905E-05
+      },
+      {
+        "FetchWords": 9,
+        "Group": "shared-P:retry1_here",
+        "Instructions": 6,
+        "Percent": 4.713585645811905E-05
+      },
+      {
+        "FetchWords": 6,
+        "Group": "runtime:next_name1",
+        "Instructions": 5,
+        "Percent": 3.927988038176587E-05
+      },
+      {
+        "FetchWords": 5,
+        "Group": "runtime:shut_down",
+        "Instructions": 4,
+        "Percent": 3.14239043054127E-05
+      },
+      {
+        "FetchWords": 4,
+        "Group": "runtime:set_sysvars",
+        "Instructions": 3,
+        "Percent": 2.3567928229059523E-05
+      },
+      {
+        "FetchWords": 4,
+        "Group": "shared-P:int_to_float",
+        "Instructions": 3,
+        "Percent": 2.3567928229059523E-05
+      },
+      {
+        "FetchWords": 5,
+        "Group": "shared-P:restore_p",
+        "Instructions": 3,
+        "Percent": 2.3567928229059523E-05
+      },
+      {
+        "FetchWords": 2,
+        "Group": "runtime:init2",
+        "Instructions": 2,
+        "Percent": 1.571195215270635E-05
+      },
+      {
+        "FetchWords": 3,
+        "Group": "runtime:no_pipes",
+        "Instructions": 2,
+        "Percent": 1.571195215270635E-05
+      },
+      {
+        "FetchWords": 3,
+        "Group": "runtime:ex_5",
+        "Instructions": 2,
+        "Percent": 1.571195215270635E-05
+      },
+      {
+        "FetchWords": 3,
+        "Group": "runtime:long_to_float",
+        "Instructions": 2,
+        "Percent": 1.571195215270635E-05
+      },
+      {
+        "FetchWords": 2,
+        "Group": "runtime:result_zero",
+        "Instructions": 2,
+        "Percent": 1.571195215270635E-05
+      },
+      {
+        "FetchWords": 4,
+        "Group": "shared-P:last_global",
+        "Instructions": 2,
+        "Percent": 1.571195215270635E-05
+      },
+      {
+        "FetchWords": 0,
+        "Group": "QDOS host hook",
+        "Instructions": 1,
+        "Percent": 7.855976076353174E-06
+      },
+      {
+        "FetchWords": 1,
+        "Group": "runtime:entry_routine",
+        "Instructions": 1,
+        "Percent": 7.855976076353174E-06
+      },
+      {
+        "FetchWords": 1,
+        "Group": "runtime:initiali",
+        "Instructions": 1,
+        "Percent": 7.855976076353174E-06
+      },
+      {
+        "FetchWords": 1,
+        "Group": "runtime:not_pe",
+        "Instructions": 1,
+        "Percent": 7.855976076353174E-06
+      },
+      {
+        "FetchWords": 1,
+        "Group": "runtime:fast_int_to_float",
+        "Instructions": 1,
+        "Percent": 7.855976076353174E-06
+      },
+      {
+        "FetchWords": 1,
+        "Group": "runtime:fast_d1_to_float",
+        "Instructions": 1,
+        "Percent": 7.855976076353174E-06
+      },
+      {
+        "FetchWords": 2,
+        "Group": "shared-P:prog_end",
+        "Instructions": 1,
+        "Percent": 7.855976076353174E-06
+      }
+    ],
+    "ExecutableSha256": "27A4417277196709F1AE7DB0CB341CDF99277F9018EA52B640F89FCE3734D907",
+    "ExitCode": 0,
+    "FetchWords": 15744500,
+    "HostHooks": 1,
+    "Instructions": 12729163,
+    "MappedCodeIdentical": true,
+    "Output": "concordance:7936\n",
+    "RomCalls": {
+      "entry UT.CSTR string comparison": 33208
+    },
+    "RomInstructions": 3030380,
+    "RomServices": {
+      "UT.CSTR string comparison": 3030380
+    },
+    "Routines": [
+      {
+        "DispatchInstructions": 421232,
+        "Instructions": 6676652,
+        "Percent": 52.45161838213557,
+        "RomInstructions": 2051284,
+        "Routine": "ADD_WORD"
+      },
+      {
+        "DispatchInstructions": 265392,
+        "Instructions": 4815864,
+        "Percent": 37.8333123709705,
+        "RomInstructions": 908056,
+        "Routine": "SORT_INDEX"
+      },
+      {
+        "DispatchInstructions": 139554,
+        "Instructions": 1035118,
+        "Percent": 8.131862244202544,
+        "RomInstructions": 0,
+        "Routine": "\u003Cmain/startup\u003E"
+      },
+      {
+        "DispatchInstructions": 10088,
+        "Instructions": 199660,
+        "Percent": 1.5685241834046748,
+        "RomInstructions": 71040,
+        "Routine": "VERIFY_INDEX"
+      },
+      {
+        "DispatchInstructions": 72,
+        "Instructions": 1869,
+        "Percent": 0.014682819286704082,
+        "RomInstructions": 0,
+        "Routine": "LOAD_CORPUS"
+      }
+    ],
+    "SegmentEntries": {
+      "runtime:entry_routine": 1,
+      "compact-array-helper": 22856,
+      "shared-P:fast": 44085,
+      "shared-P:array_p": 6,
+      "thread-dispatch": 418169,
+      "shared-P:retry_here": 1,
+      "shared-P:retry1_here": 1,
+      "shared-P:constant_int_p": 1503,
+      "shared-P:store_int_var_p": 201,
+      "shared-P:glob_arr_str_p": 2,
+      "shared-P:glob_arr_int_p": 1,
+      "shared-P:gl_arr_str_1d_p": 3,
+      "shared-P:gosub_p": 597,
+      "shared-P:fch_int_var_p": 56779,
+      "shared-P:remember_end_p": 1041,
+      "shared-P:for_range_int_p": 1041,
+      "shared-P:done_for_p": 841,
+      "shared-P:quick_zero": 88877,
+      "shared-P:extr_string_p": 49636,
+      "shared-P:short_string_p": 685,
+      "shared-P:concat_string": 48,
+      "shared-P:st_str_var_1d_p": 1068,
+      "shared-P:str_len_1d_p": 736,
+      "shared-P:duplicate_int": 5544,
+      "shared-P:code": 5544,
+      "shared-P:l_and_float": 6928,
+      "shared-P:if_false_p": 52649,
+      "shared-P:inc_int_var_p": 64,
+      "shared-P:chrs": 2776,
+      "shared-P:xtend_str_1d_p": 2776,
+      "shared-P:gt_int": 688,
+      "shared-P:next_for_int_p": 29328,
+      "shared-P:len": 388,
+      "shared-P:int_to_float": 1,
+      "shared-P:chan_op_on": 1,
+      "shared-P:print_string": 2,
+      "shared-P:make_string_from_int": 1,
+      "shared-P:print_slash": 1,
+      "shared-P:prog_end": 1,
+      "shared-P:const_string_p": 12,
+      "shared-P:st_string_var_p": 10464,
+      "shared-P:return": 597,
+      "shared-P:local_int_p": 600,
+      "shared-P:loc_for_int_p": 596,
+      "shared-P:fch_string_1d_p": 33596,
+      "shared-P:eq_string": 22772,
+      "shared-P:exit_p": 584,
+      "shared-P:leq_string": 10052,
+      "shared-P:geq_string": 384,
+      "shared-P:l_or_float": 4,
+      "shared-P:global_int_p": 12,
+      "shared-P:global_for_int_p": 5,
+      "shared-P:last_global": 1,
+      "shared-P:restore_p": 1,
+      "native-template:slow": 44086,
+      "native-block": 28409,
+      "native-template:geq_int": 7316,
+      "native-template:fch_int_var": 25136,
+      "native-template:constant_int": 11764,
+      "native-template:leq_int": 6928,
+      "native-template:extract_int_p": 11816,
+      "native-template:eq_int": 588,
+      "native-template:store_int_var": 388,
+      "native-template:inc_int_var_p": 976,
+      "native-template:quick_zero": 10840,
+      "native-template:insert_int_p": 11040,
+      "native-template:duplicate_int": 588,
+      "native-template:less_int": 10452,
+      "native-template:dec_int_var_p": 9680,
+      "native-template:gt_int": 388,
+      "native-template:neq_int": 12
+    },
+    "StepsIncludingHostHooks": 12729164,
+    "UnmodifiedExecutable": true
+  },
+  {
+    "Benchmark": "concordance",
+    "Bytes": 17920,
+    "Compiler": "Turbo FAST",
+    "Costs": [
+      {
+        "FetchWords": 3859240,
+        "Group": "QL ROM",
+        "Instructions": 3030380,
+        "Percent": 26.912406218028874
+      },
+      {
+        "FetchWords": 2962796,
+        "Group": "native-template:extr_string",
+        "Instructions": 2483780,
+        "Percent": 22.058123508014095
+      },
+      {
+        "FetchWords": 514440,
+        "Group": "runtime:get_up",
+        "Instructions": 462996,
+        "Percent": 4.111806581789247
+      },
+      {
+        "FetchWords": 593936,
+        "Group": "runtime:copy_upstr",
+        "Instructions": 445452,
+        "Percent": 3.9560006252131408
+      },
+      {
+        "FetchWords": 520632,
+        "Group": "native-template:st_string_var",
+        "Instructions": 434304,
+        "Percent": 3.856996703421621
+      },
+      {
+        "FetchWords": 405592,
+        "Group": "runtime:similar",
+        "Instructions": 342440,
+        "Percent": 3.041164601568717
+      },
+      {
+        "FetchWords": 343592,
+        "Group": "runtime:qdos_compare",
+        "Instructions": 310384,
+        "Percent": 2.7564794816414686
+      },
+      {
+        "FetchWords": 375838,
+        "Group": "native-template:for_range_int",
+        "Instructions": 309495,
+        "Percent": 2.7485843895646243
+      },
+      {
+        "FetchWords": 397272,
+        "Group": "native-template:if_false",
+        "Instructions": 253677,
+        "Percent": 2.25287207286575
+      },
+      {
+        "FetchWords": 359385,
+        "Group": "native-template:fch_int_var",
+        "Instructions": 239590,
+        "Percent": 2.1277672786177106
+      },
+      {
+        "FetchWords": 302364,
+        "Group": "native-template:fch_string_1d",
+        "Instructions": 235172,
+        "Percent": 2.0885316016823916
+      },
+      {
+        "FetchWords": 215396,
+        "Group": "runtime:byte_table",
+        "Instructions": 215396,
+        "Percent": 1.9129035466636353
+      },
+      {
+        "FetchWords": 236320,
+        "Group": "native-template:extract_int",
+        "Instructions": 212688,
+        "Percent": 1.8888541548255087
+      },
+      {
+        "FetchWords": 231840,
+        "Group": "native-template:insert_int",
+        "Instructions": 209760,
+        "Percent": 1.8628509719222461
+      },
+      {
+        "FetchWords": 199248,
+        "Group": "runtime:compare_string",
+        "Instructions": 199248,
+        "Percent": 1.7694952824826646
+      },
+      {
+        "FetchWords": 235592,
+        "Group": "runtime:mega_check",
+        "Instructions": 168280,
+        "Percent": 1.4944725474593612
+      },
+      {
+        "FetchWords": 235172,
+        "Group": "runtime:minimove",
+        "Instructions": 167980,
+        "Percent": 1.491808286915994
+      },
+      {
+        "FetchWords": 164124,
+        "Group": "runtime:work_hard",
+        "Instructions": 164124,
+        "Percent": 1.4575636580652496
+      },
+      {
+        "FetchWords": 205296,
+        "Group": "native-template:next_for_int",
+        "Instructions": 117312,
+        "Percent": 1.041832442878254
+      },
+      {
+        "FetchWords": 136832,
+        "Group": "native-template:eq_string",
+        "Instructions": 113660,
+        "Percent": 1.0093995111969989
+      },
+      {
+        "FetchWords": 102888,
+        "Group": "runtime:null_upstr",
+        "Instructions": 102888,
+        "Percent": 0.9137347959531659
+      },
+      {
+        "FetchWords": 101628,
+        "Group": "runtime:move_how_many",
+        "Instructions": 101508,
+        "Percent": 0.9014791974536774
+      },
+      {
+        "FetchWords": 100327,
+        "Group": "native-template:quick_zero",
+        "Instructions": 100327,
+        "Percent": 0.8909908917812891
+      },
+      {
+        "FetchWords": 95840,
+        "Group": "native-template:add_int",
+        "Instructions": 71880,
+        "Percent": 0.6383568261907469
+      },
+      {
+        "FetchWords": 67432,
+        "Group": "runtime:mega_move",
+        "Instructions": 67432,
+        "Percent": 0.5988547232010912
+      },
+      {
+        "FetchWords": 66416,
+        "Group": "runtime:not_null",
+        "Instructions": 66416,
+        "Percent": 0.5898317608275548
+      },
+      {
+        "FetchWords": 73188,
+        "Group": "native-template:less_int",
+        "Instructions": 62700,
+        "Percent": 0.5568304535637149
+      },
+      {
+        "FetchWords": 63848,
+        "Group": "native-template:xtend_str_1d",
+        "Instructions": 55520,
+        "Percent": 0.49306581789246334
+      },
+      {
+        "FetchWords": 69544,
+        "Group": "native-template:l_and_float",
+        "Instructions": 45832,
+        "Percent": 0.4070279640786632
+      },
+      {
+        "FetchWords": 84526,
+        "Group": "native-template:constant_int",
+        "Instructions": 42263,
+        "Percent": 0.3753321444810731
+      },
+      {
+        "FetchWords": 51376,
+        "Group": "native-template:leq_string",
+        "Instructions": 40580,
+        "Percent": 0.3603856428327839
+      },
+      {
+        "FetchWords": 62316,
+        "Group": "native-template:geq_int",
+        "Instructions": 38344,
+        "Percent": 0.3405280209162214
+      },
+      {
+        "FetchWords": 56928,
+        "Group": "native-template:leq_int",
+        "Instructions": 37352,
+        "Percent": 0.3317181993861544
+      },
+      {
+        "FetchWords": 33264,
+        "Group": "native-template:code",
+        "Instructions": 33264,
+        "Percent": 0.2954132090485393
+      },
+      {
+        "FetchWords": 33208,
+        "Group": "runtime:moved",
+        "Instructions": 33208,
+        "Percent": 0.2949158804137774
+      },
+      {
+        "FetchWords": 29614,
+        "Group": "native-template:mod_int",
+        "Instructions": 29614,
+        "Percent": 0.2629980391042401
+      },
+      {
+        "FetchWords": 31666,
+        "Group": "runtime:ex_2",
+        "Instructions": 25333,
+        "Percent": 0.2249790411503922
+      },
+      {
+        "FetchWords": 62280,
+        "Group": "native-template:jump",
+        "Instructions": 24912,
+        "Percent": 0.22124019552120042
+      },
+      {
+        "FetchWords": 26832,
+        "Group": "native-template:st_str_var_1d",
+        "Instructions": 21512,
+        "Percent": 0.19104524269637377
+      },
+      {
+        "FetchWords": 29040,
+        "Group": "native-template:qdec_int_var",
+        "Instructions": 19360,
+        "Percent": 0.17193361373195407
+      },
+      {
+        "FetchWords": 21510,
+        "Group": "native-template:return",
+        "Instructions": 18523,
+        "Percent": 0.16450032681596
+      },
+      {
+        "FetchWords": 24837,
+        "Group": "native-template:store_int_var",
+        "Instructions": 16558,
+        "Percent": 0.14704942025690576
+      },
+      {
+        "FetchWords": 16119,
+        "Group": "native-template:gosub",
+        "Instructions": 11940,
+        "Percent": 0.10603756962600887
+      },
+      {
+        "FetchWords": 13880,
+        "Group": "native-template:chrs",
+        "Instructions": 11104,
+        "Percent": 0.09861316357849267
+      },
+      {
+        "FetchWords": 9872,
+        "Group": "native-template:times_int",
+        "Instructions": 7404,
+        "Percent": 0.06575395021029896
+      },
+      {
+        "FetchWords": 10132,
+        "Group": "native-template:loc_for_int",
+        "Instructions": 7152,
+        "Percent": 0.06351597135387063
+      },
+      {
+        "FetchWords": 7200,
+        "Group": "native-template:local_int",
+        "Instructions": 6600,
+        "Percent": 0.05861373195407525
+      },
+      {
+        "FetchWords": 6132,
+        "Group": "native-template:duplicate_int",
+        "Instructions": 6132,
+        "Percent": 0.05445748550642265
+      },
+      {
+        "FetchWords": 6540,
+        "Group": "native-template:short_string",
+        "Instructions": 5746,
+        "Percent": 0.05102947027395703
+      },
+      {
+        "FetchWords": 9476,
+        "Group": "native-template:gt_int",
+        "Instructions": 5484,
+        "Percent": 0.0487026827327498
+      },
+      {
+        "FetchWords": 5472,
+        "Group": "native-template:sub_int",
+        "Instructions": 4104,
+        "Percent": 0.03644708423326134
+      },
+      {
+        "FetchWords": 5092,
+        "Group": "native-template:eq_int",
+        "Instructions": 3728,
+        "Percent": 0.033107877685574626
+      },
+      {
+        "FetchWords": 2226,
+        "Group": "runtime:long_table",
+        "Instructions": 2226,
+        "Percent": 0.019768813231783564
+      },
+      {
+        "FetchWords": 2944,
+        "Group": "native-template:str_len_1d",
+        "Instructions": 2208,
+        "Percent": 0.019608957599181537
+      },
+      {
+        "FetchWords": 4164,
+        "Group": "native-template:remember_end",
+        "Instructions": 2082,
+        "Percent": 0.018489968170967375
+      },
+      {
+        "FetchWords": 2928,
+        "Group": "native-template:qinc_int_var",
+        "Instructions": 1952,
+        "Percent": 0.01733545526884165
+      },
+      {
+        "FetchWords": 1920,
+        "Group": "native-template:geq_string",
+        "Instructions": 1536,
+        "Percent": 0.013641013982039332
+      },
+      {
+        "FetchWords": 1176,
+        "Group": "native-template:minus_int",
+        "Instructions": 1176,
+        "Percent": 0.010443901329998864
+      },
+      {
+        "FetchWords": 2920,
+        "Group": "native-template:exit",
+        "Instructions": 1168,
+        "Percent": 0.010372854382175742
+      },
+      {
+        "FetchWords": 1164,
+        "Group": "native-template:len",
+        "Instructions": 1164,
+        "Percent": 0.010337330908264181
+      },
+      {
+        "FetchWords": 841,
+        "Group": "native-template:done_for",
+        "Instructions": 841,
+        "Percent": 0.00746881038990565
+      },
+      {
+        "FetchWords": 840,
+        "Group": "runtime:last_block",
+        "Instructions": 600,
+        "Percent": 0.005328521086734114
+      },
+      {
+        "FetchWords": 726,
+        "Group": "native-template:glob_arr_str",
+        "Instructions": 556,
+        "Percent": 0.004937762873706945
+      },
+      {
+        "FetchWords": 720,
+        "Group": "runtime:big_move",
+        "Instructions": 480,
+        "Percent": 0.004262816869387291
+      },
+      {
+        "FetchWords": 454,
+        "Group": "native-template:glob_arr_int",
+        "Instructions": 440,
+        "Percent": 0.003907582130271684
+      },
+      {
+        "FetchWords": 480,
+        "Group": "runtime:source_even",
+        "Instructions": 360,
+        "Percent": 0.0031971126520404683
+      },
+      {
+        "FetchWords": 360,
+        "Group": "runtime:big_block",
+        "Instructions": 360,
+        "Percent": 0.0031971126520404683
+      },
+      {
+        "FetchWords": 420,
+        "Group": "runtime:even_words",
+        "Instructions": 300,
+        "Percent": 0.002664260543367057
+      },
+      {
+        "FetchWords": 412,
+        "Group": "runtime:last_part",
+        "Instructions": 292,
+        "Percent": 0.0025932135955439354
+      },
+      {
+        "FetchWords": 192,
+        "Group": "native-template:concat_string",
+        "Instructions": 192,
+        "Percent": 0.0017051267477549165
+      },
+      {
+        "FetchWords": 207,
+        "Group": "native-template:gl_arr_str_1d",
+        "Instructions": 162,
+        "Percent": 0.0014387006934182107
+      },
+      {
+        "FetchWords": 197,
+        "Group": "runtime:clear_sys",
+        "Instructions": 132,
+        "Percent": 0.001172274639081505
+      },
+      {
+        "FetchWords": 256,
+        "Group": "native-template:inc_int_var",
+        "Instructions": 128,
+        "Percent": 0.0011367511651699442
+      },
+      {
+        "FetchWords": 155,
+        "Group": "runtime:conn_pipes",
+        "Instructions": 124,
+        "Percent": 0.0011012276912583836
+      },
+      {
+        "FetchWords": 120,
+        "Group": "runtime:even_bytes",
+        "Instructions": 120,
+        "Percent": 0.0010657042173468228
+      },
+      {
+        "FetchWords": 162,
+        "Group": "native-template:const_string",
+        "Instructions": 114,
+        "Percent": 0.0010124190064794817
+      },
+      {
+        "FetchWords": 96,
+        "Group": "native-template:neq_int",
+        "Instructions": 84,
+        "Percent": 0.000745992952142776
+      },
+      {
+        "FetchWords": 101,
+        "Group": "runtime:check_id",
+        "Instructions": 74,
+        "Percent": 0.0006571842673638741
+      },
+      {
+        "FetchWords": 88,
+        "Group": "native-template:print_string",
+        "Instructions": 70,
+        "Percent": 0.0006216607934523133
+      },
+      {
+        "FetchWords": 84,
+        "Group": "shared-P:array_p",
+        "Instructions": 66,
+        "Percent": 0.0005861373195407525
+      },
+      {
+        "FetchWords": 81,
+        "Group": "thread-dispatch",
+        "Instructions": 54,
+        "Percent": 0.0004795668978060703
+      },
+      {
+        "FetchWords": 63,
+        "Group": "shared-P:global_for_int_p",
+        "Instructions": 35,
+        "Percent": 0.00031083039672615665
+      },
+      {
+        "FetchWords": 40,
+        "Group": "shared-P:global_int_p",
+        "Instructions": 30,
+        "Percent": 0.0002664260543367057
+      },
+      {
+        "FetchWords": 28,
+        "Group": "native-template:l_or_float",
+        "Instructions": 20,
+        "Percent": 0.0001776173695578038
+      },
+      {
+        "FetchWords": 22,
+        "Group": "runtime:init1",
+        "Instructions": 15,
+        "Percent": 0.00013321302716835285
+      },
+      {
+        "FetchWords": 17,
+        "Group": "native-template:make_string_from_int",
+        "Instructions": 15,
+        "Percent": 0.00013321302716835285
+      },
+      {
+        "FetchWords": 18,
+        "Group": "native-template:print_slash",
+        "Instructions": 14,
+        "Percent": 0.00012433215869046265
+      },
+      {
+        "FetchWords": 19,
+        "Group": "runtime:link_names",
+        "Instructions": 13,
+        "Percent": 0.00011545129021257247
+      },
+      {
+        "FetchWords": 17,
+        "Group": "runtime:init3",
+        "Instructions": 12,
+        "Percent": 0.00010657042173468228
+      },
+      {
+        "FetchWords": 15,
+        "Group": "native-template:chan_op_on",
+        "Instructions": 10,
+        "Percent": 8.88086847789019E-05
+      },
+      {
+        "FetchWords": 18,
+        "Group": "runtime:point_chans",
+        "Instructions": 9,
+        "Percent": 7.992781630101171E-05
+      },
+      {
+        "FetchWords": 13,
+        "Group": "runtime:next_name",
+        "Instructions": 8,
+        "Percent": 7.104694782312151E-05
+      },
+      {
+        "FetchWords": 12,
+        "Group": "runtime:interpreter",
+        "Instructions": 8,
+        "Percent": 7.104694782312151E-05
+      },
+      {
+        "FetchWords": 10,
+        "Group": "runtime:ope_erch",
+        "Instructions": 8,
+        "Percent": 7.104694782312151E-05
+      },
+      {
+        "FetchWords": 7,
+        "Group": "runtime:initialise",
+        "Instructions": 6,
+        "Percent": 5.328521086734114E-05
+      },
+      {
+        "FetchWords": 6,
+        "Group": "runtime:p_to_p_short",
+        "Instructions": 6,
+        "Percent": 5.328521086734114E-05
+      },
+      {
+        "FetchWords": 9,
+        "Group": "shared-P:retry_here",
+        "Instructions": 6,
+        "Percent": 5.328521086734114E-05
+      },
+      {
+        "FetchWords": 9,
+        "Group": "shared-P:retry1_here",
+        "Instructions": 6,
+        "Percent": 5.328521086734114E-05
+      },
+      {
+        "FetchWords": 6,
+        "Group": "runtime:next_name1",
+        "Instructions": 5,
+        "Percent": 4.440434238945095E-05
+      },
+      {
+        "FetchWords": 5,
+        "Group": "runtime:shut_down",
+        "Instructions": 4,
+        "Percent": 3.5523473911560757E-05
+      },
+      {
+        "FetchWords": 4,
+        "Group": "runtime:set_sysvars",
+        "Instructions": 3,
+        "Percent": 2.664260543367057E-05
+      },
+      {
+        "FetchWords": 5,
+        "Group": "shared-P:restore_p",
+        "Instructions": 3,
+        "Percent": 2.664260543367057E-05
+      },
+      {
+        "FetchWords": 4,
+        "Group": "native-template:int_to_float",
+        "Instructions": 3,
+        "Percent": 2.664260543367057E-05
+      },
+      {
+        "FetchWords": 2,
+        "Group": "runtime:init2",
+        "Instructions": 2,
+        "Percent": 1.7761736955780378E-05
+      },
+      {
+        "FetchWords": 3,
+        "Group": "runtime:no_pipes",
+        "Instructions": 2,
+        "Percent": 1.7761736955780378E-05
+      },
+      {
+        "FetchWords": 3,
+        "Group": "runtime:ex_5",
+        "Instructions": 2,
+        "Percent": 1.7761736955780378E-05
+      },
+      {
+        "FetchWords": 2,
+        "Group": "runtime:go_slow",
+        "Instructions": 2,
+        "Percent": 1.7761736955780378E-05
+      },
+      {
+        "FetchWords": 3,
+        "Group": "runtime:long_to_float",
+        "Instructions": 2,
+        "Percent": 1.7761736955780378E-05
+      },
+      {
+        "FetchWords": 2,
+        "Group": "runtime:result_zero",
+        "Instructions": 2,
+        "Percent": 1.7761736955780378E-05
+      },
+      {
+        "FetchWords": 4,
+        "Group": "shared-P:last_global",
+        "Instructions": 2,
+        "Percent": 1.7761736955780378E-05
+      },
+      {
+        "FetchWords": 0,
+        "Group": "QDOS host hook",
+        "Instructions": 1,
+        "Percent": 8.880868477890189E-06
+      },
+      {
+        "FetchWords": 1,
+        "Group": "runtime:entry_routine",
+        "Instructions": 1,
+        "Percent": 8.880868477890189E-06
+      },
+      {
+        "FetchWords": 1,
+        "Group": "runtime:initiali",
+        "Instructions": 1,
+        "Percent": 8.880868477890189E-06
+      },
+      {
+        "FetchWords": 1,
+        "Group": "runtime:not_pe",
+        "Instructions": 1,
+        "Percent": 8.880868477890189E-06
+      },
+      {
+        "FetchWords": 1,
+        "Group": "runtime:fast_int_to_float",
+        "Instructions": 1,
+        "Percent": 8.880868477890189E-06
+      },
+      {
+        "FetchWords": 1,
+        "Group": "runtime:fast_d1_to_float",
+        "Instructions": 1,
+        "Percent": 8.880868477890189E-06
+      },
+      {
+        "FetchWords": 1,
+        "Group": "shared-P:fast",
+        "Instructions": 1,
+        "Percent": 8.880868477890189E-06
+      },
+      {
+        "FetchWords": 2,
+        "Group": "native-template:slow",
+        "Instructions": 1,
+        "Percent": 8.880868477890189E-06
+      },
+      {
+        "FetchWords": 2,
+        "Group": "native-template:prog_end",
+        "Instructions": 1,
+        "Percent": 8.880868477890189E-06
+      }
+    ],
+    "ExecutableSha256": "AC02AE86D6943250E0FDCE25EBC03C2C844ACA5115CA6D128807571E84A7A313",
+    "ExitCode": 0,
+    "FetchWords": 13900140,
+    "HostHooks": 1,
+    "Instructions": 11260160,
+    "MappedCodeIdentical": true,
+    "Output": "concordance:7936\n",
+    "RomCalls": {
+      "entry UT.CSTR string comparison": 33208
+    },
+    "RomInstructions": 3030380,
+    "RomServices": {
+      "UT.CSTR string comparison": 3030380
+    },
+    "Routines": [
+      {
+        "DispatchInstructions": 54,
+        "Instructions": 11260160,
+        "Percent": 100,
+        "RomInstructions": 3030380,
+        "Routine": "\u003Cmain/startup\u003E"
+      }
+    ],
+    "SegmentEntries": {
+      "runtime:entry_routine": 1,
+      "shared-P:fast": 1,
+      "shared-P:array_p": 6,
+      "thread-dispatch": 27,
+      "shared-P:retry_here": 1,
+      "shared-P:retry1_here": 1,
+      "shared-P:global_int_p": 10,
+      "shared-P:global_for_int_p": 7,
+      "shared-P:last_global": 1,
+      "shared-P:restore_p": 1,
+      "native-template:slow": 1,
+      "native-template:constant_int": 42263,
+      "native-template:store_int_var": 8279,
+      "native-template:glob_arr_str": 2,
+      "native-template:glob_arr_int": 1,
+      "native-template:gl_arr_str_1d": 3,
+      "native-template:quick_zero": 100327,
+      "native-template:gosub": 597,
+      "native-template:fch_int_var": 119795,
+      "native-template:remember_end": 1041,
+      "native-template:for_range_int": 1041,
+      "native-template:done_for": 841,
+      "native-template:extr_string": 49636,
+      "native-template:short_string": 685,
+      "native-template:concat_string": 48,
+      "native-template:st_str_var_1d": 1068,
+      "native-template:str_len_1d": 736,
+      "native-template:duplicate_int": 6132,
+      "native-template:code": 5544,
+      "native-template:geq_int": 7316,
+      "native-template:leq_int": 6928,
+      "native-template:l_and_float": 6928,
+      "native-template:if_false": 100514,
+      "native-template:inc_int_var": 64,
+      "native-template:chrs": 2776,
+      "native-template:xtend_str_1d": 2776,
+      "native-template:jump": 12456,
+      "native-template:gt_int": 1076,
+      "native-template:next_for_int": 29328,
+      "native-template:sub_int": 1368,
+      "native-template:extract_int": 11816,
+      "native-template:add_int": 23960,
+      "native-template:times_int": 2468,
+      "native-template:mod_int": 2468,
+      "native-template:len": 388,
+      "native-template:int_to_float": 1,
+      "native-template:chan_op_on": 1,
+      "native-template:print_string": 2,
+      "native-template:make_string_from_int": 1,
+      "native-template:print_slash": 1,
+      "native-template:prog_end": 1,
+      "native-template:const_string": 12,
+      "native-template:st_string_var": 10464,
+      "native-template:return": 597,
+      "native-template:local_int": 600,
+      "native-template:loc_for_int": 596,
+      "native-template:minus_int": 1176,
+      "native-template:fch_string_1d": 33596,
+      "native-template:eq_string": 22772,
+      "native-template:exit": 584,
+      "native-template:eq_int": 588,
+      "native-template:qinc_int_var": 976,
+      "native-template:insert_int": 11040,
+      "native-template:less_int": 10452,
+      "native-template:leq_string": 10052,
+      "native-template:qdec_int_var": 9680,
+      "native-template:geq_string": 384,
+      "native-template:neq_int": 12,
+      "native-template:l_or_float": 4
+    },
+    "StepsIncludingHostHooks": 11260161,
+    "UnmodifiedExecutable": true
+  }
+]

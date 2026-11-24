@@ -6,6 +6,7 @@ open HirEffects
 open HirControlFlow
 open HirAnalysis
 
+
 let private pos:Types.SourcePosition = {BasicLineNo=None;EditorLineNo=1;Column=1}
 let private x,y,z,i,flag = SymbolId 1,SymbolId 2,SymbolId 3,SymbolId 4,SymbolId 5
 let private number n = Literal(ConstInt n,HirType.Int,pos)
@@ -26,6 +27,77 @@ let private print expr = BuiltInCall(Print,None,[expr],pos)
 let private routine symbol name parameters body = {Symbol=symbol;Name=name;Parameters=parameters;Locals=[];Body=body;ReturnType=None;EndLineNumber=None;Position=pos}
 let private parameter owner symbol name = {Storage=storage symbol name (RoutineParameterStorage owner);Binding=FlexibleBinding}
 
+let private localCounter=SymbolId 80
+let private localRoutine body =
+    let work=routine (SymbolId 81) "WORK" [] body
+    {work with Locals=[storage localCounter "I%" (RoutineLocalStorage "WORK")]}
+let private localLoop body=For(LoopId 80,localCounter,number 1,number 10,number 1,body,pos)
+let private localProofs work = analyze {program [] with Routines=[work]} |> _.CertifiedNativeForLoops
+
+[<Test>]
+let ``local FOR certificates keep a fresh LOCAL counter distinct from its global shadow`` () =
+    let work=localRoutine [localLoop [assign x (binary Add (read localCounter) (read y))]]
+    let proofs=localProofs work
+    Assert.That(proofs.Count, Is.EqualTo(1))
+    Assert.That(proofs[Some work.Symbol,LoopId 80].Scalars, Is.EquivalentTo(["I%";"X%";"Y%"]))
+    Assert.That(proofs[Some work.Symbol,LoopId 80].InvariantScalars, Is.EquivalentTo(["Y%"]))
+
+[<Test>]
+let ``local FOR proof metadata does not change the serialized Turbo IR`` () =
+    let work=localRoutine [localLoop [assign x (read localCounter)]]
+    let p={program [ProcCall(work.Symbol,None,[],pos)] with Routines=[work]}
+    let generate options=HirTurboIrBackend.generateTurboIrFromHir options p |> Result.defaultWith(String.concat "; " >> failwith)
+    let plain=generate HirTurboIrBackend.defaultOptions
+    let proven=generate {HirTurboIrBackend.defaultOptions with CertifiedNativeForLoops=(analyze p).CertifiedNativeForLoops}
+    Assert.That(proven.Bytes, Is.EqualTo(box plain.Bytes))
+    Assert.That(proven.Listing, Is.EqualTo(plain.Listing))
+    Assert.That(plain.NativeForLoopProofs, Is.Empty)
+    Assert.That(proven.NativeForLoopProofs.Count, Is.EqualTo(1))
+
+[<Test>]
+let ``local FOR certificates permit parameters in captured bounds but not body aliases`` () =
+    let formal=parameter "WORK" (SymbolId 82) "LIMIT%"
+    let work={localRoutine [] with Parameters=[formal]}
+    let safe={work with Body=[For(LoopId 80,localCounter,number 1,read formal.Storage.Symbol,number 1,[assign x (read localCounter)],pos)]}
+    Assert.That((localProofs safe).Count, Is.EqualTo(1))
+    let unsafe={work with Body=[localLoop [assign x (read formal.Storage.Symbol)]]}
+    Assert.That(localProofs unsafe, Is.Empty)
+
+[<TestCase(0)>]
+[<TestCase(1)>]
+[<TestCase(2)>]
+[<TestCase(3)>]
+let ``local FOR certificates reject counter writes and calls in conditional bodies`` (kind:int) =
+    let body=match kind with
+             | 0 -> [assign localCounter (number 2)]
+             | 1 -> [Assign(DynamicWriteVar("I%",HirType.Int,pos),number 2,pos)]
+             | 2 -> [ProcCall(SymbolId 99,None,[],pos)]
+             | _ -> [If(read flag,[assign localCounter (number 1)],None,pos)]
+    Assert.That(localProofs (localRoutine [localLoop body]), Is.Empty)
+
+[<Test>]
+let ``conditional FOR binding certificates include condition and both arm effects`` () =
+    let work=localRoutine [localLoop [If(binary LessThan (read localCounter) (read y),[assign x (number 1)],Some[assign z (number 2)],pos)]]
+    let proof=(localProofs work)[Some work.Symbol,LoopId 80]
+    Assert.That(proof.Scalars, Is.EquivalentTo(["I%";"X%";"Y%";"Z%"]))
+    Assert.That(proof.InvariantScalars, Is.EquivalentTo(["Y%"]))
+
+[<Test>]
+let ``local FOR certificates reject formal counters and escaping LOCAL references`` () =
+    let formal=parameter "WORK" localCounter "I%"
+    let work={localRoutine [localLoop [assign x (read localCounter)]] with Locals=[];Parameters=[formal]}
+    Assert.That(localProofs work, Is.Empty)
+    let escaping=localRoutine [ProcCall(SymbolId 99,None,[RefArg(target localCounter)],pos);localLoop [assign x (read localCounter)]]
+    Assert.That(localProofs escaping, Is.Empty)
+
+[<Test>]
+let ``per-loop certificates permit independent globals in programs with other LOCAL bindings`` () =
+    let work=localRoutine [assign localCounter (number 99)]
+    let p={program [For(LoopId 90,x,number 1,number 3,number 1,[assign y (read x)],pos)] with Routines=[work]}
+    Assert.That((analyze p).CertifiedNativeForLoops.ContainsKey(None,LoopId 90), Is.True)
+    let shadow={work with Locals=[storage localCounter "X%" (RoutineLocalStorage "WORK")]}
+    Assert.That((analyze {p with Routines=[shadow]}).CertifiedNativeForLoops, Is.Empty)
+
 [<Test>]
 let ``widening thresholds retain a bounded loop invariant that classical widening loses`` () =
     let plus=binary Add (read x) (number 1)
@@ -38,6 +110,72 @@ let ``widening thresholds retain a bounded loop invariant that classical widenin
     Assert.That(ranges MainScope plus refined |> List.forall(Option.exists(fun r -> r.Lower>=1L && r.Upper<=8192L)), Is.True)
     Assert.That((main refined).WideningThresholds, Does.Contain(8191L))
     Assert.That((main refined).Certified, Is.True)
+
+[<Test>]
+let ``local GOSUB uncertainty cannot disable proofs in an independent procedure`` () =
+    let expression=binary Multiply (read localCounter) (number 3)
+    let work=localRoutine [localLoop [assign x expression]]
+    let p={program [Gosub(number 100,pos);Goto(number 200,pos);LineNumber(100,pos);Return(None,pos);LineNumber(200,pos)] with Routines=[work]}
+    let facts=analyze p
+    Assert.That(facts.ProofEligibleScopes.Contains MainScope, Is.False)
+    Assert.That(facts.ProofEligibleScopes.Contains(RoutineScope work.Symbol), Is.True)
+    proven expression facts
+    Assert.That(facts.CertifiedNativeForLoops.ContainsKey(Some work.Symbol,LoopId 80), Is.True)
+
+[<Test>]
+let ``a native loop region can certify despite local GOSUB elsewhere in its scope`` () =
+    let body=[Gosub(number 100,pos);For(LoopId 90,i,number 1,number 3,number 1,[assign x (read i)],pos)
+              Goto(number 200,pos);LineNumber(100,pos);Return(None,pos);LineNumber(200,pos)]
+    let facts=analyze(program body)
+    Assert.That(facts.ProofEligibleScopes.Contains MainScope, Is.False)
+    Assert.That(facts.CertifiedNativeForLoops.ContainsKey(None,LoopId 90), Is.True)
+
+[<Test>]
+let ``native loop binding proof rejects a numbered entry that bypasses its initialiser`` () =
+    let p=program [Goto(number 30,pos);For(LoopId 90,i,number 1,number 3,number 1,[LineNumber(30,pos);assign x (read i)],pos)]
+    let facts=analyze p
+    Assert.That(facts.CertifiedNativeForLoops, Is.Empty)
+    Assert.That(facts.NativeForRejections[None,LoopId 90], Does.Contain("loop has an external entry or untrusted FOR continuation"))
+
+[<TestCase(0)>]
+[<TestCase(1)>]
+[<TestCase(2)>]
+[<TestCase(3)>]
+[<TestCase(4)>]
+let ``persistent and nonlocal hazards still block native certificates in other procedures`` (kind:int) =
+    let work=localRoutine [localLoop [assign x (read localCounter)]]
+    let other=match kind with
+              | 0 -> [WhenError([Return(None,pos)],pos)]
+              | 1 -> [BuiltInCall(NamedBuiltIn "POKE",None,[number 100;number 0],pos)]
+              | 2 -> [Goto(read flag,pos)]
+              | 3 -> [Goto(number 30,pos)]
+              | _ -> [assign z (CallFunc(SymbolId 999,[],HirType.Int,pos))]
+    let work={work with Body=LineNumber(30,pos)::work.Body}
+    let hazard=routine (SymbolId 99) "HAZARD" [] other
+    let facts=analyze {program [] with Routines=[work;hazard]}
+    Assert.That(facts.CertifiedNativeForLoops, Is.Empty)
+    Assert.That(facts.GlobalControlBarriers, Is.Not.Empty)
+    Assert.That(facts.NativeForRejections.ContainsKey(Some work.Symbol,LoopId 80), Is.True)
+
+[<Test>]
+let ``ABS has nonmutating ROM effects but a user ABS retains its actual writes`` () =
+    let absSymbol=SymbolId 999
+    let p={program [] with SymbolNames=Map.ofList[absSymbol,"ABS"]}
+    let context=HirEffects.analyze p
+    let effect=HirEffects.call context MainScope absSymbol [ValueArg(read x)]
+    Assert.That(effect.Reads.Contains x && effect.MayThrow && effect.Calls.Contains absSymbol, Is.True)
+    Assert.That(effect.WritesUnknown || effect.DescriptorWritesUnknown || effect.LoopMetadataWritesUnknown, Is.False)
+    let own=routine absSymbol "ABS" [] [assign x (number 7)]
+    let context=HirEffects.analyze {p with Routines=[own]}
+    Assert.That((HirEffects.call context MainScope absSymbol []).Writes.Contains x, Is.True)
+
+[<Test>]
+let ``independent loop certificates survive an unrelated enumerated FOR scope`` () =
+    let enumeration=ForSequence(LoopId 1,i,[],number 1,number 3,[number 5],number 1,[],pos)
+    let work=localRoutine [localLoop [assign x (read localCounter)]]
+    let facts=analyze {program [enumeration] with Routines=[work]}
+    Assert.That(facts.ProofEligibleScopes.Contains MainScope, Is.False)
+    Assert.That(facts.CertifiedNativeForLoops.ContainsKey(Some work.Symbol,LoopId 80), Is.True)
 
 [<Test>]
 let ``narrowing recovers an invariant whose bound is computed before the loop`` () =
@@ -191,6 +329,29 @@ let ``dominating DIM and a bounded loop prove numeric reads and writes`` () =
     let p=arrayProgram [Dim(arraySymbol,[number 10],pos);For(LoopId 1,i,number 0,number 10,number 1,
                         [Assign(WriteArrayElem(arraySymbol,indexes,HirType.Int,pos),number 7,pos);assign x (arrayRead indexes)],pos)]
     arraySafe indexes (analyze p)
+
+[<TestCase(false)>]
+[<TestCase(true)>]
+let ``InvariantArray certificates distinguish content writes from row and descriptor mutations`` (changing:bool) =
+    let indexes=[read y;read i]
+    let body=[Assign(WriteArrayElem(arraySymbol,indexes,HirType.Int,pos),read i,pos);assign x (arrayRead indexes)] @
+             (if changing then [If(read flag,[assign y (number 2)],None,pos)] else [])
+    let p=arrayProgram [Dim(arraySymbol,[number 3;number 7],pos);For(LoopId 1,i,number 0,number 7,number 1,body,pos)]
+    let proof=(analyze p).CertifiedNativeForLoops[None,LoopId 1]
+    Assert.That(proof.InvariantArrays, Is.EquivalentTo(["A%"]))
+    Assert.That(proof.InvariantScalars.Contains "Y%", Is.EqualTo(not changing))
+    Assert.That(proof.InvariantScalars.Contains "I%" || proof.InvariantScalars.Contains "X%", Is.False)
+    let resizing=arrayProgram [For(LoopId 1,i,number 0,number 7,number 1,[Dim(arraySymbol,[number 3;number 7],pos)],pos)]
+    Assert.That((analyze resizing).CertifiedNativeForLoops, Is.Empty)
+
+[<Test>]
+let ``InvariantArray rejects row invariance through a same name LOCAL alias`` () =
+    let shadow=SymbolId 89
+    let work=localRoutine [localLoop [assign shadow (number 1);assign x (arrayRead [read y;read localCounter])]]
+    let work={work with Locals=work.Locals@[storage shadow "Y%" (RoutineLocalStorage "WORK")]}
+    let p={arrayProgram [] with Routines=[work]}
+    let proof=(analyze p).CertifiedNativeForLoops[Some work.Symbol,LoopId 80]
+    Assert.That(proof.InvariantScalars.Contains "Y%", Is.False)
 
 [<Test>]
 let ``an access shared with an unbounded occurrence retains all checks`` () =
@@ -360,7 +521,8 @@ let ``a callee that replaces a FOR vector invalidates its hidden continuation`` 
     let expr=binary Multiply (read i) (number 3)
     let p=program [For(LoopId 1,i,number 1,number 10,number 1,[ProcCall(proc,None,[],pos);assign y expr],pos)]
     let a={p with Routines=[clobber]} |> analyze
-    Assert.That(a.ArithmeticProofsEnabled, Is.False)
+    Assert.That(a.ProofEligibleScopes.Contains MainScope, Is.False)
+    Assert.That(a.ProofEligibleScopes.Contains(RoutineScope proc), Is.True)
     Assert.That((main a).Graph.Edges |> List.exists (fun e -> e.Kind=UnknownTransfer && e.Havoc), Is.True)
     unproven expr a
 
@@ -596,7 +758,7 @@ let ``procedure FOR initialization maps hidden metadata writes to references onl
     let facts={source with Routines=[setter]} |> analyze
     let effect=HirEffects.call facts.Effects MainScope proc [arg]
     Assert.That(effect.LoopMetadataWrites.Contains i, Is.EqualTo(byReference))
-    Assert.That(facts.ArithmeticProofsEnabled, Is.EqualTo(not byReference))
+    Assert.That(facts.ProofEligibleScopes.Contains MainScope, Is.EqualTo(not byReference))
 
 [<Test>]
 let ``procedure private LOCAL bindings do not leak metadata writes to a caller's same-named vector`` () =
@@ -832,3 +994,67 @@ let ``range proofs are consumed by native instruction selection`` () =
             Assert.That(comment, Is.EqualTo(HirTurboIrBackend.rangeProvenIntegerComment))
         | _ -> ()
     Assert.That(nativeAdd, Is.True)
+
+[<Test>]
+let ``untrusted call sites contribute unknown shapes without disabling independent callees`` () =
+    let unsafeCallee=routine (SymbolId 100) "UNSAFE_INPUT" [] [assign x (arrayRead [number 2])]
+    let safeCallee=routine (SymbolId 101) "SAFE_INPUT" [] [assign y (arrayRead [number 3])]
+    let caller=routine (SymbolId 102) "UNTRUSTED" []
+                    [Gosub(number 100,pos);ProcCall(unsafeCallee.Symbol,None,[],pos);Goto(number 200,pos)
+                     LineNumber(100,pos);Return(None,pos);LineNumber(200,pos)]
+    let p=arrayProgram [Dim(arraySymbol,[number 10],pos);ProcCall(unsafeCallee.Symbol,None,[],pos);ProcCall(safeCallee.Symbol,None,[],pos)]
+    let facts=analyze {p with Routines=[unsafeCallee;safeCallee;caller]}
+    Assert.That(facts.EntryShapePasses, Is.GreaterThan(0))
+    Assert.That(facts.ProofEligibleScopes.Contains(RoutineScope caller.Symbol), Is.False)
+    arrayChecked [number 2] facts
+    Assert.That(facts.OneDimensionalIntegerAccesses.Contains("A%",[number 2]), Is.False)
+    arraySafe [number 3] facts
+    Assert.That(facts.OneDimensionalIntegerAccesses.Contains("A%",[number 3]), Is.True)
+
+[<TestCase("LEN")>]
+[<TestCase("CODE")>]
+[<TestCase("CHR$")>]
+let ``inline string intrinsics preserve loop binding certificates but retain effects`` (name:string) =
+    let symbol=SymbolId 900
+    let call=CallFunc(symbol,[ValueArg(read x)],HirType.Int,pos)
+    let body=[For(LoopId 900,i,number 1,number 10,number 1,[assign y call],pos)]
+    let p={program body with SymbolNames=Map.ofList [symbol,name]}
+    let facts=analyze p
+    Assert.That(facts.CertifiedNativeForLoops.Count, Is.EqualTo(1))
+    let effect=expression facts.Effects MainScope call
+    Assert.That(effect.Reads.Contains x, Is.True)
+    Assert.That(effect.MayThrow, Is.True)
+    Assert.That(effect.Allocates, Is.True)
+    Assert.That(effect.WritesUnknown, Is.False)
+    Assert.That(nonmutatingFunction p symbol 2, Is.False)
+    let overridden={p with Routines=[{routine symbol name [] [] with ReturnType=Some HirType.Int}]}
+    Assert.That(inlineFunction overridden symbol 1, Is.False)
+
+[<Test>]
+let ``only canonical MID and RIGHT slices bypass resident function barriers`` () =
+    let mid,right,len=SymbolId 901,SymbolId 902,SymbolId 903
+    let p={program [] with SymbolNames=Map.ofList [mid,"MID$";right,"RIGHT$";len,"LEN"]}
+    let baseExpr=ReadVar(x,HirType.String,pos)
+    let length=CallFunc(len,[ValueArg baseExpr],HirType.Int,pos)
+    let count= binary Add (binary Subtract length (number 2)) (number 1)
+    Assert.That(inlineCall p right [ValueArg baseExpr;ValueArg count], Is.True)
+    Assert.That(inlineCall p right [ValueArg baseExpr;ValueArg(number 2)], Is.False)
+    let count= binary Add (binary Subtract (number 5) (number 2)) (number 1)
+    Assert.That(inlineCall p mid [ValueArg baseExpr;ValueArg(number 2);ValueArg count], Is.True)
+    Assert.That(inlineCall p mid [ValueArg baseExpr;ValueArg(number 3);ValueArg count], Is.False)
+    let overridden={p with Routines=[{routine right "RIGHT$" [] [] with ReturnType=Some HirType.String}]}
+    Assert.That(inlineCall overridden right [ValueArg baseExpr;ValueArg count], Is.False)
+
+[<Test>]
+let ``memory call certificates remain separate from register pinning and reject metadata replacement`` () =
+    let callee=routine (SymbolId 920) "WORK" [parameter "WORK" (SymbolId 921) "VALUE%"] [assign x (number 1)]
+    let call args=ProcCall(callee.Symbol,None,args,pos)
+    let loop args=For(LoopId 920,i,number 1,number 3,number 1,[call args],pos)
+    let p={program [loop [ValueArg(read i)]] with Routines=[callee]}
+    let facts=analyze p
+    Assert.That(facts.CertifiedNativeForLoops, Is.Empty)
+    Assert.That(facts.CertifiedMemoryForLoops, Is.EquivalentTo([None,LoopId 920]))
+    Assert.That(analyze {p with Main=[loop [RefArg(target x)]]} |> _.CertifiedMemoryForLoops, Is.Empty)
+    let replacement={callee with Body=[For(LoopId 921,i,number 1,number 2,number 1,[],pos)]}
+    Assert.That(analyze {p with Routines=[replacement]} |> _.CertifiedMemoryForLoops, Is.Empty)
+    Assert.That(analyze {p with Main=WhenError([],pos)::p.Main} |> _.CertifiedMemoryForLoops, Is.Empty)

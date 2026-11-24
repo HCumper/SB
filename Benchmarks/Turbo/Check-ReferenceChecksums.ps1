@@ -7,6 +7,10 @@ function Get-Checksum([string]$Name, [int]$Passes) {
     if ($Passes -lt 1 -or $Passes -gt 1000) { throw 'Workload passes must be between 1 and 1000.' }
     [long]$check = 0
     switch ($Name) {
+        'native_conditional_for' {
+            # Among 1..1000, 333 multiples of three add one extra to the base 1000.
+            $check = (1333 * $Passes + $Passes * ($Passes + 1) / 2) % 10000
+        }
         'regalloc_copy_chain' {
             # Each pass ends at i=1000; use the closed-form sum of pass numbers.
             $check = (1000 * $Passes + $Passes * ($Passes + 1) / 2) % 10000
@@ -64,7 +68,13 @@ function Get-Checksum([string]$Name, [int]$Passes) {
                 for ($i = 0; $i -lt 64; $i++) { $check = ($check + $values[$i] * (1 + ($i % 7))) % 10000 }
             }
         }
-        'procedure_calls' {
+        'native_truth_for' {
+            # 334 of 1000 indexes are 1 MOD 3. Of 142 multiples of 7, 48
+            # are in that zero-truth class: 666-(142-48)=572 pass eager AND.
+            $perCall = (2 * 1000 - 334) + (666 - (142 - 48))
+            for ($pass = 1; $pass -le $Passes; $pass++) { $check = ($check + (($pass + $perCall) % 8192)) % 10000 }
+        }
+        { $_ -in @('procedure_calls','local_integer_for','scoped_integer_for') } {
             # 1000 MOD 7 = 6: 142 full cycles contribute 142*21, then 1..6 adds 21.
             for ($pass = 1; $pass -le $Passes; $pass++) { $check = ($check + (($pass + 3003) % 8192)) % 10000 }
         }

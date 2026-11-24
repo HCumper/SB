@@ -1,0 +1,14 @@
+[
+  {
+    "CompatibilityBytes": 12718,
+    "CompatibilityExecutableIdentical": true,
+    "FastSelections": 5,
+    "IrBytes": 1358,
+    "NativeIntegerOperations": 23,
+    "NativeOperations": 277,
+    "Tag": "b06",
+    "ThreadedIntegerOperations": 0,
+    "ThreadedOperations": 28,
+    "TurboBytes": 12718
+  }
+]

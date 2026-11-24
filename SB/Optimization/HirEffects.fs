@@ -223,6 +223,39 @@ let loopInitialisation context scope symbol =
     | Some s -> {write s with DescriptorWrites=Set.singleton s;LoopMetadataWrites=Set.singleton s}
     | None -> {empty with WritesUnknown=true;DescriptorWritesUnknown=true;LoopMetadataWritesUnknown=true}
 
+// The Turbo backend emits the existing ROM ABS helper directly. It may fail
+// coercion/allocation, but it neither rebinds storage nor installs continuations.
+// User-defined routines with this name still use their actual summaries.
+// These exact unary intrinsics are lowered inline, without a resident-function
+// call. Arguments still contribute all reads, allocation and failure effects.
+let inlineFunction (program:HirProgram) symbol argumentCount =
+    argumentCount=1 && not(program.Routines |> List.exists(fun r -> r.Symbol=symbol)) &&
+    (program.SymbolNames.TryFind symbol |> Option.exists(fun name ->
+        ["LEN";"CODE";"CHR$"] |> List.exists(fun intrinsic -> name.Equals(intrinsic,StringComparison.OrdinalIgnoreCase))))
+
+let nonmutatingFunction (program:HirProgram) symbol argumentCount =
+    inlineFunction program symbol argumentCount ||
+    argumentCount=1 && not(program.Routines |> List.exists(fun r -> r.Symbol=symbol)) &&
+    (program.SymbolNames.TryFind symbol |> Option.exists(fun name -> name.Equals("ABS",StringComparison.OrdinalIgnoreCase)))
+
+// Match only the slice shapes emitted inline by HirTurboIrBackend. General
+// RIGHT$/MID$ calls still use the resident-function ABI and remain opaque.
+let inlineCall (program:HirProgram) symbol args =
+    let named symbol name = program.SymbolNames.TryFind symbol |> Option.exists(fun actual -> actual.Equals(name,StringComparison.OrdinalIgnoreCase))
+    let builtin symbol = not(program.Routines |> List.exists(fun r -> r.Symbol=symbol))
+    let one = function Literal(ConstInt 1,_,_) -> true | _ -> false
+    inlineFunction program symbol (List.length args) ||
+    (builtin symbol &&
+     match args with
+     | [ValueArg _;ValueArg start;ValueArg(Binary(Add,Binary(Subtract,_,start2,_,_),unit,_,_))] ->
+         named symbol "MID$" && start=start2 && one unit
+     | [ValueArg baseExpr;ValueArg(Binary(Add,Binary(Subtract,CallFunc(len,[ValueArg base2],_,_),_,_,_),unit,_,_))] ->
+         named symbol "RIGHT$" && baseExpr=base2 && builtin len && named len "LEN" && one unit
+     | _ -> false)
+
+let nonmutatingCall program symbol args =
+    inlineCall program symbol args || nonmutatingFunction program symbol (List.length args)
+
 let rec expression (context: Context) scope expr =
     let children xs = xs |> List.map (expression context scope) |> combineAll
     match expr with
@@ -302,6 +335,8 @@ and call context scope symbol args =
         combine evaluated {summary with Reads=reads;Writes=writes;ReadsUnknown=readsUnknown;WritesUnknown=writesUnknown
                                         DescriptorWrites=descriptors;DescriptorWritesUnknown=descriptorsUnknown;LoopMetadataWrites=loops;LoopMetadataWritesUnknown=loopsUnknown
                                         MayThrow=true;Allocates=true;ControlBarrier=true;Calls=summary.Calls.Add symbol}
+    | None,_ when nonmutatingCall context.Program symbol args ->
+        combine evaluated {empty with MayThrow=true;Allocates=true;Calls=Set.singleton symbol}
     | _ -> combine evaluated {unknown with Calls=Set.singleton symbol}
 
 let evaluation context scope stmt =

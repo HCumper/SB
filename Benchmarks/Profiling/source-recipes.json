@@ -1,0 +1,148 @@
+[
+  {
+    "Source": "SB/TurboCodegen.fs",
+    "Output": "ProfileCodegen.fs",
+    "SourceSha256": "9A4FE96A34019650D8DD09407DA827D7A669FB0E34A762DE91E3A55132E00894",
+    "Edits": [
+      {
+        "Start": 0,
+        "End": 20,
+        "Old": "module TurboCodegen\n",
+        "New": "module ProfileCodegen\n"
+      },
+      {
+        "Start": 3338,
+        "End": 3338,
+        "Old": "",
+        "New": "    Segments:(int * int * string * int) array\n    Labels:Map<int,int>\n    ArrayHelpers:Map<int,int>\n"
+      },
+      {
+        "Start": 4238,
+        "End": 4338,
+        "Old": "        use stream = typeof<TurboCodegenOutput>.Assembly.GetManifestResourceStream(libraryResource)\n",
+        "New": "        use stream = typeof<TurboCodegen.TurboCodegenOutput>.Assembly.GetManifestResourceStream(libraryResource)\n"
+      },
+      {
+        "Start": 6440,
+        "End": 6440,
+        "Old": "",
+        "New": "    let segments=ResizeArray<int * int * string * int>()\n    let mutable traceKind=\"runtime-entry\"\n    let mutable traceOrigin=0\n"
+      },
+      {
+        "Start": 9243,
+        "End": 9297,
+        "Old": "    let write (bytes: byte[]) = output.AddRange bytes\n",
+        "New": "    let write (bytes: byte[]) =\n        let first=output.Count\n        output.AddRange bytes\n        if bytes.Length>0 then segments.Add(first,output.Count,traceKind,traceOrigin)\n"
+      },
+      {
+        "Start": 21680,
+        "End": 21680,
+        "Old": "",
+        "New": "        let previous=traceKind\n        traceKind<-sprintf \"shared-P:%d\" (word lib record)\n"
+      },
+      {
+        "Start": 21739,
+        "End": 21739,
+        "Old": "",
+        "New": "        traceKind<-\"thread-dispatch\"\n"
+      },
+      {
+        "Start": 21765,
+        "End": 21765,
+        "Old": "",
+        "New": "        traceKind<-previous\n"
+      },
+      {
+        "Start": 38847,
+        "End": 38847,
+        "Old": "",
+        "New": "        let previous=traceKind\n        traceKind<-\"compact-array-helper\"\n"
+      },
+      {
+        "Start": 38871,
+        "End": 38871,
+        "Old": "",
+        "New": "        traceKind<-previous\n"
+      },
+      {
+        "Start": 47329,
+        "End": 47329,
+        "Old": "",
+        "New": "            traceOrigin<-ic\n            traceKind<-if pMode then \"threaded-data\" else sprintf \"native-template:%d\" (word ir ic)\n"
+      },
+      {
+        "Start": 47729,
+        "End": 47729,
+        "Old": "",
+        "New": "                traceKind<-\"native-loop\"\n"
+      },
+      {
+        "Start": 47949,
+        "End": 47949,
+        "Old": "",
+        "New": "                traceKind<-\"native-block\"\n"
+      },
+      {
+        "Start": 50109,
+        "End": 50160,
+        "Old": "                  NativeLoops = nativeLoopReport }\n",
+        "New": "                  NativeLoops = nativeLoopReport\n                  Segments=segments.ToArray()\n                  Labels=symbols |> Seq.map(fun p -> p.Key,p.Value) |> Map.ofSeq\n                  ArrayHelpers=nativeArrayAddresses }\n"
+      }
+    ]
+  },
+  {
+    "Source": "SBTests/TurboExecutionHarness.fs",
+    "Output": "ProfileExecutionHarness.fs",
+    "SourceSha256": "72C579DBDDDE04019A609FA884F24EBE8D54644520AEC72D9A528EA50CD83336",
+    "Edits": [
+      {
+        "Start": 0,
+        "End": 37,
+        "Old": "module SBTests.TurboExecutionHarness\n",
+        "New": "module ProfileExecutionHarness\n"
+      },
+      {
+        "Start": 536,
+        "End": 585,
+        "Old": "let run (maxSteps: int64) (executable: byte[]) =\n",
+        "New": "let run (rom:byte[]) (functions:(string * uint32) list) (maxSteps: int64) (observe:Cpu -> unit) (executable: byte[]) =\n"
+      },
+      {
+        "Start": 1464,
+        "End": 1464,
+        "Old": "",
+        "New": "    Array.blit rom 0 memory 0 rom.Length\n"
+      },
+      {
+        "Start": 3769,
+        "End": 3863,
+        "Old": "    hook 0x11Cu 5u (fun _ -> raise (M68kFault \"Unsupported ROM arithmetic service RI.EXEC.\"))\n",
+        "New": "    // Execute the installed JS ROM arithmetic and resident functions unchanged.\n"
+      },
+      {
+        "Start": 6073,
+        "End": 6073,
+        "Old": "",
+        "New": "    let basic=basicJobBase+104u\n    let mutable nameOffset=0\n    for index,(name,address) in List.indexed functions do\n        let slot=basic+0x200u+uint32(index*8)\n        cpu.WriteWord(slot,0x0802u)\n        cpu.WriteWord(slot+2u,uint32 nameOffset)\n        cpu.WriteLong(slot+4u,address)\n        let encoded=Encoding.ASCII.GetBytes name\n        memory[int(basic+0x300u)+nameOffset]<-byte encoded.Length\n        Array.blit encoded 0 memory (int(basic+0x300u)+nameOffset+1) encoded.Length\n        nameOffset<-nameOffset+1+encoded.Length\n"
+      },
+      {
+        "Start": 6163,
+        "End": 6314,
+        "Old": "    cpu.A[7] <- uint32 top - 8u\n    cpu.WriteWord(cpu.A[7], 0u) // No inherited channels.\n    cpu.WriteWord(cpu.A[7] + 2u, 0u) // Empty option string.\n",
+        "New": "    let inherited=openConsole()\n    cpu.A[7] <- uint32 top - 132u\n    cpu.WriteWord(cpu.A[7],31u)\n    for index in 0..30 do cpu.WriteLong(cpu.A[7]+2u+uint32(index*4),inherited)\n    cpu.WriteWord(cpu.A[7]+126u,0u) // Empty option string, after inherited channels.\n"
+      },
+      {
+        "Start": 6486,
+        "End": 6597,
+        "Old": "            if (cpu.Pc < jobBase || cpu.Pc >= jobBase + codeLength) && not (cpu.Hooks.ContainsKey cpu.Pc) then\n",
+        "New": "            if (cpu.Pc < jobBase || cpu.Pc >= jobBase + codeLength) && cpu.Pc>=uint32 rom.Length && not (cpu.Hooks.ContainsKey cpu.Pc) then\n"
+      },
+      {
+        "Start": 6704,
+        "End": 6704,
+        "Old": "",
+        "New": "            observe cpu\n"
+      }
+    ]
+  }
+]

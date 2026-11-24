@@ -1,0 +1,26 @@
+[
+  {
+    "AfterBytes": 9644,
+    "AfterFetchWords": 7897840,
+    "AfterInstructions": 5954147,
+    "BeforeBytes": 9548,
+    "BeforeFetchWords": 7997184,
+    "BeforeInstructions": 6019267,
+    "Benchmark": "route_planner",
+    "FetchReductionPercent": 1.2422372675181648,
+    "InstructionReductionPercent": 1.0818593028021573,
+    "Output": "route_planner:4701\n"
+  },
+  {
+    "AfterBytes": 6846,
+    "AfterFetchWords": 491699,
+    "AfterInstructions": 389115,
+    "BeforeBytes": 6798,
+    "BeforeFetchWords": 1031199,
+    "BeforeInstructions": 748759,
+    "Benchmark": "local_integer_for",
+    "FetchReductionPercent": 52.3177388651463,
+    "InstructionReductionPercent": 48.03201029970925,
+    "Output": "local_integer_for:270\n"
+  }
+]

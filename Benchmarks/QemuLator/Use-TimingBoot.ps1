@@ -20,7 +20,9 @@ foreach ($file in @('sb-verification.json','native-verification.json')) {
             ($file -eq 'native-verification.json' -and (-not $row.CompatibilityExecutableIdentical -or $row.NativeIntegerOperations -le 0))) { throw "Failed verification: $file" }
     }
 }
-if ((Get-Content -LiteralPath (Join-Path $run 'benchmark.QCF')) -notcontains 'Speed=QL') { throw 'Timing requires Speed=QL.' }
+$speedLines=@(Get-Content -LiteralPath (Join-Path $run 'benchmark.QCF') | Where-Object { $_.StartsWith('Speed=') })
+if ($speedLines.Count -ne 1 -or $speedLines[0] -notin @('Speed=GoldCard','Speed=QL')) { throw 'Timing requires GoldCard or QL speed.' }
+if ($plan.timingSpeed -and $speedLines[0] -ne ('Speed='+$plan.timingSpeed)) { throw 'Timing speed differs from the prepared plan.' }
 Copy-Item -LiteralPath (Join-Path $drive 'run_boot') -Destination (Join-Path $drive 'boot')
 [IO.File]::WriteAllText((Join-Path $drive 'build_done'),"Verified ordinary SB and Turbo FAST executables.`n")
 Write-Output "Open $run\benchmark.QCF in Q-emuLator to run the external timing trials."

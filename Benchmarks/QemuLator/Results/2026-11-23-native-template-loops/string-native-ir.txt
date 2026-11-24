@@ -1,0 +1,46 @@
+Native register IR: blocks=3; rejected=3; extra-stack=0 bytes
+Scratch registers: D0,D1,A2. All values are materialized and frames released at every boundary.
+Block IR bytes 102..116: native bytes 46->16; spill slots=0
+  virtual: LoadVector (Value 0, 4)
+  virtual: Constant (Value 1, 2)
+  virtual: Divide (Value 2, ModuloWord, Value 0, Value 1, [Value 0])
+  virtual: Constant (Value 3, 1)
+  virtual: PushMaths (Value 2)
+  virtual: PushMaths (Value 3)
+  allocated: Load (0, 4)
+  allocated: PowerOfTwoDivision (ModuloWord, 0, 1)
+  allocated: Push 0
+  allocated: Immediate (0, 1)
+  allocated: Push 0
+Block IR bytes 248..254: native bytes 6->6; spill slots=0
+  virtual: Constant (Value 0, 1)
+  virtual: PushMaths (Value 0)
+  virtual: PushMaths (Value 0)
+  allocated: Immediate (0, 1)
+  allocated: Push 0
+  allocated: Push 0
+Block IR bytes 306..332: native bytes 88->62; spill slots=0
+  virtual: PopMaths (Value 0)
+  virtual: PopMaths (Value 1)
+  virtual: Binary (Value 2, AddWord, Value 1, Value 0)
+  virtual: OverflowCheck (None, [Value 1], None)
+  virtual: StoreVector (6, Value 2)
+  virtual: LoadVector (Value 3, 1)
+  virtual: Binary (Value 4, AddWord, Value 3, Value 2)
+  virtual: OverflowCheck (None, [Value 3], None)
+  virtual: Constant (Value 5, 10000)
+  virtual: Divide (Value 6, ModuloWord, Value 4, Value 5, [Value 4])
+  virtual: StoreVector (1, Value 6)
+  allocated: Pop 0
+  allocated: Pop 1
+  allocated: Arithmetic (AddWord, 0, 1)
+  allocated: Check (None, [RecoveryRegister 1], None)
+  allocated: Store (6, RecoveryRegister 0)
+  allocated: Load (1, 1)
+  allocated: Arithmetic (AddWord, 0, 1)
+  allocated: Check (None, [RecoveryRegister 1], None)
+  allocated: PositiveDivision (ModuloWord, 0, 10000)
+  allocated: Store (1, RecoveryRegister 0)
+Native integer FOR loops: selected=0; rejected=1; extra-stack=0 bytes
+Native FOR rejected at IR byte 100: counter vector=4; reasons=program contains binding/control barriers and no eligible HIR certificate; unsupported body opcode 169 at IR byte 124; matching threaded NEXT was not reached; NEXT is not followed by its end marker
+Audited memory-counter native FOR loops: 2

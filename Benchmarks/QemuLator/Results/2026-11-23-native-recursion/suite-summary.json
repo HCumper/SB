@@ -1,0 +1,47 @@
+{
+  "TotalPassed": 4328,
+  "CompilerTestsPassed": 4080,
+  "RuntimeTestsPassed": 248,
+  "UniqueTests": 4328,
+  "RepeatedTests": 0,
+  "Failed": 0,
+  "Skipped": 0,
+  "DisjointFiltersCoverFullSolution": true,
+  "Assemblies": [
+    {
+      "Partition": "arrays",
+      "Trx": "full-tests\\arrays\\full-arrays_net10.0_20261123173641.trx",
+      "Passed": 489,
+      "Failed": 0,
+      "Total": 489
+    },
+    {
+      "Partition": "loops",
+      "Trx": "full-tests\\loops\\full-loops_net10.0_20261123173845.trx",
+      "Passed": 641,
+      "Failed": 0,
+      "Total": 641
+    },
+    {
+      "Partition": "other",
+      "Trx": "full-tests\\other\\full-other_net10.0_20261123174738.trx",
+      "Passed": 248,
+      "Failed": 0,
+      "Total": 248
+    },
+    {
+      "Partition": "other",
+      "Trx": "full-tests\\other\\full-other_net10.0_20261123180258.trx",
+      "Passed": 2691,
+      "Failed": 0,
+      "Total": 2691
+    },
+    {
+      "Partition": "remaining",
+      "Trx": "full-tests\\remaining\\full-remaining_net10.0_20261123173417.trx",
+      "Passed": 259,
+      "Failed": 0,
+      "Total": 259
+    }
+  ]
+}

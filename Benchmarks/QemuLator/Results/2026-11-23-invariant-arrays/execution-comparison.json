@@ -1,0 +1,98 @@
+[
+  {
+    "AfterBytes": 9600,
+    "AfterFetchWords": 3958970,
+    "AfterInstructions": 3001999,
+    "BeforeBytes": 9544,
+    "BeforeFetchWords": 4043310,
+    "BeforeInstructions": 3089535,
+    "Benchmark": "route_planner",
+    "FetchReductionPercent": 2.085914757958207,
+    "InstructionReductionPercent": 2.8333066302857923,
+    "Output": "route_planner:4701\n"
+  },
+  {
+    "AfterBytes": 6846,
+    "AfterFetchWords": 491699,
+    "AfterInstructions": 389115,
+    "BeforeBytes": 6846,
+    "BeforeFetchWords": 491699,
+    "BeforeInstructions": 389115,
+    "Benchmark": "local_integer_for",
+    "FetchReductionPercent": 0,
+    "InstructionReductionPercent": 0,
+    "Output": "local_integer_for:270\n"
+  },
+  {
+    "AfterBytes": 8076,
+    "AfterFetchWords": 539109,
+    "AfterInstructions": 373821,
+    "BeforeBytes": 7962,
+    "BeforeFetchWords": 547224,
+    "BeforeInstructions": 383513,
+    "Benchmark": "matrix_multiply",
+    "FetchReductionPercent": 1.482939344765577,
+    "InstructionReductionPercent": 2.5271633556098516,
+    "Output": "matrix_multiply:1094\n"
+  },
+  {
+    "AfterBytes": 6992,
+    "AfterFetchWords": 2013071,
+    "AfterInstructions": 1672252,
+    "BeforeBytes": 6992,
+    "BeforeFetchWords": 2013071,
+    "BeforeInstructions": 1672252,
+    "Benchmark": "native_truth_for",
+    "FetchReductionPercent": 0,
+    "InstructionReductionPercent": 0,
+    "Output": "native_truth_for:4970\n"
+  },
+  {
+    "AfterBytes": 6856,
+    "AfterFetchWords": 491774,
+    "AfterInstructions": 389175,
+    "BeforeBytes": 6856,
+    "BeforeFetchWords": 491774,
+    "BeforeInstructions": 389175,
+    "Benchmark": "scoped_integer_for",
+    "FetchReductionPercent": 0,
+    "InstructionReductionPercent": 0,
+    "Output": "scoped_integer_for:270\n"
+  },
+  {
+    "AfterBytes": 6908,
+    "AfterFetchWords": 578520,
+    "AfterInstructions": 455905,
+    "BeforeBytes": 6908,
+    "BeforeFetchWords": 578520,
+    "BeforeInstructions": 455905,
+    "Benchmark": "native_conditional_for",
+    "FetchReductionPercent": 0,
+    "InstructionReductionPercent": 0,
+    "Output": "native_conditional_for:6870\n"
+  },
+  {
+    "AfterBytes": 7534,
+    "AfterFetchWords": 275774,
+    "AfterInstructions": 239026,
+    "BeforeBytes": 7534,
+    "BeforeFetchWords": 275774,
+    "BeforeInstructions": 239026,
+    "Benchmark": "sieve",
+    "FetchReductionPercent": 0,
+    "InstructionReductionPercent": 0,
+    "Output": "sieve:840\n"
+  },
+  {
+    "AfterBytes": 7704,
+    "AfterFetchWords": 471477,
+    "AfterInstructions": 399986,
+    "BeforeBytes": 7704,
+    "BeforeFetchWords": 471477,
+    "BeforeInstructions": 399986,
+    "Benchmark": "bubble_sort",
+    "FetchReductionPercent": 0,
+    "InstructionReductionPercent": 0,
+    "Output": "bubble_sort:121\n"
+  }
+]

@@ -1,0 +1,17 @@
+{
+  "ProfilesReproduced": 10,
+  "StableMetrics": [
+    "Instructions",
+    "StepsIncludingHostHooks",
+    "HostHooks",
+    "FetchWords",
+    "RomInstructions",
+    "RomCalls",
+    "RomServices",
+    "Costs",
+    "ExecutableSha256"
+  ],
+  "AllStableMetricsIdentical": true,
+  "RoutineAttribution": "Final tool explicitly separates bootstrap IR ranges from source routines.",
+  "CompilerAndProductionTestSourcesUnchanged": true
+}

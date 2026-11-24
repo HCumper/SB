@@ -714,9 +714,10 @@ let generateTurboIrFromLoweredHirWithNativeRegions optimization nativeRegions (s
         | None -> ()
         let target =
             match nativeRegions,analysis with
-            | true,Some facts -> {target with SafeIntegerExpressions=facts.SafeIntegerExpressions;SafeArrayAccesses=facts.SafeArrayAccesses;OneDimensionalIntegerAccesses=facts.OneDimensionalIntegerAccesses;TwoDimensionalIntegerAccesses=facts.TwoDimensionalIntegerAccesses}
+            | true,Some facts -> {target with SafeIntegerExpressions=facts.SafeIntegerExpressions;SafeArrayAccesses=facts.SafeArrayAccesses;OneDimensionalIntegerAccesses=facts.OneDimensionalIntegerAccesses;TwoDimensionalIntegerAccesses=facts.TwoDimensionalIntegerAccesses;CertifiedNativeForLoops=facts.CertifiedNativeForLoops;CertifiedMemoryForLoops=facts.CertifiedMemoryForLoops}
             | _ -> target
         HirTurboIrBackend.generateTurboIrFromHir target optimized
+        |> Result.bind (TurboNativeTemplateLoops.select nativeRegions)
         |> Result.bind (TurboNativeRegions.select nativeRegions)
 
 // Keep the existing programmatic entry points byte compatible. The CLI passes
@@ -739,14 +740,14 @@ let generateTurboExecutableFromLoweredHirWithRegisterAllocation optimization nat
     match generateTurboIrFromLoweredHirWithNativeRegions optimization nativeRegions state hirProgram with
     | Result.Error errors -> Result.Error errors
     | Result.Ok ir ->
-        let options = { TurboCodegen.defaultCodegenOptions with TaskName = taskName; LocalRegisterAllocation = nativeRegions && registerAllocation; NativeIntegerForLoops = nativeRegions && registerAllocation }
+        let options = { TurboCodegen.defaultCodegenOptions with TaskName = taskName; LocalRegisterAllocation = nativeRegions && registerAllocation; NativeIntegerForLoops = nativeRegions && registerAllocation; NativeForLoopProofs=ir.NativeForLoopProofs }
         match TurboCodegen.generateFromIr options ir.Bytes with
         | Result.Ok executable ->
             match optimization.DumpPrefix with
             | Some prefix ->
                 let text=(executable.NativeAllocation |> Option.map TurboNativeIr.format |> Option.defaultValue "Local register allocation disabled.\n") +
                          (executable.NativeLoops |> Option.map TurboNativeLoops.format |> Option.defaultValue "Native integer FOR loops disabled.\n")
-                File.WriteAllText(prefix + ".native-ir.txt",text)
+                File.WriteAllText(prefix + ".native-ir.txt",text + TurboNativeTemplateLoops.format ir.Items)
             | None -> ()
             Result.Ok(ir, executable)
         | Result.Error errors -> Result.Error errors

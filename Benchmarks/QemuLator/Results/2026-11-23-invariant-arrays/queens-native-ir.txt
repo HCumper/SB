@@ -1,0 +1,178 @@
+Native register IR: blocks=9; rejected=21; extra-stack=2 bytes
+Scratch registers: D0,D1,A2. All values are materialized and frames released at every boundary.
+Block IR bytes 122..134: native bytes 16->16; spill slots=0
+  virtual: Constant (Value 0, 0)
+  virtual: StoreVector (2, Value 0)
+  virtual: StoreVector (5, Value 0)
+  allocated: Store (2, RecoveryImmediate 0)
+  allocated: Store (5, RecoveryImmediate 0)
+Block IR bytes 168..180: native bytes 16->16; spill slots=0
+  virtual: Constant (Value 0, 0)
+  virtual: StoreVector (12, Value 0)
+  virtual: StoreVector (1, Value 0)
+  allocated: Store (12, RecoveryImmediate 0)
+  allocated: Store (1, RecoveryImmediate 0)
+Block IR bytes 330..356: native bytes 88->64; spill slots=0
+  virtual: LoadVector (Value 0, 2)
+  virtual: LoadVector (Value 1, 1)
+  virtual: Binary (Value 2, AddWord, Value 0, Value 1)
+  virtual: OverflowCheck (None, [Value 0], None)
+  virtual: LoadVector (Value 3, 12)
+  virtual: Binary (Value 4, AddWord, Value 2, Value 3)
+  virtual: OverflowCheck (None, [Value 2], None)
+  virtual: Constant (Value 5, 10000)
+  virtual: Divide (Value 6, ModuloWord, Value 4, Value 5, [Value 4])
+  virtual: StoreVector (2, Value 6)
+  allocated: Load (0, 2)
+  allocated: Load (1, 1)
+  allocated: Arithmetic (AddWord, 1, 0)
+  allocated: Check (None, [RecoveryRegister 0], None)
+  allocated: Load (0, 12)
+  allocated: Arithmetic (AddWord, 0, 1)
+  allocated: Check (None, [RecoveryRegister 1], None)
+  allocated: PositiveDivision (ModuloWord, 0, 10000)
+  allocated: Store (2, RecoveryRegister 0)
+Block IR bytes 632..670: native bytes 88->108; spill slots=1
+  virtual: LoadVector (Value 0, 16)
+  virtual: LoadVector (Value 1, 17)
+  virtual: Binary (Value 2, AddWord, Value 0, Value 1)
+  virtual: OverflowCheck (None, [Value 0], None)
+  virtual: StoreVector (19, Value 2)
+  virtual: LoadVector (Value 3, 16)
+  virtual: LoadVector (Value 4, 17)
+  virtual: Binary (Value 5, SubtractWord, Value 3, Value 4)
+  virtual: OverflowCheck (None, [Value 3], None)
+  virtual: Constant (Value 6, 8)
+  virtual: Binary (Value 7, AddWord, Value 5, Value 6)
+  virtual: OverflowCheck (None, [Value 5], None)
+  virtual: StoreVector (18, Value 7)
+  virtual: LoadVector (Value 8, 17)
+  virtual: PushMaths (Value 8)
+  allocated: Load (0, 16)
+  allocated: Load (1, 17)
+  allocated: Arithmetic (AddWord, 1, 0)
+  allocated: Check (None, [RecoveryRegister 0], None)
+  allocated: Store (19, RecoveryRegister 1)
+  allocated: Load (0, 16)
+  allocated: Load (1, 17)
+  allocated: Spill (0, 0)
+  allocated: Arithmetic (SubtractWord, 0, 1)
+  allocated: Check (None, [RecoverySlot 0], None)
+  allocated: Copy (1, 0)
+  allocated: ArithmeticImmediate (AddWord, 1, 8)
+  allocated: Check (None, [RecoveryRegister 0], None)
+  allocated: Store (18, RecoveryRegister 1)
+  allocated: Load (0, 17)
+  allocated: Push 0
+Block IR bytes 766..776: native bytes 24->22; spill slots=0
+  virtual: LoadVector (Value 0, 16)
+  virtual: Constant (Value 1, 1)
+  virtual: Binary (Value 2, AddWord, Value 0, Value 1)
+  virtual: OverflowCheck (None, [Value 0], None)
+  virtual: PushMaths (Value 2)
+  allocated: Load (0, 16)
+  allocated: Copy (1, 0)
+  allocated: ArithmeticImmediate (AddWord, 1, 1)
+  allocated: Check (None, [RecoveryRegister 0], None)
+  allocated: Push 1
+Block IR bytes 892..926: native bytes 142->132; spill slots=1
+  virtual: LoadVector (Value 0, 22)
+  virtual: PopMaths (Value 1)
+  virtual: Binary (Value 2, MultiplyWord, Value 1, Value 0)
+  virtual: OverflowCheck (Some (Value 2), [Value 1], None)
+  virtual: Binary (Value 3, MultiplyWord, Value 2, Value 0)
+  virtual: OverflowCheck (Some (Value 3), [Value 2], None)
+  virtual: PopMaths (Value 4)
+  virtual: Binary (Value 5, AddWord, Value 4, Value 3)
+  virtual: OverflowCheck (None, [Value 4], None)
+  virtual: Constant (Value 6, 10000)
+  virtual: Divide (Value 7, ModuloWord, Value 5, Value 6, [Value 5])
+  virtual: StoreVector (21, Value 7)
+  virtual: LoadVector (Value 8, 22)
+  virtual: Constant (Value 9, 1)
+  virtual: Binary (Value 10, AddWord, Value 8, Value 9)
+  virtual: PushMaths (Value 10)
+  allocated: Load (0, 22)
+  allocated: Pop 1
+  allocated: Spill (1, 0)
+  allocated: Arithmetic (MultiplyWord, 1, 0)
+  allocated: Check (Some 1, [RecoverySlot 0], None)
+  allocated: Arithmetic (MultiplyWord, 0, 1)
+  allocated: Check (Some 0, [RecoveryRegister 1], None)
+  allocated: Pop 1
+  allocated: Arithmetic (AddWord, 0, 1)
+  allocated: Check (None, [RecoveryRegister 1], None)
+  allocated: PositiveDivision (ModuloWord, 0, 10000)
+  allocated: Store (21, RecoveryRegister 0)
+  allocated: Load (0, 22)
+  allocated: ArithmeticImmediate (AddWord, 0, 1)
+  allocated: Push 0
+Block IR bytes 986..996: native bytes 14->14; spill slots=0
+  virtual: PopMaths (Value 0)
+  virtual: StoreVector (24, Value 0)
+  virtual: Constant (Value 1, 0)
+  virtual: PushMaths (Value 0)
+  virtual: PushMaths (Value 1)
+  allocated: Pop 0
+  allocated: Store (24, RecoveryRegister 0)
+  allocated: Push 0
+  allocated: Immediate (0, 0)
+  allocated: Push 0
+Block IR bytes 1084..1090: native bytes 18->18; spill slots=0
+  virtual: Constant (Value 0, 1)
+  virtual: PopMaths (Value 1)
+  virtual: Binary (Value 2, AddWord, Value 1, Value 0)
+  virtual: OverflowCheck (None, [Value 1], None)
+  virtual: PushMaths (Value 2)
+  allocated: Pop 0
+  allocated: Copy (1, 0)
+  allocated: ArithmeticImmediate (AddWord, 1, 1)
+  allocated: Check (None, [RecoveryRegister 0], None)
+  allocated: Push 1
+Block IR bytes 1094..1114: native bytes 68->46; spill slots=0
+  virtual: LoadVector (Value 0, 1)
+  virtual: LoadVector (Value 1, 21)
+  virtual: Binary (Value 2, AddWord, Value 0, Value 1)
+  virtual: OverflowCheck (None, [Value 0], None)
+  virtual: Constant (Value 3, 10000)
+  virtual: Divide (Value 4, ModuloWord, Value 2, Value 3, [Value 2])
+  virtual: StoreVector (1, Value 4)
+  allocated: Load (0, 1)
+  allocated: Load (1, 21)
+  allocated: Arithmetic (AddWord, 1, 0)
+  allocated: Check (None, [RecoveryRegister 0], None)
+  allocated: PositiveDivision (ModuloWord, 1, 10000)
+  allocated: Store (1, RecoveryRegister 1)
+Native integer FOR loops: selected=3; rejected=4; extra-stack=14 bytes
+Native FOR rejected at IR byte 162: counter vector=9; reasons=program contains binding/control barriers and no eligible HIR certificate; unsupported body opcode 236 at IR byte 162; matching threaded NEXT was not reached; NEXT is not followed by its end marker
+Native FOR rejected at IR byte 630: counter vector=17; reasons=program contains binding/control barriers and no eligible HIR certificate; unsupported body opcode 1111 at IR byte 670; matching threaded NEXT was not reached; NEXT is not followed by its end marker; integer maths stack is unbalanced
+Native FOR rejected at IR byte 878: counter vector=22; reasons=program contains binding/control barriers and no eligible HIR certificate; unsupported body opcode 1111 at IR byte 888; matching threaded NEXT was not reached; NEXT is not followed by its end marker; integer maths stack is unbalanced
+Native FOR rejected at IR byte 950: counter vector=23; reasons=program contains binding/control barriers and no eligible HIR certificate; unsupported body opcode 1111 at IR byte 956; matching threaded NEXT was not reached; NEXT is not followed by its end marker; integer maths stack is unbalanced
+Loop IR bytes 244..324: counter vector=4 in D2; captured END=D3, STEP=D4; literal STEP=Some(1); counter commit=exit/error; native bytes=212; spill slots=1; certified binding=True
+  conditional body: branches=1; parts=5; helper-stack=0 bytes
+  direct conditions: comparisons=1; integer truth=0; folded NOT=0; eager AND/OR=0
+  invariant array rows: retained=0; extra saves=0 bytes; initialization=first executed access
+  allocated-loop: LoadElement (7, false, 2, 0, [])
+  allocated-loop: Immediate (1, 9)
+  allocated-loop: Arithmetic (SubtractWord, 1, 2)
+  allocated-loop: LoadElement (7, false, 1, 1, [])
+  allocated-loop: CompareFlags (0, RecoveryRegister 1)
+  allocated-loop: Store (5, RecoveryImmediate 1)
+  allocated-loop: Load (0, 1)
+  allocated-loop: LoadElement (7, false, 2, 1, [])
+  allocated-loop: Spill (1, 0)
+  allocated-loop: Arithmetic (MultiplyWord, 1, 2)
+  allocated-loop: Check (Some 1, [RecoveryRegister 0; RecoverySlot 0], None)
+  allocated-loop: Arithmetic (AddWord, 1, 0)
+  allocated-loop: Check (None, [RecoveryRegister 0], None)
+  allocated-loop: PositiveDivision (ModuloWord, 1, 10000)
+  allocated-loop: Store (1, RecoveryRegister 1)
+Loop IR bytes 456..494: counter vector=14 in D2; captured END=D3, STEP=D4; literal STEP=Some(1); counter commit=exit/error; native bytes=86; spill slots=0; certified binding=True
+  invariant array rows: retained=0; extra saves=0 bytes; initialization=first executed access
+  allocated-loop: StoreElement (10, false, 2, RecoveryImmediate 0, [])
+  allocated-loop: StoreElement (3, false, 2, RecoveryImmediate 0, [])
+  allocated-loop: StoreElement (7, false, 2, RecoveryImmediate 0, [])
+Loop IR bytes 522..550: counter vector=14 in D2; captured END=D3, STEP=D4; literal STEP=Some(1); counter commit=exit/error; native bytes=72; spill slots=0; certified binding=True
+  invariant array rows: retained=0; extra saves=0 bytes; initialization=first executed access
+  allocated-loop: StoreElement (11, false, 2, RecoveryImmediate 0, [])
+  allocated-loop: StoreElement (6, false, 2, RecoveryImmediate 0, [])

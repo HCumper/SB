@@ -1,0 +1,8353 @@
+[
+  {
+    "CodeOffset": -258044,
+    "FetchWords": 0,
+    "Group": "QDOS host hook",
+    "Instructions": 1,
+    "Pc": 4100
+  },
+  {
+    "CodeOffset": -243194,
+    "FetchWords": 5152,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 18950
+  },
+  {
+    "CodeOffset": -243190,
+    "FetchWords": 2576,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 18954
+  },
+  {
+    "CodeOffset": -243188,
+    "FetchWords": 2576,
+    "Group": "QL ROM",
+    "Instructions": 1288,
+    "Pc": 18956
+  },
+  {
+    "CodeOffset": -243184,
+    "FetchWords": 1288,
+    "Group": "QL ROM",
+    "Instructions": 1288,
+    "Pc": 18960
+  },
+  {
+    "CodeOffset": -243182,
+    "FetchWords": 1288,
+    "Group": "QL ROM",
+    "Instructions": 1288,
+    "Pc": 18962
+  },
+  {
+    "CodeOffset": -243180,
+    "FetchWords": 1518,
+    "Group": "QL ROM",
+    "Instructions": 506,
+    "Pc": 18964
+  },
+  {
+    "CodeOffset": -243174,
+    "FetchWords": 506,
+    "Group": "QL ROM",
+    "Instructions": 506,
+    "Pc": 18970
+  },
+  {
+    "CodeOffset": -243156,
+    "FetchWords": 782,
+    "Group": "QL ROM",
+    "Instructions": 782,
+    "Pc": 18988
+  },
+  {
+    "CodeOffset": -243154,
+    "FetchWords": 1564,
+    "Group": "QL ROM",
+    "Instructions": 782,
+    "Pc": 18990
+  },
+  {
+    "CodeOffset": -243150,
+    "FetchWords": 2346,
+    "Group": "QL ROM",
+    "Instructions": 782,
+    "Pc": 18994
+  },
+  {
+    "CodeOffset": -243144,
+    "FetchWords": 782,
+    "Group": "QL ROM",
+    "Instructions": 782,
+    "Pc": 19000
+  },
+  {
+    "CodeOffset": -243134,
+    "FetchWords": 2576,
+    "Group": "QL ROM",
+    "Instructions": 1288,
+    "Pc": 19010
+  },
+  {
+    "CodeOffset": -243130,
+    "FetchWords": 2576,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 19014
+  },
+  {
+    "CodeOffset": -243128,
+    "FetchWords": 2576,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 19016
+  },
+  {
+    "CodeOffset": -242098,
+    "FetchWords": 2576,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 20046
+  },
+  {
+    "CodeOffset": -242096,
+    "FetchWords": 2576,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 20048
+  },
+  {
+    "CodeOffset": -242032,
+    "FetchWords": 2576,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 20112
+  },
+  {
+    "CodeOffset": -242030,
+    "FetchWords": 5152,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 20114
+  },
+  {
+    "CodeOffset": -242026,
+    "FetchWords": 5152,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 20118
+  },
+  {
+    "CodeOffset": -242022,
+    "FetchWords": 2576,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 20122
+  },
+  {
+    "CodeOffset": -242020,
+    "FetchWords": 2576,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 20124
+  },
+  {
+    "CodeOffset": -241950,
+    "FetchWords": 2576,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 20194
+  },
+  {
+    "CodeOffset": -239210,
+    "FetchWords": 2576,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 22934
+  },
+  {
+    "CodeOffset": -239208,
+    "FetchWords": 2576,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 22936
+  },
+  {
+    "CodeOffset": -239206,
+    "FetchWords": 2576,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 22938
+  },
+  {
+    "CodeOffset": -239204,
+    "FetchWords": 5152,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 22940
+  },
+  {
+    "CodeOffset": -239200,
+    "FetchWords": 2576,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 22944
+  },
+  {
+    "CodeOffset": -239198,
+    "FetchWords": 2576,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 22946
+  },
+  {
+    "CodeOffset": -239196,
+    "FetchWords": 2576,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 22948
+  },
+  {
+    "CodeOffset": -239194,
+    "FetchWords": 2576,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 22950
+  },
+  {
+    "CodeOffset": -239192,
+    "FetchWords": 2576,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 22952
+  },
+  {
+    "CodeOffset": -239094,
+    "FetchWords": 2576,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 23050
+  },
+  {
+    "CodeOffset": -239092,
+    "FetchWords": 2576,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 23052
+  },
+  {
+    "CodeOffset": -239090,
+    "FetchWords": 2576,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 23054
+  },
+  {
+    "CodeOffset": -239088,
+    "FetchWords": 5152,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 23056
+  },
+  {
+    "CodeOffset": -239084,
+    "FetchWords": 2576,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 23060
+  },
+  {
+    "CodeOffset": -239082,
+    "FetchWords": 2576,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 23062
+  },
+  {
+    "CodeOffset": -239080,
+    "FetchWords": 5152,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 23064
+  },
+  {
+    "CodeOffset": -239076,
+    "FetchWords": 2576,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 23068
+  },
+  {
+    "CodeOffset": -239074,
+    "FetchWords": 2576,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 23070
+  },
+  {
+    "CodeOffset": -237880,
+    "FetchWords": 7728,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 24264
+  },
+  {
+    "CodeOffset": -237874,
+    "FetchWords": 5152,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 24270
+  },
+  {
+    "CodeOffset": -237870,
+    "FetchWords": 2576,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 24274
+  },
+  {
+    "CodeOffset": -237868,
+    "FetchWords": 2576,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 24276
+  },
+  {
+    "CodeOffset": -237866,
+    "FetchWords": 5152,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 24278
+  },
+  {
+    "CodeOffset": -237644,
+    "FetchWords": 5152,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 24500
+  },
+  {
+    "CodeOffset": -237640,
+    "FetchWords": 2576,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 24504
+  },
+  {
+    "CodeOffset": -237638,
+    "FetchWords": 2576,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 24506
+  },
+  {
+    "CodeOffset": -237114,
+    "FetchWords": 2576,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 25030
+  },
+  {
+    "CodeOffset": -237112,
+    "FetchWords": 2576,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 25032
+  },
+  {
+    "CodeOffset": -237108,
+    "FetchWords": 2576,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 25036
+  },
+  {
+    "CodeOffset": -237106,
+    "FetchWords": 2576,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 25038
+  },
+  {
+    "CodeOffset": -237104,
+    "FetchWords": 2576,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 25040
+  },
+  {
+    "CodeOffset": -237100,
+    "FetchWords": 2576,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 25044
+  },
+  {
+    "CodeOffset": -237090,
+    "FetchWords": 2576,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 25054
+  },
+  {
+    "CodeOffset": -237088,
+    "FetchWords": 2576,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 25056
+  },
+  {
+    "CodeOffset": -237082,
+    "FetchWords": 5152,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 25062
+  },
+  {
+    "CodeOffset": -237078,
+    "FetchWords": 2576,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 25066
+  },
+  {
+    "CodeOffset": -237076,
+    "FetchWords": 2576,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 25068
+  },
+  {
+    "CodeOffset": -237074,
+    "FetchWords": 2576,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 25070
+  },
+  {
+    "CodeOffset": -237072,
+    "FetchWords": 10304,
+    "Group": "QL ROM",
+    "Instructions": 5152,
+    "Pc": 25072
+  },
+  {
+    "CodeOffset": -237068,
+    "FetchWords": 5152,
+    "Group": "QL ROM",
+    "Instructions": 5152,
+    "Pc": 25076
+  },
+  {
+    "CodeOffset": -237066,
+    "FetchWords": 2576,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 25078
+  },
+  {
+    "CodeOffset": -237064,
+    "FetchWords": 5152,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 25080
+  },
+  {
+    "CodeOffset": -237060,
+    "FetchWords": 5152,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 25084
+  },
+  {
+    "CodeOffset": -237056,
+    "FetchWords": 5152,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 25088
+  },
+  {
+    "CodeOffset": -237052,
+    "FetchWords": 2576,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 25092
+  },
+  {
+    "CodeOffset": -237050,
+    "FetchWords": 2576,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 25094
+  },
+  {
+    "CodeOffset": -237048,
+    "FetchWords": 5152,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 25096
+  },
+  {
+    "CodeOffset": -237044,
+    "FetchWords": 5152,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 25100
+  },
+  {
+    "CodeOffset": -237040,
+    "FetchWords": 2576,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 25104
+  },
+  {
+    "CodeOffset": -237038,
+    "FetchWords": 2576,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 25106
+  },
+  {
+    "CodeOffset": -237036,
+    "FetchWords": 2576,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 25108
+  },
+  {
+    "CodeOffset": -237034,
+    "FetchWords": 2576,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 25110
+  },
+  {
+    "CodeOffset": -237022,
+    "FetchWords": 2576,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 25122
+  },
+  {
+    "CodeOffset": -237020,
+    "FetchWords": 2576,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 25124
+  },
+  {
+    "CodeOffset": -237018,
+    "FetchWords": 2576,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 25126
+  },
+  {
+    "CodeOffset": -237016,
+    "FetchWords": 2576,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 25128
+  },
+  {
+    "CodeOffset": -237014,
+    "FetchWords": 2576,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 25130
+  },
+  {
+    "CodeOffset": -237012,
+    "FetchWords": 2576,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 25132
+  },
+  {
+    "CodeOffset": -237010,
+    "FetchWords": 2576,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 25134
+  },
+  {
+    "CodeOffset": -237008,
+    "FetchWords": 5152,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 25136
+  },
+  {
+    "CodeOffset": -237004,
+    "FetchWords": 2576,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 25140
+  },
+  {
+    "CodeOffset": -237002,
+    "FetchWords": 2576,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 25142
+  },
+  {
+    "CodeOffset": -229182,
+    "FetchWords": 5152,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 32962
+  },
+  {
+    "CodeOffset": -229178,
+    "FetchWords": 5152,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 32966
+  },
+  {
+    "CodeOffset": -229174,
+    "FetchWords": 2576,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 32970
+  },
+  {
+    "CodeOffset": -229172,
+    "FetchWords": 2576,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 32972
+  },
+  {
+    "CodeOffset": -229170,
+    "FetchWords": 5152,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 32974
+  },
+  {
+    "CodeOffset": -229166,
+    "FetchWords": 5152,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 32978
+  },
+  {
+    "CodeOffset": -229162,
+    "FetchWords": 2576,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 32982
+  },
+  {
+    "CodeOffset": -229160,
+    "FetchWords": 2576,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 32984
+  },
+  {
+    "CodeOffset": -229158,
+    "FetchWords": 5152,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 32986
+  },
+  {
+    "CodeOffset": -229154,
+    "FetchWords": 2576,
+    "Group": "QL ROM",
+    "Instructions": 2576,
+    "Pc": 32990
+  },
+  {
+    "CodeOffset": 0,
+    "FetchWords": 1,
+    "Group": "runtime:entry_routine",
+    "Instructions": 1,
+    "Pc": 262144
+  },
+  {
+    "CodeOffset": 72,
+    "FetchWords": 1,
+    "Group": "runtime:initiali",
+    "Instructions": 1,
+    "Pc": 262216
+  },
+  {
+    "CodeOffset": 136,
+    "FetchWords": 2,
+    "Group": "runtime:initialise",
+    "Instructions": 1,
+    "Pc": 262280
+  },
+  {
+    "CodeOffset": 140,
+    "FetchWords": 1,
+    "Group": "runtime:initialise",
+    "Instructions": 1,
+    "Pc": 262284
+  },
+  {
+    "CodeOffset": 142,
+    "FetchWords": 1,
+    "Group": "runtime:initialise",
+    "Instructions": 1,
+    "Pc": 262286
+  },
+  {
+    "CodeOffset": 144,
+    "FetchWords": 1,
+    "Group": "runtime:initialise",
+    "Instructions": 1,
+    "Pc": 262288
+  },
+  {
+    "CodeOffset": 146,
+    "FetchWords": 1,
+    "Group": "runtime:initialise",
+    "Instructions": 1,
+    "Pc": 262290
+  },
+  {
+    "CodeOffset": 148,
+    "FetchWords": 1,
+    "Group": "runtime:initialise",
+    "Instructions": 1,
+    "Pc": 262292
+  },
+  {
+    "CodeOffset": 158,
+    "FetchWords": 1,
+    "Group": "runtime:init2",
+    "Instructions": 1,
+    "Pc": 262302
+  },
+  {
+    "CodeOffset": 160,
+    "FetchWords": 1,
+    "Group": "runtime:init2",
+    "Instructions": 1,
+    "Pc": 262304
+  },
+  {
+    "CodeOffset": 162,
+    "FetchWords": 1,
+    "Group": "runtime:init1",
+    "Instructions": 1,
+    "Pc": 262306
+  },
+  {
+    "CodeOffset": 164,
+    "FetchWords": 1,
+    "Group": "runtime:init1",
+    "Instructions": 1,
+    "Pc": 262308
+  },
+  {
+    "CodeOffset": 166,
+    "FetchWords": 2,
+    "Group": "runtime:init1",
+    "Instructions": 1,
+    "Pc": 262310
+  },
+  {
+    "CodeOffset": 170,
+    "FetchWords": 1,
+    "Group": "runtime:init1",
+    "Instructions": 1,
+    "Pc": 262314
+  },
+  {
+    "CodeOffset": 172,
+    "FetchWords": 1,
+    "Group": "runtime:init1",
+    "Instructions": 1,
+    "Pc": 262316
+  },
+  {
+    "CodeOffset": 174,
+    "FetchWords": 1,
+    "Group": "runtime:init1",
+    "Instructions": 1,
+    "Pc": 262318
+  },
+  {
+    "CodeOffset": 176,
+    "FetchWords": 3,
+    "Group": "runtime:init1",
+    "Instructions": 1,
+    "Pc": 262320
+  },
+  {
+    "CodeOffset": 182,
+    "FetchWords": 1,
+    "Group": "runtime:init1",
+    "Instructions": 1,
+    "Pc": 262326
+  },
+  {
+    "CodeOffset": 184,
+    "FetchWords": 2,
+    "Group": "runtime:init1",
+    "Instructions": 1,
+    "Pc": 262328
+  },
+  {
+    "CodeOffset": 188,
+    "FetchWords": 1,
+    "Group": "runtime:init1",
+    "Instructions": 1,
+    "Pc": 262332
+  },
+  {
+    "CodeOffset": 190,
+    "FetchWords": 2,
+    "Group": "runtime:init1",
+    "Instructions": 1,
+    "Pc": 262334
+  },
+  {
+    "CodeOffset": 194,
+    "FetchWords": 1,
+    "Group": "runtime:init1",
+    "Instructions": 1,
+    "Pc": 262338
+  },
+  {
+    "CodeOffset": 196,
+    "FetchWords": 2,
+    "Group": "runtime:init1",
+    "Instructions": 1,
+    "Pc": 262340
+  },
+  {
+    "CodeOffset": 200,
+    "FetchWords": 2,
+    "Group": "runtime:init1",
+    "Instructions": 1,
+    "Pc": 262344
+  },
+  {
+    "CodeOffset": 204,
+    "FetchWords": 1,
+    "Group": "runtime:init1",
+    "Instructions": 1,
+    "Pc": 262348
+  },
+  {
+    "CodeOffset": 218,
+    "FetchWords": 1,
+    "Group": "runtime:init3",
+    "Instructions": 1,
+    "Pc": 262362
+  },
+  {
+    "CodeOffset": 220,
+    "FetchWords": 2,
+    "Group": "runtime:init3",
+    "Instructions": 1,
+    "Pc": 262364
+  },
+  {
+    "CodeOffset": 224,
+    "FetchWords": 2,
+    "Group": "runtime:init3",
+    "Instructions": 1,
+    "Pc": 262368
+  },
+  {
+    "CodeOffset": 228,
+    "FetchWords": 2,
+    "Group": "runtime:init3",
+    "Instructions": 1,
+    "Pc": 262372
+  },
+  {
+    "CodeOffset": 232,
+    "FetchWords": 1,
+    "Group": "runtime:init3",
+    "Instructions": 1,
+    "Pc": 262376
+  },
+  {
+    "CodeOffset": 234,
+    "FetchWords": 1,
+    "Group": "runtime:init3",
+    "Instructions": 1,
+    "Pc": 262378
+  },
+  {
+    "CodeOffset": 236,
+    "FetchWords": 1,
+    "Group": "runtime:init3",
+    "Instructions": 1,
+    "Pc": 262380
+  },
+  {
+    "CodeOffset": 238,
+    "FetchWords": 2,
+    "Group": "runtime:init3",
+    "Instructions": 1,
+    "Pc": 262382
+  },
+  {
+    "CodeOffset": 242,
+    "FetchWords": 1,
+    "Group": "runtime:init3",
+    "Instructions": 1,
+    "Pc": 262386
+  },
+  {
+    "CodeOffset": 244,
+    "FetchWords": 1,
+    "Group": "runtime:init3",
+    "Instructions": 1,
+    "Pc": 262388
+  },
+  {
+    "CodeOffset": 246,
+    "FetchWords": 2,
+    "Group": "runtime:init3",
+    "Instructions": 1,
+    "Pc": 262390
+  },
+  {
+    "CodeOffset": 250,
+    "FetchWords": 1,
+    "Group": "runtime:init3",
+    "Instructions": 1,
+    "Pc": 262394
+  },
+  {
+    "CodeOffset": 258,
+    "FetchWords": 62,
+    "Group": "runtime:conn_pipes",
+    "Instructions": 31,
+    "Pc": 262402
+  },
+  {
+    "CodeOffset": 262,
+    "FetchWords": 31,
+    "Group": "runtime:conn_pipes",
+    "Instructions": 31,
+    "Pc": 262406
+  },
+  {
+    "CodeOffset": 264,
+    "FetchWords": 31,
+    "Group": "runtime:conn_pipes",
+    "Instructions": 31,
+    "Pc": 262408
+  },
+  {
+    "CodeOffset": 266,
+    "FetchWords": 31,
+    "Group": "runtime:conn_pipes",
+    "Instructions": 31,
+    "Pc": 262410
+  },
+  {
+    "CodeOffset": 268,
+    "FetchWords": 2,
+    "Group": "runtime:no_pipes",
+    "Instructions": 1,
+    "Pc": 262412
+  },
+  {
+    "CodeOffset": 272,
+    "FetchWords": 1,
+    "Group": "runtime:no_pipes",
+    "Instructions": 1,
+    "Pc": 262416
+  },
+  {
+    "CodeOffset": 274,
+    "FetchWords": 23,
+    "Group": "runtime:check_id",
+    "Instructions": 23,
+    "Pc": 262418
+  },
+  {
+    "CodeOffset": 276,
+    "FetchWords": 23,
+    "Group": "runtime:check_id",
+    "Instructions": 23,
+    "Pc": 262420
+  },
+  {
+    "CodeOffset": 278,
+    "FetchWords": 46,
+    "Group": "runtime:check_id",
+    "Instructions": 23,
+    "Pc": 262422
+  },
+  {
+    "CodeOffset": 282,
+    "FetchWords": 2,
+    "Group": "runtime:check_id",
+    "Instructions": 1,
+    "Pc": 262426
+  },
+  {
+    "CodeOffset": 286,
+    "FetchWords": 2,
+    "Group": "runtime:check_id",
+    "Instructions": 1,
+    "Pc": 262430
+  },
+  {
+    "CodeOffset": 290,
+    "FetchWords": 2,
+    "Group": "runtime:check_id",
+    "Instructions": 1,
+    "Pc": 262434
+  },
+  {
+    "CodeOffset": 294,
+    "FetchWords": 2,
+    "Group": "runtime:check_id",
+    "Instructions": 1,
+    "Pc": 262438
+  },
+  {
+    "CodeOffset": 298,
+    "FetchWords": 1,
+    "Group": "runtime:check_id",
+    "Instructions": 1,
+    "Pc": 262442
+  },
+  {
+    "CodeOffset": 306,
+    "FetchWords": 1,
+    "Group": "runtime:link_names",
+    "Instructions": 1,
+    "Pc": 262450
+  },
+  {
+    "CodeOffset": 308,
+    "FetchWords": 2,
+    "Group": "runtime:link_names",
+    "Instructions": 1,
+    "Pc": 262452
+  },
+  {
+    "CodeOffset": 312,
+    "FetchWords": 1,
+    "Group": "runtime:link_names",
+    "Instructions": 1,
+    "Pc": 262456
+  },
+  {
+    "CodeOffset": 314,
+    "FetchWords": 1,
+    "Group": "runtime:link_names",
+    "Instructions": 1,
+    "Pc": 262458
+  },
+  {
+    "CodeOffset": 316,
+    "FetchWords": 3,
+    "Group": "runtime:link_names",
+    "Instructions": 1,
+    "Pc": 262460
+  },
+  {
+    "CodeOffset": 322,
+    "FetchWords": 1,
+    "Group": "runtime:link_names",
+    "Instructions": 1,
+    "Pc": 262466
+  },
+  {
+    "CodeOffset": 324,
+    "FetchWords": 1,
+    "Group": "runtime:link_names",
+    "Instructions": 1,
+    "Pc": 262468
+  },
+  {
+    "CodeOffset": 326,
+    "FetchWords": 1,
+    "Group": "runtime:link_names",
+    "Instructions": 1,
+    "Pc": 262470
+  },
+  {
+    "CodeOffset": 328,
+    "FetchWords": 1,
+    "Group": "runtime:link_names",
+    "Instructions": 1,
+    "Pc": 262472
+  },
+  {
+    "CodeOffset": 330,
+    "FetchWords": 2,
+    "Group": "runtime:link_names",
+    "Instructions": 1,
+    "Pc": 262474
+  },
+  {
+    "CodeOffset": 334,
+    "FetchWords": 2,
+    "Group": "runtime:link_names",
+    "Instructions": 1,
+    "Pc": 262478
+  },
+  {
+    "CodeOffset": 338,
+    "FetchWords": 2,
+    "Group": "runtime:link_names",
+    "Instructions": 1,
+    "Pc": 262482
+  },
+  {
+    "CodeOffset": 342,
+    "FetchWords": 1,
+    "Group": "runtime:link_names",
+    "Instructions": 1,
+    "Pc": 262486
+  },
+  {
+    "CodeOffset": 344,
+    "FetchWords": 3848,
+    "Group": "runtime:ex_2",
+    "Instructions": 1924,
+    "Pc": 262488
+  },
+  {
+    "CodeOffset": 348,
+    "FetchWords": 1924,
+    "Group": "runtime:ex_2",
+    "Instructions": 1924,
+    "Pc": 262492
+  },
+  {
+    "CodeOffset": 350,
+    "FetchWords": 1924,
+    "Group": "runtime:ex_2",
+    "Instructions": 1924,
+    "Pc": 262494
+  },
+  {
+    "CodeOffset": 352,
+    "FetchWords": 1924,
+    "Group": "runtime:ex_2",
+    "Instructions": 1924,
+    "Pc": 262496
+  },
+  {
+    "CodeOffset": 354,
+    "FetchWords": 1,
+    "Group": "runtime:ex_2",
+    "Instructions": 1,
+    "Pc": 262498
+  },
+  {
+    "CodeOffset": 372,
+    "FetchWords": 2,
+    "Group": "runtime:next_name1",
+    "Instructions": 1,
+    "Pc": 262516
+  },
+  {
+    "CodeOffset": 376,
+    "FetchWords": 1,
+    "Group": "runtime:next_name1",
+    "Instructions": 1,
+    "Pc": 262520
+  },
+  {
+    "CodeOffset": 378,
+    "FetchWords": 1,
+    "Group": "runtime:next_name1",
+    "Instructions": 1,
+    "Pc": 262522
+  },
+  {
+    "CodeOffset": 380,
+    "FetchWords": 1,
+    "Group": "runtime:next_name1",
+    "Instructions": 1,
+    "Pc": 262524
+  },
+  {
+    "CodeOffset": 382,
+    "FetchWords": 1,
+    "Group": "runtime:next_name1",
+    "Instructions": 1,
+    "Pc": 262526
+  },
+  {
+    "CodeOffset": 384,
+    "FetchWords": 2,
+    "Group": "runtime:next_name",
+    "Instructions": 2,
+    "Pc": 262528
+  },
+  {
+    "CodeOffset": 386,
+    "FetchWords": 2,
+    "Group": "runtime:next_name",
+    "Instructions": 2,
+    "Pc": 262530
+  },
+  {
+    "CodeOffset": 388,
+    "FetchWords": 2,
+    "Group": "runtime:next_name",
+    "Instructions": 1,
+    "Pc": 262532
+  },
+  {
+    "CodeOffset": 392,
+    "FetchWords": 1,
+    "Group": "runtime:next_name",
+    "Instructions": 1,
+    "Pc": 262536
+  },
+  {
+    "CodeOffset": 394,
+    "FetchWords": 2,
+    "Group": "runtime:next_name",
+    "Instructions": 1,
+    "Pc": 262538
+  },
+  {
+    "CodeOffset": 398,
+    "FetchWords": 2,
+    "Group": "runtime:next_name",
+    "Instructions": 1,
+    "Pc": 262542
+  },
+  {
+    "CodeOffset": 402,
+    "FetchWords": 2,
+    "Group": "runtime:next_name",
+    "Instructions": 1,
+    "Pc": 262546
+  },
+  {
+    "CodeOffset": 406,
+    "FetchWords": 2,
+    "Group": "runtime:next_name",
+    "Instructions": 1,
+    "Pc": 262550
+  },
+  {
+    "CodeOffset": 410,
+    "FetchWords": 1,
+    "Group": "runtime:valid_num",
+    "Instructions": 1,
+    "Pc": 262554
+  },
+  {
+    "CodeOffset": 412,
+    "FetchWords": 2,
+    "Group": "runtime:valid_num",
+    "Instructions": 1,
+    "Pc": 262556
+  },
+  {
+    "CodeOffset": 416,
+    "FetchWords": 1,
+    "Group": "runtime:valid_num",
+    "Instructions": 1,
+    "Pc": 262560
+  },
+  {
+    "CodeOffset": 418,
+    "FetchWords": 1,
+    "Group": "runtime:valid_num1",
+    "Instructions": 1,
+    "Pc": 262562
+  },
+  {
+    "CodeOffset": 420,
+    "FetchWords": 2,
+    "Group": "runtime:valid_num1",
+    "Instructions": 1,
+    "Pc": 262564
+  },
+  {
+    "CodeOffset": 424,
+    "FetchWords": 2,
+    "Group": "runtime:valid_num1",
+    "Instructions": 1,
+    "Pc": 262568
+  },
+  {
+    "CodeOffset": 428,
+    "FetchWords": 2,
+    "Group": "runtime:valid_num1",
+    "Instructions": 1,
+    "Pc": 262572
+  },
+  {
+    "CodeOffset": 432,
+    "FetchWords": 1,
+    "Group": "runtime:valid_num1",
+    "Instructions": 1,
+    "Pc": 262576
+  },
+  {
+    "CodeOffset": 434,
+    "FetchWords": 2,
+    "Group": "runtime:valid_num1",
+    "Instructions": 1,
+    "Pc": 262578
+  },
+  {
+    "CodeOffset": 438,
+    "FetchWords": 1,
+    "Group": "runtime:valid_num1",
+    "Instructions": 1,
+    "Pc": 262582
+  },
+  {
+    "CodeOffset": 440,
+    "FetchWords": 1,
+    "Group": "runtime:try_name",
+    "Instructions": 1,
+    "Pc": 262584
+  },
+  {
+    "CodeOffset": 442,
+    "FetchWords": 2,
+    "Group": "runtime:try_name",
+    "Instructions": 1,
+    "Pc": 262586
+  },
+  {
+    "CodeOffset": 446,
+    "FetchWords": 1,
+    "Group": "runtime:try_name",
+    "Instructions": 1,
+    "Pc": 262590
+  },
+  {
+    "CodeOffset": 448,
+    "FetchWords": 2,
+    "Group": "runtime:try_name",
+    "Instructions": 1,
+    "Pc": 262592
+  },
+  {
+    "CodeOffset": 452,
+    "FetchWords": 1,
+    "Group": "runtime:try_name",
+    "Instructions": 1,
+    "Pc": 262596
+  },
+  {
+    "CodeOffset": 454,
+    "FetchWords": 4,
+    "Group": "runtime:check_a_byte",
+    "Instructions": 4,
+    "Pc": 262598
+  },
+  {
+    "CodeOffset": 456,
+    "FetchWords": 8,
+    "Group": "runtime:check_a_byte",
+    "Instructions": 4,
+    "Pc": 262600
+  },
+  {
+    "CodeOffset": 460,
+    "FetchWords": 1,
+    "Group": "runtime:check_a_byte",
+    "Instructions": 1,
+    "Pc": 262604
+  },
+  {
+    "CodeOffset": 476,
+    "FetchWords": 1,
+    "Group": "runtime:matched",
+    "Instructions": 1,
+    "Pc": 262620
+  },
+  {
+    "CodeOffset": 478,
+    "FetchWords": 1,
+    "Group": "runtime:matched",
+    "Instructions": 1,
+    "Pc": 262622
+  },
+  {
+    "CodeOffset": 480,
+    "FetchWords": 3,
+    "Group": "runtime:matched",
+    "Instructions": 1,
+    "Pc": 262624
+  },
+  {
+    "CodeOffset": 486,
+    "FetchWords": 1,
+    "Group": "runtime:matched",
+    "Instructions": 1,
+    "Pc": 262630
+  },
+  {
+    "CodeOffset": 496,
+    "FetchWords": 1,
+    "Group": "runtime:type_ok",
+    "Instructions": 1,
+    "Pc": 262640
+  },
+  {
+    "CodeOffset": 498,
+    "FetchWords": 3,
+    "Group": "runtime:type_ok",
+    "Instructions": 1,
+    "Pc": 262642
+  },
+  {
+    "CodeOffset": 504,
+    "FetchWords": 1,
+    "Group": "runtime:find_next",
+    "Instructions": 1,
+    "Pc": 262648
+  },
+  {
+    "CodeOffset": 506,
+    "FetchWords": 2,
+    "Group": "runtime:find_next",
+    "Instructions": 1,
+    "Pc": 262650
+  },
+  {
+    "CodeOffset": 510,
+    "FetchWords": 1,
+    "Group": "runtime:find_next",
+    "Instructions": 1,
+    "Pc": 262654
+  },
+  {
+    "CodeOffset": 732,
+    "FetchWords": 2,
+    "Group": "runtime:ex_5",
+    "Instructions": 1,
+    "Pc": 262876
+  },
+  {
+    "CodeOffset": 736,
+    "FetchWords": 1,
+    "Group": "runtime:ex_5",
+    "Instructions": 1,
+    "Pc": 262880
+  },
+  {
+    "CodeOffset": 774,
+    "FetchWords": 2,
+    "Group": "runtime:set_sysvars",
+    "Instructions": 1,
+    "Pc": 262918
+  },
+  {
+    "CodeOffset": 778,
+    "FetchWords": 1,
+    "Group": "runtime:set_sysvars",
+    "Instructions": 1,
+    "Pc": 262922
+  },
+  {
+    "CodeOffset": 780,
+    "FetchWords": 1,
+    "Group": "runtime:set_sysvars",
+    "Instructions": 1,
+    "Pc": 262924
+  },
+  {
+    "CodeOffset": 782,
+    "FetchWords": 64,
+    "Group": "runtime:clear_sys",
+    "Instructions": 64,
+    "Pc": 262926
+  },
+  {
+    "CodeOffset": 784,
+    "FetchWords": 128,
+    "Group": "runtime:clear_sys",
+    "Instructions": 64,
+    "Pc": 262928
+  },
+  {
+    "CodeOffset": 788,
+    "FetchWords": 2,
+    "Group": "runtime:clear_sys",
+    "Instructions": 1,
+    "Pc": 262932
+  },
+  {
+    "CodeOffset": 792,
+    "FetchWords": 1,
+    "Group": "runtime:clear_sys",
+    "Instructions": 1,
+    "Pc": 262936
+  },
+  {
+    "CodeOffset": 794,
+    "FetchWords": 1,
+    "Group": "runtime:clear_sys",
+    "Instructions": 1,
+    "Pc": 262938
+  },
+  {
+    "CodeOffset": 796,
+    "FetchWords": 1,
+    "Group": "runtime:clear_sys",
+    "Instructions": 1,
+    "Pc": 262940
+  },
+  {
+    "CodeOffset": 804,
+    "FetchWords": 4,
+    "Group": "runtime:point_chans",
+    "Instructions": 1,
+    "Pc": 262948
+  },
+  {
+    "CodeOffset": 812,
+    "FetchWords": 4,
+    "Group": "runtime:point_chans",
+    "Instructions": 1,
+    "Pc": 262956
+  },
+  {
+    "CodeOffset": 820,
+    "FetchWords": 1,
+    "Group": "runtime:point_chans",
+    "Instructions": 1,
+    "Pc": 262964
+  },
+  {
+    "CodeOffset": 822,
+    "FetchWords": 1,
+    "Group": "runtime:point_chans",
+    "Instructions": 1,
+    "Pc": 262966
+  },
+  {
+    "CodeOffset": 824,
+    "FetchWords": 2,
+    "Group": "runtime:point_chans",
+    "Instructions": 1,
+    "Pc": 262968
+  },
+  {
+    "CodeOffset": 828,
+    "FetchWords": 2,
+    "Group": "runtime:point_chans",
+    "Instructions": 1,
+    "Pc": 262972
+  },
+  {
+    "CodeOffset": 832,
+    "FetchWords": 2,
+    "Group": "runtime:point_chans",
+    "Instructions": 1,
+    "Pc": 262976
+  },
+  {
+    "CodeOffset": 836,
+    "FetchWords": 1,
+    "Group": "runtime:point_chans",
+    "Instructions": 1,
+    "Pc": 262980
+  },
+  {
+    "CodeOffset": 838,
+    "FetchWords": 1,
+    "Group": "runtime:point_chans",
+    "Instructions": 1,
+    "Pc": 262982
+  },
+  {
+    "CodeOffset": 854,
+    "FetchWords": 1,
+    "Group": "runtime:not_pe",
+    "Instructions": 1,
+    "Pc": 262998
+  },
+  {
+    "CodeOffset": 856,
+    "FetchWords": 12066,
+    "Group": "runtime:go_slow",
+    "Instructions": 12066,
+    "Pc": 263000
+  },
+  {
+    "CodeOffset": 858,
+    "FetchWords": 12066,
+    "Group": "runtime:go_slow",
+    "Instructions": 12066,
+    "Pc": 263002
+  },
+  {
+    "CodeOffset": 868,
+    "FetchWords": 3,
+    "Group": "runtime:p_to_p_short",
+    "Instructions": 3,
+    "Pc": 263012
+  },
+  {
+    "CodeOffset": 870,
+    "FetchWords": 3,
+    "Group": "runtime:p_to_p_short",
+    "Instructions": 3,
+    "Pc": 263014
+  },
+  {
+    "CodeOffset": 872,
+    "FetchWords": 14219,
+    "Group": "runtime:interpreter",
+    "Instructions": 14219,
+    "Pc": 263016
+  },
+  {
+    "CodeOffset": 874,
+    "FetchWords": 28438,
+    "Group": "runtime:interpreter",
+    "Instructions": 14219,
+    "Pc": 263018
+  },
+  {
+    "CodeOffset": 884,
+    "FetchWords": 1,
+    "Group": "runtime:ope_erch",
+    "Instructions": 1,
+    "Pc": 263028
+  },
+  {
+    "CodeOffset": 886,
+    "FetchWords": 1,
+    "Group": "runtime:ope_erch",
+    "Instructions": 1,
+    "Pc": 263030
+  },
+  {
+    "CodeOffset": 888,
+    "FetchWords": 2,
+    "Group": "runtime:ope_erch",
+    "Instructions": 1,
+    "Pc": 263032
+  },
+  {
+    "CodeOffset": 892,
+    "FetchWords": 1,
+    "Group": "runtime:ope_erch",
+    "Instructions": 1,
+    "Pc": 263036
+  },
+  {
+    "CodeOffset": 894,
+    "FetchWords": 1,
+    "Group": "runtime:ope_erch",
+    "Instructions": 1,
+    "Pc": 263038
+  },
+  {
+    "CodeOffset": 896,
+    "FetchWords": 1,
+    "Group": "runtime:ope_erch",
+    "Instructions": 1,
+    "Pc": 263040
+  },
+  {
+    "CodeOffset": 898,
+    "FetchWords": 2,
+    "Group": "runtime:ope_erch",
+    "Instructions": 1,
+    "Pc": 263042
+  },
+  {
+    "CodeOffset": 902,
+    "FetchWords": 1,
+    "Group": "runtime:ope_erch",
+    "Instructions": 1,
+    "Pc": 263046
+  },
+  {
+    "CodeOffset": 1320,
+    "FetchWords": 2576,
+    "Group": "runtime:thread_rom_fn",
+    "Instructions": 2576,
+    "Pc": 263464
+  },
+  {
+    "CodeOffset": 1322,
+    "FetchWords": 2576,
+    "Group": "runtime:thread_rom_fn",
+    "Instructions": 2576,
+    "Pc": 263466
+  },
+  {
+    "CodeOffset": 1324,
+    "FetchWords": 2576,
+    "Group": "runtime:thread_rom_fn",
+    "Instructions": 2576,
+    "Pc": 263468
+  },
+  {
+    "CodeOffset": 1330,
+    "FetchWords": 2576,
+    "Group": "runtime:got_param_ptr",
+    "Instructions": 2576,
+    "Pc": 263474
+  },
+  {
+    "CodeOffset": 1332,
+    "FetchWords": 2576,
+    "Group": "runtime:got_param_ptr",
+    "Instructions": 2576,
+    "Pc": 263476
+  },
+  {
+    "CodeOffset": 1334,
+    "FetchWords": 2576,
+    "Group": "runtime:got_param_ptr",
+    "Instructions": 2576,
+    "Pc": 263478
+  },
+  {
+    "CodeOffset": 1336,
+    "FetchWords": 2576,
+    "Group": "runtime:got_param_ptr",
+    "Instructions": 2576,
+    "Pc": 263480
+  },
+  {
+    "CodeOffset": 1338,
+    "FetchWords": 2576,
+    "Group": "runtime:got_param_ptr",
+    "Instructions": 2576,
+    "Pc": 263482
+  },
+  {
+    "CodeOffset": 1340,
+    "FetchWords": 5152,
+    "Group": "runtime:got_param_ptr",
+    "Instructions": 2576,
+    "Pc": 263484
+  },
+  {
+    "CodeOffset": 1344,
+    "FetchWords": 2576,
+    "Group": "runtime:got_param_ptr",
+    "Instructions": 2576,
+    "Pc": 263488
+  },
+  {
+    "CodeOffset": 1348,
+    "FetchWords": 2576,
+    "Group": "runtime:heap_even",
+    "Instructions": 2576,
+    "Pc": 263492
+  },
+  {
+    "CodeOffset": 1350,
+    "FetchWords": 2576,
+    "Group": "runtime:heap_even",
+    "Instructions": 2576,
+    "Pc": 263494
+  },
+  {
+    "CodeOffset": 1352,
+    "FetchWords": 2576,
+    "Group": "runtime:heap_even",
+    "Instructions": 2576,
+    "Pc": 263496
+  },
+  {
+    "CodeOffset": 1354,
+    "FetchWords": 2576,
+    "Group": "runtime:heap_even",
+    "Instructions": 2576,
+    "Pc": 263498
+  },
+  {
+    "CodeOffset": 1356,
+    "FetchWords": 2576,
+    "Group": "runtime:heap_even",
+    "Instructions": 2576,
+    "Pc": 263500
+  },
+  {
+    "CodeOffset": 1358,
+    "FetchWords": 5152,
+    "Group": "runtime:heap_even",
+    "Instructions": 2576,
+    "Pc": 263502
+  },
+  {
+    "CodeOffset": 1362,
+    "FetchWords": 2576,
+    "Group": "runtime:heap_even",
+    "Instructions": 2576,
+    "Pc": 263506
+  },
+  {
+    "CodeOffset": 1364,
+    "FetchWords": 2576,
+    "Group": "runtime:heap_even",
+    "Instructions": 2576,
+    "Pc": 263508
+  },
+  {
+    "CodeOffset": 1370,
+    "FetchWords": 2576,
+    "Group": "runtime:heap_even",
+    "Instructions": 2576,
+    "Pc": 263514
+  },
+  {
+    "CodeOffset": 1372,
+    "FetchWords": 2576,
+    "Group": "runtime:heap_even",
+    "Instructions": 2576,
+    "Pc": 263516
+  },
+  {
+    "CodeOffset": 1374,
+    "FetchWords": 5152,
+    "Group": "runtime:heap_even",
+    "Instructions": 2576,
+    "Pc": 263518
+  },
+  {
+    "CodeOffset": 1378,
+    "FetchWords": 2576,
+    "Group": "runtime:heap_even",
+    "Instructions": 2576,
+    "Pc": 263522
+  },
+  {
+    "CodeOffset": 1380,
+    "FetchWords": 2576,
+    "Group": "runtime:heap_even",
+    "Instructions": 2576,
+    "Pc": 263524
+  },
+  {
+    "CodeOffset": 1382,
+    "FetchWords": 2576,
+    "Group": "runtime:heap_even",
+    "Instructions": 2576,
+    "Pc": 263526
+  },
+  {
+    "CodeOffset": 1384,
+    "FetchWords": 5152,
+    "Group": "runtime:heap_even",
+    "Instructions": 2576,
+    "Pc": 263528
+  },
+  {
+    "CodeOffset": 1388,
+    "FetchWords": 2576,
+    "Group": "runtime:heap_even",
+    "Instructions": 2576,
+    "Pc": 263532
+  },
+  {
+    "CodeOffset": 1390,
+    "FetchWords": 5152,
+    "Group": "runtime:heap_even",
+    "Instructions": 2576,
+    "Pc": 263534
+  },
+  {
+    "CodeOffset": 1394,
+    "FetchWords": 5152,
+    "Group": "runtime:heap_even",
+    "Instructions": 2576,
+    "Pc": 263538
+  },
+  {
+    "CodeOffset": 1398,
+    "FetchWords": 2576,
+    "Group": "runtime:heap_even",
+    "Instructions": 2576,
+    "Pc": 263542
+  },
+  {
+    "CodeOffset": 1400,
+    "FetchWords": 5152,
+    "Group": "runtime:heap_even",
+    "Instructions": 2576,
+    "Pc": 263544
+  },
+  {
+    "CodeOffset": 1404,
+    "FetchWords": 2576,
+    "Group": "runtime:heap_even",
+    "Instructions": 2576,
+    "Pc": 263548
+  },
+  {
+    "CodeOffset": 1406,
+    "FetchWords": 2576,
+    "Group": "runtime:heap_even",
+    "Instructions": 2576,
+    "Pc": 263550
+  },
+  {
+    "CodeOffset": 1408,
+    "FetchWords": 2576,
+    "Group": "runtime:heap_even",
+    "Instructions": 2576,
+    "Pc": 263552
+  },
+  {
+    "CodeOffset": 1410,
+    "FetchWords": 2576,
+    "Group": "runtime:no_params",
+    "Instructions": 2576,
+    "Pc": 263554
+  },
+  {
+    "CodeOffset": 1412,
+    "FetchWords": 2576,
+    "Group": "runtime:no_params",
+    "Instructions": 2576,
+    "Pc": 263556
+  },
+  {
+    "CodeOffset": 1414,
+    "FetchWords": 5152,
+    "Group": "runtime:no_params",
+    "Instructions": 2576,
+    "Pc": 263558
+  },
+  {
+    "CodeOffset": 1418,
+    "FetchWords": 2576,
+    "Group": "runtime:no_params",
+    "Instructions": 2576,
+    "Pc": 263562
+  },
+  {
+    "CodeOffset": 1420,
+    "FetchWords": 2576,
+    "Group": "runtime:no_params",
+    "Instructions": 2576,
+    "Pc": 263564
+  },
+  {
+    "CodeOffset": 1422,
+    "FetchWords": 5152,
+    "Group": "runtime:no_params",
+    "Instructions": 2576,
+    "Pc": 263566
+  },
+  {
+    "CodeOffset": 1554,
+    "FetchWords": 2576,
+    "Group": "runtime:go_rom",
+    "Instructions": 2576,
+    "Pc": 263698
+  },
+  {
+    "CodeOffset": 1556,
+    "FetchWords": 5152,
+    "Group": "runtime:go_rom",
+    "Instructions": 2576,
+    "Pc": 263700
+  },
+  {
+    "CodeOffset": 1560,
+    "FetchWords": 5152,
+    "Group": "runtime:go_rom",
+    "Instructions": 2576,
+    "Pc": 263704
+  },
+  {
+    "CodeOffset": 1564,
+    "FetchWords": 2576,
+    "Group": "runtime:go_rom",
+    "Instructions": 2576,
+    "Pc": 263708
+  },
+  {
+    "CodeOffset": 1566,
+    "FetchWords": 2576,
+    "Group": "runtime:go_rom",
+    "Instructions": 2576,
+    "Pc": 263710
+  },
+  {
+    "CodeOffset": 1568,
+    "FetchWords": 5152,
+    "Group": "runtime:go_rom",
+    "Instructions": 2576,
+    "Pc": 263712
+  },
+  {
+    "CodeOffset": 1572,
+    "FetchWords": 5152,
+    "Group": "runtime:go_rom",
+    "Instructions": 2576,
+    "Pc": 263716
+  },
+  {
+    "CodeOffset": 1576,
+    "FetchWords": 2576,
+    "Group": "runtime:go_rom",
+    "Instructions": 2576,
+    "Pc": 263720
+  },
+  {
+    "CodeOffset": 1578,
+    "FetchWords": 2576,
+    "Group": "runtime:go_rom",
+    "Instructions": 2576,
+    "Pc": 263722
+  },
+  {
+    "CodeOffset": 1580,
+    "FetchWords": 2576,
+    "Group": "runtime:go_rom",
+    "Instructions": 2576,
+    "Pc": 263724
+  },
+  {
+    "CodeOffset": 1582,
+    "FetchWords": 2576,
+    "Group": "runtime:go_rom",
+    "Instructions": 2576,
+    "Pc": 263726
+  },
+  {
+    "CodeOffset": 1584,
+    "FetchWords": 2576,
+    "Group": "runtime:go_rom",
+    "Instructions": 2576,
+    "Pc": 263728
+  },
+  {
+    "CodeOffset": 1586,
+    "FetchWords": 5152,
+    "Group": "runtime:go_rom",
+    "Instructions": 2576,
+    "Pc": 263730
+  },
+  {
+    "CodeOffset": 1590,
+    "FetchWords": 5152,
+    "Group": "runtime:go_rom",
+    "Instructions": 2576,
+    "Pc": 263734
+  },
+  {
+    "CodeOffset": 1594,
+    "FetchWords": 5152,
+    "Group": "runtime:go_rom",
+    "Instructions": 2576,
+    "Pc": 263738
+  },
+  {
+    "CodeOffset": 1598,
+    "FetchWords": 7728,
+    "Group": "runtime:go_rom",
+    "Instructions": 2576,
+    "Pc": 263742
+  },
+  {
+    "CodeOffset": 1604,
+    "FetchWords": 2576,
+    "Group": "runtime:go_rom",
+    "Instructions": 2576,
+    "Pc": 263748
+  },
+  {
+    "CodeOffset": 1606,
+    "FetchWords": 2576,
+    "Group": "runtime:go_rom",
+    "Instructions": 2576,
+    "Pc": 263750
+  },
+  {
+    "CodeOffset": 1608,
+    "FetchWords": 2576,
+    "Group": "runtime:go_rom",
+    "Instructions": 2576,
+    "Pc": 263752
+  },
+  {
+    "CodeOffset": 1610,
+    "FetchWords": 5152,
+    "Group": "runtime:go_rom",
+    "Instructions": 2576,
+    "Pc": 263754
+  },
+  {
+    "CodeOffset": 1614,
+    "FetchWords": 5152,
+    "Group": "runtime:go_rom",
+    "Instructions": 2576,
+    "Pc": 263758
+  },
+  {
+    "CodeOffset": 1618,
+    "FetchWords": 2576,
+    "Group": "runtime:go_rom",
+    "Instructions": 2576,
+    "Pc": 263762
+  },
+  {
+    "CodeOffset": 1620,
+    "FetchWords": 5152,
+    "Group": "runtime:go_rom",
+    "Instructions": 2576,
+    "Pc": 263764
+  },
+  {
+    "CodeOffset": 1624,
+    "FetchWords": 5152,
+    "Group": "runtime:go_rom",
+    "Instructions": 2576,
+    "Pc": 263768
+  },
+  {
+    "CodeOffset": 1628,
+    "FetchWords": 5152,
+    "Group": "runtime:go_rom",
+    "Instructions": 2576,
+    "Pc": 263772
+  },
+  {
+    "CodeOffset": 1632,
+    "FetchWords": 2576,
+    "Group": "runtime:not_stretched",
+    "Instructions": 2576,
+    "Pc": 263776
+  },
+  {
+    "CodeOffset": 1634,
+    "FetchWords": 5152,
+    "Group": "runtime:not_stretched",
+    "Instructions": 2576,
+    "Pc": 263778
+  },
+  {
+    "CodeOffset": 1638,
+    "FetchWords": 2576,
+    "Group": "runtime:no_error",
+    "Instructions": 2576,
+    "Pc": 263782
+  },
+  {
+    "CodeOffset": 1640,
+    "FetchWords": 2576,
+    "Group": "runtime:no_error",
+    "Instructions": 2576,
+    "Pc": 263784
+  },
+  {
+    "CodeOffset": 1642,
+    "FetchWords": 2576,
+    "Group": "runtime:no_error",
+    "Instructions": 2576,
+    "Pc": 263786
+  },
+  {
+    "CodeOffset": 1654,
+    "FetchWords": 2576,
+    "Group": "runtime:got_type_1",
+    "Instructions": 2576,
+    "Pc": 263798
+  },
+  {
+    "CodeOffset": 1656,
+    "FetchWords": 2576,
+    "Group": "runtime:thread_returns",
+    "Instructions": 2576,
+    "Pc": 263800
+  },
+  {
+    "CodeOffset": 1658,
+    "FetchWords": 2576,
+    "Group": "runtime:thread_returns",
+    "Instructions": 2576,
+    "Pc": 263802
+  },
+  {
+    "CodeOffset": 1660,
+    "FetchWords": 2576,
+    "Group": "runtime:thread_returns",
+    "Instructions": 2576,
+    "Pc": 263804
+  },
+  {
+    "CodeOffset": 1662,
+    "FetchWords": 2576,
+    "Group": "runtime:go_coerce",
+    "Instructions": 2576,
+    "Pc": 263806
+  },
+  {
+    "CodeOffset": 1664,
+    "FetchWords": 2576,
+    "Group": "runtime:coerce",
+    "Instructions": 2576,
+    "Pc": 263808
+  },
+  {
+    "CodeOffset": 1666,
+    "FetchWords": 2576,
+    "Group": "runtime:coerce",
+    "Instructions": 2576,
+    "Pc": 263810
+  },
+  {
+    "CodeOffset": 1672,
+    "FetchWords": 5152,
+    "Group": "runtime:check_string",
+    "Instructions": 2576,
+    "Pc": 263816
+  },
+  {
+    "CodeOffset": 1676,
+    "FetchWords": 2576,
+    "Group": "runtime:check_string",
+    "Instructions": 2576,
+    "Pc": 263820
+  },
+  {
+    "CodeOffset": 1706,
+    "FetchWords": 2576,
+    "Group": "runtime:correctly_stacked",
+    "Instructions": 2576,
+    "Pc": 263850
+  },
+  {
+    "CodeOffset": 1708,
+    "FetchWords": 2576,
+    "Group": "runtime:correctly_stacked",
+    "Instructions": 2576,
+    "Pc": 263852
+  },
+  {
+    "CodeOffset": 2306,
+    "FetchWords": 2576,
+    "Group": "runtime:fast_float_to_int",
+    "Instructions": 2576,
+    "Pc": 264450
+  },
+  {
+    "CodeOffset": 2308,
+    "FetchWords": 2576,
+    "Group": "runtime:fast_float_to_int",
+    "Instructions": 2576,
+    "Pc": 264452
+  },
+  {
+    "CodeOffset": 2310,
+    "FetchWords": 5152,
+    "Group": "runtime:fast_float_to_int",
+    "Instructions": 2576,
+    "Pc": 264454
+  },
+  {
+    "CodeOffset": 2314,
+    "FetchWords": 2576,
+    "Group": "runtime:fast_float_to_int",
+    "Instructions": 2576,
+    "Pc": 264458
+  },
+  {
+    "CodeOffset": 2318,
+    "FetchWords": 5152,
+    "Group": "runtime:significant",
+    "Instructions": 2576,
+    "Pc": 264462
+  },
+  {
+    "CodeOffset": 2322,
+    "FetchWords": 2576,
+    "Group": "runtime:significant",
+    "Instructions": 2576,
+    "Pc": 264466
+  },
+  {
+    "CodeOffset": 2324,
+    "FetchWords": 2576,
+    "Group": "runtime:significant",
+    "Instructions": 2576,
+    "Pc": 264468
+  },
+  {
+    "CodeOffset": 2326,
+    "FetchWords": 5152,
+    "Group": "runtime:significant",
+    "Instructions": 2576,
+    "Pc": 264470
+  },
+  {
+    "CodeOffset": 2330,
+    "FetchWords": 2576,
+    "Group": "runtime:valid_int",
+    "Instructions": 2576,
+    "Pc": 264474
+  },
+  {
+    "CodeOffset": 2332,
+    "FetchWords": 2576,
+    "Group": "runtime:valid_int",
+    "Instructions": 2576,
+    "Pc": 264476
+  },
+  {
+    "CodeOffset": 2334,
+    "FetchWords": 2576,
+    "Group": "runtime:valid_int",
+    "Instructions": 2576,
+    "Pc": 264478
+  },
+  {
+    "CodeOffset": 2338,
+    "FetchWords": 2576,
+    "Group": "runtime:rounded1",
+    "Instructions": 2576,
+    "Pc": 264482
+  },
+  {
+    "CodeOffset": 2340,
+    "FetchWords": 2576,
+    "Group": "runtime:rounded1",
+    "Instructions": 2576,
+    "Pc": 264484
+  },
+  {
+    "CodeOffset": 2348,
+    "FetchWords": 2577,
+    "Group": "runtime:fast_int_to_float",
+    "Instructions": 2577,
+    "Pc": 264492
+  },
+  {
+    "CodeOffset": 2350,
+    "FetchWords": 2577,
+    "Group": "runtime:fast_d1_to_float",
+    "Instructions": 2577,
+    "Pc": 264494
+  },
+  {
+    "CodeOffset": 2352,
+    "FetchWords": 2577,
+    "Group": "runtime:long_to_float",
+    "Instructions": 2577,
+    "Pc": 264496
+  },
+  {
+    "CodeOffset": 2354,
+    "FetchWords": 5154,
+    "Group": "runtime:long_to_float",
+    "Instructions": 2577,
+    "Pc": 264498
+  },
+  {
+    "CodeOffset": 2358,
+    "FetchWords": 5152,
+    "Group": "runtime:long_to_float",
+    "Instructions": 2576,
+    "Pc": 264502
+  },
+  {
+    "CodeOffset": 2362,
+    "FetchWords": 2576,
+    "Group": "runtime:long_to_float",
+    "Instructions": 2576,
+    "Pc": 264506
+  },
+  {
+    "CodeOffset": 2364,
+    "FetchWords": 5152,
+    "Group": "runtime:long_to_float",
+    "Instructions": 2576,
+    "Pc": 264508
+  },
+  {
+    "CodeOffset": 2696,
+    "FetchWords": 2576,
+    "Group": "runtime:normalise1",
+    "Instructions": 2576,
+    "Pc": 264840
+  },
+  {
+    "CodeOffset": 2698,
+    "FetchWords": 2576,
+    "Group": "runtime:normalise1",
+    "Instructions": 2576,
+    "Pc": 264842
+  },
+  {
+    "CodeOffset": 2700,
+    "FetchWords": 12880,
+    "Group": "runtime:normalise",
+    "Instructions": 12880,
+    "Pc": 264844
+  },
+  {
+    "CodeOffset": 2702,
+    "FetchWords": 12880,
+    "Group": "runtime:normalise",
+    "Instructions": 12880,
+    "Pc": 264846
+  },
+  {
+    "CodeOffset": 2704,
+    "FetchWords": 12880,
+    "Group": "runtime:normalise",
+    "Instructions": 12880,
+    "Pc": 264848
+  },
+  {
+    "CodeOffset": 2706,
+    "FetchWords": 9384,
+    "Group": "runtime:normalise",
+    "Instructions": 9384,
+    "Pc": 264850
+  },
+  {
+    "CodeOffset": 2708,
+    "FetchWords": 9384,
+    "Group": "runtime:normalise",
+    "Instructions": 9384,
+    "Pc": 264852
+  },
+  {
+    "CodeOffset": 2710,
+    "FetchWords": 9384,
+    "Group": "runtime:normalise",
+    "Instructions": 9384,
+    "Pc": 264854
+  },
+  {
+    "CodeOffset": 2712,
+    "FetchWords": 12880,
+    "Group": "runtime:far_out_man",
+    "Instructions": 12880,
+    "Pc": 264856
+  },
+  {
+    "CodeOffset": 2714,
+    "FetchWords": 12880,
+    "Group": "runtime:far_out_man",
+    "Instructions": 12880,
+    "Pc": 264858
+  },
+  {
+    "CodeOffset": 2716,
+    "FetchWords": 2576,
+    "Group": "runtime:good_exit",
+    "Instructions": 2576,
+    "Pc": 264860
+  },
+  {
+    "CodeOffset": 2734,
+    "FetchWords": 1,
+    "Group": "runtime:result_zero",
+    "Instructions": 1,
+    "Pc": 264878
+  },
+  {
+    "CodeOffset": 2736,
+    "FetchWords": 1,
+    "Group": "runtime:result_zero",
+    "Instructions": 1,
+    "Pc": 264880
+  },
+  {
+    "CodeOffset": 3034,
+    "FetchWords": 2,
+    "Group": "runtime:shut_down",
+    "Instructions": 1,
+    "Pc": 265178
+  },
+  {
+    "CodeOffset": 3038,
+    "FetchWords": 1,
+    "Group": "runtime:shut_down",
+    "Instructions": 1,
+    "Pc": 265182
+  },
+  {
+    "CodeOffset": 3040,
+    "FetchWords": 1,
+    "Group": "runtime:shut_down",
+    "Instructions": 1,
+    "Pc": 265184
+  },
+  {
+    "CodeOffset": 3042,
+    "FetchWords": 1,
+    "Group": "runtime:shut_down",
+    "Instructions": 1,
+    "Pc": 265186
+  },
+  {
+    "CodeOffset": 5318,
+    "FetchWords": 67808,
+    "Group": "compact-array-helper",
+    "Instructions": 67808,
+    "Pc": 267462
+  },
+  {
+    "CodeOffset": 5320,
+    "FetchWords": 67808,
+    "Group": "compact-array-helper",
+    "Instructions": 67808,
+    "Pc": 267464
+  },
+  {
+    "CodeOffset": 5322,
+    "FetchWords": 67808,
+    "Group": "compact-array-helper",
+    "Instructions": 67808,
+    "Pc": 267466
+  },
+  {
+    "CodeOffset": 5324,
+    "FetchWords": 67808,
+    "Group": "compact-array-helper",
+    "Instructions": 67808,
+    "Pc": 267468
+  },
+  {
+    "CodeOffset": 5326,
+    "FetchWords": 67808,
+    "Group": "compact-array-helper",
+    "Instructions": 67808,
+    "Pc": 267470
+  },
+  {
+    "CodeOffset": 5328,
+    "FetchWords": 67808,
+    "Group": "compact-array-helper",
+    "Instructions": 67808,
+    "Pc": 267472
+  },
+  {
+    "CodeOffset": 5330,
+    "FetchWords": 67808,
+    "Group": "compact-array-helper",
+    "Instructions": 67808,
+    "Pc": 267474
+  },
+  {
+    "CodeOffset": 5332,
+    "FetchWords": 67808,
+    "Group": "compact-array-helper",
+    "Instructions": 67808,
+    "Pc": 267476
+  },
+  {
+    "CodeOffset": 5342,
+    "FetchWords": 67808,
+    "Group": "compact-array-helper",
+    "Instructions": 67808,
+    "Pc": 267486
+  },
+  {
+    "CodeOffset": 5344,
+    "FetchWords": 67808,
+    "Group": "compact-array-helper",
+    "Instructions": 67808,
+    "Pc": 267488
+  },
+  {
+    "CodeOffset": 5346,
+    "FetchWords": 135616,
+    "Group": "compact-array-helper",
+    "Instructions": 67808,
+    "Pc": 267490
+  },
+  {
+    "CodeOffset": 5350,
+    "FetchWords": 67808,
+    "Group": "compact-array-helper",
+    "Instructions": 67808,
+    "Pc": 267494
+  },
+  {
+    "CodeOffset": 5374,
+    "FetchWords": 106648,
+    "Group": "compact-array-helper",
+    "Instructions": 53324,
+    "Pc": 267518
+  },
+  {
+    "CodeOffset": 5378,
+    "FetchWords": 53324,
+    "Group": "compact-array-helper",
+    "Instructions": 53324,
+    "Pc": 267522
+  },
+  {
+    "CodeOffset": 5380,
+    "FetchWords": 53324,
+    "Group": "compact-array-helper",
+    "Instructions": 53324,
+    "Pc": 267524
+  },
+  {
+    "CodeOffset": 5382,
+    "FetchWords": 53324,
+    "Group": "compact-array-helper",
+    "Instructions": 53324,
+    "Pc": 267526
+  },
+  {
+    "CodeOffset": 5384,
+    "FetchWords": 53324,
+    "Group": "compact-array-helper",
+    "Instructions": 53324,
+    "Pc": 267528
+  },
+  {
+    "CodeOffset": 5386,
+    "FetchWords": 14484,
+    "Group": "compact-array-helper",
+    "Instructions": 14484,
+    "Pc": 267530
+  },
+  {
+    "CodeOffset": 5388,
+    "FetchWords": 28968,
+    "Group": "compact-array-helper",
+    "Instructions": 14484,
+    "Pc": 267532
+  },
+  {
+    "CodeOffset": 5392,
+    "FetchWords": 14484,
+    "Group": "compact-array-helper",
+    "Instructions": 14484,
+    "Pc": 267536
+  },
+  {
+    "CodeOffset": 5394,
+    "FetchWords": 14484,
+    "Group": "compact-array-helper",
+    "Instructions": 14484,
+    "Pc": 267538
+  },
+  {
+    "CodeOffset": 5396,
+    "FetchWords": 14484,
+    "Group": "compact-array-helper",
+    "Instructions": 14484,
+    "Pc": 267540
+  },
+  {
+    "CodeOffset": 5398,
+    "FetchWords": 14484,
+    "Group": "compact-array-helper",
+    "Instructions": 14484,
+    "Pc": 267542
+  },
+  {
+    "CodeOffset": 5410,
+    "FetchWords": 12065,
+    "Group": "shared-P:fast",
+    "Instructions": 12065,
+    "Pc": 267554
+  },
+  {
+    "CodeOffset": 5418,
+    "FetchWords": 5,
+    "Group": "shared-P:array_p",
+    "Instructions": 5,
+    "Pc": 267562
+  },
+  {
+    "CodeOffset": 5420,
+    "FetchWords": 5,
+    "Group": "shared-P:array_p",
+    "Instructions": 5,
+    "Pc": 267564
+  },
+  {
+    "CodeOffset": 5422,
+    "FetchWords": 10,
+    "Group": "shared-P:array_p",
+    "Instructions": 5,
+    "Pc": 267566
+  },
+  {
+    "CodeOffset": 5426,
+    "FetchWords": 5,
+    "Group": "shared-P:array_p",
+    "Instructions": 5,
+    "Pc": 267570
+  },
+  {
+    "CodeOffset": 5428,
+    "FetchWords": 5,
+    "Group": "shared-P:array_p",
+    "Instructions": 5,
+    "Pc": 267572
+  },
+  {
+    "CodeOffset": 5430,
+    "FetchWords": 5,
+    "Group": "shared-P:array_p",
+    "Instructions": 5,
+    "Pc": 267574
+  },
+  {
+    "CodeOffset": 5432,
+    "FetchWords": 5,
+    "Group": "shared-P:array_p",
+    "Instructions": 5,
+    "Pc": 267576
+  },
+  {
+    "CodeOffset": 5434,
+    "FetchWords": 10,
+    "Group": "shared-P:array_p",
+    "Instructions": 5,
+    "Pc": 267578
+  },
+  {
+    "CodeOffset": 5438,
+    "FetchWords": 10,
+    "Group": "shared-P:array_p",
+    "Instructions": 5,
+    "Pc": 267582
+  },
+  {
+    "CodeOffset": 5442,
+    "FetchWords": 5,
+    "Group": "shared-P:array_p",
+    "Instructions": 5,
+    "Pc": 267586
+  },
+  {
+    "CodeOffset": 5444,
+    "FetchWords": 5,
+    "Group": "shared-P:array_p",
+    "Instructions": 5,
+    "Pc": 267588
+  },
+  {
+    "CodeOffset": 5450,
+    "FetchWords": 5,
+    "Group": "thread-dispatch",
+    "Instructions": 5,
+    "Pc": 267594
+  },
+  {
+    "CodeOffset": 5452,
+    "FetchWords": 10,
+    "Group": "thread-dispatch",
+    "Instructions": 5,
+    "Pc": 267596
+  },
+  {
+    "CodeOffset": 5456,
+    "FetchWords": 2,
+    "Group": "shared-P:retry_here",
+    "Instructions": 1,
+    "Pc": 267600
+  },
+  {
+    "CodeOffset": 5460,
+    "FetchWords": 1,
+    "Group": "shared-P:retry_here",
+    "Instructions": 1,
+    "Pc": 267604
+  },
+  {
+    "CodeOffset": 5462,
+    "FetchWords": 1,
+    "Group": "shared-P:retry_here",
+    "Instructions": 1,
+    "Pc": 267606
+  },
+  {
+    "CodeOffset": 5468,
+    "FetchWords": 2,
+    "Group": "shared-P:retry_here",
+    "Instructions": 1,
+    "Pc": 267612
+  },
+  {
+    "CodeOffset": 5472,
+    "FetchWords": 1,
+    "Group": "shared-P:retry_here",
+    "Instructions": 1,
+    "Pc": 267616
+  },
+  {
+    "CodeOffset": 5474,
+    "FetchWords": 2,
+    "Group": "shared-P:retry_here",
+    "Instructions": 1,
+    "Pc": 267618
+  },
+  {
+    "CodeOffset": 5478,
+    "FetchWords": 1,
+    "Group": "thread-dispatch",
+    "Instructions": 1,
+    "Pc": 267622
+  },
+  {
+    "CodeOffset": 5480,
+    "FetchWords": 2,
+    "Group": "thread-dispatch",
+    "Instructions": 1,
+    "Pc": 267624
+  },
+  {
+    "CodeOffset": 5484,
+    "FetchWords": 2,
+    "Group": "shared-P:retry1_here",
+    "Instructions": 1,
+    "Pc": 267628
+  },
+  {
+    "CodeOffset": 5488,
+    "FetchWords": 1,
+    "Group": "shared-P:retry1_here",
+    "Instructions": 1,
+    "Pc": 267632
+  },
+  {
+    "CodeOffset": 5490,
+    "FetchWords": 1,
+    "Group": "shared-P:retry1_here",
+    "Instructions": 1,
+    "Pc": 267634
+  },
+  {
+    "CodeOffset": 5496,
+    "FetchWords": 2,
+    "Group": "shared-P:retry1_here",
+    "Instructions": 1,
+    "Pc": 267640
+  },
+  {
+    "CodeOffset": 5500,
+    "FetchWords": 1,
+    "Group": "shared-P:retry1_here",
+    "Instructions": 1,
+    "Pc": 267644
+  },
+  {
+    "CodeOffset": 5502,
+    "FetchWords": 2,
+    "Group": "shared-P:retry1_here",
+    "Instructions": 1,
+    "Pc": 267646
+  },
+  {
+    "CodeOffset": 5506,
+    "FetchWords": 1,
+    "Group": "thread-dispatch",
+    "Instructions": 1,
+    "Pc": 267650
+  },
+  {
+    "CodeOffset": 5508,
+    "FetchWords": 2,
+    "Group": "thread-dispatch",
+    "Instructions": 1,
+    "Pc": 267652
+  },
+  {
+    "CodeOffset": 5512,
+    "FetchWords": 7660,
+    "Group": "shared-P:constant_int_p",
+    "Instructions": 7660,
+    "Pc": 267656
+  },
+  {
+    "CodeOffset": 5514,
+    "FetchWords": 7660,
+    "Group": "thread-dispatch",
+    "Instructions": 7660,
+    "Pc": 267658
+  },
+  {
+    "CodeOffset": 5516,
+    "FetchWords": 15320,
+    "Group": "thread-dispatch",
+    "Instructions": 7660,
+    "Pc": 267660
+  },
+  {
+    "CodeOffset": 5520,
+    "FetchWords": 2150,
+    "Group": "shared-P:store_int_var_p",
+    "Instructions": 2150,
+    "Pc": 267664
+  },
+  {
+    "CodeOffset": 5522,
+    "FetchWords": 4300,
+    "Group": "shared-P:store_int_var_p",
+    "Instructions": 2150,
+    "Pc": 267666
+  },
+  {
+    "CodeOffset": 5526,
+    "FetchWords": 2150,
+    "Group": "shared-P:store_int_var_p",
+    "Instructions": 2150,
+    "Pc": 267670
+  },
+  {
+    "CodeOffset": 5528,
+    "FetchWords": 2150,
+    "Group": "thread-dispatch",
+    "Instructions": 2150,
+    "Pc": 267672
+  },
+  {
+    "CodeOffset": 5530,
+    "FetchWords": 4300,
+    "Group": "thread-dispatch",
+    "Instructions": 2150,
+    "Pc": 267674
+  },
+  {
+    "CodeOffset": 5534,
+    "FetchWords": 10,
+    "Group": "shared-P:glob_arr_int_p",
+    "Instructions": 5,
+    "Pc": 267678
+  },
+  {
+    "CodeOffset": 5538,
+    "FetchWords": 10,
+    "Group": "shared-P:glob_arr_int_p",
+    "Instructions": 5,
+    "Pc": 267682
+  },
+  {
+    "CodeOffset": 5542,
+    "FetchWords": 5,
+    "Group": "shared-P:glob_arr_int_p",
+    "Instructions": 5,
+    "Pc": 267686
+  },
+  {
+    "CodeOffset": 5544,
+    "FetchWords": 5,
+    "Group": "shared-P:glob_arr_int_p",
+    "Instructions": 5,
+    "Pc": 267688
+  },
+  {
+    "CodeOffset": 5546,
+    "FetchWords": 5,
+    "Group": "shared-P:glob_arr_int_p",
+    "Instructions": 5,
+    "Pc": 267690
+  },
+  {
+    "CodeOffset": 5548,
+    "FetchWords": 5,
+    "Group": "shared-P:glob_arr_int_p",
+    "Instructions": 5,
+    "Pc": 267692
+  },
+  {
+    "CodeOffset": 5550,
+    "FetchWords": 5,
+    "Group": "shared-P:glob_arr_int_p",
+    "Instructions": 5,
+    "Pc": 267694
+  },
+  {
+    "CodeOffset": 5552,
+    "FetchWords": 5,
+    "Group": "shared-P:glob_arr_int_p",
+    "Instructions": 5,
+    "Pc": 267696
+  },
+  {
+    "CodeOffset": 5558,
+    "FetchWords": 5,
+    "Group": "shared-P:glob_arr_int_p",
+    "Instructions": 5,
+    "Pc": 267702
+  },
+  {
+    "CodeOffset": 5560,
+    "FetchWords": 5,
+    "Group": "shared-P:glob_arr_int_p",
+    "Instructions": 5,
+    "Pc": 267704
+  },
+  {
+    "CodeOffset": 5562,
+    "FetchWords": 5,
+    "Group": "shared-P:glob_arr_int_p",
+    "Instructions": 5,
+    "Pc": 267706
+  },
+  {
+    "CodeOffset": 5564,
+    "FetchWords": 5,
+    "Group": "shared-P:glob_arr_int_p",
+    "Instructions": 5,
+    "Pc": 267708
+  },
+  {
+    "CodeOffset": 5566,
+    "FetchWords": 5,
+    "Group": "shared-P:glob_arr_int_p",
+    "Instructions": 5,
+    "Pc": 267710
+  },
+  {
+    "CodeOffset": 5568,
+    "FetchWords": 5,
+    "Group": "shared-P:glob_arr_int_p",
+    "Instructions": 5,
+    "Pc": 267712
+  },
+  {
+    "CodeOffset": 5570,
+    "FetchWords": 5,
+    "Group": "shared-P:glob_arr_int_p",
+    "Instructions": 5,
+    "Pc": 267714
+  },
+  {
+    "CodeOffset": 5572,
+    "FetchWords": 5,
+    "Group": "shared-P:glob_arr_int_p",
+    "Instructions": 5,
+    "Pc": 267716
+  },
+  {
+    "CodeOffset": 5574,
+    "FetchWords": 5,
+    "Group": "shared-P:glob_arr_int_p",
+    "Instructions": 5,
+    "Pc": 267718
+  },
+  {
+    "CodeOffset": 5576,
+    "FetchWords": 5,
+    "Group": "shared-P:glob_arr_int_p",
+    "Instructions": 5,
+    "Pc": 267720
+  },
+  {
+    "CodeOffset": 5578,
+    "FetchWords": 5,
+    "Group": "shared-P:glob_arr_int_p",
+    "Instructions": 5,
+    "Pc": 267722
+  },
+  {
+    "CodeOffset": 5580,
+    "FetchWords": 5,
+    "Group": "shared-P:glob_arr_int_p",
+    "Instructions": 5,
+    "Pc": 267724
+  },
+  {
+    "CodeOffset": 5582,
+    "FetchWords": 5,
+    "Group": "shared-P:glob_arr_int_p",
+    "Instructions": 5,
+    "Pc": 267726
+  },
+  {
+    "CodeOffset": 5584,
+    "FetchWords": 5,
+    "Group": "shared-P:glob_arr_int_p",
+    "Instructions": 5,
+    "Pc": 267728
+  },
+  {
+    "CodeOffset": 5590,
+    "FetchWords": 5,
+    "Group": "shared-P:glob_arr_int_p",
+    "Instructions": 5,
+    "Pc": 267734
+  },
+  {
+    "CodeOffset": 5592,
+    "FetchWords": 5,
+    "Group": "shared-P:glob_arr_int_p",
+    "Instructions": 5,
+    "Pc": 267736
+  },
+  {
+    "CodeOffset": 5594,
+    "FetchWords": 5,
+    "Group": "shared-P:glob_arr_int_p",
+    "Instructions": 5,
+    "Pc": 267738
+  },
+  {
+    "CodeOffset": 5596,
+    "FetchWords": 5,
+    "Group": "shared-P:glob_arr_int_p",
+    "Instructions": 5,
+    "Pc": 267740
+  },
+  {
+    "CodeOffset": 5600,
+    "FetchWords": 5,
+    "Group": "shared-P:glob_arr_int_p",
+    "Instructions": 5,
+    "Pc": 267744
+  },
+  {
+    "CodeOffset": 5602,
+    "FetchWords": 10,
+    "Group": "shared-P:glob_arr_int_p",
+    "Instructions": 5,
+    "Pc": 267746
+  },
+  {
+    "CodeOffset": 5606,
+    "FetchWords": 5,
+    "Group": "shared-P:glob_arr_int_p",
+    "Instructions": 5,
+    "Pc": 267750
+  },
+  {
+    "CodeOffset": 5608,
+    "FetchWords": 5,
+    "Group": "shared-P:glob_arr_int_p",
+    "Instructions": 5,
+    "Pc": 267752
+  },
+  {
+    "CodeOffset": 5610,
+    "FetchWords": 5,
+    "Group": "shared-P:glob_arr_int_p",
+    "Instructions": 5,
+    "Pc": 267754
+  },
+  {
+    "CodeOffset": 5612,
+    "FetchWords": 5,
+    "Group": "shared-P:glob_arr_int_p",
+    "Instructions": 5,
+    "Pc": 267756
+  },
+  {
+    "CodeOffset": 5614,
+    "FetchWords": 10,
+    "Group": "shared-P:glob_arr_int_p",
+    "Instructions": 5,
+    "Pc": 267758
+  },
+  {
+    "CodeOffset": 5618,
+    "FetchWords": 5,
+    "Group": "shared-P:glob_arr_int_p",
+    "Instructions": 5,
+    "Pc": 267762
+  },
+  {
+    "CodeOffset": 5620,
+    "FetchWords": 5,
+    "Group": "shared-P:glob_arr_int_p",
+    "Instructions": 5,
+    "Pc": 267764
+  },
+  {
+    "CodeOffset": 5622,
+    "FetchWords": 5,
+    "Group": "shared-P:glob_arr_int_p",
+    "Instructions": 5,
+    "Pc": 267766
+  },
+  {
+    "CodeOffset": 5624,
+    "FetchWords": 10,
+    "Group": "shared-P:glob_arr_int_p",
+    "Instructions": 5,
+    "Pc": 267768
+  },
+  {
+    "CodeOffset": 5628,
+    "FetchWords": 5,
+    "Group": "shared-P:glob_arr_int_p",
+    "Instructions": 5,
+    "Pc": 267772
+  },
+  {
+    "CodeOffset": 5630,
+    "FetchWords": 5,
+    "Group": "shared-P:glob_arr_int_p",
+    "Instructions": 5,
+    "Pc": 267774
+  },
+  {
+    "CodeOffset": 5672,
+    "FetchWords": 5,
+    "Group": "shared-P:glob_arr_int_p",
+    "Instructions": 5,
+    "Pc": 267816
+  },
+  {
+    "CodeOffset": 5674,
+    "FetchWords": 5,
+    "Group": "shared-P:glob_arr_int_p",
+    "Instructions": 5,
+    "Pc": 267818
+  },
+  {
+    "CodeOffset": 5676,
+    "FetchWords": 10,
+    "Group": "shared-P:glob_arr_int_p",
+    "Instructions": 5,
+    "Pc": 267820
+  },
+  {
+    "CodeOffset": 5680,
+    "FetchWords": 5,
+    "Group": "shared-P:glob_arr_int_p",
+    "Instructions": 5,
+    "Pc": 267824
+  },
+  {
+    "CodeOffset": 5682,
+    "FetchWords": 5,
+    "Group": "shared-P:glob_arr_int_p",
+    "Instructions": 5,
+    "Pc": 267826
+  },
+  {
+    "CodeOffset": 5684,
+    "FetchWords": 5,
+    "Group": "shared-P:glob_arr_int_p",
+    "Instructions": 5,
+    "Pc": 267828
+  },
+  {
+    "CodeOffset": 5686,
+    "FetchWords": 10,
+    "Group": "shared-P:glob_arr_int_p",
+    "Instructions": 5,
+    "Pc": 267830
+  },
+  {
+    "CodeOffset": 5690,
+    "FetchWords": 5,
+    "Group": "shared-P:glob_arr_int_p",
+    "Instructions": 5,
+    "Pc": 267834
+  },
+  {
+    "CodeOffset": 5692,
+    "FetchWords": 5,
+    "Group": "shared-P:glob_arr_int_p",
+    "Instructions": 5,
+    "Pc": 267836
+  },
+  {
+    "CodeOffset": 5698,
+    "FetchWords": 10,
+    "Group": "shared-P:glob_arr_int_p",
+    "Instructions": 5,
+    "Pc": 267842
+  },
+  {
+    "CodeOffset": 5702,
+    "FetchWords": 10,
+    "Group": "shared-P:glob_arr_int_p",
+    "Instructions": 5,
+    "Pc": 267846
+  },
+  {
+    "CodeOffset": 5706,
+    "FetchWords": 10,
+    "Group": "shared-P:glob_arr_int_p",
+    "Instructions": 5,
+    "Pc": 267850
+  },
+  {
+    "CodeOffset": 5710,
+    "FetchWords": 10,
+    "Group": "shared-P:glob_arr_int_p",
+    "Instructions": 5,
+    "Pc": 267854
+  },
+  {
+    "CodeOffset": 5714,
+    "FetchWords": 10,
+    "Group": "shared-P:glob_arr_int_p",
+    "Instructions": 5,
+    "Pc": 267858
+  },
+  {
+    "CodeOffset": 5718,
+    "FetchWords": 10,
+    "Group": "shared-P:glob_arr_int_p",
+    "Instructions": 5,
+    "Pc": 267862
+  },
+  {
+    "CodeOffset": 5722,
+    "FetchWords": 5,
+    "Group": "shared-P:glob_arr_int_p",
+    "Instructions": 5,
+    "Pc": 267866
+  },
+  {
+    "CodeOffset": 5724,
+    "FetchWords": 10,
+    "Group": "shared-P:glob_arr_int_p",
+    "Instructions": 5,
+    "Pc": 267868
+  },
+  {
+    "CodeOffset": 5728,
+    "FetchWords": 10,
+    "Group": "shared-P:glob_arr_int_p",
+    "Instructions": 5,
+    "Pc": 267872
+  },
+  {
+    "CodeOffset": 6082,
+    "FetchWords": 10,
+    "Group": "shared-P:glob_arr_int_p",
+    "Instructions": 5,
+    "Pc": 268226
+  },
+  {
+    "CodeOffset": 6086,
+    "FetchWords": 5,
+    "Group": "shared-P:glob_arr_int_p",
+    "Instructions": 5,
+    "Pc": 268230
+  },
+  {
+    "CodeOffset": 6088,
+    "FetchWords": 61,
+    "Group": "shared-P:glob_arr_int_p",
+    "Instructions": 61,
+    "Pc": 268232
+  },
+  {
+    "CodeOffset": 6090,
+    "FetchWords": 61,
+    "Group": "shared-P:glob_arr_int_p",
+    "Instructions": 61,
+    "Pc": 268234
+  },
+  {
+    "CodeOffset": 6092,
+    "FetchWords": 61,
+    "Group": "shared-P:glob_arr_int_p",
+    "Instructions": 61,
+    "Pc": 268236
+  },
+  {
+    "CodeOffset": 6094,
+    "FetchWords": 5,
+    "Group": "shared-P:glob_arr_int_p",
+    "Instructions": 5,
+    "Pc": 268238
+  },
+  {
+    "CodeOffset": 6096,
+    "FetchWords": 5,
+    "Group": "thread-dispatch",
+    "Instructions": 5,
+    "Pc": 268240
+  },
+  {
+    "CodeOffset": 6098,
+    "FetchWords": 10,
+    "Group": "thread-dispatch",
+    "Instructions": 5,
+    "Pc": 268242
+  },
+  {
+    "CodeOffset": 6102,
+    "FetchWords": 3,
+    "Group": "shared-P:fch_int_var_p",
+    "Instructions": 3,
+    "Pc": 268246
+  },
+  {
+    "CodeOffset": 6104,
+    "FetchWords": 6,
+    "Group": "shared-P:fch_int_var_p",
+    "Instructions": 3,
+    "Pc": 268248
+  },
+  {
+    "CodeOffset": 6108,
+    "FetchWords": 3,
+    "Group": "shared-P:fch_int_var_p",
+    "Instructions": 3,
+    "Pc": 268252
+  },
+  {
+    "CodeOffset": 6110,
+    "FetchWords": 3,
+    "Group": "thread-dispatch",
+    "Instructions": 3,
+    "Pc": 268254
+  },
+  {
+    "CodeOffset": 6112,
+    "FetchWords": 6,
+    "Group": "thread-dispatch",
+    "Instructions": 3,
+    "Pc": 268256
+  },
+  {
+    "CodeOffset": 6116,
+    "FetchWords": 832,
+    "Group": "shared-P:remember_end_p",
+    "Instructions": 832,
+    "Pc": 268260
+  },
+  {
+    "CodeOffset": 6118,
+    "FetchWords": 832,
+    "Group": "shared-P:remember_end_p",
+    "Instructions": 832,
+    "Pc": 268262
+  },
+  {
+    "CodeOffset": 6120,
+    "FetchWords": 832,
+    "Group": "thread-dispatch",
+    "Instructions": 832,
+    "Pc": 268264
+  },
+  {
+    "CodeOffset": 6122,
+    "FetchWords": 1664,
+    "Group": "thread-dispatch",
+    "Instructions": 832,
+    "Pc": 268266
+  },
+  {
+    "CodeOffset": 6126,
+    "FetchWords": 832,
+    "Group": "shared-P:for_range_int_p",
+    "Instructions": 832,
+    "Pc": 268270
+  },
+  {
+    "CodeOffset": 6128,
+    "FetchWords": 1664,
+    "Group": "shared-P:for_range_int_p",
+    "Instructions": 832,
+    "Pc": 268272
+  },
+  {
+    "CodeOffset": 6132,
+    "FetchWords": 832,
+    "Group": "shared-P:for_range_int_p",
+    "Instructions": 832,
+    "Pc": 268276
+  },
+  {
+    "CodeOffset": 6134,
+    "FetchWords": 832,
+    "Group": "shared-P:for_range_int_p",
+    "Instructions": 832,
+    "Pc": 268278
+  },
+  {
+    "CodeOffset": 6136,
+    "FetchWords": 1664,
+    "Group": "shared-P:for_range_int_p",
+    "Instructions": 832,
+    "Pc": 268280
+  },
+  {
+    "CodeOffset": 6140,
+    "FetchWords": 1664,
+    "Group": "shared-P:for_range_int_p",
+    "Instructions": 832,
+    "Pc": 268284
+  },
+  {
+    "CodeOffset": 6144,
+    "FetchWords": 1664,
+    "Group": "shared-P:for_range_int_p",
+    "Instructions": 832,
+    "Pc": 268288
+  },
+  {
+    "CodeOffset": 6148,
+    "FetchWords": 1664,
+    "Group": "shared-P:for_range_int_p",
+    "Instructions": 832,
+    "Pc": 268292
+  },
+  {
+    "CodeOffset": 6152,
+    "FetchWords": 832,
+    "Group": "shared-P:for_range_int_p",
+    "Instructions": 832,
+    "Pc": 268296
+  },
+  {
+    "CodeOffset": 6154,
+    "FetchWords": 832,
+    "Group": "shared-P:for_range_int_p",
+    "Instructions": 832,
+    "Pc": 268298
+  },
+  {
+    "CodeOffset": 6156,
+    "FetchWords": 1664,
+    "Group": "shared-P:for_range_int_p",
+    "Instructions": 832,
+    "Pc": 268300
+  },
+  {
+    "CodeOffset": 6160,
+    "FetchWords": 832,
+    "Group": "shared-P:for_range_int_p",
+    "Instructions": 832,
+    "Pc": 268304
+  },
+  {
+    "CodeOffset": 6162,
+    "FetchWords": 832,
+    "Group": "shared-P:for_range_int_p",
+    "Instructions": 832,
+    "Pc": 268306
+  },
+  {
+    "CodeOffset": 6164,
+    "FetchWords": 832,
+    "Group": "shared-P:for_range_int_p",
+    "Instructions": 832,
+    "Pc": 268308
+  },
+  {
+    "CodeOffset": 6166,
+    "FetchWords": 832,
+    "Group": "shared-P:for_range_int_p",
+    "Instructions": 832,
+    "Pc": 268310
+  },
+  {
+    "CodeOffset": 6168,
+    "FetchWords": 832,
+    "Group": "shared-P:for_range_int_p",
+    "Instructions": 832,
+    "Pc": 268312
+  },
+  {
+    "CodeOffset": 6170,
+    "FetchWords": 832,
+    "Group": "shared-P:for_range_int_p",
+    "Instructions": 832,
+    "Pc": 268314
+  },
+  {
+    "CodeOffset": 6174,
+    "FetchWords": 3313,
+    "Group": "shared-P:for_range_int_p",
+    "Instructions": 3313,
+    "Pc": 268318
+  },
+  {
+    "CodeOffset": 6176,
+    "FetchWords": 3313,
+    "Group": "shared-P:for_range_int_p",
+    "Instructions": 3313,
+    "Pc": 268320
+  },
+  {
+    "CodeOffset": 6178,
+    "FetchWords": 3313,
+    "Group": "shared-P:for_range_int_p",
+    "Instructions": 3313,
+    "Pc": 268322
+  },
+  {
+    "CodeOffset": 6180,
+    "FetchWords": 4145,
+    "Group": "shared-P:for_range_int_p",
+    "Instructions": 4145,
+    "Pc": 268324
+  },
+  {
+    "CodeOffset": 6182,
+    "FetchWords": 4145,
+    "Group": "shared-P:for_range_int_p",
+    "Instructions": 4145,
+    "Pc": 268326
+  },
+  {
+    "CodeOffset": 6184,
+    "FetchWords": 4145,
+    "Group": "shared-P:for_range_int_p",
+    "Instructions": 4145,
+    "Pc": 268328
+  },
+  {
+    "CodeOffset": 6186,
+    "FetchWords": 4145,
+    "Group": "shared-P:for_range_int_p",
+    "Instructions": 4145,
+    "Pc": 268330
+  },
+  {
+    "CodeOffset": 6188,
+    "FetchWords": 1658,
+    "Group": "shared-P:for_range_int_p",
+    "Instructions": 829,
+    "Pc": 268332
+  },
+  {
+    "CodeOffset": 6192,
+    "FetchWords": 829,
+    "Group": "shared-P:for_range_int_p",
+    "Instructions": 829,
+    "Pc": 268336
+  },
+  {
+    "CodeOffset": 6198,
+    "FetchWords": 6632,
+    "Group": "shared-P:for_range_int_p",
+    "Instructions": 3316,
+    "Pc": 268342
+  },
+  {
+    "CodeOffset": 6202,
+    "FetchWords": 6632,
+    "Group": "shared-P:for_range_int_p",
+    "Instructions": 3316,
+    "Pc": 268346
+  },
+  {
+    "CodeOffset": 6206,
+    "FetchWords": 4145,
+    "Group": "thread-dispatch",
+    "Instructions": 4145,
+    "Pc": 268350
+  },
+  {
+    "CodeOffset": 6208,
+    "FetchWords": 8290,
+    "Group": "thread-dispatch",
+    "Instructions": 4145,
+    "Pc": 268352
+  },
+  {
+    "CodeOffset": 6212,
+    "FetchWords": 829,
+    "Group": "shared-P:done_for_p",
+    "Instructions": 829,
+    "Pc": 268356
+  },
+  {
+    "CodeOffset": 6214,
+    "FetchWords": 829,
+    "Group": "thread-dispatch",
+    "Instructions": 829,
+    "Pc": 268358
+  },
+  {
+    "CodeOffset": 6216,
+    "FetchWords": 1658,
+    "Group": "thread-dispatch",
+    "Instructions": 829,
+    "Pc": 268360
+  },
+  {
+    "CodeOffset": 6220,
+    "FetchWords": 4300,
+    "Group": "shared-P:gosub_p",
+    "Instructions": 2150,
+    "Pc": 268364
+  },
+  {
+    "CodeOffset": 6224,
+    "FetchWords": 2150,
+    "Group": "shared-P:gosub_p",
+    "Instructions": 2150,
+    "Pc": 268368
+  },
+  {
+    "CodeOffset": 6226,
+    "FetchWords": 2150,
+    "Group": "shared-P:gosub_p",
+    "Instructions": 2150,
+    "Pc": 268370
+  },
+  {
+    "CodeOffset": 6232,
+    "FetchWords": 4300,
+    "Group": "shared-P:gosub_p",
+    "Instructions": 2150,
+    "Pc": 268376
+  },
+  {
+    "CodeOffset": 6236,
+    "FetchWords": 2150,
+    "Group": "shared-P:gosub_p",
+    "Instructions": 2150,
+    "Pc": 268380
+  },
+  {
+    "CodeOffset": 6238,
+    "FetchWords": 2150,
+    "Group": "shared-P:gosub_p",
+    "Instructions": 2150,
+    "Pc": 268382
+  },
+  {
+    "CodeOffset": 6240,
+    "FetchWords": 2150,
+    "Group": "shared-P:gosub_p",
+    "Instructions": 2150,
+    "Pc": 268384
+  },
+  {
+    "CodeOffset": 6242,
+    "FetchWords": 2150,
+    "Group": "shared-P:gosub_p",
+    "Instructions": 2150,
+    "Pc": 268386
+  },
+  {
+    "CodeOffset": 6244,
+    "FetchWords": 4300,
+    "Group": "shared-P:gosub_p",
+    "Instructions": 2150,
+    "Pc": 268388
+  },
+  {
+    "CodeOffset": 6248,
+    "FetchWords": 2150,
+    "Group": "shared-P:gosub_p",
+    "Instructions": 2150,
+    "Pc": 268392
+  },
+  {
+    "CodeOffset": 6250,
+    "FetchWords": 2150,
+    "Group": "shared-P:gosub_p",
+    "Instructions": 2150,
+    "Pc": 268394
+  },
+  {
+    "CodeOffset": 6252,
+    "FetchWords": 2150,
+    "Group": "shared-P:gosub_p",
+    "Instructions": 2150,
+    "Pc": 268396
+  },
+  {
+    "CodeOffset": 6254,
+    "FetchWords": 2150,
+    "Group": "shared-P:gosub_p",
+    "Instructions": 2150,
+    "Pc": 268398
+  },
+  {
+    "CodeOffset": 6256,
+    "FetchWords": 2150,
+    "Group": "shared-P:gosub_p",
+    "Instructions": 2150,
+    "Pc": 268400
+  },
+  {
+    "CodeOffset": 6258,
+    "FetchWords": 2150,
+    "Group": "shared-P:gosub_p",
+    "Instructions": 2150,
+    "Pc": 268402
+  },
+  {
+    "CodeOffset": 6260,
+    "FetchWords": 2150,
+    "Group": "shared-P:gosub_p",
+    "Instructions": 2150,
+    "Pc": 268404
+  },
+  {
+    "CodeOffset": 6262,
+    "FetchWords": 4300,
+    "Group": "shared-P:gosub_p",
+    "Instructions": 2150,
+    "Pc": 268406
+  },
+  {
+    "CodeOffset": 6266,
+    "FetchWords": 2150,
+    "Group": "shared-P:gosub_p",
+    "Instructions": 2150,
+    "Pc": 268410
+  },
+  {
+    "CodeOffset": 6268,
+    "FetchWords": 2150,
+    "Group": "shared-P:gosub_p",
+    "Instructions": 2150,
+    "Pc": 268412
+  },
+  {
+    "CodeOffset": 6272,
+    "FetchWords": 2150,
+    "Group": "thread-dispatch",
+    "Instructions": 2150,
+    "Pc": 268416
+  },
+  {
+    "CodeOffset": 6274,
+    "FetchWords": 4300,
+    "Group": "thread-dispatch",
+    "Instructions": 2150,
+    "Pc": 268418
+  },
+  {
+    "CodeOffset": 6278,
+    "FetchWords": 4635,
+    "Group": "shared-P:if_false_p",
+    "Instructions": 4635,
+    "Pc": 268422
+  },
+  {
+    "CodeOffset": 6280,
+    "FetchWords": 4635,
+    "Group": "shared-P:if_false_p",
+    "Instructions": 4635,
+    "Pc": 268424
+  },
+  {
+    "CodeOffset": 6282,
+    "FetchWords": 4635,
+    "Group": "shared-P:if_false_p",
+    "Instructions": 4635,
+    "Pc": 268426
+  },
+  {
+    "CodeOffset": 6284,
+    "FetchWords": 4543,
+    "Group": "shared-P:if_false_p",
+    "Instructions": 4543,
+    "Pc": 268428
+  },
+  {
+    "CodeOffset": 6286,
+    "FetchWords": 4543,
+    "Group": "shared-P:if_false_p",
+    "Instructions": 4543,
+    "Pc": 268430
+  },
+  {
+    "CodeOffset": 6288,
+    "FetchWords": 4543,
+    "Group": "shared-P:if_false_p",
+    "Instructions": 4543,
+    "Pc": 268432
+  },
+  {
+    "CodeOffset": 6302,
+    "FetchWords": 92,
+    "Group": "shared-P:if_false_p",
+    "Instructions": 92,
+    "Pc": 268446
+  },
+  {
+    "CodeOffset": 6304,
+    "FetchWords": 4635,
+    "Group": "thread-dispatch",
+    "Instructions": 4635,
+    "Pc": 268448
+  },
+  {
+    "CodeOffset": 6306,
+    "FetchWords": 9270,
+    "Group": "thread-dispatch",
+    "Instructions": 4635,
+    "Pc": 268450
+  },
+  {
+    "CodeOffset": 6310,
+    "FetchWords": 3313,
+    "Group": "shared-P:next_for_int_p",
+    "Instructions": 3313,
+    "Pc": 268454
+  },
+  {
+    "CodeOffset": 6312,
+    "FetchWords": 3313,
+    "Group": "shared-P:next_for_int_p",
+    "Instructions": 3313,
+    "Pc": 268456
+  },
+  {
+    "CodeOffset": 6314,
+    "FetchWords": 6626,
+    "Group": "shared-P:next_for_int_p",
+    "Instructions": 3313,
+    "Pc": 268458
+  },
+  {
+    "CodeOffset": 6318,
+    "FetchWords": 6626,
+    "Group": "shared-P:next_for_int_p",
+    "Instructions": 3313,
+    "Pc": 268462
+  },
+  {
+    "CodeOffset": 6322,
+    "FetchWords": 3313,
+    "Group": "thread-dispatch",
+    "Instructions": 3313,
+    "Pc": 268466
+  },
+  {
+    "CodeOffset": 6324,
+    "FetchWords": 6626,
+    "Group": "thread-dispatch",
+    "Instructions": 3313,
+    "Pc": 268468
+  },
+  {
+    "CodeOffset": 6328,
+    "FetchWords": 2,
+    "Group": "shared-P:int_to_float",
+    "Instructions": 1,
+    "Pc": 268472
+  },
+  {
+    "CodeOffset": 6332,
+    "FetchWords": 1,
+    "Group": "shared-P:int_to_float",
+    "Instructions": 1,
+    "Pc": 268476
+  },
+  {
+    "CodeOffset": 6334,
+    "FetchWords": 1,
+    "Group": "shared-P:int_to_float",
+    "Instructions": 1,
+    "Pc": 268478
+  },
+  {
+    "CodeOffset": 6336,
+    "FetchWords": 1,
+    "Group": "thread-dispatch",
+    "Instructions": 1,
+    "Pc": 268480
+  },
+  {
+    "CodeOffset": 6338,
+    "FetchWords": 2,
+    "Group": "thread-dispatch",
+    "Instructions": 1,
+    "Pc": 268482
+  },
+  {
+    "CodeOffset": 6342,
+    "FetchWords": 1,
+    "Group": "shared-P:chan_op_on",
+    "Instructions": 1,
+    "Pc": 268486
+  },
+  {
+    "CodeOffset": 6344,
+    "FetchWords": 2,
+    "Group": "shared-P:chan_op_on",
+    "Instructions": 1,
+    "Pc": 268488
+  },
+  {
+    "CodeOffset": 6348,
+    "FetchWords": 1,
+    "Group": "shared-P:chan_op_on",
+    "Instructions": 1,
+    "Pc": 268492
+  },
+  {
+    "CodeOffset": 6354,
+    "FetchWords": 2,
+    "Group": "shared-P:chan_op_on",
+    "Instructions": 1,
+    "Pc": 268498
+  },
+  {
+    "CodeOffset": 6358,
+    "FetchWords": 2,
+    "Group": "shared-P:chan_op_on",
+    "Instructions": 1,
+    "Pc": 268502
+  },
+  {
+    "CodeOffset": 6362,
+    "FetchWords": 2,
+    "Group": "shared-P:chan_op_on",
+    "Instructions": 1,
+    "Pc": 268506
+  },
+  {
+    "CodeOffset": 6366,
+    "FetchWords": 1,
+    "Group": "shared-P:chan_op_on",
+    "Instructions": 1,
+    "Pc": 268510
+  },
+  {
+    "CodeOffset": 6368,
+    "FetchWords": 1,
+    "Group": "shared-P:chan_op_on",
+    "Instructions": 1,
+    "Pc": 268512
+  },
+  {
+    "CodeOffset": 6370,
+    "FetchWords": 1,
+    "Group": "shared-P:chan_op_on",
+    "Instructions": 1,
+    "Pc": 268514
+  },
+  {
+    "CodeOffset": 6372,
+    "FetchWords": 2,
+    "Group": "shared-P:chan_op_on",
+    "Instructions": 1,
+    "Pc": 268516
+  },
+  {
+    "CodeOffset": 6376,
+    "FetchWords": 1,
+    "Group": "thread-dispatch",
+    "Instructions": 1,
+    "Pc": 268520
+  },
+  {
+    "CodeOffset": 6378,
+    "FetchWords": 2,
+    "Group": "thread-dispatch",
+    "Instructions": 1,
+    "Pc": 268522
+  },
+  {
+    "CodeOffset": 6382,
+    "FetchWords": 1,
+    "Group": "shared-P:short_string_p",
+    "Instructions": 1,
+    "Pc": 268526
+  },
+  {
+    "CodeOffset": 6384,
+    "FetchWords": 1,
+    "Group": "shared-P:short_string_p",
+    "Instructions": 1,
+    "Pc": 268528
+  },
+  {
+    "CodeOffset": 6386,
+    "FetchWords": 1,
+    "Group": "shared-P:short_string_p",
+    "Instructions": 1,
+    "Pc": 268530
+  },
+  {
+    "CodeOffset": 6388,
+    "FetchWords": 1,
+    "Group": "shared-P:short_string_p",
+    "Instructions": 1,
+    "Pc": 268532
+  },
+  {
+    "CodeOffset": 6390,
+    "FetchWords": 1,
+    "Group": "shared-P:short_string_p",
+    "Instructions": 1,
+    "Pc": 268534
+  },
+  {
+    "CodeOffset": 6392,
+    "FetchWords": 1,
+    "Group": "shared-P:short_string_p",
+    "Instructions": 1,
+    "Pc": 268536
+  },
+  {
+    "CodeOffset": 6394,
+    "FetchWords": 13,
+    "Group": "shared-P:short_string_p",
+    "Instructions": 13,
+    "Pc": 268538
+  },
+  {
+    "CodeOffset": 6396,
+    "FetchWords": 26,
+    "Group": "shared-P:short_string_p",
+    "Instructions": 13,
+    "Pc": 268540
+  },
+  {
+    "CodeOffset": 6400,
+    "FetchWords": 2,
+    "Group": "shared-P:short_string_p",
+    "Instructions": 1,
+    "Pc": 268544
+  },
+  {
+    "CodeOffset": 6404,
+    "FetchWords": 1,
+    "Group": "shared-P:short_string_p",
+    "Instructions": 1,
+    "Pc": 268548
+  },
+  {
+    "CodeOffset": 6406,
+    "FetchWords": 1,
+    "Group": "shared-P:short_string_p",
+    "Instructions": 1,
+    "Pc": 268550
+  },
+  {
+    "CodeOffset": 6408,
+    "FetchWords": 1,
+    "Group": "thread-dispatch",
+    "Instructions": 1,
+    "Pc": 268552
+  },
+  {
+    "CodeOffset": 6410,
+    "FetchWords": 2,
+    "Group": "thread-dispatch",
+    "Instructions": 1,
+    "Pc": 268554
+  },
+  {
+    "CodeOffset": 6414,
+    "FetchWords": 4,
+    "Group": "shared-P:print_string",
+    "Instructions": 2,
+    "Pc": 268558
+  },
+  {
+    "CodeOffset": 6418,
+    "FetchWords": 4,
+    "Group": "shared-P:print_string",
+    "Instructions": 2,
+    "Pc": 268562
+  },
+  {
+    "CodeOffset": 6422,
+    "FetchWords": 4,
+    "Group": "shared-P:print_string",
+    "Instructions": 2,
+    "Pc": 268566
+  },
+  {
+    "CodeOffset": 6426,
+    "FetchWords": 2,
+    "Group": "shared-P:print_string",
+    "Instructions": 2,
+    "Pc": 268570
+  },
+  {
+    "CodeOffset": 6428,
+    "FetchWords": 2,
+    "Group": "shared-P:print_string",
+    "Instructions": 2,
+    "Pc": 268572
+  },
+  {
+    "CodeOffset": 6430,
+    "FetchWords": 2,
+    "Group": "shared-P:print_string",
+    "Instructions": 2,
+    "Pc": 268574
+  },
+  {
+    "CodeOffset": 6432,
+    "FetchWords": 2,
+    "Group": "shared-P:print_string",
+    "Instructions": 2,
+    "Pc": 268576
+  },
+  {
+    "CodeOffset": 6434,
+    "FetchWords": 4,
+    "Group": "shared-P:print_string",
+    "Instructions": 2,
+    "Pc": 268578
+  },
+  {
+    "CodeOffset": 6438,
+    "FetchWords": 2,
+    "Group": "shared-P:print_string",
+    "Instructions": 2,
+    "Pc": 268582
+  },
+  {
+    "CodeOffset": 6440,
+    "FetchWords": 2,
+    "Group": "shared-P:print_string",
+    "Instructions": 2,
+    "Pc": 268584
+  },
+  {
+    "CodeOffset": 6442,
+    "FetchWords": 2,
+    "Group": "shared-P:print_string",
+    "Instructions": 2,
+    "Pc": 268586
+  },
+  {
+    "CodeOffset": 6444,
+    "FetchWords": 2,
+    "Group": "shared-P:print_string",
+    "Instructions": 2,
+    "Pc": 268588
+  },
+  {
+    "CodeOffset": 6446,
+    "FetchWords": 2,
+    "Group": "shared-P:print_string",
+    "Instructions": 2,
+    "Pc": 268590
+  },
+  {
+    "CodeOffset": 6448,
+    "FetchWords": 2,
+    "Group": "shared-P:print_string",
+    "Instructions": 2,
+    "Pc": 268592
+  },
+  {
+    "CodeOffset": 6460,
+    "FetchWords": 4,
+    "Group": "shared-P:print_string",
+    "Instructions": 2,
+    "Pc": 268604
+  },
+  {
+    "CodeOffset": 6464,
+    "FetchWords": 2,
+    "Group": "shared-P:print_string",
+    "Instructions": 2,
+    "Pc": 268608
+  },
+  {
+    "CodeOffset": 6466,
+    "FetchWords": 4,
+    "Group": "shared-P:print_string",
+    "Instructions": 2,
+    "Pc": 268610
+  },
+  {
+    "CodeOffset": 6470,
+    "FetchWords": 2,
+    "Group": "shared-P:print_string",
+    "Instructions": 2,
+    "Pc": 268614
+  },
+  {
+    "CodeOffset": 6472,
+    "FetchWords": 2,
+    "Group": "shared-P:print_string",
+    "Instructions": 2,
+    "Pc": 268616
+  },
+  {
+    "CodeOffset": 6474,
+    "FetchWords": 2,
+    "Group": "shared-P:print_string",
+    "Instructions": 2,
+    "Pc": 268618
+  },
+  {
+    "CodeOffset": 6476,
+    "FetchWords": 2,
+    "Group": "shared-P:print_string",
+    "Instructions": 2,
+    "Pc": 268620
+  },
+  {
+    "CodeOffset": 6478,
+    "FetchWords": 2,
+    "Group": "shared-P:print_string",
+    "Instructions": 2,
+    "Pc": 268622
+  },
+  {
+    "CodeOffset": 6480,
+    "FetchWords": 4,
+    "Group": "shared-P:print_string",
+    "Instructions": 2,
+    "Pc": 268624
+  },
+  {
+    "CodeOffset": 6484,
+    "FetchWords": 2,
+    "Group": "shared-P:print_string",
+    "Instructions": 2,
+    "Pc": 268628
+  },
+  {
+    "CodeOffset": 6532,
+    "FetchWords": 2,
+    "Group": "shared-P:print_string",
+    "Instructions": 2,
+    "Pc": 268676
+  },
+  {
+    "CodeOffset": 6534,
+    "FetchWords": 2,
+    "Group": "shared-P:print_string",
+    "Instructions": 2,
+    "Pc": 268678
+  },
+  {
+    "CodeOffset": 6536,
+    "FetchWords": 2,
+    "Group": "shared-P:print_string",
+    "Instructions": 2,
+    "Pc": 268680
+  },
+  {
+    "CodeOffset": 6538,
+    "FetchWords": 4,
+    "Group": "shared-P:print_string",
+    "Instructions": 2,
+    "Pc": 268682
+  },
+  {
+    "CodeOffset": 6542,
+    "FetchWords": 4,
+    "Group": "shared-P:print_string",
+    "Instructions": 2,
+    "Pc": 268686
+  },
+  {
+    "CodeOffset": 6546,
+    "FetchWords": 2,
+    "Group": "shared-P:print_string",
+    "Instructions": 2,
+    "Pc": 268690
+  },
+  {
+    "CodeOffset": 6548,
+    "FetchWords": 2,
+    "Group": "shared-P:print_string",
+    "Instructions": 2,
+    "Pc": 268692
+  },
+  {
+    "CodeOffset": 6550,
+    "FetchWords": 2,
+    "Group": "shared-P:print_string",
+    "Instructions": 2,
+    "Pc": 268694
+  },
+  {
+    "CodeOffset": 6552,
+    "FetchWords": 2,
+    "Group": "shared-P:print_string",
+    "Instructions": 2,
+    "Pc": 268696
+  },
+  {
+    "CodeOffset": 6554,
+    "FetchWords": 2,
+    "Group": "shared-P:print_string",
+    "Instructions": 2,
+    "Pc": 268698
+  },
+  {
+    "CodeOffset": 6560,
+    "FetchWords": 2,
+    "Group": "shared-P:print_string",
+    "Instructions": 2,
+    "Pc": 268704
+  },
+  {
+    "CodeOffset": 6562,
+    "FetchWords": 2,
+    "Group": "thread-dispatch",
+    "Instructions": 2,
+    "Pc": 268706
+  },
+  {
+    "CodeOffset": 6564,
+    "FetchWords": 4,
+    "Group": "thread-dispatch",
+    "Instructions": 2,
+    "Pc": 268708
+  },
+  {
+    "CodeOffset": 6568,
+    "FetchWords": 1,
+    "Group": "shared-P:make_string_from_int",
+    "Instructions": 1,
+    "Pc": 268712
+  },
+  {
+    "CodeOffset": 6570,
+    "FetchWords": 1,
+    "Group": "shared-P:make_string_from_int",
+    "Instructions": 1,
+    "Pc": 268714
+  },
+  {
+    "CodeOffset": 6572,
+    "FetchWords": 1,
+    "Group": "shared-P:make_string_from_int",
+    "Instructions": 1,
+    "Pc": 268716
+  },
+  {
+    "CodeOffset": 6574,
+    "FetchWords": 2,
+    "Group": "shared-P:make_string_from_int",
+    "Instructions": 1,
+    "Pc": 268718
+  },
+  {
+    "CodeOffset": 6578,
+    "FetchWords": 1,
+    "Group": "shared-P:make_string_from_int",
+    "Instructions": 1,
+    "Pc": 268722
+  },
+  {
+    "CodeOffset": 6580,
+    "FetchWords": 1,
+    "Group": "shared-P:make_string_from_int",
+    "Instructions": 1,
+    "Pc": 268724
+  },
+  {
+    "CodeOffset": 6582,
+    "FetchWords": 1,
+    "Group": "shared-P:make_string_from_int",
+    "Instructions": 1,
+    "Pc": 268726
+  },
+  {
+    "CodeOffset": 6584,
+    "FetchWords": 1,
+    "Group": "shared-P:make_string_from_int",
+    "Instructions": 1,
+    "Pc": 268728
+  },
+  {
+    "CodeOffset": 6586,
+    "FetchWords": 1,
+    "Group": "shared-P:make_string_from_int",
+    "Instructions": 1,
+    "Pc": 268730
+  },
+  {
+    "CodeOffset": 6588,
+    "FetchWords": 1,
+    "Group": "shared-P:make_string_from_int",
+    "Instructions": 1,
+    "Pc": 268732
+  },
+  {
+    "CodeOffset": 6590,
+    "FetchWords": 1,
+    "Group": "shared-P:make_string_from_int",
+    "Instructions": 1,
+    "Pc": 268734
+  },
+  {
+    "CodeOffset": 6592,
+    "FetchWords": 1,
+    "Group": "shared-P:make_string_from_int",
+    "Instructions": 1,
+    "Pc": 268736
+  },
+  {
+    "CodeOffset": 6594,
+    "FetchWords": 2,
+    "Group": "shared-P:make_string_from_int",
+    "Instructions": 1,
+    "Pc": 268738
+  },
+  {
+    "CodeOffset": 6598,
+    "FetchWords": 1,
+    "Group": "shared-P:make_string_from_int",
+    "Instructions": 1,
+    "Pc": 268742
+  },
+  {
+    "CodeOffset": 6600,
+    "FetchWords": 1,
+    "Group": "shared-P:make_string_from_int",
+    "Instructions": 1,
+    "Pc": 268744
+  },
+  {
+    "CodeOffset": 6606,
+    "FetchWords": 1,
+    "Group": "thread-dispatch",
+    "Instructions": 1,
+    "Pc": 268750
+  },
+  {
+    "CodeOffset": 6608,
+    "FetchWords": 2,
+    "Group": "thread-dispatch",
+    "Instructions": 1,
+    "Pc": 268752
+  },
+  {
+    "CodeOffset": 6612,
+    "FetchWords": 2,
+    "Group": "shared-P:print_slash",
+    "Instructions": 1,
+    "Pc": 268756
+  },
+  {
+    "CodeOffset": 6616,
+    "FetchWords": 1,
+    "Group": "shared-P:print_slash",
+    "Instructions": 1,
+    "Pc": 268760
+  },
+  {
+    "CodeOffset": 6618,
+    "FetchWords": 2,
+    "Group": "shared-P:print_slash",
+    "Instructions": 1,
+    "Pc": 268762
+  },
+  {
+    "CodeOffset": 6622,
+    "FetchWords": 1,
+    "Group": "shared-P:print_slash",
+    "Instructions": 1,
+    "Pc": 268766
+  },
+  {
+    "CodeOffset": 6624,
+    "FetchWords": 2,
+    "Group": "shared-P:print_slash",
+    "Instructions": 1,
+    "Pc": 268768
+  },
+  {
+    "CodeOffset": 6628,
+    "FetchWords": 2,
+    "Group": "shared-P:print_slash",
+    "Instructions": 1,
+    "Pc": 268772
+  },
+  {
+    "CodeOffset": 6632,
+    "FetchWords": 1,
+    "Group": "shared-P:print_slash",
+    "Instructions": 1,
+    "Pc": 268776
+  },
+  {
+    "CodeOffset": 6634,
+    "FetchWords": 1,
+    "Group": "shared-P:print_slash",
+    "Instructions": 1,
+    "Pc": 268778
+  },
+  {
+    "CodeOffset": 6636,
+    "FetchWords": 1,
+    "Group": "shared-P:print_slash",
+    "Instructions": 1,
+    "Pc": 268780
+  },
+  {
+    "CodeOffset": 6638,
+    "FetchWords": 1,
+    "Group": "shared-P:print_slash",
+    "Instructions": 1,
+    "Pc": 268782
+  },
+  {
+    "CodeOffset": 6640,
+    "FetchWords": 1,
+    "Group": "shared-P:print_slash",
+    "Instructions": 1,
+    "Pc": 268784
+  },
+  {
+    "CodeOffset": 6642,
+    "FetchWords": 1,
+    "Group": "shared-P:print_slash",
+    "Instructions": 1,
+    "Pc": 268786
+  },
+  {
+    "CodeOffset": 6644,
+    "FetchWords": 1,
+    "Group": "shared-P:print_slash",
+    "Instructions": 1,
+    "Pc": 268788
+  },
+  {
+    "CodeOffset": 6650,
+    "FetchWords": 1,
+    "Group": "shared-P:print_slash",
+    "Instructions": 1,
+    "Pc": 268794
+  },
+  {
+    "CodeOffset": 6652,
+    "FetchWords": 1,
+    "Group": "thread-dispatch",
+    "Instructions": 1,
+    "Pc": 268796
+  },
+  {
+    "CodeOffset": 6654,
+    "FetchWords": 2,
+    "Group": "thread-dispatch",
+    "Instructions": 1,
+    "Pc": 268798
+  },
+  {
+    "CodeOffset": 6658,
+    "FetchWords": 2,
+    "Group": "shared-P:prog_end",
+    "Instructions": 1,
+    "Pc": 268802
+  },
+  {
+    "CodeOffset": 6668,
+    "FetchWords": 2242,
+    "Group": "shared-P:loc_for_int_p",
+    "Instructions": 2242,
+    "Pc": 268812
+  },
+  {
+    "CodeOffset": 6670,
+    "FetchWords": 6726,
+    "Group": "shared-P:loc_for_int_p",
+    "Instructions": 2242,
+    "Pc": 268814
+  },
+  {
+    "CodeOffset": 6676,
+    "FetchWords": 4484,
+    "Group": "shared-P:loc_for_int_p",
+    "Instructions": 2242,
+    "Pc": 268820
+  },
+  {
+    "CodeOffset": 6680,
+    "FetchWords": 2242,
+    "Group": "shared-P:loc_for_int_p",
+    "Instructions": 2242,
+    "Pc": 268824
+  },
+  {
+    "CodeOffset": 6682,
+    "FetchWords": 4484,
+    "Group": "shared-P:loc_for_int_p",
+    "Instructions": 2242,
+    "Pc": 268826
+  },
+  {
+    "CodeOffset": 6686,
+    "FetchWords": 2242,
+    "Group": "shared-P:loc_for_int_p",
+    "Instructions": 2242,
+    "Pc": 268830
+  },
+  {
+    "CodeOffset": 6688,
+    "FetchWords": 2242,
+    "Group": "shared-P:loc_for_int_p",
+    "Instructions": 2242,
+    "Pc": 268832
+  },
+  {
+    "CodeOffset": 6690,
+    "FetchWords": 2242,
+    "Group": "shared-P:loc_for_int_p",
+    "Instructions": 2242,
+    "Pc": 268834
+  },
+  {
+    "CodeOffset": 6692,
+    "FetchWords": 4484,
+    "Group": "shared-P:loc_for_int_p",
+    "Instructions": 2242,
+    "Pc": 268836
+  },
+  {
+    "CodeOffset": 6696,
+    "FetchWords": 2242,
+    "Group": "shared-P:loc_for_int_p",
+    "Instructions": 2242,
+    "Pc": 268840
+  },
+  {
+    "CodeOffset": 6698,
+    "FetchWords": 2242,
+    "Group": "shared-P:loc_for_int_p",
+    "Instructions": 2242,
+    "Pc": 268842
+  },
+  {
+    "CodeOffset": 6700,
+    "FetchWords": 2242,
+    "Group": "shared-P:loc_for_int_p",
+    "Instructions": 2242,
+    "Pc": 268844
+  },
+  {
+    "CodeOffset": 6702,
+    "FetchWords": 2242,
+    "Group": "shared-P:loc_for_int_p",
+    "Instructions": 2242,
+    "Pc": 268846
+  },
+  {
+    "CodeOffset": 6704,
+    "FetchWords": 2242,
+    "Group": "thread-dispatch",
+    "Instructions": 2242,
+    "Pc": 268848
+  },
+  {
+    "CodeOffset": 6706,
+    "FetchWords": 4484,
+    "Group": "thread-dispatch",
+    "Instructions": 2242,
+    "Pc": 268850
+  },
+  {
+    "CodeOffset": 6710,
+    "FetchWords": 94,
+    "Group": "shared-P:quick_zero",
+    "Instructions": 94,
+    "Pc": 268854
+  },
+  {
+    "CodeOffset": 6712,
+    "FetchWords": 94,
+    "Group": "thread-dispatch",
+    "Instructions": 94,
+    "Pc": 268856
+  },
+  {
+    "CodeOffset": 6714,
+    "FetchWords": 188,
+    "Group": "thread-dispatch",
+    "Instructions": 94,
+    "Pc": 268858
+  },
+  {
+    "CodeOffset": 6718,
+    "FetchWords": 4300,
+    "Group": "shared-P:return",
+    "Instructions": 2150,
+    "Pc": 268862
+  },
+  {
+    "CodeOffset": 6722,
+    "FetchWords": 2150,
+    "Group": "shared-P:return",
+    "Instructions": 2150,
+    "Pc": 268866
+  },
+  {
+    "CodeOffset": 6724,
+    "FetchWords": 2150,
+    "Group": "shared-P:return",
+    "Instructions": 2150,
+    "Pc": 268868
+  },
+  {
+    "CodeOffset": 6730,
+    "FetchWords": 2150,
+    "Group": "shared-P:return",
+    "Instructions": 2150,
+    "Pc": 268874
+  },
+  {
+    "CodeOffset": 6732,
+    "FetchWords": 2150,
+    "Group": "shared-P:return",
+    "Instructions": 2150,
+    "Pc": 268876
+  },
+  {
+    "CodeOffset": 6734,
+    "FetchWords": 4300,
+    "Group": "shared-P:return",
+    "Instructions": 2150,
+    "Pc": 268878
+  },
+  {
+    "CodeOffset": 6738,
+    "FetchWords": 2150,
+    "Group": "shared-P:return",
+    "Instructions": 2150,
+    "Pc": 268882
+  },
+  {
+    "CodeOffset": 6740,
+    "FetchWords": 2150,
+    "Group": "shared-P:return",
+    "Instructions": 2150,
+    "Pc": 268884
+  },
+  {
+    "CodeOffset": 6742,
+    "FetchWords": 2150,
+    "Group": "shared-P:return",
+    "Instructions": 2150,
+    "Pc": 268886
+  },
+  {
+    "CodeOffset": 6744,
+    "FetchWords": 10747,
+    "Group": "shared-P:return",
+    "Instructions": 10747,
+    "Pc": 268888
+  },
+  {
+    "CodeOffset": 6746,
+    "FetchWords": 10747,
+    "Group": "shared-P:return",
+    "Instructions": 10747,
+    "Pc": 268890
+  },
+  {
+    "CodeOffset": 6748,
+    "FetchWords": 8597,
+    "Group": "shared-P:return",
+    "Instructions": 8597,
+    "Pc": 268892
+  },
+  {
+    "CodeOffset": 6750,
+    "FetchWords": 8597,
+    "Group": "shared-P:return",
+    "Instructions": 8597,
+    "Pc": 268894
+  },
+  {
+    "CodeOffset": 6752,
+    "FetchWords": 8597,
+    "Group": "shared-P:return",
+    "Instructions": 8597,
+    "Pc": 268896
+  },
+  {
+    "CodeOffset": 6754,
+    "FetchWords": 17194,
+    "Group": "shared-P:return",
+    "Instructions": 8597,
+    "Pc": 268898
+  },
+  {
+    "CodeOffset": 6758,
+    "FetchWords": 8597,
+    "Group": "shared-P:return",
+    "Instructions": 8597,
+    "Pc": 268902
+  },
+  {
+    "CodeOffset": 6760,
+    "FetchWords": 8597,
+    "Group": "shared-P:return",
+    "Instructions": 8597,
+    "Pc": 268904
+  },
+  {
+    "CodeOffset": 6762,
+    "FetchWords": 4300,
+    "Group": "shared-P:return",
+    "Instructions": 2150,
+    "Pc": 268906
+  },
+  {
+    "CodeOffset": 6766,
+    "FetchWords": 2150,
+    "Group": "shared-P:return",
+    "Instructions": 2150,
+    "Pc": 268910
+  },
+  {
+    "CodeOffset": 6768,
+    "FetchWords": 2150,
+    "Group": "shared-P:return",
+    "Instructions": 2150,
+    "Pc": 268912
+  },
+  {
+    "CodeOffset": 6770,
+    "FetchWords": 4300,
+    "Group": "shared-P:return",
+    "Instructions": 2150,
+    "Pc": 268914
+  },
+  {
+    "CodeOffset": 6782,
+    "FetchWords": 6355,
+    "Group": "shared-P:local_int_p",
+    "Instructions": 6355,
+    "Pc": 268926
+  },
+  {
+    "CodeOffset": 6784,
+    "FetchWords": 6355,
+    "Group": "shared-P:local_int_p",
+    "Instructions": 6355,
+    "Pc": 268928
+  },
+  {
+    "CodeOffset": 6786,
+    "FetchWords": 6355,
+    "Group": "shared-P:local_int_p",
+    "Instructions": 6355,
+    "Pc": 268930
+  },
+  {
+    "CodeOffset": 6788,
+    "FetchWords": 6355,
+    "Group": "shared-P:local_int_p",
+    "Instructions": 6355,
+    "Pc": 268932
+  },
+  {
+    "CodeOffset": 6790,
+    "FetchWords": 6355,
+    "Group": "shared-P:local_int_p",
+    "Instructions": 6355,
+    "Pc": 268934
+  },
+  {
+    "CodeOffset": 6792,
+    "FetchWords": 6355,
+    "Group": "shared-P:local_int_p",
+    "Instructions": 6355,
+    "Pc": 268936
+  },
+  {
+    "CodeOffset": 6794,
+    "FetchWords": 12710,
+    "Group": "shared-P:local_int_p",
+    "Instructions": 6355,
+    "Pc": 268938
+  },
+  {
+    "CodeOffset": 6798,
+    "FetchWords": 6355,
+    "Group": "shared-P:local_int_p",
+    "Instructions": 6355,
+    "Pc": 268942
+  },
+  {
+    "CodeOffset": 6800,
+    "FetchWords": 6355,
+    "Group": "shared-P:local_int_p",
+    "Instructions": 6355,
+    "Pc": 268944
+  },
+  {
+    "CodeOffset": 6802,
+    "FetchWords": 6355,
+    "Group": "shared-P:local_int_p",
+    "Instructions": 6355,
+    "Pc": 268946
+  },
+  {
+    "CodeOffset": 6804,
+    "FetchWords": 6355,
+    "Group": "shared-P:local_int_p",
+    "Instructions": 6355,
+    "Pc": 268948
+  },
+  {
+    "CodeOffset": 6806,
+    "FetchWords": 6355,
+    "Group": "shared-P:local_int_p",
+    "Instructions": 6355,
+    "Pc": 268950
+  },
+  {
+    "CodeOffset": 6808,
+    "FetchWords": 6355,
+    "Group": "thread-dispatch",
+    "Instructions": 6355,
+    "Pc": 268952
+  },
+  {
+    "CodeOffset": 6810,
+    "FetchWords": 12710,
+    "Group": "thread-dispatch",
+    "Instructions": 6355,
+    "Pc": 268954
+  },
+  {
+    "CodeOffset": 6814,
+    "FetchWords": 2576,
+    "Group": "shared-P:rom_fn_p",
+    "Instructions": 2576,
+    "Pc": 268958
+  },
+  {
+    "CodeOffset": 6816,
+    "FetchWords": 5152,
+    "Group": "shared-P:rom_fn_p",
+    "Instructions": 2576,
+    "Pc": 268960
+  },
+  {
+    "CodeOffset": 6820,
+    "FetchWords": 2576,
+    "Group": "thread-dispatch",
+    "Instructions": 2576,
+    "Pc": 268964
+  },
+  {
+    "CodeOffset": 6822,
+    "FetchWords": 5152,
+    "Group": "thread-dispatch",
+    "Instructions": 2576,
+    "Pc": 268966
+  },
+  {
+    "CodeOffset": 6826,
+    "FetchWords": 5152,
+    "Group": "shared-P:make_int_from_float",
+    "Instructions": 2576,
+    "Pc": 268970
+  },
+  {
+    "CodeOffset": 6830,
+    "FetchWords": 2576,
+    "Group": "thread-dispatch",
+    "Instructions": 2576,
+    "Pc": 268974
+  },
+  {
+    "CodeOffset": 6832,
+    "FetchWords": 5152,
+    "Group": "thread-dispatch",
+    "Instructions": 2576,
+    "Pc": 268976
+  },
+  {
+    "CodeOffset": 6836,
+    "FetchWords": 2576,
+    "Group": "shared-P:l_or_float",
+    "Instructions": 2576,
+    "Pc": 268980
+  },
+  {
+    "CodeOffset": 6838,
+    "FetchWords": 5152,
+    "Group": "shared-P:l_or_float",
+    "Instructions": 2576,
+    "Pc": 268982
+  },
+  {
+    "CodeOffset": 6842,
+    "FetchWords": 2576,
+    "Group": "shared-P:l_or_float",
+    "Instructions": 2576,
+    "Pc": 268986
+  },
+  {
+    "CodeOffset": 6844,
+    "FetchWords": 5152,
+    "Group": "shared-P:l_or_float",
+    "Instructions": 2576,
+    "Pc": 268988
+  },
+  {
+    "CodeOffset": 6848,
+    "FetchWords": 2576,
+    "Group": "shared-P:l_or_float",
+    "Instructions": 2576,
+    "Pc": 268992
+  },
+  {
+    "CodeOffset": 6860,
+    "FetchWords": 2576,
+    "Group": "thread-dispatch",
+    "Instructions": 2576,
+    "Pc": 269004
+  },
+  {
+    "CodeOffset": 6862,
+    "FetchWords": 5152,
+    "Group": "thread-dispatch",
+    "Instructions": 2576,
+    "Pc": 269006
+  },
+  {
+    "CodeOffset": 6866,
+    "FetchWords": 14,
+    "Group": "shared-P:global_int_p",
+    "Instructions": 14,
+    "Pc": 269010
+  },
+  {
+    "CodeOffset": 6868,
+    "FetchWords": 28,
+    "Group": "shared-P:global_int_p",
+    "Instructions": 14,
+    "Pc": 269012
+  },
+  {
+    "CodeOffset": 6872,
+    "FetchWords": 14,
+    "Group": "shared-P:global_int_p",
+    "Instructions": 14,
+    "Pc": 269016
+  },
+  {
+    "CodeOffset": 6874,
+    "FetchWords": 14,
+    "Group": "thread-dispatch",
+    "Instructions": 14,
+    "Pc": 269018
+  },
+  {
+    "CodeOffset": 6876,
+    "FetchWords": 28,
+    "Group": "thread-dispatch",
+    "Instructions": 14,
+    "Pc": 269020
+  },
+  {
+    "CodeOffset": 6880,
+    "FetchWords": 2,
+    "Group": "shared-P:global_for_int_p",
+    "Instructions": 2,
+    "Pc": 269024
+  },
+  {
+    "CodeOffset": 6882,
+    "FetchWords": 4,
+    "Group": "shared-P:global_for_int_p",
+    "Instructions": 2,
+    "Pc": 269026
+  },
+  {
+    "CodeOffset": 6886,
+    "FetchWords": 2,
+    "Group": "shared-P:global_for_int_p",
+    "Instructions": 2,
+    "Pc": 269030
+  },
+  {
+    "CodeOffset": 6888,
+    "FetchWords": 6,
+    "Group": "shared-P:global_for_int_p",
+    "Instructions": 2,
+    "Pc": 269032
+  },
+  {
+    "CodeOffset": 6894,
+    "FetchWords": 4,
+    "Group": "shared-P:global_for_int_p",
+    "Instructions": 2,
+    "Pc": 269038
+  },
+  {
+    "CodeOffset": 6898,
+    "FetchWords": 2,
+    "Group": "thread-dispatch",
+    "Instructions": 2,
+    "Pc": 269042
+  },
+  {
+    "CodeOffset": 6900,
+    "FetchWords": 4,
+    "Group": "thread-dispatch",
+    "Instructions": 2,
+    "Pc": 269044
+  },
+  {
+    "CodeOffset": 6904,
+    "FetchWords": 2,
+    "Group": "shared-P:last_global",
+    "Instructions": 1,
+    "Pc": 269048
+  },
+  {
+    "CodeOffset": 6908,
+    "FetchWords": 2,
+    "Group": "shared-P:last_global",
+    "Instructions": 1,
+    "Pc": 269052
+  },
+  {
+    "CodeOffset": 6912,
+    "FetchWords": 1,
+    "Group": "thread-dispatch",
+    "Instructions": 1,
+    "Pc": 269056
+  },
+  {
+    "CodeOffset": 6914,
+    "FetchWords": 2,
+    "Group": "thread-dispatch",
+    "Instructions": 1,
+    "Pc": 269058
+  },
+  {
+    "CodeOffset": 6918,
+    "FetchWords": 1,
+    "Group": "shared-P:restore_p",
+    "Instructions": 1,
+    "Pc": 269062
+  },
+  {
+    "CodeOffset": 6920,
+    "FetchWords": 2,
+    "Group": "shared-P:restore_p",
+    "Instructions": 1,
+    "Pc": 269064
+  },
+  {
+    "CodeOffset": 6924,
+    "FetchWords": 2,
+    "Group": "shared-P:restore_p",
+    "Instructions": 1,
+    "Pc": 269068
+  },
+  {
+    "CodeOffset": 6928,
+    "FetchWords": 1,
+    "Group": "thread-dispatch",
+    "Instructions": 1,
+    "Pc": 269072
+  },
+  {
+    "CodeOffset": 6930,
+    "FetchWords": 2,
+    "Group": "thread-dispatch",
+    "Instructions": 1,
+    "Pc": 269074
+  },
+  {
+    "CodeOffset": 6934,
+    "FetchWords": 2,
+    "Group": "native-template:slow",
+    "Instructions": 1,
+    "Pc": 269078
+  },
+  {
+    "CodeOffset": 7052,
+    "FetchWords": 2,
+    "Group": "native-block",
+    "Instructions": 1,
+    "Pc": 269196
+  },
+  {
+    "CodeOffset": 7056,
+    "FetchWords": 2,
+    "Group": "native-block",
+    "Instructions": 1,
+    "Pc": 269200
+  },
+  {
+    "CodeOffset": 7060,
+    "FetchWords": 2,
+    "Group": "native-block",
+    "Instructions": 1,
+    "Pc": 269204
+  },
+  {
+    "CodeOffset": 7064,
+    "FetchWords": 2,
+    "Group": "native-block",
+    "Instructions": 1,
+    "Pc": 269208
+  },
+  {
+    "CodeOffset": 7068,
+    "FetchWords": 2,
+    "Group": "native-template:slow",
+    "Instructions": 1,
+    "Pc": 269212
+  },
+  {
+    "CodeOffset": 7108,
+    "FetchWords": 2,
+    "Group": "native-block",
+    "Instructions": 1,
+    "Pc": 269252
+  },
+  {
+    "CodeOffset": 7112,
+    "FetchWords": 2,
+    "Group": "native-block",
+    "Instructions": 1,
+    "Pc": 269256
+  },
+  {
+    "CodeOffset": 7116,
+    "FetchWords": 2,
+    "Group": "native-block",
+    "Instructions": 1,
+    "Pc": 269260
+  },
+  {
+    "CodeOffset": 7120,
+    "FetchWords": 2,
+    "Group": "native-block",
+    "Instructions": 1,
+    "Pc": 269264
+  },
+  {
+    "CodeOffset": 7124,
+    "FetchWords": 2,
+    "Group": "native-template:slow",
+    "Instructions": 1,
+    "Pc": 269268
+  },
+  {
+    "CodeOffset": 7140,
+    "FetchWords": 2,
+    "Group": "native-template:fch_int_var",
+    "Instructions": 1,
+    "Pc": 269284
+  },
+  {
+    "CodeOffset": 7144,
+    "FetchWords": 1,
+    "Group": "native-template:fch_int_var",
+    "Instructions": 1,
+    "Pc": 269288
+  },
+  {
+    "CodeOffset": 7146,
+    "FetchWords": 2,
+    "Group": "native-template:constant_int",
+    "Instructions": 1,
+    "Pc": 269290
+  },
+  {
+    "CodeOffset": 7150,
+    "FetchWords": 1,
+    "Group": "native-template:neq_int",
+    "Instructions": 1,
+    "Pc": 269294
+  },
+  {
+    "CodeOffset": 7152,
+    "FetchWords": 1,
+    "Group": "native-template:neq_int",
+    "Instructions": 1,
+    "Pc": 269296
+  },
+  {
+    "CodeOffset": 7154,
+    "FetchWords": 1,
+    "Group": "native-template:neq_int",
+    "Instructions": 1,
+    "Pc": 269298
+  },
+  {
+    "CodeOffset": 7156,
+    "FetchWords": 1,
+    "Group": "native-template:neq_int",
+    "Instructions": 1,
+    "Pc": 269300
+  },
+  {
+    "CodeOffset": 7158,
+    "FetchWords": 1,
+    "Group": "native-template:neq_int",
+    "Instructions": 1,
+    "Pc": 269302
+  },
+  {
+    "CodeOffset": 7160,
+    "FetchWords": 1,
+    "Group": "native-template:neq_int",
+    "Instructions": 1,
+    "Pc": 269304
+  },
+  {
+    "CodeOffset": 7168,
+    "FetchWords": 2,
+    "Group": "native-template:neq_int",
+    "Instructions": 1,
+    "Pc": 269312
+  },
+  {
+    "CodeOffset": 7172,
+    "FetchWords": 2,
+    "Group": "native-template:slow",
+    "Instructions": 1,
+    "Pc": 269316
+  },
+  {
+    "CodeOffset": 7220,
+    "FetchWords": 1,
+    "Group": "native-loop",
+    "Instructions": 1,
+    "Pc": 269364
+  },
+  {
+    "CodeOffset": 7222,
+    "FetchWords": 1,
+    "Group": "native-loop",
+    "Instructions": 1,
+    "Pc": 269366
+  },
+  {
+    "CodeOffset": 7224,
+    "FetchWords": 1,
+    "Group": "native-loop",
+    "Instructions": 1,
+    "Pc": 269368
+  },
+  {
+    "CodeOffset": 7226,
+    "FetchWords": 2,
+    "Group": "native-loop",
+    "Instructions": 1,
+    "Pc": 269370
+  },
+  {
+    "CodeOffset": 7230,
+    "FetchWords": 1,
+    "Group": "native-loop",
+    "Instructions": 1,
+    "Pc": 269374
+  },
+  {
+    "CodeOffset": 7232,
+    "FetchWords": 2,
+    "Group": "native-loop",
+    "Instructions": 1,
+    "Pc": 269376
+  },
+  {
+    "CodeOffset": 7236,
+    "FetchWords": 2,
+    "Group": "native-loop",
+    "Instructions": 1,
+    "Pc": 269380
+  },
+  {
+    "CodeOffset": 7240,
+    "FetchWords": 16,
+    "Group": "native-loop",
+    "Instructions": 8,
+    "Pc": 269384
+  },
+  {
+    "CodeOffset": 7244,
+    "FetchWords": 8,
+    "Group": "native-loop",
+    "Instructions": 8,
+    "Pc": 269388
+  },
+  {
+    "CodeOffset": 7246,
+    "FetchWords": 8,
+    "Group": "native-loop",
+    "Instructions": 8,
+    "Pc": 269390
+  },
+  {
+    "CodeOffset": 7248,
+    "FetchWords": 8,
+    "Group": "native-loop",
+    "Instructions": 8,
+    "Pc": 269392
+  },
+  {
+    "CodeOffset": 7250,
+    "FetchWords": 8,
+    "Group": "native-loop",
+    "Instructions": 8,
+    "Pc": 269394
+  },
+  {
+    "CodeOffset": 7252,
+    "FetchWords": 8,
+    "Group": "native-loop",
+    "Instructions": 8,
+    "Pc": 269396
+  },
+  {
+    "CodeOffset": 7254,
+    "FetchWords": 8,
+    "Group": "native-loop",
+    "Instructions": 8,
+    "Pc": 269398
+  },
+  {
+    "CodeOffset": 7256,
+    "FetchWords": 16,
+    "Group": "native-loop",
+    "Instructions": 8,
+    "Pc": 269400
+  },
+  {
+    "CodeOffset": 7260,
+    "FetchWords": 8,
+    "Group": "native-loop",
+    "Instructions": 8,
+    "Pc": 269404
+  },
+  {
+    "CodeOffset": 7262,
+    "FetchWords": 8,
+    "Group": "native-loop",
+    "Instructions": 8,
+    "Pc": 269406
+  },
+  {
+    "CodeOffset": 7264,
+    "FetchWords": 8,
+    "Group": "native-loop",
+    "Instructions": 8,
+    "Pc": 269408
+  },
+  {
+    "CodeOffset": 7266,
+    "FetchWords": 8,
+    "Group": "native-loop",
+    "Instructions": 8,
+    "Pc": 269410
+  },
+  {
+    "CodeOffset": 7268,
+    "FetchWords": 8,
+    "Group": "native-loop",
+    "Instructions": 8,
+    "Pc": 269412
+  },
+  {
+    "CodeOffset": 7270,
+    "FetchWords": 8,
+    "Group": "native-loop",
+    "Instructions": 8,
+    "Pc": 269414
+  },
+  {
+    "CodeOffset": 7280,
+    "FetchWords": 16,
+    "Group": "native-loop",
+    "Instructions": 8,
+    "Pc": 269424
+  },
+  {
+    "CodeOffset": 7284,
+    "FetchWords": 16,
+    "Group": "native-loop",
+    "Instructions": 8,
+    "Pc": 269428
+  },
+  {
+    "CodeOffset": 7288,
+    "FetchWords": 8,
+    "Group": "native-loop",
+    "Instructions": 8,
+    "Pc": 269432
+  },
+  {
+    "CodeOffset": 7290,
+    "FetchWords": 16,
+    "Group": "native-loop",
+    "Instructions": 8,
+    "Pc": 269434
+  },
+  {
+    "CodeOffset": 7294,
+    "FetchWords": 8,
+    "Group": "native-loop",
+    "Instructions": 8,
+    "Pc": 269438
+  },
+  {
+    "CodeOffset": 7296,
+    "FetchWords": 8,
+    "Group": "native-loop",
+    "Instructions": 8,
+    "Pc": 269440
+  },
+  {
+    "CodeOffset": 7298,
+    "FetchWords": 8,
+    "Group": "native-loop",
+    "Instructions": 8,
+    "Pc": 269442
+  },
+  {
+    "CodeOffset": 7300,
+    "FetchWords": 8,
+    "Group": "native-loop",
+    "Instructions": 8,
+    "Pc": 269444
+  },
+  {
+    "CodeOffset": 7302,
+    "FetchWords": 16,
+    "Group": "native-loop",
+    "Instructions": 8,
+    "Pc": 269446
+  },
+  {
+    "CodeOffset": 7306,
+    "FetchWords": 8,
+    "Group": "native-loop",
+    "Instructions": 8,
+    "Pc": 269450
+  },
+  {
+    "CodeOffset": 7308,
+    "FetchWords": 24,
+    "Group": "native-loop",
+    "Instructions": 8,
+    "Pc": 269452
+  },
+  {
+    "CodeOffset": 7314,
+    "FetchWords": 8,
+    "Group": "native-loop",
+    "Instructions": 8,
+    "Pc": 269458
+  },
+  {
+    "CodeOffset": 7316,
+    "FetchWords": 24,
+    "Group": "native-loop",
+    "Instructions": 8,
+    "Pc": 269460
+  },
+  {
+    "CodeOffset": 7322,
+    "FetchWords": 16,
+    "Group": "native-loop",
+    "Instructions": 8,
+    "Pc": 269466
+  },
+  {
+    "CodeOffset": 7352,
+    "FetchWords": 8,
+    "Group": "native-loop",
+    "Instructions": 8,
+    "Pc": 269496
+  },
+  {
+    "CodeOffset": 7354,
+    "FetchWords": 16,
+    "Group": "native-loop",
+    "Instructions": 8,
+    "Pc": 269498
+  },
+  {
+    "CodeOffset": 7380,
+    "FetchWords": 8,
+    "Group": "native-loop",
+    "Instructions": 8,
+    "Pc": 269524
+  },
+  {
+    "CodeOffset": 7382,
+    "FetchWords": 16,
+    "Group": "native-loop",
+    "Instructions": 8,
+    "Pc": 269526
+  },
+  {
+    "CodeOffset": 7386,
+    "FetchWords": 8,
+    "Group": "native-loop",
+    "Instructions": 8,
+    "Pc": 269530
+  },
+  {
+    "CodeOffset": 7388,
+    "FetchWords": 8,
+    "Group": "native-loop",
+    "Instructions": 8,
+    "Pc": 269532
+  },
+  {
+    "CodeOffset": 7390,
+    "FetchWords": 8,
+    "Group": "native-loop",
+    "Instructions": 8,
+    "Pc": 269534
+  },
+  {
+    "CodeOffset": 7396,
+    "FetchWords": 16,
+    "Group": "native-loop",
+    "Instructions": 8,
+    "Pc": 269540
+  },
+  {
+    "CodeOffset": 7400,
+    "FetchWords": 8,
+    "Group": "native-loop",
+    "Instructions": 8,
+    "Pc": 269544
+  },
+  {
+    "CodeOffset": 7402,
+    "FetchWords": 16,
+    "Group": "native-loop",
+    "Instructions": 8,
+    "Pc": 269546
+  },
+  {
+    "CodeOffset": 7406,
+    "FetchWords": 8,
+    "Group": "native-loop",
+    "Instructions": 8,
+    "Pc": 269550
+  },
+  {
+    "CodeOffset": 7408,
+    "FetchWords": 8,
+    "Group": "native-loop",
+    "Instructions": 8,
+    "Pc": 269552
+  },
+  {
+    "CodeOffset": 7410,
+    "FetchWords": 8,
+    "Group": "native-loop",
+    "Instructions": 8,
+    "Pc": 269554
+  },
+  {
+    "CodeOffset": 7412,
+    "FetchWords": 8,
+    "Group": "native-loop",
+    "Instructions": 8,
+    "Pc": 269556
+  },
+  {
+    "CodeOffset": 7414,
+    "FetchWords": 7,
+    "Group": "native-loop",
+    "Instructions": 7,
+    "Pc": 269558
+  },
+  {
+    "CodeOffset": 7416,
+    "FetchWords": 14,
+    "Group": "native-loop",
+    "Instructions": 7,
+    "Pc": 269560
+  },
+  {
+    "CodeOffset": 7420,
+    "FetchWords": 2,
+    "Group": "native-loop",
+    "Instructions": 1,
+    "Pc": 269564
+  },
+  {
+    "CodeOffset": 7424,
+    "FetchWords": 1,
+    "Group": "native-loop",
+    "Instructions": 1,
+    "Pc": 269568
+  },
+  {
+    "CodeOffset": 7426,
+    "FetchWords": 1,
+    "Group": "native-loop",
+    "Instructions": 1,
+    "Pc": 269570
+  },
+  {
+    "CodeOffset": 7428,
+    "FetchWords": 1,
+    "Group": "native-loop",
+    "Instructions": 1,
+    "Pc": 269572
+  },
+  {
+    "CodeOffset": 7430,
+    "FetchWords": 1,
+    "Group": "native-loop",
+    "Instructions": 1,
+    "Pc": 269574
+  },
+  {
+    "CodeOffset": 7432,
+    "FetchWords": 2,
+    "Group": "native-loop",
+    "Instructions": 1,
+    "Pc": 269576
+  },
+  {
+    "CodeOffset": 7438,
+    "FetchWords": 2,
+    "Group": "native-block",
+    "Instructions": 1,
+    "Pc": 269582
+  },
+  {
+    "CodeOffset": 7442,
+    "FetchWords": 1,
+    "Group": "native-block",
+    "Instructions": 1,
+    "Pc": 269586
+  },
+  {
+    "CodeOffset": 7444,
+    "FetchWords": 2,
+    "Group": "native-block",
+    "Instructions": 1,
+    "Pc": 269588
+  },
+  {
+    "CodeOffset": 7448,
+    "FetchWords": 1,
+    "Group": "native-block",
+    "Instructions": 1,
+    "Pc": 269592
+  },
+  {
+    "CodeOffset": 7450,
+    "FetchWords": 1,
+    "Group": "native-block",
+    "Instructions": 1,
+    "Pc": 269594
+  },
+  {
+    "CodeOffset": 7452,
+    "FetchWords": 2,
+    "Group": "native-block",
+    "Instructions": 1,
+    "Pc": 269596
+  },
+  {
+    "CodeOffset": 7462,
+    "FetchWords": 2,
+    "Group": "native-block",
+    "Instructions": 1,
+    "Pc": 269606
+  },
+  {
+    "CodeOffset": 7466,
+    "FetchWords": 1,
+    "Group": "native-block",
+    "Instructions": 1,
+    "Pc": 269610
+  },
+  {
+    "CodeOffset": 7468,
+    "FetchWords": 1,
+    "Group": "native-block",
+    "Instructions": 1,
+    "Pc": 269612
+  },
+  {
+    "CodeOffset": 7470,
+    "FetchWords": 2,
+    "Group": "native-block",
+    "Instructions": 1,
+    "Pc": 269614
+  },
+  {
+    "CodeOffset": 7480,
+    "FetchWords": 1,
+    "Group": "native-block",
+    "Instructions": 1,
+    "Pc": 269624
+  },
+  {
+    "CodeOffset": 7482,
+    "FetchWords": 2,
+    "Group": "native-block",
+    "Instructions": 1,
+    "Pc": 269626
+  },
+  {
+    "CodeOffset": 7486,
+    "FetchWords": 1,
+    "Group": "native-block",
+    "Instructions": 1,
+    "Pc": 269630
+  },
+  {
+    "CodeOffset": 7488,
+    "FetchWords": 1,
+    "Group": "native-block",
+    "Instructions": 1,
+    "Pc": 269632
+  },
+  {
+    "CodeOffset": 7490,
+    "FetchWords": 1,
+    "Group": "native-block",
+    "Instructions": 1,
+    "Pc": 269634
+  },
+  {
+    "CodeOffset": 7496,
+    "FetchWords": 2,
+    "Group": "native-block",
+    "Instructions": 1,
+    "Pc": 269640
+  },
+  {
+    "CodeOffset": 7500,
+    "FetchWords": 1,
+    "Group": "native-block",
+    "Instructions": 1,
+    "Pc": 269644
+  },
+  {
+    "CodeOffset": 7502,
+    "FetchWords": 2,
+    "Group": "native-template:slow",
+    "Instructions": 1,
+    "Pc": 269646
+  },
+  {
+    "CodeOffset": 7602,
+    "FetchWords": 1,
+    "Group": "native-loop",
+    "Instructions": 1,
+    "Pc": 269746
+  },
+  {
+    "CodeOffset": 7604,
+    "FetchWords": 1,
+    "Group": "native-loop",
+    "Instructions": 1,
+    "Pc": 269748
+  },
+  {
+    "CodeOffset": 7606,
+    "FetchWords": 1,
+    "Group": "native-loop",
+    "Instructions": 1,
+    "Pc": 269750
+  },
+  {
+    "CodeOffset": 7608,
+    "FetchWords": 2,
+    "Group": "native-loop",
+    "Instructions": 1,
+    "Pc": 269752
+  },
+  {
+    "CodeOffset": 7612,
+    "FetchWords": 1,
+    "Group": "native-loop",
+    "Instructions": 1,
+    "Pc": 269756
+  },
+  {
+    "CodeOffset": 7614,
+    "FetchWords": 2,
+    "Group": "native-loop",
+    "Instructions": 1,
+    "Pc": 269758
+  },
+  {
+    "CodeOffset": 7618,
+    "FetchWords": 2,
+    "Group": "native-loop",
+    "Instructions": 1,
+    "Pc": 269762
+  },
+  {
+    "CodeOffset": 7622,
+    "FetchWords": 18,
+    "Group": "native-loop",
+    "Instructions": 9,
+    "Pc": 269766
+  },
+  {
+    "CodeOffset": 7626,
+    "FetchWords": 9,
+    "Group": "native-loop",
+    "Instructions": 9,
+    "Pc": 269770
+  },
+  {
+    "CodeOffset": 7628,
+    "FetchWords": 9,
+    "Group": "native-loop",
+    "Instructions": 9,
+    "Pc": 269772
+  },
+  {
+    "CodeOffset": 7630,
+    "FetchWords": 9,
+    "Group": "native-loop",
+    "Instructions": 9,
+    "Pc": 269774
+  },
+  {
+    "CodeOffset": 7632,
+    "FetchWords": 18,
+    "Group": "native-loop",
+    "Instructions": 9,
+    "Pc": 269776
+  },
+  {
+    "CodeOffset": 7636,
+    "FetchWords": 18,
+    "Group": "native-loop",
+    "Instructions": 9,
+    "Pc": 269780
+  },
+  {
+    "CodeOffset": 7640,
+    "FetchWords": 9,
+    "Group": "native-loop",
+    "Instructions": 9,
+    "Pc": 269784
+  },
+  {
+    "CodeOffset": 7642,
+    "FetchWords": 9,
+    "Group": "native-loop",
+    "Instructions": 9,
+    "Pc": 269786
+  },
+  {
+    "CodeOffset": 7644,
+    "FetchWords": 9,
+    "Group": "native-loop",
+    "Instructions": 9,
+    "Pc": 269788
+  },
+  {
+    "CodeOffset": 7646,
+    "FetchWords": 18,
+    "Group": "native-loop",
+    "Instructions": 9,
+    "Pc": 269790
+  },
+  {
+    "CodeOffset": 7650,
+    "FetchWords": 18,
+    "Group": "native-loop",
+    "Instructions": 9,
+    "Pc": 269794
+  },
+  {
+    "CodeOffset": 7654,
+    "FetchWords": 9,
+    "Group": "native-loop",
+    "Instructions": 9,
+    "Pc": 269798
+  },
+  {
+    "CodeOffset": 7656,
+    "FetchWords": 9,
+    "Group": "native-loop",
+    "Instructions": 9,
+    "Pc": 269800
+  },
+  {
+    "CodeOffset": 7658,
+    "FetchWords": 9,
+    "Group": "native-loop",
+    "Instructions": 9,
+    "Pc": 269802
+  },
+  {
+    "CodeOffset": 7660,
+    "FetchWords": 18,
+    "Group": "native-loop",
+    "Instructions": 9,
+    "Pc": 269804
+  },
+  {
+    "CodeOffset": 7664,
+    "FetchWords": 9,
+    "Group": "native-loop",
+    "Instructions": 9,
+    "Pc": 269808
+  },
+  {
+    "CodeOffset": 7666,
+    "FetchWords": 9,
+    "Group": "native-loop",
+    "Instructions": 9,
+    "Pc": 269810
+  },
+  {
+    "CodeOffset": 7668,
+    "FetchWords": 9,
+    "Group": "native-loop",
+    "Instructions": 9,
+    "Pc": 269812
+  },
+  {
+    "CodeOffset": 7670,
+    "FetchWords": 9,
+    "Group": "native-loop",
+    "Instructions": 9,
+    "Pc": 269814
+  },
+  {
+    "CodeOffset": 7672,
+    "FetchWords": 8,
+    "Group": "native-loop",
+    "Instructions": 8,
+    "Pc": 269816
+  },
+  {
+    "CodeOffset": 7674,
+    "FetchWords": 8,
+    "Group": "native-loop",
+    "Instructions": 8,
+    "Pc": 269818
+  },
+  {
+    "CodeOffset": 7676,
+    "FetchWords": 2,
+    "Group": "native-loop",
+    "Instructions": 1,
+    "Pc": 269820
+  },
+  {
+    "CodeOffset": 7680,
+    "FetchWords": 1,
+    "Group": "native-loop",
+    "Instructions": 1,
+    "Pc": 269824
+  },
+  {
+    "CodeOffset": 7682,
+    "FetchWords": 1,
+    "Group": "native-loop",
+    "Instructions": 1,
+    "Pc": 269826
+  },
+  {
+    "CodeOffset": 7684,
+    "FetchWords": 1,
+    "Group": "native-loop",
+    "Instructions": 1,
+    "Pc": 269828
+  },
+  {
+    "CodeOffset": 7686,
+    "FetchWords": 1,
+    "Group": "native-loop",
+    "Instructions": 1,
+    "Pc": 269830
+  },
+  {
+    "CodeOffset": 7688,
+    "FetchWords": 2,
+    "Group": "native-loop",
+    "Instructions": 1,
+    "Pc": 269832
+  },
+  {
+    "CodeOffset": 7720,
+    "FetchWords": 1,
+    "Group": "native-loop",
+    "Instructions": 1,
+    "Pc": 269864
+  },
+  {
+    "CodeOffset": 7722,
+    "FetchWords": 1,
+    "Group": "native-loop",
+    "Instructions": 1,
+    "Pc": 269866
+  },
+  {
+    "CodeOffset": 7724,
+    "FetchWords": 1,
+    "Group": "native-loop",
+    "Instructions": 1,
+    "Pc": 269868
+  },
+  {
+    "CodeOffset": 7726,
+    "FetchWords": 2,
+    "Group": "native-loop",
+    "Instructions": 1,
+    "Pc": 269870
+  },
+  {
+    "CodeOffset": 7730,
+    "FetchWords": 1,
+    "Group": "native-loop",
+    "Instructions": 1,
+    "Pc": 269874
+  },
+  {
+    "CodeOffset": 7732,
+    "FetchWords": 2,
+    "Group": "native-loop",
+    "Instructions": 1,
+    "Pc": 269876
+  },
+  {
+    "CodeOffset": 7736,
+    "FetchWords": 2,
+    "Group": "native-loop",
+    "Instructions": 1,
+    "Pc": 269880
+  },
+  {
+    "CodeOffset": 7740,
+    "FetchWords": 34,
+    "Group": "native-loop",
+    "Instructions": 17,
+    "Pc": 269884
+  },
+  {
+    "CodeOffset": 7744,
+    "FetchWords": 17,
+    "Group": "native-loop",
+    "Instructions": 17,
+    "Pc": 269888
+  },
+  {
+    "CodeOffset": 7746,
+    "FetchWords": 17,
+    "Group": "native-loop",
+    "Instructions": 17,
+    "Pc": 269890
+  },
+  {
+    "CodeOffset": 7748,
+    "FetchWords": 17,
+    "Group": "native-loop",
+    "Instructions": 17,
+    "Pc": 269892
+  },
+  {
+    "CodeOffset": 7750,
+    "FetchWords": 34,
+    "Group": "native-loop",
+    "Instructions": 17,
+    "Pc": 269894
+  },
+  {
+    "CodeOffset": 7754,
+    "FetchWords": 34,
+    "Group": "native-loop",
+    "Instructions": 17,
+    "Pc": 269898
+  },
+  {
+    "CodeOffset": 7758,
+    "FetchWords": 17,
+    "Group": "native-loop",
+    "Instructions": 17,
+    "Pc": 269902
+  },
+  {
+    "CodeOffset": 7760,
+    "FetchWords": 17,
+    "Group": "native-loop",
+    "Instructions": 17,
+    "Pc": 269904
+  },
+  {
+    "CodeOffset": 7762,
+    "FetchWords": 17,
+    "Group": "native-loop",
+    "Instructions": 17,
+    "Pc": 269906
+  },
+  {
+    "CodeOffset": 7764,
+    "FetchWords": 34,
+    "Group": "native-loop",
+    "Instructions": 17,
+    "Pc": 269908
+  },
+  {
+    "CodeOffset": 7768,
+    "FetchWords": 17,
+    "Group": "native-loop",
+    "Instructions": 17,
+    "Pc": 269912
+  },
+  {
+    "CodeOffset": 7770,
+    "FetchWords": 17,
+    "Group": "native-loop",
+    "Instructions": 17,
+    "Pc": 269914
+  },
+  {
+    "CodeOffset": 7772,
+    "FetchWords": 17,
+    "Group": "native-loop",
+    "Instructions": 17,
+    "Pc": 269916
+  },
+  {
+    "CodeOffset": 7774,
+    "FetchWords": 17,
+    "Group": "native-loop",
+    "Instructions": 17,
+    "Pc": 269918
+  },
+  {
+    "CodeOffset": 7776,
+    "FetchWords": 16,
+    "Group": "native-loop",
+    "Instructions": 16,
+    "Pc": 269920
+  },
+  {
+    "CodeOffset": 7778,
+    "FetchWords": 16,
+    "Group": "native-loop",
+    "Instructions": 16,
+    "Pc": 269922
+  },
+  {
+    "CodeOffset": 7780,
+    "FetchWords": 2,
+    "Group": "native-loop",
+    "Instructions": 1,
+    "Pc": 269924
+  },
+  {
+    "CodeOffset": 7784,
+    "FetchWords": 1,
+    "Group": "native-loop",
+    "Instructions": 1,
+    "Pc": 269928
+  },
+  {
+    "CodeOffset": 7786,
+    "FetchWords": 1,
+    "Group": "native-loop",
+    "Instructions": 1,
+    "Pc": 269930
+  },
+  {
+    "CodeOffset": 7788,
+    "FetchWords": 1,
+    "Group": "native-loop",
+    "Instructions": 1,
+    "Pc": 269932
+  },
+  {
+    "CodeOffset": 7790,
+    "FetchWords": 1,
+    "Group": "native-loop",
+    "Instructions": 1,
+    "Pc": 269934
+  },
+  {
+    "CodeOffset": 7792,
+    "FetchWords": 2,
+    "Group": "native-loop",
+    "Instructions": 1,
+    "Pc": 269936
+  },
+  {
+    "CodeOffset": 7820,
+    "FetchWords": 4114,
+    "Group": "native-template:fch_int_var",
+    "Instructions": 2057,
+    "Pc": 269964
+  },
+  {
+    "CodeOffset": 7824,
+    "FetchWords": 2057,
+    "Group": "native-template:fch_int_var",
+    "Instructions": 2057,
+    "Pc": 269968
+  },
+  {
+    "CodeOffset": 7826,
+    "FetchWords": 4114,
+    "Group": "native-template:constant_int",
+    "Instructions": 2057,
+    "Pc": 269970
+  },
+  {
+    "CodeOffset": 7830,
+    "FetchWords": 2057,
+    "Group": "native-template:eq_int",
+    "Instructions": 2057,
+    "Pc": 269974
+  },
+  {
+    "CodeOffset": 7832,
+    "FetchWords": 2057,
+    "Group": "native-template:eq_int",
+    "Instructions": 2057,
+    "Pc": 269976
+  },
+  {
+    "CodeOffset": 7834,
+    "FetchWords": 2057,
+    "Group": "native-template:eq_int",
+    "Instructions": 2057,
+    "Pc": 269978
+  },
+  {
+    "CodeOffset": 7836,
+    "FetchWords": 2057,
+    "Group": "native-template:eq_int",
+    "Instructions": 2057,
+    "Pc": 269980
+  },
+  {
+    "CodeOffset": 7838,
+    "FetchWords": 1965,
+    "Group": "native-template:eq_int",
+    "Instructions": 1965,
+    "Pc": 269982
+  },
+  {
+    "CodeOffset": 7840,
+    "FetchWords": 1965,
+    "Group": "native-template:eq_int",
+    "Instructions": 1965,
+    "Pc": 269984
+  },
+  {
+    "CodeOffset": 7842,
+    "FetchWords": 276,
+    "Group": "native-template:eq_int",
+    "Instructions": 92,
+    "Pc": 269986
+  },
+  {
+    "CodeOffset": 7848,
+    "FetchWords": 4114,
+    "Group": "native-template:eq_int",
+    "Instructions": 2057,
+    "Pc": 269992
+  },
+  {
+    "CodeOffset": 7852,
+    "FetchWords": 4114,
+    "Group": "native-template:slow",
+    "Instructions": 2057,
+    "Pc": 269996
+  },
+  {
+    "CodeOffset": 7884,
+    "FetchWords": 5895,
+    "Group": "native-template:remember_end",
+    "Instructions": 1965,
+    "Pc": 270028
+  },
+  {
+    "CodeOffset": 7890,
+    "FetchWords": 1965,
+    "Group": "native-template:remember_end",
+    "Instructions": 1965,
+    "Pc": 270034
+  },
+  {
+    "CodeOffset": 7892,
+    "FetchWords": 3930,
+    "Group": "native-template:for_range_int",
+    "Instructions": 1965,
+    "Pc": 270036
+  },
+  {
+    "CodeOffset": 7896,
+    "FetchWords": 5895,
+    "Group": "native-template:for_range_int",
+    "Instructions": 1965,
+    "Pc": 270040
+  },
+  {
+    "CodeOffset": 7902,
+    "FetchWords": 1965,
+    "Group": "native-template:for_range_int",
+    "Instructions": 1965,
+    "Pc": 270046
+  },
+  {
+    "CodeOffset": 7904,
+    "FetchWords": 3930,
+    "Group": "native-template:for_range_int",
+    "Instructions": 1965,
+    "Pc": 270048
+  },
+  {
+    "CodeOffset": 7908,
+    "FetchWords": 3930,
+    "Group": "native-template:for_range_int",
+    "Instructions": 1965,
+    "Pc": 270052
+  },
+  {
+    "CodeOffset": 7912,
+    "FetchWords": 3930,
+    "Group": "native-template:for_range_int",
+    "Instructions": 1965,
+    "Pc": 270056
+  },
+  {
+    "CodeOffset": 7916,
+    "FetchWords": 1965,
+    "Group": "native-template:for_range_int",
+    "Instructions": 1965,
+    "Pc": 270060
+  },
+  {
+    "CodeOffset": 7918,
+    "FetchWords": 1965,
+    "Group": "native-template:for_range_int",
+    "Instructions": 1965,
+    "Pc": 270062
+  },
+  {
+    "CodeOffset": 7920,
+    "FetchWords": 3930,
+    "Group": "native-template:for_range_int",
+    "Instructions": 1965,
+    "Pc": 270064
+  },
+  {
+    "CodeOffset": 7924,
+    "FetchWords": 1965,
+    "Group": "native-template:for_range_int",
+    "Instructions": 1965,
+    "Pc": 270068
+  },
+  {
+    "CodeOffset": 7926,
+    "FetchWords": 1965,
+    "Group": "native-template:for_range_int",
+    "Instructions": 1965,
+    "Pc": 270070
+  },
+  {
+    "CodeOffset": 7928,
+    "FetchWords": 15720,
+    "Group": "native-template:for_range_int",
+    "Instructions": 15720,
+    "Pc": 270072
+  },
+  {
+    "CodeOffset": 7930,
+    "FetchWords": 15720,
+    "Group": "native-template:for_range_int",
+    "Instructions": 15720,
+    "Pc": 270074
+  },
+  {
+    "CodeOffset": 7932,
+    "FetchWords": 15720,
+    "Group": "native-template:for_range_int",
+    "Instructions": 15720,
+    "Pc": 270076
+  },
+  {
+    "CodeOffset": 7934,
+    "FetchWords": 17685,
+    "Group": "native-template:for_range_int",
+    "Instructions": 17685,
+    "Pc": 270078
+  },
+  {
+    "CodeOffset": 7936,
+    "FetchWords": 17685,
+    "Group": "native-template:for_range_int",
+    "Instructions": 17685,
+    "Pc": 270080
+  },
+  {
+    "CodeOffset": 7944,
+    "FetchWords": 17685,
+    "Group": "native-template:for_range_int",
+    "Instructions": 17685,
+    "Pc": 270088
+  },
+  {
+    "CodeOffset": 7946,
+    "FetchWords": 17685,
+    "Group": "native-template:for_range_int",
+    "Instructions": 17685,
+    "Pc": 270090
+  },
+  {
+    "CodeOffset": 7948,
+    "FetchWords": 31440,
+    "Group": "native-template:for_range_int",
+    "Instructions": 15720,
+    "Pc": 270092
+  },
+  {
+    "CodeOffset": 7952,
+    "FetchWords": 31440,
+    "Group": "native-template:for_range_int",
+    "Instructions": 15720,
+    "Pc": 270096
+  },
+  {
+    "CodeOffset": 7956,
+    "FetchWords": 15720,
+    "Group": "native-template:for_range_int",
+    "Instructions": 15720,
+    "Pc": 270100
+  },
+  {
+    "CodeOffset": 7958,
+    "FetchWords": 1965,
+    "Group": "native-template:done_for",
+    "Instructions": 1965,
+    "Pc": 270102
+  },
+  {
+    "CodeOffset": 7960,
+    "FetchWords": 31440,
+    "Group": "native-block",
+    "Instructions": 15720,
+    "Pc": 270104
+  },
+  {
+    "CodeOffset": 7964,
+    "FetchWords": 31440,
+    "Group": "native-block",
+    "Instructions": 15720,
+    "Pc": 270108
+  },
+  {
+    "CodeOffset": 7968,
+    "FetchWords": 15720,
+    "Group": "native-block",
+    "Instructions": 15720,
+    "Pc": 270112
+  },
+  {
+    "CodeOffset": 7970,
+    "FetchWords": 31440,
+    "Group": "native-block",
+    "Instructions": 15720,
+    "Pc": 270114
+  },
+  {
+    "CodeOffset": 7974,
+    "FetchWords": 15720,
+    "Group": "native-block",
+    "Instructions": 15720,
+    "Pc": 270118
+  },
+  {
+    "CodeOffset": 7976,
+    "FetchWords": 15720,
+    "Group": "native-block",
+    "Instructions": 15720,
+    "Pc": 270120
+  },
+  {
+    "CodeOffset": 7978,
+    "FetchWords": 31440,
+    "Group": "native-block",
+    "Instructions": 15720,
+    "Pc": 270122
+  },
+  {
+    "CodeOffset": 7992,
+    "FetchWords": 31440,
+    "Group": "native-block",
+    "Instructions": 15720,
+    "Pc": 270136
+  },
+  {
+    "CodeOffset": 7996,
+    "FetchWords": 15720,
+    "Group": "native-block",
+    "Instructions": 15720,
+    "Pc": 270140
+  },
+  {
+    "CodeOffset": 7998,
+    "FetchWords": 31440,
+    "Group": "native-block",
+    "Instructions": 15720,
+    "Pc": 270142
+  },
+  {
+    "CodeOffset": 8002,
+    "FetchWords": 15720,
+    "Group": "native-block",
+    "Instructions": 15720,
+    "Pc": 270146
+  },
+  {
+    "CodeOffset": 8004,
+    "FetchWords": 31440,
+    "Group": "native-block",
+    "Instructions": 15720,
+    "Pc": 270148
+  },
+  {
+    "CodeOffset": 8008,
+    "FetchWords": 15720,
+    "Group": "native-block",
+    "Instructions": 15720,
+    "Pc": 270152
+  },
+  {
+    "CodeOffset": 8010,
+    "FetchWords": 31440,
+    "Group": "native-block",
+    "Instructions": 15720,
+    "Pc": 270154
+  },
+  {
+    "CodeOffset": 8014,
+    "FetchWords": 15720,
+    "Group": "native-block",
+    "Instructions": 15720,
+    "Pc": 270158
+  },
+  {
+    "CodeOffset": 8016,
+    "FetchWords": 31440,
+    "Group": "native-block",
+    "Instructions": 15720,
+    "Pc": 270160
+  },
+  {
+    "CodeOffset": 8032,
+    "FetchWords": 15720,
+    "Group": "native-block",
+    "Instructions": 15720,
+    "Pc": 270176
+  },
+  {
+    "CodeOffset": 8034,
+    "FetchWords": 15720,
+    "Group": "native-block",
+    "Instructions": 15720,
+    "Pc": 270178
+  },
+  {
+    "CodeOffset": 8036,
+    "FetchWords": 31440,
+    "Group": "native-block",
+    "Instructions": 15720,
+    "Pc": 270180
+  },
+  {
+    "CodeOffset": 8050,
+    "FetchWords": 31440,
+    "Group": "native-block",
+    "Instructions": 15720,
+    "Pc": 270194
+  },
+  {
+    "CodeOffset": 8054,
+    "FetchWords": 15720,
+    "Group": "native-block",
+    "Instructions": 15720,
+    "Pc": 270198
+  },
+  {
+    "CodeOffset": 8056,
+    "FetchWords": 31440,
+    "Group": "native-block",
+    "Instructions": 15720,
+    "Pc": 270200
+  },
+  {
+    "CodeOffset": 8060,
+    "FetchWords": 15720,
+    "Group": "native-block",
+    "Instructions": 15720,
+    "Pc": 270204
+  },
+  {
+    "CodeOffset": 8062,
+    "FetchWords": 15720,
+    "Group": "native-block",
+    "Instructions": 15720,
+    "Pc": 270206
+  },
+  {
+    "CodeOffset": 8064,
+    "FetchWords": 31440,
+    "Group": "native-block",
+    "Instructions": 15720,
+    "Pc": 270208
+  },
+  {
+    "CodeOffset": 8068,
+    "FetchWords": 31440,
+    "Group": "native-template:extract_int_p",
+    "Instructions": 15720,
+    "Pc": 270212
+  },
+  {
+    "CodeOffset": 8072,
+    "FetchWords": 31440,
+    "Group": "native-template:extract_int_p",
+    "Instructions": 15720,
+    "Pc": 270216
+  },
+  {
+    "CodeOffset": 8076,
+    "FetchWords": 15720,
+    "Group": "native-template:quick_zero",
+    "Instructions": 15720,
+    "Pc": 270220
+  },
+  {
+    "CodeOffset": 8078,
+    "FetchWords": 15720,
+    "Group": "native-template:eq_int",
+    "Instructions": 15720,
+    "Pc": 270222
+  },
+  {
+    "CodeOffset": 8080,
+    "FetchWords": 15720,
+    "Group": "native-template:eq_int",
+    "Instructions": 15720,
+    "Pc": 270224
+  },
+  {
+    "CodeOffset": 8082,
+    "FetchWords": 15720,
+    "Group": "native-template:eq_int",
+    "Instructions": 15720,
+    "Pc": 270226
+  },
+  {
+    "CodeOffset": 8084,
+    "FetchWords": 15720,
+    "Group": "native-template:eq_int",
+    "Instructions": 15720,
+    "Pc": 270228
+  },
+  {
+    "CodeOffset": 8086,
+    "FetchWords": 10212,
+    "Group": "native-template:eq_int",
+    "Instructions": 10212,
+    "Pc": 270230
+  },
+  {
+    "CodeOffset": 8088,
+    "FetchWords": 10212,
+    "Group": "native-template:eq_int",
+    "Instructions": 10212,
+    "Pc": 270232
+  },
+  {
+    "CodeOffset": 8090,
+    "FetchWords": 16524,
+    "Group": "native-template:eq_int",
+    "Instructions": 5508,
+    "Pc": 270234
+  },
+  {
+    "CodeOffset": 8096,
+    "FetchWords": 31440,
+    "Group": "native-template:eq_int",
+    "Instructions": 15720,
+    "Pc": 270240
+  },
+  {
+    "CodeOffset": 8100,
+    "FetchWords": 31440,
+    "Group": "native-template:fch_int_var",
+    "Instructions": 15720,
+    "Pc": 270244
+  },
+  {
+    "CodeOffset": 8104,
+    "FetchWords": 15720,
+    "Group": "native-template:fch_int_var",
+    "Instructions": 15720,
+    "Pc": 270248
+  },
+  {
+    "CodeOffset": 8106,
+    "FetchWords": 31440,
+    "Group": "native-template:extract_int_p",
+    "Instructions": 15720,
+    "Pc": 270250
+  },
+  {
+    "CodeOffset": 8110,
+    "FetchWords": 31440,
+    "Group": "native-template:extract_int_p",
+    "Instructions": 15720,
+    "Pc": 270254
+  },
+  {
+    "CodeOffset": 8114,
+    "FetchWords": 15720,
+    "Group": "native-template:quick_zero",
+    "Instructions": 15720,
+    "Pc": 270258
+  },
+  {
+    "CodeOffset": 8116,
+    "FetchWords": 15720,
+    "Group": "native-template:eq_int",
+    "Instructions": 15720,
+    "Pc": 270260
+  },
+  {
+    "CodeOffset": 8118,
+    "FetchWords": 15720,
+    "Group": "native-template:eq_int",
+    "Instructions": 15720,
+    "Pc": 270262
+  },
+  {
+    "CodeOffset": 8120,
+    "FetchWords": 15720,
+    "Group": "native-template:eq_int",
+    "Instructions": 15720,
+    "Pc": 270264
+  },
+  {
+    "CodeOffset": 8122,
+    "FetchWords": 15720,
+    "Group": "native-template:eq_int",
+    "Instructions": 15720,
+    "Pc": 270266
+  },
+  {
+    "CodeOffset": 8124,
+    "FetchWords": 6019,
+    "Group": "native-template:eq_int",
+    "Instructions": 6019,
+    "Pc": 270268
+  },
+  {
+    "CodeOffset": 8126,
+    "FetchWords": 6019,
+    "Group": "native-template:eq_int",
+    "Instructions": 6019,
+    "Pc": 270270
+  },
+  {
+    "CodeOffset": 8128,
+    "FetchWords": 29103,
+    "Group": "native-template:eq_int",
+    "Instructions": 9701,
+    "Pc": 270272
+  },
+  {
+    "CodeOffset": 8134,
+    "FetchWords": 31440,
+    "Group": "native-template:eq_int",
+    "Instructions": 15720,
+    "Pc": 270278
+  },
+  {
+    "CodeOffset": 8138,
+    "FetchWords": 15720,
+    "Group": "native-template:l_and_float",
+    "Instructions": 15720,
+    "Pc": 270282
+  },
+  {
+    "CodeOffset": 8140,
+    "FetchWords": 31440,
+    "Group": "native-template:l_and_float",
+    "Instructions": 15720,
+    "Pc": 270284
+  },
+  {
+    "CodeOffset": 8144,
+    "FetchWords": 15720,
+    "Group": "native-template:l_and_float",
+    "Instructions": 15720,
+    "Pc": 270288
+  },
+  {
+    "CodeOffset": 8146,
+    "FetchWords": 11016,
+    "Group": "native-template:l_and_float",
+    "Instructions": 5508,
+    "Pc": 270290
+  },
+  {
+    "CodeOffset": 8150,
+    "FetchWords": 5508,
+    "Group": "native-template:l_and_float",
+    "Instructions": 5508,
+    "Pc": 270294
+  },
+  {
+    "CodeOffset": 8152,
+    "FetchWords": 10260,
+    "Group": "native-template:l_and_float",
+    "Instructions": 3420,
+    "Pc": 270296
+  },
+  {
+    "CodeOffset": 8158,
+    "FetchWords": 3420,
+    "Group": "native-template:l_and_float",
+    "Instructions": 3420,
+    "Pc": 270302
+  },
+  {
+    "CodeOffset": 8160,
+    "FetchWords": 2088,
+    "Group": "native-template:l_and_float",
+    "Instructions": 2088,
+    "Pc": 270304
+  },
+  {
+    "CodeOffset": 8162,
+    "FetchWords": 11016,
+    "Group": "native-template:l_and_float",
+    "Instructions": 5508,
+    "Pc": 270306
+  },
+  {
+    "CodeOffset": 8166,
+    "FetchWords": 31440,
+    "Group": "native-template:fch_int_var",
+    "Instructions": 15720,
+    "Pc": 270310
+  },
+  {
+    "CodeOffset": 8170,
+    "FetchWords": 15720,
+    "Group": "native-template:fch_int_var",
+    "Instructions": 15720,
+    "Pc": 270314
+  },
+  {
+    "CodeOffset": 8172,
+    "FetchWords": 31440,
+    "Group": "native-template:extract_int_p",
+    "Instructions": 15720,
+    "Pc": 270316
+  },
+  {
+    "CodeOffset": 8176,
+    "FetchWords": 31440,
+    "Group": "native-template:extract_int_p",
+    "Instructions": 15720,
+    "Pc": 270320
+  },
+  {
+    "CodeOffset": 8180,
+    "FetchWords": 15720,
+    "Group": "native-template:quick_zero",
+    "Instructions": 15720,
+    "Pc": 270324
+  },
+  {
+    "CodeOffset": 8182,
+    "FetchWords": 15720,
+    "Group": "native-template:eq_int",
+    "Instructions": 15720,
+    "Pc": 270326
+  },
+  {
+    "CodeOffset": 8184,
+    "FetchWords": 15720,
+    "Group": "native-template:eq_int",
+    "Instructions": 15720,
+    "Pc": 270328
+  },
+  {
+    "CodeOffset": 8186,
+    "FetchWords": 15720,
+    "Group": "native-template:eq_int",
+    "Instructions": 15720,
+    "Pc": 270330
+  },
+  {
+    "CodeOffset": 8188,
+    "FetchWords": 15720,
+    "Group": "native-template:eq_int",
+    "Instructions": 15720,
+    "Pc": 270332
+  },
+  {
+    "CodeOffset": 8190,
+    "FetchWords": 6019,
+    "Group": "native-template:eq_int",
+    "Instructions": 6019,
+    "Pc": 270334
+  },
+  {
+    "CodeOffset": 8192,
+    "FetchWords": 6019,
+    "Group": "native-template:eq_int",
+    "Instructions": 6019,
+    "Pc": 270336
+  },
+  {
+    "CodeOffset": 8194,
+    "FetchWords": 29103,
+    "Group": "native-template:eq_int",
+    "Instructions": 9701,
+    "Pc": 270338
+  },
+  {
+    "CodeOffset": 8200,
+    "FetchWords": 31440,
+    "Group": "native-template:eq_int",
+    "Instructions": 15720,
+    "Pc": 270344
+  },
+  {
+    "CodeOffset": 8204,
+    "FetchWords": 15720,
+    "Group": "native-template:l_and_float",
+    "Instructions": 15720,
+    "Pc": 270348
+  },
+  {
+    "CodeOffset": 8206,
+    "FetchWords": 31440,
+    "Group": "native-template:l_and_float",
+    "Instructions": 15720,
+    "Pc": 270350
+  },
+  {
+    "CodeOffset": 8210,
+    "FetchWords": 15720,
+    "Group": "native-template:l_and_float",
+    "Instructions": 15720,
+    "Pc": 270354
+  },
+  {
+    "CodeOffset": 8212,
+    "FetchWords": 6840,
+    "Group": "native-template:l_and_float",
+    "Instructions": 3420,
+    "Pc": 270356
+  },
+  {
+    "CodeOffset": 8216,
+    "FetchWords": 3420,
+    "Group": "native-template:l_and_float",
+    "Instructions": 3420,
+    "Pc": 270360
+  },
+  {
+    "CodeOffset": 8218,
+    "FetchWords": 6168,
+    "Group": "native-template:l_and_float",
+    "Instructions": 2056,
+    "Pc": 270362
+  },
+  {
+    "CodeOffset": 8224,
+    "FetchWords": 2056,
+    "Group": "native-template:l_and_float",
+    "Instructions": 2056,
+    "Pc": 270368
+  },
+  {
+    "CodeOffset": 8226,
+    "FetchWords": 1364,
+    "Group": "native-template:l_and_float",
+    "Instructions": 1364,
+    "Pc": 270370
+  },
+  {
+    "CodeOffset": 8228,
+    "FetchWords": 6840,
+    "Group": "native-template:l_and_float",
+    "Instructions": 3420,
+    "Pc": 270372
+  },
+  {
+    "CodeOffset": 8232,
+    "FetchWords": 15720,
+    "Group": "native-template:if_false",
+    "Instructions": 15720,
+    "Pc": 270376
+  },
+  {
+    "CodeOffset": 8234,
+    "FetchWords": 15720,
+    "Group": "native-template:if_false",
+    "Instructions": 15720,
+    "Pc": 270378
+  },
+  {
+    "CodeOffset": 8236,
+    "FetchWords": 15720,
+    "Group": "native-template:if_false",
+    "Instructions": 15720,
+    "Pc": 270380
+  },
+  {
+    "CodeOffset": 8238,
+    "FetchWords": 40992,
+    "Group": "native-template:if_false",
+    "Instructions": 13664,
+    "Pc": 270382
+  },
+  {
+    "CodeOffset": 8244,
+    "FetchWords": 27328,
+    "Group": "native-template:if_false",
+    "Instructions": 13664,
+    "Pc": 270388
+  },
+  {
+    "CodeOffset": 8248,
+    "FetchWords": 4112,
+    "Group": "native-template:fch_int_var",
+    "Instructions": 2056,
+    "Pc": 270392
+  },
+  {
+    "CodeOffset": 8252,
+    "FetchWords": 2056,
+    "Group": "native-template:fch_int_var",
+    "Instructions": 2056,
+    "Pc": 270396
+  },
+  {
+    "CodeOffset": 8254,
+    "FetchWords": 4112,
+    "Group": "native-template:fch_int_var",
+    "Instructions": 2056,
+    "Pc": 270398
+  },
+  {
+    "CodeOffset": 8258,
+    "FetchWords": 2056,
+    "Group": "native-template:fch_int_var",
+    "Instructions": 2056,
+    "Pc": 270402
+  },
+  {
+    "CodeOffset": 8260,
+    "FetchWords": 4112,
+    "Group": "native-template:insert_int_p",
+    "Instructions": 2056,
+    "Pc": 270404
+  },
+  {
+    "CodeOffset": 8264,
+    "FetchWords": 4112,
+    "Group": "native-template:insert_int_p",
+    "Instructions": 2056,
+    "Pc": 270408
+  },
+  {
+    "CodeOffset": 8268,
+    "FetchWords": 4112,
+    "Group": "native-template:fch_int_var",
+    "Instructions": 2056,
+    "Pc": 270412
+  },
+  {
+    "CodeOffset": 8272,
+    "FetchWords": 2056,
+    "Group": "native-template:fch_int_var",
+    "Instructions": 2056,
+    "Pc": 270416
+  },
+  {
+    "CodeOffset": 8274,
+    "FetchWords": 4112,
+    "Group": "native-template:constant_int",
+    "Instructions": 2056,
+    "Pc": 270418
+  },
+  {
+    "CodeOffset": 8278,
+    "FetchWords": 4112,
+    "Group": "native-template:insert_int_p",
+    "Instructions": 2056,
+    "Pc": 270422
+  },
+  {
+    "CodeOffset": 8282,
+    "FetchWords": 4112,
+    "Group": "native-template:insert_int_p",
+    "Instructions": 2056,
+    "Pc": 270426
+  },
+  {
+    "CodeOffset": 8286,
+    "FetchWords": 4112,
+    "Group": "native-template:fch_int_var",
+    "Instructions": 2056,
+    "Pc": 270430
+  },
+  {
+    "CodeOffset": 8290,
+    "FetchWords": 2056,
+    "Group": "native-template:fch_int_var",
+    "Instructions": 2056,
+    "Pc": 270434
+  },
+  {
+    "CodeOffset": 8292,
+    "FetchWords": 4112,
+    "Group": "native-template:constant_int",
+    "Instructions": 2056,
+    "Pc": 270436
+  },
+  {
+    "CodeOffset": 8296,
+    "FetchWords": 4112,
+    "Group": "native-template:insert_int_p",
+    "Instructions": 2056,
+    "Pc": 270440
+  },
+  {
+    "CodeOffset": 8300,
+    "FetchWords": 4112,
+    "Group": "native-template:insert_int_p",
+    "Instructions": 2056,
+    "Pc": 270444
+  },
+  {
+    "CodeOffset": 8304,
+    "FetchWords": 4112,
+    "Group": "native-template:fch_int_var",
+    "Instructions": 2056,
+    "Pc": 270448
+  },
+  {
+    "CodeOffset": 8308,
+    "FetchWords": 2056,
+    "Group": "native-template:fch_int_var",
+    "Instructions": 2056,
+    "Pc": 270452
+  },
+  {
+    "CodeOffset": 8310,
+    "FetchWords": 4112,
+    "Group": "native-template:constant_int",
+    "Instructions": 2056,
+    "Pc": 270454
+  },
+  {
+    "CodeOffset": 8314,
+    "FetchWords": 4112,
+    "Group": "native-template:insert_int_p",
+    "Instructions": 2056,
+    "Pc": 270458
+  },
+  {
+    "CodeOffset": 8318,
+    "FetchWords": 4112,
+    "Group": "native-template:insert_int_p",
+    "Instructions": 2056,
+    "Pc": 270462
+  },
+  {
+    "CodeOffset": 8322,
+    "FetchWords": 4112,
+    "Group": "native-block",
+    "Instructions": 2056,
+    "Pc": 270466
+  },
+  {
+    "CodeOffset": 8326,
+    "FetchWords": 2056,
+    "Group": "native-block",
+    "Instructions": 2056,
+    "Pc": 270470
+  },
+  {
+    "CodeOffset": 8328,
+    "FetchWords": 2056,
+    "Group": "native-block",
+    "Instructions": 2056,
+    "Pc": 270472
+  },
+  {
+    "CodeOffset": 8330,
+    "FetchWords": 2056,
+    "Group": "native-block",
+    "Instructions": 2056,
+    "Pc": 270474
+  },
+  {
+    "CodeOffset": 8332,
+    "FetchWords": 4112,
+    "Group": "native-block",
+    "Instructions": 2056,
+    "Pc": 270476
+  },
+  {
+    "CodeOffset": 8342,
+    "FetchWords": 2056,
+    "Group": "native-block",
+    "Instructions": 2056,
+    "Pc": 270486
+  },
+  {
+    "CodeOffset": 8344,
+    "FetchWords": 4112,
+    "Group": "native-template:slow",
+    "Instructions": 2056,
+    "Pc": 270488
+  },
+  {
+    "CodeOffset": 8356,
+    "FetchWords": 4112,
+    "Group": "native-template:fch_int_var",
+    "Instructions": 2056,
+    "Pc": 270500
+  },
+  {
+    "CodeOffset": 8360,
+    "FetchWords": 2056,
+    "Group": "native-template:fch_int_var",
+    "Instructions": 2056,
+    "Pc": 270504
+  },
+  {
+    "CodeOffset": 8362,
+    "FetchWords": 2056,
+    "Group": "native-template:quick_zero",
+    "Instructions": 2056,
+    "Pc": 270506
+  },
+  {
+    "CodeOffset": 8364,
+    "FetchWords": 4112,
+    "Group": "native-template:insert_int_p",
+    "Instructions": 2056,
+    "Pc": 270508
+  },
+  {
+    "CodeOffset": 8368,
+    "FetchWords": 4112,
+    "Group": "native-template:insert_int_p",
+    "Instructions": 2056,
+    "Pc": 270512
+  },
+  {
+    "CodeOffset": 8372,
+    "FetchWords": 4112,
+    "Group": "native-template:fch_int_var",
+    "Instructions": 2056,
+    "Pc": 270516
+  },
+  {
+    "CodeOffset": 8376,
+    "FetchWords": 2056,
+    "Group": "native-template:fch_int_var",
+    "Instructions": 2056,
+    "Pc": 270520
+  },
+  {
+    "CodeOffset": 8378,
+    "FetchWords": 2056,
+    "Group": "native-template:quick_zero",
+    "Instructions": 2056,
+    "Pc": 270522
+  },
+  {
+    "CodeOffset": 8380,
+    "FetchWords": 4112,
+    "Group": "native-template:insert_int_p",
+    "Instructions": 2056,
+    "Pc": 270524
+  },
+  {
+    "CodeOffset": 8384,
+    "FetchWords": 4112,
+    "Group": "native-template:insert_int_p",
+    "Instructions": 2056,
+    "Pc": 270528
+  },
+  {
+    "CodeOffset": 8388,
+    "FetchWords": 4112,
+    "Group": "native-template:fch_int_var",
+    "Instructions": 2056,
+    "Pc": 270532
+  },
+  {
+    "CodeOffset": 8392,
+    "FetchWords": 2056,
+    "Group": "native-template:fch_int_var",
+    "Instructions": 2056,
+    "Pc": 270536
+  },
+  {
+    "CodeOffset": 8394,
+    "FetchWords": 2056,
+    "Group": "native-template:quick_zero",
+    "Instructions": 2056,
+    "Pc": 270538
+  },
+  {
+    "CodeOffset": 8396,
+    "FetchWords": 4112,
+    "Group": "native-template:insert_int_p",
+    "Instructions": 2056,
+    "Pc": 270540
+  },
+  {
+    "CodeOffset": 8400,
+    "FetchWords": 4112,
+    "Group": "native-template:insert_int_p",
+    "Instructions": 2056,
+    "Pc": 270544
+  },
+  {
+    "CodeOffset": 8404,
+    "FetchWords": 31440,
+    "Group": "native-template:next_for_int",
+    "Instructions": 15720,
+    "Pc": 270548
+  },
+  {
+    "CodeOffset": 8408,
+    "FetchWords": 31440,
+    "Group": "native-template:next_for_int",
+    "Instructions": 15720,
+    "Pc": 270552
+  },
+  {
+    "CodeOffset": 8412,
+    "FetchWords": 31440,
+    "Group": "native-template:next_for_int",
+    "Instructions": 15720,
+    "Pc": 270556
+  },
+  {
+    "CodeOffset": 8416,
+    "FetchWords": 15720,
+    "Group": "native-template:next_for_int",
+    "Instructions": 15720,
+    "Pc": 270560
+  },
+  {
+    "CodeOffset": 8418,
+    "FetchWords": 3930,
+    "Group": "native-template:slow",
+    "Instructions": 1965,
+    "Pc": 270562
+  },
+  {
+    "CodeOffset": 8476,
+    "FetchWords": 1472,
+    "Group": "native-template:fch_int_var",
+    "Instructions": 736,
+    "Pc": 270620
+  },
+  {
+    "CodeOffset": 8480,
+    "FetchWords": 736,
+    "Group": "native-template:fch_int_var",
+    "Instructions": 736,
+    "Pc": 270624
+  },
+  {
+    "CodeOffset": 8482,
+    "FetchWords": 1472,
+    "Group": "native-template:fch_int_var",
+    "Instructions": 736,
+    "Pc": 270626
+  },
+  {
+    "CodeOffset": 8486,
+    "FetchWords": 736,
+    "Group": "native-template:fch_int_var",
+    "Instructions": 736,
+    "Pc": 270630
+  },
+  {
+    "CodeOffset": 8488,
+    "FetchWords": 1472,
+    "Group": "native-template:extract_int_p",
+    "Instructions": 736,
+    "Pc": 270632
+  },
+  {
+    "CodeOffset": 8492,
+    "FetchWords": 1472,
+    "Group": "native-template:extract_int_p",
+    "Instructions": 736,
+    "Pc": 270636
+  },
+  {
+    "CodeOffset": 8496,
+    "FetchWords": 1472,
+    "Group": "native-block",
+    "Instructions": 736,
+    "Pc": 270640
+  },
+  {
+    "CodeOffset": 8500,
+    "FetchWords": 1472,
+    "Group": "native-block",
+    "Instructions": 736,
+    "Pc": 270644
+  },
+  {
+    "CodeOffset": 8504,
+    "FetchWords": 736,
+    "Group": "native-block",
+    "Instructions": 736,
+    "Pc": 270648
+  },
+  {
+    "CodeOffset": 8506,
+    "FetchWords": 736,
+    "Group": "native-block",
+    "Instructions": 736,
+    "Pc": 270650
+  },
+  {
+    "CodeOffset": 8508,
+    "FetchWords": 1472,
+    "Group": "native-block",
+    "Instructions": 736,
+    "Pc": 270652
+  },
+  {
+    "CodeOffset": 8512,
+    "FetchWords": 736,
+    "Group": "native-block",
+    "Instructions": 736,
+    "Pc": 270656
+  },
+  {
+    "CodeOffset": 8514,
+    "FetchWords": 2208,
+    "Group": "native-block",
+    "Instructions": 736,
+    "Pc": 270658
+  },
+  {
+    "CodeOffset": 8520,
+    "FetchWords": 736,
+    "Group": "native-block",
+    "Instructions": 736,
+    "Pc": 270664
+  },
+  {
+    "CodeOffset": 8522,
+    "FetchWords": 2208,
+    "Group": "native-block",
+    "Instructions": 736,
+    "Pc": 270666
+  },
+  {
+    "CodeOffset": 8528,
+    "FetchWords": 1472,
+    "Group": "native-block",
+    "Instructions": 736,
+    "Pc": 270672
+  },
+  {
+    "CodeOffset": 8544,
+    "FetchWords": 736,
+    "Group": "native-block",
+    "Instructions": 736,
+    "Pc": 270688
+  },
+  {
+    "CodeOffset": 8546,
+    "FetchWords": 2208,
+    "Group": "native-block",
+    "Instructions": 736,
+    "Pc": 270690
+  },
+  {
+    "CodeOffset": 8552,
+    "FetchWords": 736,
+    "Group": "native-block",
+    "Instructions": 736,
+    "Pc": 270696
+  },
+  {
+    "CodeOffset": 8554,
+    "FetchWords": 2208,
+    "Group": "native-block",
+    "Instructions": 736,
+    "Pc": 270698
+  },
+  {
+    "CodeOffset": 8560,
+    "FetchWords": 1472,
+    "Group": "native-block",
+    "Instructions": 736,
+    "Pc": 270704
+  },
+  {
+    "CodeOffset": 8574,
+    "FetchWords": 736,
+    "Group": "native-block",
+    "Instructions": 736,
+    "Pc": 270718
+  },
+  {
+    "CodeOffset": 8576,
+    "FetchWords": 736,
+    "Group": "native-block",
+    "Instructions": 736,
+    "Pc": 270720
+  },
+  {
+    "CodeOffset": 8578,
+    "FetchWords": 1472,
+    "Group": "native-block",
+    "Instructions": 736,
+    "Pc": 270722
+  },
+  {
+    "CodeOffset": 8592,
+    "FetchWords": 736,
+    "Group": "native-block",
+    "Instructions": 736,
+    "Pc": 270736
+  },
+  {
+    "CodeOffset": 8594,
+    "FetchWords": 1472,
+    "Group": "native-block",
+    "Instructions": 736,
+    "Pc": 270738
+  },
+  {
+    "CodeOffset": 8598,
+    "FetchWords": 736,
+    "Group": "native-block",
+    "Instructions": 736,
+    "Pc": 270742
+  },
+  {
+    "CodeOffset": 8600,
+    "FetchWords": 736,
+    "Group": "native-block",
+    "Instructions": 736,
+    "Pc": 270744
+  },
+  {
+    "CodeOffset": 8602,
+    "FetchWords": 736,
+    "Group": "native-block",
+    "Instructions": 736,
+    "Pc": 270746
+  },
+  {
+    "CodeOffset": 8608,
+    "FetchWords": 1472,
+    "Group": "native-block",
+    "Instructions": 736,
+    "Pc": 270752
+  },
+  {
+    "CodeOffset": 8612,
+    "FetchWords": 736,
+    "Group": "native-block",
+    "Instructions": 736,
+    "Pc": 270756
+  },
+  {
+    "CodeOffset": 8614,
+    "FetchWords": 1472,
+    "Group": "native-block",
+    "Instructions": 736,
+    "Pc": 270758
+  },
+  {
+    "CodeOffset": 8618,
+    "FetchWords": 736,
+    "Group": "native-block",
+    "Instructions": 736,
+    "Pc": 270762
+  },
+  {
+    "CodeOffset": 8620,
+    "FetchWords": 736,
+    "Group": "native-block",
+    "Instructions": 736,
+    "Pc": 270764
+  },
+  {
+    "CodeOffset": 8622,
+    "FetchWords": 736,
+    "Group": "native-block",
+    "Instructions": 736,
+    "Pc": 270766
+  },
+  {
+    "CodeOffset": 8624,
+    "FetchWords": 1472,
+    "Group": "native-block",
+    "Instructions": 736,
+    "Pc": 270768
+  },
+  {
+    "CodeOffset": 8628,
+    "FetchWords": 1472,
+    "Group": "native-template:slow",
+    "Instructions": 736,
+    "Pc": 270772
+  },
+  {
+    "CodeOffset": 8658,
+    "FetchWords": 5152,
+    "Group": "native-template:fch_int_var",
+    "Instructions": 2576,
+    "Pc": 270802
+  },
+  {
+    "CodeOffset": 8662,
+    "FetchWords": 2576,
+    "Group": "native-template:fch_int_var",
+    "Instructions": 2576,
+    "Pc": 270806
+  },
+  {
+    "CodeOffset": 8664,
+    "FetchWords": 5152,
+    "Group": "native-template:extract_int_p",
+    "Instructions": 2576,
+    "Pc": 270808
+  },
+  {
+    "CodeOffset": 8668,
+    "FetchWords": 5152,
+    "Group": "native-template:extract_int_p",
+    "Instructions": 2576,
+    "Pc": 270812
+  },
+  {
+    "CodeOffset": 8672,
+    "FetchWords": 5152,
+    "Group": "native-template:fch_int_var",
+    "Instructions": 2576,
+    "Pc": 270816
+  },
+  {
+    "CodeOffset": 8676,
+    "FetchWords": 2576,
+    "Group": "native-template:fch_int_var",
+    "Instructions": 2576,
+    "Pc": 270820
+  },
+  {
+    "CodeOffset": 8678,
+    "FetchWords": 5152,
+    "Group": "native-template:extract_int_p",
+    "Instructions": 2576,
+    "Pc": 270822
+  },
+  {
+    "CodeOffset": 8682,
+    "FetchWords": 5152,
+    "Group": "native-template:extract_int_p",
+    "Instructions": 2576,
+    "Pc": 270826
+  },
+  {
+    "CodeOffset": 8686,
+    "FetchWords": 5152,
+    "Group": "native-template:sub_int_p",
+    "Instructions": 2576,
+    "Pc": 270830
+  },
+  {
+    "CodeOffset": 8690,
+    "FetchWords": 2576,
+    "Group": "native-template:sub_int_p",
+    "Instructions": 2576,
+    "Pc": 270834
+  },
+  {
+    "CodeOffset": 8692,
+    "FetchWords": 2576,
+    "Group": "native-template:sub_int_p",
+    "Instructions": 2576,
+    "Pc": 270836
+  },
+  {
+    "CodeOffset": 8698,
+    "FetchWords": 2576,
+    "Group": "native-template:sub_int_p",
+    "Instructions": 2576,
+    "Pc": 270842
+  },
+  {
+    "CodeOffset": 8700,
+    "FetchWords": 5152,
+    "Group": "native-template:int_to_float",
+    "Instructions": 2576,
+    "Pc": 270844
+  },
+  {
+    "CodeOffset": 8704,
+    "FetchWords": 2576,
+    "Group": "native-template:int_to_float",
+    "Instructions": 2576,
+    "Pc": 270848
+  },
+  {
+    "CodeOffset": 8706,
+    "FetchWords": 2576,
+    "Group": "native-template:int_to_float",
+    "Instructions": 2576,
+    "Pc": 270850
+  },
+  {
+    "CodeOffset": 8708,
+    "FetchWords": 5152,
+    "Group": "native-template:slow",
+    "Instructions": 2576,
+    "Pc": 270852
+  },
+  {
+    "CodeOffset": 8724,
+    "FetchWords": 2576,
+    "Group": "native-block",
+    "Instructions": 2576,
+    "Pc": 270868
+  },
+  {
+    "CodeOffset": 8726,
+    "FetchWords": 5152,
+    "Group": "native-block",
+    "Instructions": 2576,
+    "Pc": 270870
+  },
+  {
+    "CodeOffset": 8730,
+    "FetchWords": 2576,
+    "Group": "native-block",
+    "Instructions": 2576,
+    "Pc": 270874
+  },
+  {
+    "CodeOffset": 8732,
+    "FetchWords": 2576,
+    "Group": "native-block",
+    "Instructions": 2576,
+    "Pc": 270876
+  },
+  {
+    "CodeOffset": 8734,
+    "FetchWords": 2576,
+    "Group": "native-block",
+    "Instructions": 2576,
+    "Pc": 270878
+  },
+  {
+    "CodeOffset": 8736,
+    "FetchWords": 2576,
+    "Group": "native-block",
+    "Instructions": 2576,
+    "Pc": 270880
+  },
+  {
+    "CodeOffset": 8738,
+    "FetchWords": 2576,
+    "Group": "native-template:eq_int",
+    "Instructions": 2576,
+    "Pc": 270882
+  },
+  {
+    "CodeOffset": 8740,
+    "FetchWords": 2576,
+    "Group": "native-template:eq_int",
+    "Instructions": 2576,
+    "Pc": 270884
+  },
+  {
+    "CodeOffset": 8742,
+    "FetchWords": 2576,
+    "Group": "native-template:eq_int",
+    "Instructions": 2576,
+    "Pc": 270886
+  },
+  {
+    "CodeOffset": 8744,
+    "FetchWords": 2576,
+    "Group": "native-template:eq_int",
+    "Instructions": 2576,
+    "Pc": 270888
+  },
+  {
+    "CodeOffset": 8746,
+    "FetchWords": 2576,
+    "Group": "native-template:eq_int",
+    "Instructions": 2576,
+    "Pc": 270890
+  },
+  {
+    "CodeOffset": 8748,
+    "FetchWords": 2576,
+    "Group": "native-template:eq_int",
+    "Instructions": 2576,
+    "Pc": 270892
+  },
+  {
+    "CodeOffset": 8756,
+    "FetchWords": 5152,
+    "Group": "native-template:eq_int",
+    "Instructions": 2576,
+    "Pc": 270900
+  },
+  {
+    "CodeOffset": 8760,
+    "FetchWords": 5152,
+    "Group": "native-template:fch_int_var",
+    "Instructions": 2576,
+    "Pc": 270904
+  },
+  {
+    "CodeOffset": 8764,
+    "FetchWords": 2576,
+    "Group": "native-template:fch_int_var",
+    "Instructions": 2576,
+    "Pc": 270908
+  },
+  {
+    "CodeOffset": 8766,
+    "FetchWords": 5152,
+    "Group": "native-template:fch_int_var",
+    "Instructions": 2576,
+    "Pc": 270910
+  },
+  {
+    "CodeOffset": 8770,
+    "FetchWords": 2576,
+    "Group": "native-template:fch_int_var",
+    "Instructions": 2576,
+    "Pc": 270914
+  },
+  {
+    "CodeOffset": 8772,
+    "FetchWords": 5152,
+    "Group": "native-template:fch_int_var",
+    "Instructions": 2576,
+    "Pc": 270916
+  },
+  {
+    "CodeOffset": 8776,
+    "FetchWords": 2576,
+    "Group": "native-template:fch_int_var",
+    "Instructions": 2576,
+    "Pc": 270920
+  },
+  {
+    "CodeOffset": 8778,
+    "FetchWords": 5152,
+    "Group": "native-template:sub_int",
+    "Instructions": 2576,
+    "Pc": 270922
+  },
+  {
+    "CodeOffset": 8782,
+    "FetchWords": 2576,
+    "Group": "native-template:sub_int",
+    "Instructions": 2576,
+    "Pc": 270926
+  },
+  {
+    "CodeOffset": 8784,
+    "FetchWords": 2576,
+    "Group": "native-template:sub_int",
+    "Instructions": 2576,
+    "Pc": 270928
+  },
+  {
+    "CodeOffset": 8786,
+    "FetchWords": 2576,
+    "Group": "native-template:eq_int",
+    "Instructions": 2576,
+    "Pc": 270930
+  },
+  {
+    "CodeOffset": 8788,
+    "FetchWords": 2576,
+    "Group": "native-template:eq_int",
+    "Instructions": 2576,
+    "Pc": 270932
+  },
+  {
+    "CodeOffset": 8790,
+    "FetchWords": 2576,
+    "Group": "native-template:eq_int",
+    "Instructions": 2576,
+    "Pc": 270934
+  },
+  {
+    "CodeOffset": 8792,
+    "FetchWords": 2576,
+    "Group": "native-template:eq_int",
+    "Instructions": 2576,
+    "Pc": 270936
+  },
+  {
+    "CodeOffset": 8794,
+    "FetchWords": 2576,
+    "Group": "native-template:eq_int",
+    "Instructions": 2576,
+    "Pc": 270938
+  },
+  {
+    "CodeOffset": 8796,
+    "FetchWords": 2576,
+    "Group": "native-template:eq_int",
+    "Instructions": 2576,
+    "Pc": 270940
+  },
+  {
+    "CodeOffset": 8804,
+    "FetchWords": 5152,
+    "Group": "native-template:eq_int",
+    "Instructions": 2576,
+    "Pc": 270948
+  },
+  {
+    "CodeOffset": 8808,
+    "FetchWords": 5152,
+    "Group": "native-template:slow",
+    "Instructions": 2576,
+    "Pc": 270952
+  },
+  {
+    "CodeOffset": 8838,
+    "FetchWords": 184,
+    "Group": "native-template:inc_int_var_p",
+    "Instructions": 92,
+    "Pc": 270982
+  },
+  {
+    "CodeOffset": 8842,
+    "FetchWords": 184,
+    "Group": "native-template:inc_int_var_p",
+    "Instructions": 92,
+    "Pc": 270986
+  },
+  {
+    "CodeOffset": 8846,
+    "FetchWords": 92,
+    "Group": "native-template:inc_int_var_p",
+    "Instructions": 92,
+    "Pc": 270990
+  },
+  {
+    "CodeOffset": 8852,
+    "FetchWords": 184,
+    "Group": "native-template:constant_int",
+    "Instructions": 92,
+    "Pc": 270996
+  },
+  {
+    "CodeOffset": 8856,
+    "FetchWords": 184,
+    "Group": "native-template:extract_int_p",
+    "Instructions": 92,
+    "Pc": 271000
+  },
+  {
+    "CodeOffset": 8860,
+    "FetchWords": 184,
+    "Group": "native-template:extract_int_p",
+    "Instructions": 92,
+    "Pc": 271004
+  },
+  {
+    "CodeOffset": 8864,
+    "FetchWords": 184,
+    "Group": "native-template:constant_int",
+    "Instructions": 92,
+    "Pc": 271008
+  },
+  {
+    "CodeOffset": 8868,
+    "FetchWords": 184,
+    "Group": "native-template:extract_int_p",
+    "Instructions": 92,
+    "Pc": 271012
+  },
+  {
+    "CodeOffset": 8872,
+    "FetchWords": 184,
+    "Group": "native-template:extract_int_p",
+    "Instructions": 92,
+    "Pc": 271016
+  },
+  {
+    "CodeOffset": 8876,
+    "FetchWords": 184,
+    "Group": "native-template:extract_int_p",
+    "Instructions": 92,
+    "Pc": 271020
+  },
+  {
+    "CodeOffset": 8880,
+    "FetchWords": 184,
+    "Group": "native-template:extract_int_p",
+    "Instructions": 92,
+    "Pc": 271024
+  },
+  {
+    "CodeOffset": 8884,
+    "FetchWords": 92,
+    "Group": "native-block",
+    "Instructions": 92,
+    "Pc": 271028
+  },
+  {
+    "CodeOffset": 8886,
+    "FetchWords": 92,
+    "Group": "native-block",
+    "Instructions": 92,
+    "Pc": 271030
+  },
+  {
+    "CodeOffset": 8888,
+    "FetchWords": 92,
+    "Group": "native-block",
+    "Instructions": 92,
+    "Pc": 271032
+  },
+  {
+    "CodeOffset": 8890,
+    "FetchWords": 184,
+    "Group": "native-block",
+    "Instructions": 92,
+    "Pc": 271034
+  },
+  {
+    "CodeOffset": 8900,
+    "FetchWords": 92,
+    "Group": "native-block",
+    "Instructions": 92,
+    "Pc": 271044
+  },
+  {
+    "CodeOffset": 8902,
+    "FetchWords": 184,
+    "Group": "native-template:insert_int_p",
+    "Instructions": 92,
+    "Pc": 271046
+  },
+  {
+    "CodeOffset": 8906,
+    "FetchWords": 184,
+    "Group": "native-template:insert_int_p",
+    "Instructions": 92,
+    "Pc": 271050
+  },
+  {
+    "CodeOffset": 8910,
+    "FetchWords": 184,
+    "Group": "native-block",
+    "Instructions": 92,
+    "Pc": 271054
+  },
+  {
+    "CodeOffset": 8914,
+    "FetchWords": 92,
+    "Group": "native-block",
+    "Instructions": 92,
+    "Pc": 271058
+  },
+  {
+    "CodeOffset": 8916,
+    "FetchWords": 184,
+    "Group": "native-block",
+    "Instructions": 92,
+    "Pc": 271060
+  },
+  {
+    "CodeOffset": 8920,
+    "FetchWords": 92,
+    "Group": "native-block",
+    "Instructions": 92,
+    "Pc": 271064
+  },
+  {
+    "CodeOffset": 8922,
+    "FetchWords": 92,
+    "Group": "native-block",
+    "Instructions": 92,
+    "Pc": 271066
+  },
+  {
+    "CodeOffset": 8924,
+    "FetchWords": 184,
+    "Group": "native-block",
+    "Instructions": 92,
+    "Pc": 271068
+  },
+  {
+    "CodeOffset": 8934,
+    "FetchWords": 92,
+    "Group": "native-block",
+    "Instructions": 92,
+    "Pc": 271078
+  },
+  {
+    "CodeOffset": 8936,
+    "FetchWords": 184,
+    "Group": "native-block",
+    "Instructions": 92,
+    "Pc": 271080
+  },
+  {
+    "CodeOffset": 8940,
+    "FetchWords": 92,
+    "Group": "native-block",
+    "Instructions": 92,
+    "Pc": 271084
+  },
+  {
+    "CodeOffset": 8942,
+    "FetchWords": 92,
+    "Group": "native-block",
+    "Instructions": 92,
+    "Pc": 271086
+  },
+  {
+    "CodeOffset": 8944,
+    "FetchWords": 92,
+    "Group": "native-block",
+    "Instructions": 92,
+    "Pc": 271088
+  },
+  {
+    "CodeOffset": 8950,
+    "FetchWords": 184,
+    "Group": "native-block",
+    "Instructions": 92,
+    "Pc": 271094
+  },
+  {
+    "CodeOffset": 8954,
+    "FetchWords": 92,
+    "Group": "native-block",
+    "Instructions": 92,
+    "Pc": 271098
+  },
+  {
+    "CodeOffset": 8956,
+    "FetchWords": 184,
+    "Group": "native-template:slow",
+    "Instructions": 92,
+    "Pc": 271100
+  }
+]

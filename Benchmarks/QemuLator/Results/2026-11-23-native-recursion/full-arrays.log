@@ -1,0 +1,5 @@
+Test run for C:\Source\SB\SBTests\bin\Debug\net10.0\SBTests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Results File: C:\Source\codex-workspace\.scratch\turbo-native-recursive-calls\full-tests\arrays\full-arrays_net10.0_20261123173641.trx
+
+Passed!  - Failed:     0, Passed:   489, Skipped:     0, Total:   489, Duration: 5 m 25 s - SBTests.dll (net10.0)

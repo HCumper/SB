@@ -1,0 +1,77 @@
+PASS string_operations SB: 946785 instructions; ROM 0; checksum string_operations:880
+   23.93% shared-P:extr_string_p: 226560
+   18.39% runtime:byte_table: 174099
+    8.07% thread-dispatch: 76390
+    6.54% shared-P:st_str_var_1d_p: 61920
+    6.49% shared-P:xtend_str_1d_p: 61440
+  routine <main/startup>: 100.00%
+PASS string_operations Turbo FAST: 859067 instructions; ROM 0; checksum string_operations:880
+   23.91% native-template:extr_string: 205440
+   20.27% runtime:byte_table: 174099
+    6.89% native-template:st_str_var_1d: 59200
+    6.56% native-template:xtend_str_1d: 56320
+    6.33% native-template:for_range_int: 54415
+  routine <main/startup>: 100.00%
+PASS float_polynomial SB: 3224499 instructions; ROM 1687584; checksum float_polynomial:9252
+   52.34% QL ROM: 1687584
+    5.96% thread-dispatch: 192216
+    5.66% runtime:normalise: 182616
+    4.47% shared-P:times_float: 144032
+    3.72% shared-P:divide_float: 119799
+  routine <main/startup>: 100.00%
+PASS float_polynomial Turbo FAST: 2977799 instructions; ROM 1687584; checksum float_polynomial:9252
+   56.67% QL ROM: 1687584
+    6.13% runtime:normalise: 182616
+    4.84% native-template:times_float: 144032
+    4.02% native-template:divide_float: 119799
+    3.61% runtime:denorm_nos: 107444
+  routine <main/startup>: 100.00%
+PASS float_transcendentals SB: 4587878 instructions; ROM 3861857; checksum float_transcendentals:1280
+   84.18% QL ROM: 3861857
+    2.09% runtime:go_rom: 96000
+    1.93% runtime:heap_even: 88320
+    1.62% thread-dispatch: 74376
+    0.78% shared-P:fch_float_var_p: 35840
+  routine <main/startup>: 100.00%
+PASS float_transcendentals Turbo FAST: 4478927 instructions; ROM 3861857; checksum float_transcendentals:1280
+   86.22% QL ROM: 3861857
+    2.14% runtime:go_rom: 96000
+    1.97% runtime:heap_even: 88320
+    0.70% runtime:normalise: 31251
+    0.69% native-template:times_float: 30720
+  routine <main/startup>: 100.00%
+PASS eight_queens SB: 4292463 instructions; ROM 230828; checksum eight_queens:4962
+   27.19% compact-array-helper: 1167220
+   10.36% native-block: 444553
+    8.28% native-template:eq_int: 355581
+    5.90% thread-dispatch: 253336
+    5.49% shared-P:for_range_int_p: 235628
+  routine SEARCH_BOARD: 75.79%
+  routine RECORD_BOARD: 23.97%
+  routine <main/startup>: 0.22%
+  routine CLEAR_BOARD: 0.01%
+PASS eight_queens Turbo FAST: 3654790 instructions; ROM 230828; checksum eight_queens:4962
+   26.27% native-template:extract_int: 960264
+    9.73% native-template:eq_int: 355581
+    8.21% native-template:fch_int_var: 300058
+    7.56% native-template:insert_int: 276355
+    6.36% native-template:for_range_int: 232625
+  routine <main/startup>: 100.00%
+PASS concordance SB: 12729163 instructions; ROM 3030380; checksum concordance:7936
+   23.81% QL ROM: 3030380
+   21.07% shared-P:extr_string_p: 2682324
+    6.57% thread-dispatch: 836338
+    3.64% runtime:get_up: 462996
+    3.50% runtime:copy_upstr: 445452
+  routine ADD_WORD: 52.45%
+  routine SORT_INDEX: 37.83%
+  routine <main/startup>: 8.13%
+  routine VERIFY_INDEX: 1.57%
+  routine LOAD_CORPUS: 0.01%
+PASS concordance Turbo FAST: 11260160 instructions; ROM 3030380; checksum concordance:7936
+   26.91% QL ROM: 3030380
+   22.06% native-template:extr_string: 2483780
+    4.11% runtime:get_up: 462996
+    3.96% runtime:copy_upstr: 445452
+    3.86% native-template:st_string_var: 434304
+  routine <main/startup>: 100.00%

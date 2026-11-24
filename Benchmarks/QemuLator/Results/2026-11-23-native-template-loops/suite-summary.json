@@ -1,0 +1,18 @@
+{
+  "Command": "dotnet test SB.sln --no-build --no-restore",
+  "TotalPassed": 4253,
+  "Assemblies": [
+    {
+      "Trx": "full-final_net10.0_20261123161519.trx",
+      "Passed": 248,
+      "Failed": 0,
+      "Total": 248
+    },
+    {
+      "Trx": "full-final_net10.0_20261123165245.trx",
+      "Passed": 4005,
+      "Failed": 0,
+      "Total": 4005
+    }
+  ]
+}

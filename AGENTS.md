@@ -135,6 +135,8 @@ dotnet run --project .\SB\SB.fsproj -- .\q3.sb .\unused.txt false interpret aval
 
 ## Build and test
 
+- Use **GoldCard speed** (`Speed=GoldCard`) for future Q-emuLator benchmark timing runs, as requested on 23 November 2026. Compilation may use Full speed. Keep historical Original QL results labeled with their original speed; use `--speed QL` explicitly when reproducing them.
+
 ```powershell
 dotnet build .\SB.sln
 dotnet test .\SBTests\SBTests.fsproj

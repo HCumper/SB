@@ -1,5 +1,15 @@
 # SuperBASIC Turbo benchmarks
 
+[Profiles of the five remaining slower workloads and recommended next steps](../QemuLator/Results/2026-11-23-workload-profiles/README.md)
+
+[Invariant native array rows: implementation and comparative results](../QemuLator/Results/2026-11-23-invariant-arrays/README.md)
+
+[Direct comparisons and integer truth branches: implementation and comparative results](../QemuLator/Results/2026-11-23-direct-conditions/README.md)
+
+[Procedure and region eligibility: implementation and comparative results](../QemuLator/Results/2026-11-23-scoped-eligibility/README.md)
+
+[Procedure-local native FOR loops: implementation and comparative results](../QemuLator/Results/2026-11-23-local-for/README.md)
+
 [Precise procedure/array effects: route-planner comparison and validation](Results/2026-11-22-procedure-effects/README.md)
 
 Use `-CompareRegisters` to compare all six combinations of HIR rewriting and
@@ -14,6 +24,10 @@ These original SuperBASIC workloads test SB's QL output with HIR optimization di
 
 | Source | Default passes | Default checksum | Quick checksum | Execution |
 | --- | ---: | ---: | ---: | --- |
+| `native_truth_for.bas` | 20 | 4970 | 2239 | Direct integer truth and eager AND microbenchmark |
+| `scoped_integer_for.bas` | 20 | 270 | 3004 | Scoped eligibility microbenchmark |
+| `native_conditional_for.bas` | 20 | 6870 | 1334 | Conditional native FOR microbenchmark |
+| `local_integer_for.bas` | 20 | 270 | 3004 | Procedure-local FOR microbenchmark |
 | `regalloc_copy_chain.bas` | 20 | 210 | 1001 | Allocation microbenchmark |
 | `regalloc_arithmetic.bas` | 20 | 310 | 3006 | Allocation microbenchmark |
 | `native_constant_chain.bas` | 20 | 490 | 1015 | Native-value microbenchmark |
@@ -36,13 +50,23 @@ These original SuperBASIC workloads test SB's QL output with HIR optimization di
 - Matrix multiplication computes eight by eight integer matrices and a weighted checksum.
 - Bubble sort orders 64 deterministic values, checks ordering and uses a weighted checksum that depends on the sorted order. The reference uses the host sort.
 - Procedure calls exercise reference scalar mutation and value arguments.
+- The procedure-local FOR microbenchmark keeps its counter and sum private,
+  captures its upper bound from a parameter and checks variable-dependent
+  integer arithmetic. Its reference uses a cycle sum. Report it separately
+  from application workloads.
+- `scoped_integer_for` repeats that calculation beside a separate GOSUB. It
+  measures whether local continuation uncertainty suppresses an independent
+  procedure loop, using the same independent cycle-sum checksum.
+- `native_truth_for` uses a variable integer truth value and an eager AND with
+  an integer comparison. Its independent residue-count reference gives 2238
+  per call before the seed. Report this capability test separately from applications.
 - Recursion evaluates Fibonacci at 12 and 13. The reference computes Fibonacci iteratively.
 - String operations build and rotate a 64-character string, then check length and endpoint character codes.
 - Dyadic floating work uses exactly representable increments and scaling by two.
 - Polynomial floating work uses general multiplication and division. Its exact mathematical sum is 2313.0001875; the program checks a tolerance of 0.02 and an integer result of 2313.
 - Transcendental work checks that SQRT(SIN(x)^2 + COS(x)^2) is within 0.00001 of one.
 
-All integer intermediates fit checked 16-bit arithmetic for the supplied defaults and quick workloads. Thirteen workloads execute in the console test harness. The two full-ROM cases compile in both modes and have status `compiled-only`; their execution and numerical tolerances must be verified on the target.
+All integer intermediates fit checked 16-bit arithmetic for the supplied defaults and quick workloads. Seventeen workloads execute in the console test harness. The two full-ROM cases compile in both modes and have status `compiled-only`; their execution and numerical tolerances must be verified on the target.
 
 The `regalloc_` cases deliberately isolate copy-chain and bounded-arithmetic
 register reuse. Report them separately from the original general workloads;
@@ -131,3 +155,7 @@ checked-operation boundaries.
 The [Q-emuLator collection](../QemuLator/README.md) compares genuine Turbo FAST
 native builds with SB using elapsed times under QDOS. It includes three larger
 algorithmic programs, independent reference checks and repeatable timing scripts.
+
+The [native comparison and branch report](../QemuLator/Results/2026-11-23-native-branches/README.md)
+includes isolated compiler comparisons, the `native_conditional_for` workload
+and fresh full-emulator timings for the two changed collection executables.

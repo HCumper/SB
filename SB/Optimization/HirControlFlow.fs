@@ -19,6 +19,7 @@ type EdgeKind = FallThrough | BranchTrue | BranchFalse | Jump | SubroutineCall |
 type Guard = Unconditional | Predicate of HirExpr * bool | CountedLoop of SymbolId * HirExpr * HirExpr * bool
 type Edge = { Source:int; Target:int; Kind:EdgeKind; Guard:Guard; Havoc:bool; Kill:Set<SymbolId> }
 type NaturalLoop = { Header:int; Latch:int; Members:Set<int> }
+type ForRegion = { Initialiser:int; Check:int; Advance:int; Members:Set<int> }
 type Graph = {
     Scope:Scope
     Nodes:Map<int,Node>
@@ -31,6 +32,7 @@ type Graph = {
     Dominators:Map<int,Set<int>>
     Loops:NaturalLoop list
     HasUncertainControl:bool
+    ForRegions:Map<LoopId,ForRegion>
 }
 
 let successors graph id = graph.Edges |> List.filter (fun e -> e.Source=id)
@@ -73,6 +75,7 @@ let build (context:Context) scope body =
     let returnNodes = ResizeArray<int>()
     let continuations = HashSet<int>()
     let handlers = ResizeArray<int>()
+    let forRegions = Dictionary<LoopId,ForRegion>()
     let mutable uncertain = false
     let node kind = let id=nodes.Count in nodes.Add {Id=id;Kind=kind}; id
     let edge source target kind guard havoc kill = edges.Add {Source=source;Target=target;Kind=kind;Guard=guard;Havoc=havoc;Kill=kill}
@@ -96,12 +99,15 @@ let build (context:Context) scope body =
             let advance = node(ForAdvance(s,if unstable then None else Some step))
             if unstable then arbitraryContinuations.Add advance |> ignore
             normal advance test
+            let firstBodyNode=nodes.Count
             let inside = block ((loop,(advance,next))::loops) body advance
+            let members=Set.ofList(test::advance::[firstBodyNode..nodes.Count-1])
             edge test inside BranchTrue (if unstable then Unconditional else CountedLoop(s,last,step,true)) false Set.empty
             // Turbo stores the advanced counter only if the next iteration is
             // valid. The model uses a candidate value, so exit kills that fact.
             edge test next BranchFalse (if unstable then Unconditional else CountedLoop(s,last,step,false)) false (Set.singleton s)
             let init = node(ForInitialise(s,[first;last;step],Some first))
+            forRegions[loop]<-{Initialiser=init;Check=test;Advance=advance;Members=members}
             normal init test
             init
         | ForSequence(loop,s,prefix,first,last,suffix,step,body,_) ->
@@ -220,7 +226,8 @@ let build (context:Context) scope body =
                         if reachable.Contains p.Source && members.Add p.Source && p.Source<>e.Target then search.Push p.Source
                 yield {Header=e.Target;Latch=e.Source;Members=Set.ofSeq members}]
     {Scope=scope;Nodes=nodes;Edges=edges;Entry=entry;Exit=finish;Labels=Map.ofSeq (labels |> Seq.map (fun p -> p.Key,p.Value))
-     Reachable=reachable;ReversePostOrder=traversal;Dominators=dom;Loops=loops;HasUncertainControl=uncertain}
+     Reachable=reachable;ReversePostOrder=traversal;Dominators=dom;Loops=loops;HasUncertainControl=uncertain
+     ForRegions=forRegions |> Seq.map(fun pair -> pair.Key,pair.Value) |> Map.ofSeq}
 
 type Liveness = { LiveIn:Map<int,Set<SymbolId>>; LiveOut:Map<int,Set<SymbolId>> }
 

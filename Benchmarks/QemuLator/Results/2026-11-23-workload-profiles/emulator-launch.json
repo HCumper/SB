@@ -1,0 +1,12 @@
+{
+  "ProcessId": 13160,
+  "Executable": "C:\\Program Files (x86)\\Q-emuLator\\QemuLator.exe",
+  "CommandLine": "\"C:\\Program Files (x86)\\Q-emuLator\\QemuLator.exe\" \"C:\\Source\\codex-workspace\\.scratch\\turbo-workload-profiles\\qemulator\\benchmark.QCF\"",
+  "CreationDateUtc": "2026-11-23T20:23:15.6645170Z",
+  "Config": "C:\\Source\\codex-workspace\\.scratch\\turbo-workload-profiles\\qemulator\\benchmark.QCF",
+  "ConfigSha256": "C9811D2C1912CC15596A637843C525A5A84270F2CC919FC448CFAB7E9CB33CE2",
+  "WindowStyle": "Hidden",
+  "Speed": "QL",
+  "ProfilesCompletedBeforeLaunch": true,
+  "ProfiledExecutablesMatch": true
+}

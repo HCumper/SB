@@ -1,0 +1,161 @@
+{
+  "formatVersion": 2,
+  "timingMethod": "external-qdos-job",
+  "trials": 3,
+  "warmups": 1,
+  "timerHz": 50,
+  "expectedResults": 40,
+  "benchmarks": [
+    {
+      "name": "string_operations",
+      "file": "string_operations.bas",
+      "passes": 80,
+      "expectedChecksum": 880,
+      "category": "kernel",
+      "description": "Build and rotate a 64 character string with concatenation slicing LEN and CODE",
+      "sourceLines": 22,
+      "reference": "Existing independent Check-ReferenceChecksums.ps1",
+      "tag": "b03",
+      "sourceFile": "C:\\Source\\SB\\Benchmarks\\QemuLator\\Programs\\string_operations.bas",
+      "sourceSha256": "21CBC87F0852A477AD3B764A0D204176E9816D4C83863B6A8CF624C4A026AE32",
+      "compilerDirectives": [
+        "TURBO_objfil \"mdv1_b03t\"",
+        "TURBO_repfil \"mdv1_b03_report\"",
+        "TURBO_optim 2",
+        "TURBO_model \">\"",
+        "TURBO_diags 0",
+        "TURBO_windo 0",
+        "TURBO_objdat 20",
+        "TURBO_objstk 350",
+        "TURBO_buffersz 64",
+        "TURBO_list 0",
+        "TURBO_struct 1"
+      ]
+    },
+    {
+      "name": "float_polynomial",
+      "file": "float_polynomial.bas",
+      "passes": 4,
+      "expectedChecksum": 9252,
+      "category": "kernel",
+      "description": "General QDOS floating division multiplication and Horner polynomial",
+      "sourceLines": 20,
+      "reference": "Existing independent Check-ReferenceChecksums.ps1",
+      "tag": "b04",
+      "sourceFile": "C:\\Source\\SB\\Benchmarks\\QemuLator\\Programs\\float_polynomial.bas",
+      "sourceSha256": "DDC6292B39A84FFD30FD80E6F30FAD6AD471637C4B068D7FC88F351F536DBDFD",
+      "compilerDirectives": [
+        "TURBO_objfil \"mdv1_b04t\"",
+        "TURBO_repfil \"mdv1_b04_report\"",
+        "TURBO_optim 2",
+        "TURBO_model \">\"",
+        "TURBO_diags 0",
+        "TURBO_windo 0",
+        "TURBO_objdat 20",
+        "TURBO_objstk 350",
+        "TURBO_buffersz 64",
+        "TURBO_list 0",
+        "TURBO_struct 1"
+      ]
+    },
+    {
+      "name": "float_transcendentals",
+      "file": "float_transcendentals.bas",
+      "passes": 5,
+      "expectedChecksum": 1280,
+      "category": "kernel",
+      "description": "ROM SIN COS and SQRT with the trigonometric identity as a numerical check",
+      "sourceLines": 18,
+      "reference": "Existing independent Check-ReferenceChecksums.ps1",
+      "tag": "b05",
+      "sourceFile": "C:\\Source\\SB\\Benchmarks\\QemuLator\\Programs\\float_transcendentals.bas",
+      "sourceSha256": "4545581B08C6C1E11AEAABE1773E2D215DB33741D9FE86003B1E24A7242E93F1",
+      "compilerDirectives": [
+        "TURBO_objfil \"mdv1_b05t\"",
+        "TURBO_repfil \"mdv1_b05_report\"",
+        "TURBO_optim 2",
+        "TURBO_model \">\"",
+        "TURBO_diags 0",
+        "TURBO_windo 0",
+        "TURBO_objdat 20",
+        "TURBO_objstk 350",
+        "TURBO_buffersz 64",
+        "TURBO_list 0",
+        "TURBO_struct 1"
+      ]
+    },
+    {
+      "name": "eight_queens",
+      "file": "eight_queens.bas",
+      "passes": 1,
+      "expectedChecksum": 4962,
+      "category": "application",
+      "description": "Enumerate and validate every eight-queens solution",
+      "sourceLines": 72,
+      "reference": {
+        "solutions": 92,
+        "firstColumnHistogram": {
+          "1": 4,
+          "2": 8,
+          "3": 16,
+          "4": 18,
+          "5": 18,
+          "6": 16,
+          "7": 8,
+          "8": 4
+        },
+        "perPass": 4962
+      },
+      "tag": "b06",
+      "sourceFile": "C:\\Source\\SB\\Benchmarks\\QemuLator\\Programs\\eight_queens.bas",
+      "sourceSha256": "75F2FD3DBE01B807E7364A92F8498B55AE554E0EE53130990ECEFC036AB8D29D",
+      "compilerDirectives": [
+        "TURBO_objfil \"mdv1_b06t\"",
+        "TURBO_repfil \"mdv1_b06_report\"",
+        "TURBO_optim 2",
+        "TURBO_model \">\"",
+        "TURBO_diags 0",
+        "TURBO_windo 0",
+        "TURBO_objdat 20",
+        "TURBO_objstk 350",
+        "TURBO_buffersz 64",
+        "TURBO_list 0",
+        "TURBO_struct 1"
+      ]
+    },
+    {
+      "name": "concordance",
+      "file": "concordance.bas",
+      "passes": 4,
+      "expectedChecksum": 7936,
+      "category": "application",
+      "description": "Build sort and verify a text concordance",
+      "sourceLines": 104,
+      "reference": {
+        "algorithm": "Python Counter and sorted",
+        "unique": 97,
+        "words": 147,
+        "perPass": 6984
+      },
+      "tag": "b08",
+      "sourceFile": "C:\\Source\\SB\\Benchmarks\\QemuLator\\Programs\\concordance.bas",
+      "sourceSha256": "E79D9ED78E83B9E7147658B7323CEA680E666D19BE12CA4D57029D902B73310C",
+      "compilerDirectives": [
+        "TURBO_objfil \"mdv1_b08t\"",
+        "TURBO_repfil \"mdv1_b08_report\"",
+        "TURBO_optim 2",
+        "TURBO_model \">\"",
+        "TURBO_diags 0",
+        "TURBO_windo 0",
+        "TURBO_objdat 20",
+        "TURBO_objstk 350",
+        "TURBO_buffersz 64",
+        "TURBO_list 0",
+        "TURBO_struct 1"
+      ]
+    }
+  ],
+  "scope": "Whole job: executable loading, runtime startup, initialization, computation, internal checks, checksum PRINT and shutdown; runner file opening/closing and reporting are outside the timer.",
+  "outputChannel": 1,
+  "inheritedChannels": 31
+}

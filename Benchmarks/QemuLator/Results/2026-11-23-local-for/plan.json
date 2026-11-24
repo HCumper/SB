@@ -1,0 +1,44 @@
+{
+  "formatVersion": 2,
+  "timingMethod": "external-qdos-job",
+  "trials": 3,
+  "warmups": 1,
+  "timerHz": 50,
+  "expectedResults": 8,
+  "benchmarks": [
+    {
+      "name": "route_planner",
+      "file": "route_planner.bas",
+      "passes": 1,
+      "expectedChecksum": 4701,
+      "category": "application",
+      "description": "Build a road network and verify all shortest routes",
+      "sourceLines": 97,
+      "reference": {
+        "towns": 32,
+        "algorithm": "Floyd-Warshall",
+        "perPass": 4701,
+        "largestDistance": 45
+      },
+      "tag": "b07",
+      "sourceFile": "C:\\Source\\SB\\Benchmarks\\QemuLator\\Programs\\route_planner.bas",
+      "sourceSha256": "1F7AE77ED90071A7194072A630610AB8532DF3E0B3AFFCBFC0C956A4BC2E4D6D",
+      "compilerDirectives": [
+        "TURBO_objfil \"mdv1_b07t\"",
+        "TURBO_repfil \"mdv1_b07_report\"",
+        "TURBO_optim 2",
+        "TURBO_model \">\"",
+        "TURBO_diags 0",
+        "TURBO_windo 0",
+        "TURBO_objdat 20",
+        "TURBO_objstk 350",
+        "TURBO_buffersz 64",
+        "TURBO_list 0",
+        "TURBO_struct 1"
+      ]
+    }
+  ],
+  "scope": "Whole job: executable loading, runtime startup, initialization, computation, internal checks, checksum PRINT and shutdown; runner file opening/closing and reporting are outside the timer.",
+  "outputChannel": 1,
+  "inheritedChannels": 31
+}

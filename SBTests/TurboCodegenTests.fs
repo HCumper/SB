@@ -501,7 +501,7 @@ let ``DIVMOD native loops preserve live accumulators and reserve both frame dept
     // positive literals are now infallible single-register operations.
     let raw=irOf "10 q%=0:r%=0:divisor%=3\n20 FOR i%=-99 TO 99 STEP 2\n30 q%=q%+(i% DIV divisor%):r%=r%+(i% MOD divisor%)\n40 END FOR i%\n50 PRINT q%;\":\";r%;\":\";i%\n60 STOP"
     let items=decode raw |> Result.defaultWith failwith
-    let ir=TurboNativeRegions.select true {Items=items;Bytes=raw;Listing=formatListing items;Warnings=[]} |> Result.defaultWith(String.concat "; " >> failwith)
+    let ir=TurboNativeRegions.select true {Items=items;Bytes=raw;Listing=formatListing items;Warnings=[];NativeForLoopProofs=Map.empty;MemoryForLoops=Map.empty;NativeProcedureCalls=Map.empty} |> Result.defaultWith(String.concat "; " >> failwith)
     let options={portOptions with LocalRegisterAllocation=true}
     let before=generateFromIr options ir.Bytes |> Result.defaultWith(String.concat "; " >> failwith)
     let after=generateFromIr {options with NativeIntegerForLoops=true} ir.Bytes |> Result.defaultWith(String.concat "; " >> failwith)
@@ -533,7 +533,7 @@ let ``DIVMOD register clobbers force a template fallback when no spill frame can
 let private rankOneIr proven source =
     let raw=irOf source
     let items=decode raw |> Result.defaultWith failwith
-    let selected=TurboNativeRegions.select true {Items=items;Bytes=raw;Listing=formatListing items;Warnings=[]} |> Result.defaultWith(String.concat "; " >> failwith)
+    let selected=TurboNativeRegions.select true {Items=items;Bytes=raw;Listing=formatListing items;Warnings=[];NativeForLoopProofs=Map.empty;MemoryForLoops=Map.empty;NativeProcedureCalls=Map.empty} |> Result.defaultWith(String.concat "; " >> failwith)
     let items=selected.Items |> List.map(function
         | Instruction(1111,args,comment) -> Instruction((if proven then 1811 else 1711),args,comment)
         | Instruction(1112,args,comment) -> Instruction((if proven then 1812 else 1712),args,comment)
@@ -574,7 +574,7 @@ let ``rank-one array pressure falls back without exceeding configured stack head
 let private rankTwoIr mask stride source =
     let raw=irOf source
     let items=decode raw |> Result.defaultWith failwith
-    let selected=TurboNativeRegions.select true {Items=items;Bytes=raw;Listing=formatListing items;Warnings=[]} |> Result.defaultWith(String.concat "; " >> failwith)
+    let selected=TurboNativeRegions.select true {Items=items;Bytes=raw;Listing=formatListing items;Warnings=[];NativeForLoopProofs=Map.empty;MemoryForLoops=Map.empty;NativeProcedureCalls=Map.empty} |> Result.defaultWith(String.concat "; " >> failwith)
     selected.Items |> List.map(function
         | Instruction((1111|1112 as op),args,comment) -> Instruction(op+800,args@[Word mask;Word stride],comment)
         | item -> item) |> serialize
@@ -664,7 +664,7 @@ let ``range-proven arrays can fall back to checked inline code at the stack limi
 let ``legacy mixed mode encoding retains the reference machine code layout`` (name: string) =
     let bytes = irOf (programs |> List.find (fun (n, _) -> n = name) |> snd)
     let items = decode bytes |> Result.defaultWith failwith
-    let output = {Items=items; Bytes=bytes; Listing=formatListing items; Warnings=[]}
+    let output = {Items=items; Bytes=bytes; Listing=formatListing items; Warnings=[];NativeForLoopProofs=Map.empty;MemoryForLoops=Map.empty;NativeProcedureCalls=Map.empty}
     let selected = TurboNativeRegions.select true output |> Result.defaultWith (String.concat "; " >> failwith)
     // The genuine generator cannot express checked native arithmetic: it
     // discards +1000 and emits unchecked N bodies. Compare the legacy encoding
