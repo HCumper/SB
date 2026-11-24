@@ -259,6 +259,17 @@ to the loop's own end label and leaves the counter cell as threaded `exit_p`
 does, and the end label may then be referenced only by the initializer and those
 EXITs. Nested loops, procedure/resident calls, handlers, other explicit
 transfers and unknown operations fall back. Word-only loops retain the existing allocator.
+
+A conditional branch may be followed by a terminal tail: straight records with
+no label operand and no unlabelled transfer (NEXT, RETurn, done_for, CONTINUE,
+mode switches), ending in STOP (220), then the branch's own label. This is the
+`IF failed THEN PRINT ... : STOP` shape. Only the fall-through enters the tail
+and STOP never reaches the label, so the tail runs threaded between SLOW and an
+unreachable FAST; the FAST defines the label in native mode, where the branch
+resumes the loop. SLOW flushes leaf allocation as the other bridges do, so the
+tail's PRINTs read current values, and its records, errors included, are the
+original threaded ones. An IF/ELSE whose THEN arm stops is not a terminal tail,
+since that arm ends in a jump over the ELSE; its loop stays threaded.
 LEN, CODE and CHR$ are classified as nonmutating inline intrinsics; only the exact
 MID$/RIGHT$ slice shapes lowered inline by the backend share this classification.
 User overrides and general MID$/RIGHT$ calls remain ordinary calls. Argument
@@ -309,8 +320,8 @@ EXIT keep their templates. Validation rejects 1530 in threaded code.
 `--no-native-regions` disables selection. `--no-regalloc` disables pinned loops
 and local allocation but still permits these memory-counter native loops.
 `--no-hir-opt` independently disables HIR rewriting. `.native-ir.txt` reports the
-number of loops selected and of inline NEXT records. The library and legacy
-peephole pass are unchanged.
+number of loops selected, of inline NEXT records and of terminal STOP tails. The
+library and legacy peephole pass are unchanged.
 
 ## Memory-based procedure-call boundaries
 

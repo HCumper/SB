@@ -605,6 +605,14 @@ let private solveCallEntries options context barriers (graphs:(Scope*Graph) list
 
 let private arithmetic = function Unary(Negate,_,_,_) | Binary((Add|Subtract|Multiply),_,_,_,_) -> true | _ -> false
 
+/// Assignments and PRINTs ending in STOP: a branch that ends the program, so
+/// never returns to an enclosing loop. Its effects are still those of the body.
+let private terminalBranch (block:HirBlock) =
+    match block |> List.rev |> List.skipWhile(function LineNumber _ | Remark _ -> true | _ -> false) with
+    | BuiltInCall(NamedBuiltIn name,None,_,_)::rest when name.Equals("STOP",StringComparison.OrdinalIgnoreCase) ->
+        rest |> List.forall(function Assign _ | BuiltInCall(Print,_,_,_) | LineNumber _ | Remark _ -> true | _ -> false)
+    | _ -> false
+
 // Binding certificates are independent of scalar range proofs. Keep counters
 // in their own cells: a formal/array alias must not observe a deferred counter
 // store, even when it only reads. Calls and non-leaf control remain boundaries.
@@ -624,12 +632,15 @@ let private nativeForCertificates (context:RangeContext) barriers (scopes:Map<Sc
                         | _ -> false
                     scalar && binding)
             // EXIT of this loop leaves to its own end with the counter intact;
-            // it neither enters the region nor touches FOR metadata.
+            // it neither enters the region nor touches FOR metadata. A branch
+            // that ends in STOP never returns to the loop; its statements still
+            // count in the effects below.
             let rec leaf body=body |> List.forall(function
                 | Assign _ | LineNumber _ | Remark _ -> true
                 | Exit(exited,_) -> exited=loop
-                | If(_,yes,no,_) -> leaf yes && leaf(Option.defaultValue [] no)
+                | If(_,yes,no,_) -> branch yes && branch(Option.defaultValue [] no)
                 | _ -> false)
+            and branch block=leaf block || terminalBranch block
             let writes=body |> List.map(statement effects scope) |> combineAll
             let roots=Set.union writes.Reads writes.Writes
             let independent=roots |> Set.forall(fun root -> root=counter || not(mayAlias effects.Aliases scope counter root))

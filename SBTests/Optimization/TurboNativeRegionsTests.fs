@@ -132,6 +132,38 @@ let ``native integer ABS is rejected in threaded code`` () =
         | item -> [item])
     Assert.That(validate (serialize items) |> String.concat "; ", Does.Contain("Native integer ABS requires native mode"))
 
+// A terminal tail must end in STOP and contain no transfer; otherwise its
+// loop keeps threaded code. The proof stands in for the HIR certificate.
+let private terminalLoop (change: IrItem list -> IrItem list) =
+    let output = emit "10 DIM a$(20)\n20 FOR i%=1 TO 10\n30 a$=a$ & i%:x=i%/2\n40 IF i%=4 THEN PRINT \"stop\":STOP\n50 END FOR i%\n60 STOP"
+    let counter,top = output.Items |> List.pick (function Instruction(26,[Word counter;LabelRef top],_) -> Some(counter,top) | _ -> None)
+    let proof = {Counter=counter;ScalarVectors=set [counter];InvariantScalarVectors=Set.empty;InvariantArrayVectors=Set.empty}
+    let selected = TurboNativeTemplateLoops.select true {output with Items=change output.Items;NativeForLoopProofs=Map [top,proof]} |> ok
+    TurboNativeTemplateLoops.format selected.Items
+
+[<Test>]
+let ``a terminal STOP tail keeps its loop native`` () =
+    let report = terminalLoop id
+    Assert.That(report, Does.Contain("Audited memory-counter native FOR loops: 1"))
+    Assert.That(report, Does.Contain("Terminal STOP tails in native loops: 1"))
+
+[<Test>]
+let ``a tail without STOP or with a jump keeps its loop threaded`` () =
+    let withoutStop items =
+        let stops = items |> List.indexed |> List.filter (fun (_,item) -> match item with Instruction(220,[],_) -> true | _ -> false) |> List.map fst
+        items |> List.indexed |> List.filter (fun (i,_) -> i<>List.head stops) |> List.map snd
+    let withJump items =
+        let mutable added = false
+        items |> List.collect (fun item ->
+            match item with
+            | Instruction(220,[],_) when not added ->
+                added <- true
+                let label = items |> List.pick (function Instruction(239,[LabelRef label],_) -> Some label | _ -> None)
+                [Instruction(242,[LabelRef label],"");item]
+            | item -> [item])
+    for change in [withoutStop;withJump] do
+        Assert.That(terminalLoop change, Does.Contain("Audited memory-counter native FOR loops: 0"))
+
 [<Test>]
 let ``inline native NEXT is rejected in threaded code`` () =
     let output = emit "10 FOR i%=1 TO 3\n20 a=i%\n30 END FOR i%\n40 STOP"

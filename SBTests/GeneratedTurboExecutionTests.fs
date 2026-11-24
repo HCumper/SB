@@ -220,6 +220,72 @@ let ``a computed STEP keeps the template NEXT`` () =
         Assert.That(report, Does.Contain("Inline memory-counter NEXT records: 0"))
     finally Directory.Delete(directory,true)
 
+// An IF branch of PRINTs and assignments ending in STOP never returns to the
+// loop, so it runs threaded inside a native loop. The last two values are the
+// report's terminal-tail and native-loop counts: an IF/ELSE keeps its loop
+// threaded, since the THEN branch then ends in a jump over the ELSE.
+let terminalStopPrograms = [|
+    "10 DIM a$(20)\n20 FOR i%=1 TO 10\n30 a$=a$ & i%:x=i%/2\n40 IF i%=4 THEN PRINT \"stop:\";i%;\":\";a$;\":\";x:STOP\n50 END FOR i%\n60 PRINT \"done\"\n70 STOP", "stop:4:1234:2\n", 1, 1
+    "10 DIM a$(20)\n20 FOR i%=1 TO 10\n30 a$=a$ & i%:x=i%/2\n40 IF i%=40 THEN PRINT \"stop:\";i%;\":\";a$;\":\";x:STOP\n50 END FOR i%\n60 PRINT \"done:\";a$\n70 STOP", "done:12345678910\n", 1, 1
+    "10 FOR i%=1 TO 10\n20 x=i%/2:y=y+x\n30 IF x>3 THEN\n40 failed%=i%\n50 PRINT \"failed\";failed%;\":\";y\n60 STOP\n70 END IF\n80 END FOR i%\n90 PRINT \"done\"\n100 STOP", "failed7:14\n", 1, 1
+    "10 FOR i%=1 TO 10\n20 x=i%/2\n30 IF x>3 THEN PRINT \"big\";i%:STOP:ELSE y=y+x\n40 END FOR i%\n50 PRINT y\n60 STOP", "big7\n", 0, 0
+|]
+let terminalStopModes = [|
+    for index in 0..terminalStopPrograms.Length-1 do
+        for hir in [false;true] do
+            for native,registers in [false,false;true,false;true,true] do
+                yield TestCaseData(index,hir,native,registers).SetName($"Terminal STOP {index} (HIR {hir}, native {native}, registers {registers})") |]
+
+[<TestCaseSource(nameof terminalStopModes)>]
+let ``terminal STOP branches in native loops match threaded output`` (index:int,hir:bool,native:bool,registers:bool) =
+    let source,expected,_,_=terminalStopPrograms[index]
+    withCompiledProgramMode hir [(if native then "--native-regions" else "--no-native-regions");(if registers then "--regalloc" else "--no-regalloc")] ".bas" source (fun executable ->
+        let result=run 4000000L executable
+        Assert.That(result.ExitCode, Is.Zero)
+        Assert.That(result.Output, Is.EqualTo(expected)))
+
+[<TestCase(false)>]
+[<TestCase(true)>]
+let ``terminal STOP reports count each threaded tail`` (hir:bool) =
+    let directory=Path.Combine(Path.GetTempPath(),$"terminal-stop-report-{Guid.NewGuid():N}")
+    Directory.CreateDirectory directory |> ignore
+    try
+        for index in 0..terminalStopPrograms.Length-1 do
+            let prefix=Path.Combine(directory,string index)
+            let source,_,tails,loops=terminalStopPrograms[index]
+            withCompiledProgramMode hir ["--native-regions";"--regalloc";"--dump-hir="+prefix] ".bas" source ignore
+            let report=File.ReadAllText(prefix+".native-ir.txt")
+            Assert.That(report, Does.Contain($"Audited memory-counter native FOR loops: {loops}"), $"fixture {index}")
+            Assert.That(report, Does.Contain($"Terminal STOP tails in native loops: {tails}"), $"fixture {index}")
+    finally Directory.Delete(directory,true)
+
+// Only a branch that ends in STOP is terminal: a PRINT alone returns to the loop.
+[<TestCase("40 IF i%=4 THEN PRINT \"x\":STOP", 1)>]
+[<TestCase("40 IF i%=4 THEN PRINT \"x\"", 0)>]
+let ``only branches ending in STOP keep a native FOR certified`` (line:string,certified:int) =
+    let directory=Path.Combine(Path.GetTempPath(),$"terminal-stop-certificate-{Guid.NewGuid():N}")
+    Directory.CreateDirectory directory |> ignore
+    try
+        let prefix=Path.Combine(directory,"loop")
+        let source="10 DIM a$(20)\n20 FOR i%=1 TO 10\n30 a$=a$ & i%:x=i%/2\n" + line + "\n50 END FOR i%\n60 STOP"
+        withCompiledProgramMode true ["--native-regions";"--regalloc";"--dump-hir="+prefix] ".bas" source ignore
+        Assert.That(File.ReadAllText(prefix+".analysis.txt"), Does.Contain($"Certified native FOR bindings: {certified}"))
+    finally Directory.Delete(directory,true)
+
+// A failure inside the threaded tail reports the same QL error as threaded code.
+[<Test>]
+let ``an error in a terminal tail matches threaded code`` () =
+    let source="10 DIM a$(20)\n20 z=0\n30 FOR i%=1 TO 5\n40 a$=a$ & i%:x=i%/2\n50 IF i%=3 THEN PRINT 1/z:STOP\n60 END FOR i%\n70 STOP"
+    let capture native =
+        let mutable number=0
+        withCompiledProgramMode true [(if native then "--native-regions" else "--no-native-regions");"--regalloc"] ".bas" source (fun executable ->
+            let error=Assert.Throws<M68kFault>(fun () -> run 2000000L executable |> ignore)
+            let parsed=System.Text.RegularExpressions.Regex.Match(error.Message,@"ERNUM=(-?\d+)")
+            Assert.That(parsed.Success, Is.True, error.Message)
+            number<-int parsed.Groups[1].Value)
+        number
+    Assert.That(capture true, Is.EqualTo(capture false))
+
 // Integer IF conditions inside memory-counter loops become one native branch.
 // The last value is the number of fused conditions in the --dump-hir report.
 let fusedConditionPrograms = [|

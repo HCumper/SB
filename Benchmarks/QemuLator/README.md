@@ -1,5 +1,7 @@
 # Turbo FAST versus SB in Q-emuLator
 
+[Terminal STOP branches inside native loops: all nine workloads now ahead of Turbo FAST on instruction counts, 24 November 2026](Results/2026-11-24-terminal-stop-branches/README.md)
+
 [Inline FOR stepping in memory-counter native loops: instruction counts for all nine workloads and full verification, 24 November 2026](Results/2026-11-24-inline-for-stepping/README.md)
 
 [Native string operations, ROM maths calls and loop EXIT: instruction counts for all nine workloads and full verification, 24 November 2026](Results/2026-11-24-native-strings-rom-maths/README.md)

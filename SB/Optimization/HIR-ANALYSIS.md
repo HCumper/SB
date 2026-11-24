@@ -265,6 +265,11 @@ remain conservative; formal values may still supply the captured loop bounds.
 Only simple range FOR statements qualify, with no imported counter values or
 register state across calls. Nested IF arms are included in the effect proof;
 calls, counter/alias writes and other unsupported statements still reject it.
+An IF arm of assignments and PRINTs ending in STOP is terminal: it never
+returns to the loop, so it does not reject the certificate, though its effects
+still count (a PRINT of a call, or a write to the counter, still rejects it).
+Only memory-counter native loops can use such a body; the register-pinning
+planner refuses STOP and PRINT records.
 Inline intrinsics and the nonmutating resident ABS are not rejected as calls:
 their argument effects are part of the proof, and the machine planner refuses
 any body in which an ABS ROM call remains rather than the native integer form.

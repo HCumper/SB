@@ -7,6 +7,7 @@ open HirTurboIrBackend
 
 type private Value = Integer | Floating | Text
 let private marker = "audited memory-counter native FOR"
+let private terminalTailComment = "terminal threaded tail"
 let private references = function
     | Instruction(378,_,_) -> [] // codegen defines this label at the epilogue
     | Instruction(_,args,_) -> args |> List.choose(function LabelRef label -> Some label | _ -> None)
@@ -18,6 +19,30 @@ let private ranks items = TurboNativeRegions.ranks items
 // leaves word-only bodies to the register-pinning planner.
 let private absAt (abs:Set<int>) (items:IrItem array) index =
     index+2<items.Length && TurboNativeRegions.integerAbs abs [items[index];items[index+1];items[index+2]]
+
+// Records that move control without a label operand: FOR/REPeat continuations,
+// RETurn, mode switches, done_for, CONTINUE and the possible-end marker.
+let private unlabelledControl = set [230;232;238;244;254;255;355;364;378]
+
+/// The end of a terminal tail after a conditional branch: straight threaded
+/// records ending in STOP (220), then the branch's own label. Nothing else
+/// enters the tail, and STOP never falls through to the label, so the tail can
+/// run threaded while the loop around it stays native.
+let private terminalTail (items:IrItem array) branch limit =
+    match items[branch] with
+    | Instruction((239|245),[LabelRef label],_) ->
+        let rec scan i =
+            if i>=limit then None
+            else
+                match items[i] with
+                | LabelDef(target,_) when target=label && i>branch+1 ->
+                    match items[i-1] with
+                    | Instruction(220,[],_) -> Some i
+                    | _ -> None
+                | Instruction(op,_,_) as item when List.isEmpty(references item) && not(unlabelledControl.Contains op) -> scan(i+1)
+                | _ -> None
+        scan(branch+1)
+    | _ -> None
 
 let private audit (maths:Set<int>) (abs:Set<int>) (finish:int) (dimensions:Map<int,int>) (allReferences:Map<int,int>) (calls:Map<int,int>) (body:IrItem array) =
     let labels=body |> Array.mapi(fun index item -> index,item) |> Array.choose(function i,LabelDef(label,_) -> Some(label,i) | _ -> None)
@@ -93,6 +118,10 @@ let private audit (maths:Set<int>) (abs:Set<int>) (finish:int) (dimensions:Map<i
             | (239|245|242),[LabelRef label] ->
                 if op<>242 then transform [Floating] []
                 if not stack.IsEmpty || not(targets.TryFind label |> Option.exists(fun target -> target>index)) then valid<-false
+                // A terminal tail runs threaded; only the branch's label resumes.
+                match terminalTail body index body.Length with
+                | Some target -> skip<-target-index-1
+                | None -> ()
             // EXIT of this loop: lib537's native exit jumps to the loop's own end
             // label (its 378), leaving the counter cell as threaded exit_p does.
             | 381,[LabelRef label] when label=finish -> if not stack.IsEmpty then valid<-false
@@ -160,10 +189,19 @@ let select enabled (output:TurboIrOutput) : Result<TurboIrOutput,string list> =
                     | _ -> None
                 let mutable i=index
                 while i<=ending+1 do
-                    if absAt abs source i && i+2<=ending+1 then
+                    match (if i<ending then terminalTail source i ending else None) with
+                    | Some target ->
+                        // SLOW before the tail flushes leaf allocation; the FAST after
+                        // STOP is unreachable but defines the branch's label natively.
+                        result.Add(TurboNativeRegions.nativeInstruction source[i])
+                        result.Add(Instruction(255,[],terminalTailComment))
+                        result.AddRange(source[i+1..target-1])
+                        result.Add(Instruction(254,[],"resume memory-counter loop after terminal STOP"))
+                        i<-target
+                    | None when absAt abs source i && i+2<=ending+1 ->
                         result.Add(Instruction(1334,[],nativeIntegerAbsComment));i<-i+3
-                    elif i=ending && next.IsSome then result.Add next.Value;i<-i+1
-                    else result.AddRange(native source[i]);i<-i+1
+                    | None when i=ending && next.IsSome -> result.Add next.Value;i<-i+1
+                    | None -> result.AddRange(native source[i]);i<-i+1
                 result.Add(Instruction(255,[],"resume threaded code after memory-counter FOR"))
                 index<-ending+2
             | None ->
@@ -184,4 +222,5 @@ let format items =
     let count=items |> List.sumBy(function Instruction(254,[],comment) when comment=marker -> 1 | _ -> 0)
     let calls=items |> List.sumBy(function Instruction(255,[],"audited memory-counter procedure call") -> 1 | _ -> 0)
     let inline'=items |> List.sumBy(function Instruction(1530,_,_) -> 1 | _ -> 0)
-    $"Audited memory-counter native FOR loops: {count}\nMemory-counter native procedure call boundaries: {calls}\nInline memory-counter NEXT records: {inline'}\n"
+    let tails=items |> List.sumBy(function Instruction(255,[],comment) when comment=terminalTailComment -> 1 | _ -> 0)
+    $"Audited memory-counter native FOR loops: {count}\nMemory-counter native procedure call boundaries: {calls}\nInline memory-counter NEXT records: {inline'}\nTerminal STOP tails in native loops: {tails}\n"
