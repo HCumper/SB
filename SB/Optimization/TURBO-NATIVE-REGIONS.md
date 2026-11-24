@@ -50,7 +50,9 @@ bound by exactly one link record to a one-argument ROM maths resident (ABS,
 ACOS, ACOT, ASIN, ATAN, COS, COT, DEG, EXP, INT, LN, LOG10, RAD, SIN, SQRT, TAN)
 with a float or integer argument uses lib537's native `rom_fn`, which shares
 `rom_fn_p`'s parameter, result and error protocol; Turbo FAST compiles every ROM
-function this way. RND and every other resident keep their threaded calls.
+function this way. All but DEG, RAD and INT then become
+[direct RI.EXEC calls](#direct-rom-maths-calls). RND and every other resident
+keep their threaded calls.
 Memory-counter loops accept the same calls. The HIR analysis treats these
 residents as nonmutating, so they no longer raise a program-wide barrier.
 
@@ -59,6 +61,47 @@ code shares one copy, so consecutive divisions with matching mantissas at
 different sites can reuse a cached quotient (exactly rescaled by a power of
 two); native code inlines a copy, and cache, per site, as Turbo FAST does.
 Results are identical, but such code can perform more ROM divisions natively.
+
+### Direct ROM maths calls
+
+`rom_fn` calls a BASIC function the way the interpreter would. It builds a
+one-entry parameter name table on the heap, saves the interpreter's state,
+and afterwards reconciles the result type: about 78 library instructions a
+call, before the ROM does any work. In the JS ROM, ABS, ACOS, ACOT, ASIN,
+ATAN, COS, COT, EXP, LN, LOG10, SIN, SQRT and TAN then do no more than fetch
+their one argument as a float (`CA.GTFP`, which rejects any other count),
+reserve 48 bytes of maths stack and call the routine `RI.EXEC` dispatches that
+operation to.
+
+`TurboNativeRomMaths.fs` runs last among the IR passes. A native float-valued
+call (224) of one of these functions, with one float or integer argument and
+a vector linked exactly once to that name, becomes the SB-only record
+**1539 `[operation; argument type]`**, which calls `RI.EXEC` with that
+operation:
+
+- `rom_fn`'s out-of-memory test comes first: `no_memory` unless
+  `A1 - 128 >= even(A4) + 8`, which for the always-even A1 is
+  `A1 >= A4 + 136`.
+- An integer argument is converted by `RI.FLOAT`, which cannot fail. Every
+  function except ATAN declares a float parameter, so only ATAN's integer
+  arguments reach the call unconverted.
+- A returned error, such as -18 for `SQRT(-1)`, goes to `qdos_error`, as
+  `rom_fn`'s does. D7 is left zero, as `rom_fn` leaves it.
+
+The routine sees the same float at the same address, so the result is the
+same. The routines read nothing else: with every other register set at
+random, 2,006 arguments per operation gave identical results, errors and
+stack positions, and `RI.EXEC` preserved every register except D0 and A1. A
+function no longer called through `rom_fn` loses its link record, as ABS
+already does. DEG and RAD scale by a constant and INT rounds, so they keep
+`rom_fn`, as do calls in threaded code. `rom_fn` also sets the break flag
+`bv.brk` before every ROM call; only ROM code reads it, and every remaining
+ROM call still sets it.
+
+This is verified against the JS ROM only. On another ROM the record calls
+that system's `RI.EXEC` operation rather than its BASIC function, and SB has
+not compared the two there. As for ABS, a resident extension that later
+redefines one of these names is not called.
 
 ## Strings
 

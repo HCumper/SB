@@ -570,8 +570,141 @@ let ``ROM maths calls keep floating loops native`` (hir:bool) =
         let source="10 t=0\n20 FOR i%=1 TO 50\n30 t=t+SIN(i%/10)*COS(i%/20)+SQRT(i%)\n40 END FOR i%\n50 PRINT t\n60 STOP"
         withCompiledProgramMode hir ["--native-regions";"--regalloc";"--dump-hir="+prefix] ".bas" source (fun executable -> Assert.That(executable.Length, Is.GreaterThan(0)))
         Assert.That(File.ReadAllText(prefix+".native-ir.txt"), Does.Contain("Audited memory-counter native FOR loops: 1"))
+        Assert.That(File.ReadAllText(prefix+".native-ir.txt"), Does.Contain("Direct RI.EXEC maths calls: 3"))
         Assert.That(File.ReadAllText(prefix+".analysis.txt"), Does.Not.Contain("Global control barrier:"))
     finally Directory.Delete(directory,true)
+
+// Native calls of SIN, COS, SQRT and the other single-operation ROM maths
+// functions go straight to RI.EXEC; threaded code keeps rom_fn_p and the BASIC
+// function. These tests run both under the installed JS ROM. exact prints a
+// result's sign, binary exponent and all 31 mantissa bits.
+let private requireJsRom () =
+    match installedJsRom () with
+    | Some rom -> rom
+    | None -> Assert.Ignore($"No QL JS ROM at {jsRomPath}; set SB_QL_ROM to run real-ROM tests."); Array.empty
+
+let private exactBits =
+    String.concat "\n" [
+        "1000 DEFine PROCedure exact(v)"
+        "1010 LOCal t,s%,e%,h%,l%,z%"
+        "1020 IF v=0 THEN PRINT 0:RETurn"
+        "1030 t=v:s%=1:e%=0"
+        "1040 IF t<0 THEN t=0-t:s%=-1"
+        "1050 REPeat up"
+        "1060 IF t<1 THEN EXIT up"
+        "1070 t=t/2:e%=e%+1"
+        "1080 END REPeat up"
+        "1090 REPeat down"
+        "1100 IF t>=.5 THEN EXIT down"
+        "1110 t=t*2:e%=e%-1"
+        "1120 END REPeat down"
+        "1130 t=t*32768:h%=INT(t):t=(t-h%)*256:l%=INT(t):t=(t-l%)*256:z%=INT(t)"
+        "1140 PRINT s%;\" \";e%;\" \";h%;\" \";l%;\" \";z%"
+        "1150 END DEFine" ]
+
+let private wideArgument = "(k%-20.5)/3.7*(1+(k% MOD 4)*7)"
+let private positiveArgument = "(k%+.5)/3.7*(1+(k% MOD 4)*7)"
+let private unitArgument = "(k%-20.5)/20.6"
+
+/// Function, float argument and integer argument, each over k% = 0..40.
+let romMathsCases = [|
+    "SIN", wideArgument, "k%-20"
+    "COS", wideArgument, "k%-20"
+    "TAN", wideArgument, "k%-20"
+    "COT", wideArgument, "k%+1"
+    "ATAN", wideArgument, "k%-20"
+    "ACOT", wideArgument, "k%-20"
+    "ABS", wideArgument, "k%-20"
+    "EXP", "(k%-20.5)/3.7", "k%-20"
+    "ASIN", unitArgument, "(k% MOD 3)-1"
+    "ACOS", unitArgument, "(k% MOD 3)-1"
+    "SQRT", positiveArgument, "k%"
+    "LN", positiveArgument, "k%+1"
+    "LOG10", positiveArgument, "k%+1"
+|]
+
+let private romMathsProgram (name, floatArgument, integerArgument) =
+    String.concat "\n" [
+        "10 FOR k%=0 TO 40"
+        "20 x=" + floatArgument
+        "30 y=" + name + "(x)"
+        "40 exact y"
+        "50 END FOR k%"
+        "60 FOR k%=0 TO 40"
+        "70 y=" + name + "(" + integerArgument + ")"
+        "80 exact y"
+        "90 END FOR k%"
+        "100 STOP"
+        exactBits ]
+
+let private romMathsReport native source action =
+    let directory=Path.Combine(Path.GetTempPath(),$"rom-maths-{Guid.NewGuid():N}")
+    Directory.CreateDirectory directory |> ignore
+    try
+        let prefix=Path.Combine(directory,"maths")
+        let mutable outcome=""
+        withCompiledProgramMode true [(if native then "--native-regions" else "--no-native-regions");"--regalloc";"--dump-hir="+prefix] ".bas" source (fun executable ->
+            outcome<-action executable)
+        outcome,File.ReadAllText(prefix+".native-ir.txt")
+    finally Directory.Delete(directory,true)
+
+[<TestCase(0)>]
+[<TestCase(1)>]
+[<TestCase(2)>]
+[<TestCase(3)>]
+[<TestCase(4)>]
+[<TestCase(5)>]
+[<TestCase(6)>]
+[<TestCase(7)>]
+[<TestCase(8)>]
+[<TestCase(9)>]
+[<TestCase(10)>]
+[<TestCase(11)>]
+[<TestCase(12)>]
+let ``direct ROM maths calls match the BASIC functions bit for bit`` (index:int) =
+    let rom=requireJsRom ()
+    let source=romMathsProgram romMathsCases[index]
+    let output native=romMathsReport native source (fun executable -> (runWithRom (Some rom) 100000000L executable).Output)
+    let threaded,_=output false
+    let native,report=output true
+    Assert.That(report, Does.Contain("Direct RI.EXEC maths calls: 2"))
+    Assert.That(threaded.Split('\n',StringSplitOptions.RemoveEmptyEntries).Length, Is.EqualTo(82))
+    Assert.That(native, Is.EqualTo(threaded))
+
+// Domain errors come back from the ROM routine as RI.EXEC errors; the space
+// test is rom_fn's. The heap grows 64 bytes an iteration while four pending
+// floats deepen the maths stack, so the call's own test is the one that fails.
+let romMathsErrors = [|
+    "10 x=-1:PRINT 1\n20 y=SQRT(x)\n30 PRINT 2\n40 STOP", -18
+    "10 x=0:PRINT 1\n20 y=LN(x)\n30 PRINT 2\n40 STOP", -18
+    "10 x=2:PRINT 1\n20 y=ASIN(x)\n30 PRINT 2\n40 STOP", -18
+    "10 x=2000:PRINT 1\n20 y=EXP(x)\n30 PRINT 2\n40 STOP", -18
+    "10 i%=0:PRINT 1\n20 y=LOG10(i%)\n30 PRINT 2\n40 STOP", -18
+    "10 DIM p$(8000)\n20 y=.5:a=1:b=2:c=3:d=4\n30 FOR k%=1 TO 400\n40 p$=p$ & \"abcdefghijklmnopqrstuvwxyz012345\"\n50 n%=LEN(p$ & p$ & (a+(b+(c+(d+SIN(y))))))\n60 PRINT k%\n70 END FOR k%\n80 STOP", -3
+|]
+
+[<TestCase(0)>]
+[<TestCase(1)>]
+[<TestCase(2)>]
+[<TestCase(3)>]
+[<TestCase(4)>]
+[<TestCase(5)>]
+let ``direct ROM maths calls fail as the BASIC functions do`` (index:int) =
+    let rom=requireJsRom ()
+    let source,expected=romMathsErrors[index]
+    let capture native=
+        romMathsReport native source (fun executable ->
+            let error=Assert.Throws<M68kFault>(fun () -> runWithRom (Some rom) 400000000L executable |> ignore)
+            let parsed=System.Text.RegularExpressions.Regex.Match(error.Message,@"ERNUM=(-?\d+)")
+            Assert.That(parsed.Success, Is.True, error.Message)
+            let printed=error.Message.IndexOf("output=")
+            Assert.That(printed, Is.GreaterThanOrEqualTo(0), error.Message)
+            parsed.Groups[1].Value+"|"+error.Message.Substring(printed))
+    let threaded,_=capture false
+    let native,report=capture true
+    Assert.That(report, Does.Contain("Direct RI.EXEC maths calls: 1"))
+    Assert.That(threaded, Does.StartWith($"{expected}|"))
+    Assert.That(native, Is.EqualTo(threaded))
 
 // QL AND/OR evaluate every operand: a failing later operand must still fail
 // when an earlier comparison already decides the result. Errors match threaded code.

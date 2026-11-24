@@ -1,0 +1,16 @@
+Real JS ROM differential: each function over k%=0..400 float and integer arguments, threaded build (rom_fn_p, BASIC function) against native build (1539, RI.EXEC), every result printed as sign, binary exponent and 31 mantissa bits.
+
+SIN    results=802 direct calls threaded/native=0/2 identical=true
+COS    results=802 direct calls threaded/native=0/2 identical=true
+TAN    results=802 direct calls threaded/native=0/2 identical=true
+COT    results=802 direct calls threaded/native=0/2 identical=true
+ATAN   results=802 direct calls threaded/native=0/2 identical=true
+ACOT   results=802 direct calls threaded/native=0/2 identical=true
+ABS    results=802 direct calls threaded/native=0/2 identical=true
+EXP    results=802 direct calls threaded/native=0/2 identical=true
+ASIN   results=802 direct calls threaded/native=0/2 identical=true
+ACOS   results=802 direct calls threaded/native=0/2 identical=true
+SQRT   results=802 direct calls threaded/native=0/2 identical=true
+LN     results=802 direct calls threaded/native=0/2 identical=true
+LOG10  results=802 direct calls threaded/native=0/2 identical=true
+mismatches=0

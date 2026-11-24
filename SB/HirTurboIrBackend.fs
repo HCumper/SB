@@ -189,6 +189,8 @@ let nativeIntegerAbsComment = "native integer ABS"
 let inlineNextComment = "inline memory-counter NEXT"
 /// Listing comment of the native-only in-place string records 1531-1533.
 let inPlaceStringComment = "in-place string operand"
+/// Listing comment of the native-only 1539 record, a ROM maths function called through RI.EXEC.
+let directRomMathsComment = "direct RI.EXEC maths call"
 
 let rankTwoIntegerArrayComment facts =
     let checks=(if facts.ProvenRows then 0 else 1) ||| (if facts.ProvenColumns then 0 else 2)
@@ -430,6 +432,7 @@ let private operandShapes =
     shapes[1536] <- FixedWords 0 // LEN of an in-place operand (SB extension).
     shapes[1537] <- FixedWords 2 // In-place string slice: vector, pending in-place operand below (SB extension).
     shapes[1538] <- FixedWords 1 // Store a DIMmed string from an in-place operand: vector (SB extension).
+    shapes[1539] <- FixedWords 2 // ROM maths function through RI.EXEC: operation code, argument type (SB extension).
     shapes[247] <- FixedWords 9
     shapes[169] <- TextShape
     shapes[170] <- TextShape
@@ -667,10 +670,17 @@ let validate (bytes: byte[]) : string list =
                     problems.Add $"Inline native NEXT requires native mode (record {index})."
                 if not native && opcode >= 1531 && opcode <= 1538 then
                     problems.Add $"In-place string operands require native mode (record {index})."
+                if not native && opcode = 1539 then
+                    problems.Add $"Direct ROM maths calls require native mode (record {index})."
                 let operandArray = List.toArray operands
                 match opcode,operands with
                 | (1911|1912),[_;Word mask;Word columns] when mask>3 || columns>32768 ->
                     problems.Add $"Invalid rank-two array metadata (record {index})."
+                // RI.EXEC's one-float operations ABS, COS-ACOT, SQRT, LOG, L10 and EXP,
+                // on a float (2) or integer (3) argument.
+                | 1539,[Word operation;Word argument]
+                    when operation<>0x12 && (operation<0x18 || operation>0x2E || operation%2<>0) || (argument<>2 && argument<>3) ->
+                    problems.Add $"Invalid direct ROM maths call (record {index})."
                 | _ -> ()
                 match labelOperandPositions.TryGetValue opcode with
                 | true, labelIndex when labelIndex < operandArray.Length ->

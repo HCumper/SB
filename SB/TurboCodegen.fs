@@ -510,6 +510,8 @@ type private Generator(sourceLibrary: byte[], options: TurboCodegenOptions, sour
         elif token=1536 then this.Lookup 270 |> Option.map(fun (_,record) -> token,record)
         elif token=1537 then this.Lookup 175 |> Option.map(fun (_,record) -> token,record)
         elif token=1538 then this.Lookup 264 |> Option.map(fun (_,record) -> token,record)
+        // A direct ROM maths call keeps its own token; SkipOperands knows its size.
+        elif token=1539 then this.Lookup 224 |> Option.map(fun (_,record) -> token,record)
         else this.Lookup(if TurboNativeArrays.isCompact token then TurboNativeArrays.baseOpcode token elif token >= 1000 then token - 1000 else token)
 
     /// g_t2 onwards: a token below 1000.
@@ -526,7 +528,7 @@ type private Generator(sourceLibrary: byte[], options: TurboCodegenOptions, sour
     /// Skips a token's operands (the "Now skip parameters" code after klim).
     member private this.SkipOperands(token: int, record: int) =
         if token=1911 || token=1912 || token=1530 then ic<-ic+6
-        elif token=1531 || token=1532 || token=1537 then ic<-ic+4
+        elif token=1531 || token=1532 || token=1537 || token=1539 then ic<-ic+4
         elif token=1533 || token=1534 || token=1538 then ic<-ic+2
         elif this.IsParameterised record then
             let _, header, _ = this.GetBytes record
@@ -998,6 +1000,27 @@ type private Generator(sourceLibrary: byte[], options: TurboCodegenOptions, sour
                                  0xBE45;0x6404;0x4EEE;0x8AE0
                                  0x9A44;0x5245;0x6DF6;0x47F0;0x4001
                                  0x230B;0x3305;0x0C45;0x000E;0x6F00 ||| (2+memory.Length);0x3005];memory]
+            if pass<>0 then write bytes
+            objCode<-objCode+bytes.Length
+            ic<-ic+4
+        elif token=1539 then
+            // A QL ROM maths function called through RI.EXEC instead of rom_fn.
+            // The BASIC function fetches its one argument as a float and calls
+            // the routine RI.EXEC dispatches this operation to; see
+            // TurboNativeRomMaths. rom_fn's own space test comes first: no_memory
+            // unless A1-128 >= even(A4)+8, which for an even A1 is A1 >= A4+136.
+            // An integer argument is converted by RI.FLOAT, which cannot fail.
+            if pMode then fail "Direct ROM maths calls require native mode."
+            let operation=word ir ic
+            let argument=word ir (ic+2)
+            let callRi code = [0x7000 ||| code;0x3478;0x011C;0x4E92]
+            let bytes =
+                [0x41EC;0x0088;0xB1C9;0x6304;0x4EEE;0x8AEC   // lea 136(a4),a0; cmpa.l a1,a0; bls.s; jmp no_memory
+                 0x93CE;0x7E00]                               // suba.l a6,a1; moveq #0,d7 as for rom_fn
+                @ (if argument=3 then callRi 0x08 else [])     // RI.FLOAT
+                @ callRi operation
+                @ [0xD3CE;0x4A80;0x6704;0x4EEE;0x8AEE]         // adda.l a6,a1; tst.l d0; beq.s; jmp qdos_error
+                |> List.map wordBytes |> Array.concat
             if pass<>0 then write bytes
             objCode<-objCode+bytes.Length
             ic<-ic+4

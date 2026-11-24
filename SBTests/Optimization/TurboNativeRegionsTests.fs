@@ -240,3 +240,66 @@ let ``floating arithmetic and ROM maths calls join native regions`` () =
 let ``non-maths residents keep threaded calls`` () =
     let after = emit "10 a=RND(5)*1.5\n20 STOP" |> select
     Assert.That(nativeRecords 224 after, Is.EqualTo((0,1)))
+
+// Native calls of the single-operation ROM maths functions call RI.EXEC with
+// that operation. Threaded calls, DEG, RAD and INT keep rom_fn, and a function
+// still called through rom_fn keeps its link.
+let private links name output =
+    output.Items |> List.filter (function Instruction(261,[_;Bytes8 linked],_) -> Text.Encoding.ASCII.GetString(linked).Trim()=name | _ -> false) |> List.length
+let private directCalls output =
+    output.Items |> List.choose (function Instruction(1539,[Word operation;Word argument],_) -> Some(operation,argument) | _ -> None)
+let private direct output = TurboNativeRomMaths.select true output |> ok
+
+[<Test>]
+let ``native ROM maths calls go straight to RI.EXEC`` () =
+    let before = emit "10 a=1.5:i%=4:b=SIN(a)*2+COS(a)/3:c=SQRT(b*b)-ATAN(a)+SQRT(i%)+ATAN(i%)\n20 STOP" |> select
+    let after = direct before
+    // SQRT declares a float parameter, so its integer argument is converted
+    // first; ATAN's integer argument reaches the call and RI.FLOAT converts it.
+    Assert.That(directCalls after, Is.EqualTo<(int * int) list>([0x1A,2;0x18,2;0x28,2;0x24,2;0x28,2;0x24,3]))
+    Assert.That(nativeRecords 224 after, Is.EqualTo((0,0)))
+    // No call remains, so the job no longer links these names.
+    for name in ["SIN";"COS";"SQRT";"ATAN"] do
+        Assert.That(links name before, Is.EqualTo(1), name)
+        Assert.That(links name after, Is.Zero, name)
+    Assert.That(validate after.Bytes, Is.Empty)
+    Assert.That(TurboNativeRomMaths.select false before |> ok, Is.EqualTo(before))
+
+[<Test>]
+let ``threaded ROM maths calls and scaling functions keep rom_fn`` () =
+    let threaded = emit "10 a=1.5:b=SIN(a)\n20 STOP"
+    Assert.That(directCalls (direct threaded), Is.Empty)
+    // DEG and RAD scale their argument and INT rounds it before any routine.
+    let after = emit "10 a=1.5:b=DEG(a)+RAD(a)+INT(a)\n20 STOP" |> select |> direct
+    Assert.That(directCalls after, Is.Empty)
+    Assert.That(nativeRecords 224 after, Is.EqualTo((3,0)))
+    // A name linked twice may be bound to something else: keep its call.
+    let native = emit "10 a=1.5:b=SIN(a)*2+COS(a)\n20 STOP" |> select
+    let twice = native.Items |> List.collect (function
+        | Instruction(261,[_;Bytes8 linked],_) as link when Text.Encoding.ASCII.GetString(linked).Trim()="SIN" -> [link;link]
+        | item -> [item])
+    let rewritten = direct {native with Items=twice;Bytes=serialize twice}
+    Assert.That(directCalls rewritten, Is.EqualTo<(int * int) list>([0x18,2]))
+    Assert.That(nativeRecords 224 rewritten, Is.EqualTo((1,0)))
+
+[<Test>]
+let ``a threaded call keeps its function's link`` () =
+    let native = emit "10 a=1.5:b=SIN(a)*2+SIN(a)/3\n20 STOP" |> select
+    let second = native.Items |> List.findIndexBack (function Instruction(224,_,_) -> true | _ -> false)
+    let before,after = List.splitAt second native.Items
+    let mixed = before @ [Instruction(255,[],"");after.Head;Instruction(254,[],"")] @ after.Tail
+    let rewritten = direct {native with Items=mixed;Bytes=serialize mixed}
+    Assert.That(directCalls rewritten, Is.EqualTo<(int * int) list>([0x1A,2]))
+    Assert.That(nativeRecords 224 rewritten, Is.EqualTo((0,1)))
+    Assert.That(links "SIN" rewritten, Is.EqualTo(1))
+    Assert.That(validate rewritten.Bytes, Is.Empty)
+
+[<Test>]
+let ``direct ROM maths calls are validated`` () =
+    let output = emit "10 a=1.5\n20 STOP"
+    let insert operation = output.Items |> List.collect (function
+        | Instruction(150,_,_) as store -> [Instruction(1539,[Word operation;Word 2],directRomMathsComment);store]
+        | item -> item |> List.singleton)
+    let problems operation = validate (serialize (insert operation)) |> String.concat "; "
+    Assert.That(problems 0x1A, Does.Contain("Direct ROM maths calls require native mode"))
+    Assert.That(problems 0x16, Does.Contain("Invalid direct ROM maths call"))

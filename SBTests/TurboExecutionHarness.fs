@@ -17,7 +17,29 @@ type ExecutionResult = {
     InstructionWordsFetched: int64
 }
 
-let run (maxSteps: int64) (executable: byte[]) =
+/// The installed Q-emuLator JS ROM (or $SB_QL_ROM). Real-ROM tests run only where it exists.
+let jsRomPath =
+    match Environment.GetEnvironmentVariable "SB_QL_ROM" with
+    | null | "" -> @"C:\Program Files (x86)\Q-emuLator\QL ROMs\QL_ROM_JS"
+    | path -> path
+
+let installedJsRom () = if IO.File.Exists jsRomPath then Some(IO.File.ReadAllBytes jsRomPath) else None
+
+/// A BASIC function's entry in a QL ROM, found through the ROM's own name table.
+let romFunctionAddress (rom: byte[]) (name: string) =
+    let pattern = Array.append [| byte name.Length |] (Encoding.ASCII.GetBytes name)
+    let matches = [ for i in 2 .. rom.Length - pattern.Length do if rom[i .. i + pattern.Length - 1] = pattern then yield i ]
+    match matches with
+    | [ i ] -> uint32 (i - 2 + int (int16 ((uint16 rom[i - 2] <<< 8) ||| uint16 rom[i - 1])))
+    | _ -> failwith $"ROM function {name} is not found exactly once."
+
+/// The ROM maths functions a real-ROM run makes available to a compiled program.
+let romMathsResidents =
+    [ "ABS"; "ACOS"; "ACOT"; "ASIN"; "ATAN"; "COS"; "COT"; "DEG"; "EXP"; "INT"; "LN"; "LOG10"; "RAD"; "SIN"; "SQRT"; "TAN" ]
+
+/// Runs an executable. With a ROM image, that ROM's arithmetic, comparison and
+/// maths functions execute unchanged, and its maths functions are linkable residents.
+let runWithRom (rom: byte[] option) (maxSteps: int64) (executable: byte[]) =
     let headerLength = 30
     if executable.Length <= headerLength
        || Encoding.ASCII.GetString(executable, 0, 18) <> "]!QDOS File Header"
@@ -34,6 +56,8 @@ let run (maxSteps: int64) (executable: byte[]) =
     let top = uint64 jobBase + uint64 codeLength + uint64 dataspace
     if codeLength % 2u <> 0u || dataspace < 512u || top > uint64 memory.Length then
         invalidArg (nameof executable) "Executable code and dataspace do not fit in the test machine."
+    rom |> Option.iter (fun image -> Array.blit image 0 memory 0 image.Length)
+    let romLength = rom |> Option.map (fun image -> uint32 image.Length) |> Option.defaultValue 0u
     let cpu = Cpu(memory)
     let output = StringBuilder()
     let channels = HashSet<uint32>()
@@ -79,11 +103,13 @@ let run (maxSteps: int64) (executable: byte[]) =
         let errorAddress=cpu.A[6]+uint32(int32(int16 0x8154us))
         let errorNumber=int16(uint16(cpu.ReadWord errorAddress))
         raise (M68kFault $"Runtime error message: {readName cpu.A[1]}; ERNUM={errorNumber}"))
-    hook 0x11Cu 5u (fun _ -> raise (M68kFault "Unsupported ROM arithmetic service RI.EXEC."))
+    // Without a ROM image, RI.EXEC is unsupported and UT.CSTR is approximated.
+    let simulated vector index action = if rom.IsNone then hook vector index action
+    simulated 0x11Cu 5u (fun _ -> raise (M68kFault "Unsupported ROM arithmetic service RI.EXEC."))
     // UT.CSTR compares the strings at A6+A0 and A6+A1. Comparison type D0.B:
     // bit 0 ignores case, bit 1 compares runs of digits by value. D0 is -1, 0 or 1.
     // An approximation of the ROM's collation, enough for differential tests.
-    hook 0xE6u 6u (fun cpu ->
+    simulated 0xE6u 6u (fun cpu ->
         let text offset =
             let address = cpu.A[6] + offset
             readText (address + 2u) (int (cpu.ReadWord address))
@@ -145,9 +171,22 @@ let run (maxSteps: int64) (executable: byte[]) =
     writeBytes jobBase code
     cpu.WriteLong(sysvarBase + 0x20u, uint32 memory.Length)
     cpu.WriteLong(sysvarBase + 16u, basicJobBase)
-    // The resident-name table is empty in these programs. Supply a valid BASIC variables area.
+    // Supply a valid BASIC variables area. Its name table is empty without a ROM
+    // image and otherwise holds the ROM's maths functions as machine-code functions.
     cpu.WriteLong(basicJobBase + 104u + 24u, 0x200u)
     cpu.WriteLong(basicJobBase + 104u + 32u, 0x300u)
+    rom |> Option.iter (fun image ->
+        let basic = basicJobBase + 104u
+        let mutable nameOffset = 0
+        for index, name in List.indexed romMathsResidents do
+            let slot = basic + 0x200u + uint32 (index * 8)
+            cpu.WriteWord(slot, 0x0802u)
+            cpu.WriteWord(slot + 2u, uint32 nameOffset)
+            cpu.WriteLong(slot + 4u, romFunctionAddress image name)
+            let encoded = Encoding.ASCII.GetBytes name
+            memory[int (basic + 0x300u) + nameOffset] <- byte encoded.Length
+            Array.blit encoded 0 memory (int (basic + 0x300u) + nameOffset + 1) encoded.Length
+            nameOffset <- nameOffset + 1 + encoded.Length)
     cpu.A[6] <- jobBase
     cpu.A[4] <- codeLength
     cpu.A[5] <- codeLength + dataspace
@@ -159,7 +198,7 @@ let run (maxSteps: int64) (executable: byte[]) =
         while not cpu.Halted do
             if cpu.Steps >= maxSteps then
                 raise (M68kFault $"step limit {maxSteps} reached.")
-            if (cpu.Pc < jobBase || cpu.Pc >= jobBase + codeLength) && not (cpu.Hooks.ContainsKey cpu.Pc) then
+            if (cpu.Pc < jobBase || cpu.Pc >= jobBase + codeLength) && cpu.Pc >= romLength && not (cpu.Hooks.ContainsKey cpu.Pc) then
                 raise (M68kFault $"Execution left the executable for unimplemented address ${cpu.Pc:X6}.")
             cpu.Step()
         { Output = output.ToString()
@@ -168,3 +207,5 @@ let run (maxSteps: int64) (executable: byte[]) =
           InstructionWordsFetched = cpu.InstructionWordsFetched }
     with M68kFault message ->
         raise (M68kFault $"{message} PC=${cpu.Pc:X6}, steps={cpu.Steps}, output={output}")
+
+let run (maxSteps: int64) (executable: byte[]) = runWithRom None maxSteps executable

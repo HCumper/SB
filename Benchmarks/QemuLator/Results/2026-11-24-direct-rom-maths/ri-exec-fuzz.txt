@@ -1,0 +1,20 @@
+RI.EXEC under the real JS ROM: each operation on 6 special and 2,000 random floats (FLOAT: 10 integers), once with canonical registers and twice with every other register random. 'errors' counts arguments the ROM rejects; 'problems' counts any difference in result, error or stack position, or a fault. changed-registers lists registers RI.EXEC did not preserve (D0 and A1 excluded).
+
+ABS    args=2006 errors=0 max-steps=28 changed-registers=[]
+ACOS   args=2006 errors=936 max-steps=2812 changed-registers=[]
+ACOT   args=2006 errors=0 max-steps=1712 changed-registers=[]
+ASIN   args=2006 errors=984 max-steps=2752 changed-registers=[]
+ATAN   args=2006 errors=0 max-steps=1759 changed-registers=[]
+COS    args=2006 errors=562 max-steps=1163 changed-registers=[]
+COT    args=2006 errors=615 max-steps=1417 changed-registers=[]
+EXP    args=2006 errors=691 max-steps=1327 changed-registers=[]
+LN     args=2006 errors=995 max-steps=1174 changed-registers=[]
+LOG10  args=2006 errors=998 max-steps=1243 changed-registers=[]
+SIN    args=2006 errors=583 max-steps=1247 changed-registers=[]
+SQRT   args=2006 errors=974 max-steps=663 changed-registers=[]
+TAN    args=2006 errors=583 max-steps=1386 changed-registers=[]
+FLOAT  args=10 errors=0 max-steps=77 changed-registers=[]
+problems=0
+
+float_transcendentals, instruction split under the real ROM (before: profile of 1251ad5, QL ROM 3,861,858 of 4,453,600):
+output=float_transcendentals:1280 instructions=3935145 rom=3600737 (91.5%) ri-exec-dispatch=96000 executable=334408

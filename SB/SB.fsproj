@@ -29,6 +29,7 @@
         <Compile Include="Optimization\TurboNativeRegions.fs" />
         <Compile Include="Optimization\TurboNativeTemplateLoops.fs" />
         <Compile Include="Optimization\TurboNativeStringOperands.fs" />
+        <Compile Include="Optimization\TurboNativeRomMaths.fs" />
         <Compile Include="Optimization\TurboNativeArrays.fs" />
         <Compile Include="Optimization\TurboNativeIr.fs" />
         <Compile Include="Optimization\TurboNativeConditions.fs" />

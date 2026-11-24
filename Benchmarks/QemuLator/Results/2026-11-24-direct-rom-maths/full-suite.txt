@@ -1,0 +1,43 @@
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  SBLib -> C:\source\sb\SBLib\bin\Debug\net10.0\SBLib.dll
+  SBRuntime -> C:\source\sb\SBRuntime\bin\Debug\net10.0\SBRuntime.dll
+  SB.CSharpRuntime -> C:\source\sb\SB.CSharpRuntime\bin\Debug\net10.0\SB.CSharpRuntime.dll
+  SB.AvaloniaHost -> C:\source\sb\SB.AvaloniaHost\bin\Debug\net10.0\SB.AvaloniaHost.dll
+  SB -> C:\source\sb\SB\bin\Debug\net10.0\SB.dll
+  SBRuntimeTests -> C:\source\sb\SBRuntimeTests\bin\Debug\net10.0\SBRuntimeTests.dll
+Test run for C:\source\sb\SBRuntimeTests\bin\Debug\net10.0\SBRuntimeTests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+  Failed interpreter getenv maps ql environment aliases to host values [52 ms]
+  Error Message:
+     Assert.That(, )
+  Expected string length 73 but was 74. Strings differ at index 3.
+  Expected: "C:\\MappedHome C:\\MappedTemp C:\\source\\sb\\SBRuntimeTests\\bin\\D..."
+  But was:  "C:\\Users\\hcump C:\\MappedTemp C:\\source\\sb\\SBRuntimeTests\\bin\\..."
+  ---------------^
+
+  Stack Trace:
+     at SBRuntimeTests.InterpreterBuiltInTests.interpreter getenv maps ql environment aliases to host values() in C:\source\sb\SBRuntimeTests\InterpreterBuiltInTests.fs:line 523
+
+1)    at SBRuntimeTests.InterpreterBuiltInTests.interpreter getenv maps ql environment aliases to host values() in C:\source\sb\SBRuntimeTests\InterpreterBuiltInTests.fs:line 523
+
+
+
+Failed!  - Failed:     1, Passed:   247, Skipped:     0, Total:   248, Duration: 13 s - SBRuntimeTests.dll (net10.0)
+Runtime exit 1
+Test run for C:\source\sb\SBTests\bin\Debug\net10.0\SBTests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Turbo IR generation failed:
+line 10 (1:3): RUN has no Turbo IR equivalent in the specification.
+line 861:25 missing Newline at '<EOF>'
+line 861:25 missing Newline at '<EOF>'
+
+Passed!  - Failed:     0, Passed:  4384, Skipped:     0, Total:  4384, Duration: 18 m 4 s - SBTests.dll (net10.0)
+SBTests exit 0
+
+=== SBRuntimeTests rerun with HOME unset (GETENV$ reads HOME before USERPROFILE; the Bash shell sets HOME) ===
+Test run for C:\source\sb\SBRuntimeTests\bin\Debug\net10.0\SBRuntimeTests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+
+Passed!  - Failed:     0, Passed:   248, Skipped:     0, Total:   248, Duration: 12 s - SBRuntimeTests.dll (net10.0)
+Runtime exit 0
