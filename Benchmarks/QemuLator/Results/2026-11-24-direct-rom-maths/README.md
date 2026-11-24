@@ -120,5 +120,7 @@ it, and the fixtures' `0-t` became `-t` again.
 
 ## Not measured
 
-GoldCard elapsed times were not rerun; the counts above are the only
-performance evidence.
+GoldCard elapsed times were not rerun with this change. A later
+[whole-collection GoldCard run](../2026-11-24-goldcard-whole-collection/README.md)
+timed this compiler's executables: float_transcendentals takes 12.2% less time
+than Turbo FAST's.

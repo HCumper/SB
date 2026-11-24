@@ -1,5 +1,7 @@
 # Turbo FAST versus SB in Q-emuLator
 
+[Whole collection at GoldCard speed: SB faster than Turbo FAST on all nine workloads, and keeping the emulator in real time, 24 November 2026](Results/2026-11-24-goldcard-whole-collection/README.md)
+
 [Direct RI.EXEC calls for ROM maths functions: float transcendentals 12.1% ahead of Turbo FAST, 24 November 2026](Results/2026-11-24-direct-rom-maths/README.md)
 
 [In-place string stores, CODE and LEN: concordance 32.1% ahead of Turbo FAST, 24 November 2026](Results/2026-11-24-in-place-string-stores/README.md)

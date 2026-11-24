@@ -1,0 +1,12 @@
+{
+  "ProcessId": 25464,
+  "Executable": "C:\\Program Files (x86)\\Q-emuLator\\QemuLator.exe",
+  "CommandLine": "\"C:\\Program Files (x86)\\Q-emuLator\\QemuLator.exe\" \"C:\\Source\\codex-workspace\\.scratch\\sb-direct-rom-maths-goldcard\\qemulator\\benchmark.QCF\"",
+  "CreationDateUtc": "2026-11-24T23:05:28.2314730Z",
+  "WindowStyle": "Hidden",
+  "Config": "C:\\Source\\codex-workspace\\.scratch\\sb-direct-rom-maths-goldcard\\qemulator\\benchmark.QCF",
+  "ConfigSha256": "72EF47F774ABE8FFAFC1E46DB911F7E4C47703AE809AB1D136D36F2B44AEB02D",
+  "Speed": "GoldCard",
+  "FullSuiteCompletedBeforeLaunch": true,
+  "CompilerSha256": "6F4338D858ABE7DDBE32758BAEE2610A78F71368F0AD41CE465203A7C5564BF6"
+}

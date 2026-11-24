@@ -1,0 +1,145 @@
+sequence,benchmark,compiler,trial,passes,expected,checksum,ticks,seconds,hostJobSeconds,stdout,status
+r001,integer_arithmetic,SB,0,20,6430,6430,15,0.3,0.31945157051086426,"integer_arithmetic:6430
+",passed
+r002,integer_arithmetic,Turbo FAST,0,20,6430,6430,41,0.82,0.8199942111968994,"integer_arithmetic:6430
+",passed
+r003,sieve,Turbo FAST,0,5,840,840,26,0.52,0.5401530265808105,"sieve:840
+",passed
+r004,sieve,SB,0,5,840,840,10,0.2,0.19801712036132812,"sieve:840
+",passed
+r005,matrix_multiply,SB,0,10,1094,1094,14,0.28,0.2794525623321533,"matrix_multiply:1094
+",passed
+r006,matrix_multiply,Turbo FAST,0,10,1094,1094,23,0.46,0.4658467769622803,"matrix_multiply:1094
+",passed
+r007,string_operations,Turbo FAST,0,80,880,880,31,0.62,0.6202881336212158,"string_operations:880
+",passed
+r008,string_operations,SB,0,80,880,880,29,0.58,0.5980358123779297,"string_operations:880
+",passed
+r009,float_polynomial,SB,0,4,9252,9252,103,2.06,2.074545383453369,"float_polynomial:9252
+",passed
+r010,float_polynomial,Turbo FAST,0,4,9252,9252,104,2.08,2.093661069869995,"float_polynomial:9252
+",passed
+r011,float_transcendentals,Turbo FAST,0,5,1280,1280,156,3.12,3.1306753158569336,"float_transcendentals:1280
+",passed
+r012,float_transcendentals,SB,0,5,1280,1280,137,2.74,2.7534210681915283,"float_transcendentals:1280
+",passed
+r013,eight_queens,SB,0,1,4962,4962,47,0.94,0.9408364295959473,"eight_queens:4962
+",passed
+r014,eight_queens,Turbo FAST,0,1,4962,4962,128,2.56,2.55842661857605,"eight_queens:4962
+",passed
+r015,route_planner,Turbo FAST,0,1,4701,4701,230,4.6,4.606042861938477,"route_planner:4701
+",passed
+r016,route_planner,SB,0,1,4701,4701,105,2.1,2.095411777496338,"route_planner:4701
+",passed
+r017,concordance,SB,0,4,7936,7936,265,5.3,5.305773735046387,"concordance:7936
+",passed
+r018,concordance,Turbo FAST,0,4,7936,7936,390,7.8,7.814281463623047,"concordance:7936
+",passed
+r019,integer_arithmetic,Turbo FAST,1,20,6430,6430,40,0.8,0.818030834197998,"integer_arithmetic:6430
+",passed
+r020,integer_arithmetic,SB,1,20,6430,6430,15,0.3,0.3126082420349121,"integer_arithmetic:6430
+",passed
+r021,sieve,SB,1,5,840,840,10,0.2,0.19281625747680664,"sieve:840
+",passed
+r022,sieve,Turbo FAST,1,5,840,840,26,0.52,0.5265259742736816,"sieve:840
+",passed
+r023,matrix_multiply,Turbo FAST,1,10,1094,1094,23,0.46,0.46395134925842285,"matrix_multiply:1094
+",passed
+r024,matrix_multiply,SB,1,10,1094,1094,14,0.28,0.28648853302001953,"matrix_multiply:1094
+",passed
+r025,string_operations,SB,1,80,880,880,30,0.6,0.5987305641174316,"string_operations:880
+",passed
+r026,string_operations,Turbo FAST,1,80,880,880,31,0.62,0.6198840141296387,"string_operations:880
+",passed
+r027,float_polynomial,Turbo FAST,1,4,9252,9252,104,2.08,2.0858349800109863,"float_polynomial:9252
+",passed
+r028,float_polynomial,SB,1,4,9252,9252,103,2.06,2.065282106399536,"float_polynomial:9252
+",passed
+r029,float_transcendentals,SB,1,5,1280,1280,137,2.74,2.747117519378662,"float_transcendentals:1280
+",passed
+r030,float_transcendentals,Turbo FAST,1,5,1280,1280,156,3.12,3.133307933807373,"float_transcendentals:1280
+",passed
+r031,eight_queens,Turbo FAST,1,1,4962,4962,128,2.56,2.557107925415039,"eight_queens:4962
+",passed
+r032,eight_queens,SB,1,1,4962,4962,47,0.94,0.9461243152618408,"eight_queens:4962
+",passed
+r033,route_planner,SB,1,1,4701,4701,104,2.08,2.0984013080596924,"route_planner:4701
+",passed
+r034,route_planner,Turbo FAST,1,1,4701,4701,231,4.62,4.614257097244263,"route_planner:4701
+",passed
+r035,concordance,Turbo FAST,1,4,7936,7936,390,7.8,7.805621385574341,"concordance:7936
+",passed
+r036,concordance,SB,1,4,7936,7936,265,5.3,5.3123345375061035,"concordance:7936
+",passed
+r037,integer_arithmetic,SB,2,20,6430,6430,15,0.3,0.3080878257751465,"integer_arithmetic:6430
+",passed
+r038,integer_arithmetic,Turbo FAST,2,20,6430,6430,40,0.8,0.8199269771575928,"integer_arithmetic:6430
+",passed
+r039,sieve,Turbo FAST,2,5,840,840,27,0.54,0.5339405536651611,"sieve:840
+",passed
+r040,sieve,SB,2,5,840,840,9,0.18,0.18665122985839844,"sieve:840
+",passed
+r041,matrix_multiply,SB,2,10,1094,1094,14,0.28,0.27957582473754883,"matrix_multiply:1094
+",passed
+r042,matrix_multiply,Turbo FAST,2,10,1094,1094,23,0.46,0.4651622772216797,"matrix_multiply:1094
+",passed
+r043,string_operations,Turbo FAST,2,80,880,880,31,0.62,0.6172287464141846,"string_operations:880
+",passed
+r044,string_operations,SB,2,80,880,880,30,0.6,0.5924222469329834,"string_operations:880
+",passed
+r045,float_polynomial,SB,2,4,9252,9252,103,2.06,2.065305471420288,"float_polynomial:9252
+",passed
+r046,float_polynomial,Turbo FAST,2,4,9252,9252,104,2.08,2.0833170413970947,"float_polynomial:9252
+",passed
+r047,float_transcendentals,Turbo FAST,2,5,1280,1280,156,3.12,3.126274585723877,"float_transcendentals:1280
+",passed
+r048,float_transcendentals,SB,2,5,1280,1280,137,2.74,2.745999336242676,"float_transcendentals:1280
+",passed
+r049,eight_queens,SB,2,1,4962,4962,47,0.94,0.9392895698547363,"eight_queens:4962
+",passed
+r050,eight_queens,Turbo FAST,2,1,4962,4962,127,2.54,2.558457374572754,"eight_queens:4962
+",passed
+r051,route_planner,Turbo FAST,2,1,4701,4701,230,4.6,4.607161521911621,"route_planner:4701
+",passed
+r052,route_planner,SB,2,1,4701,4701,104,2.08,2.0924172401428223,"route_planner:4701
+",passed
+r053,concordance,SB,2,4,7936,7936,266,5.32,5.313277006149292,"concordance:7936
+",passed
+r054,concordance,Turbo FAST,2,4,7936,7936,390,7.8,7.805691719055176,"concordance:7936
+",passed
+r055,integer_arithmetic,Turbo FAST,3,20,6430,6430,41,0.82,0.819080114364624,"integer_arithmetic:6430
+",passed
+r056,integer_arithmetic,SB,3,20,6430,6430,15,0.3,0.30747437477111816,"integer_arithmetic:6430
+",passed
+r057,sieve,SB,3,5,840,840,9,0.18,0.192122220993042,"sieve:840
+",passed
+r058,sieve,Turbo FAST,3,5,840,840,27,0.54,0.5336434841156006,"sieve:840
+",passed
+r059,matrix_multiply,Turbo FAST,3,10,1094,1094,23,0.46,0.46630311012268066,"matrix_multiply:1094
+",passed
+r060,matrix_multiply,SB,3,10,1094,1094,14,0.28,0.2870442867279053,"matrix_multiply:1094
+",passed
+r061,string_operations,SB,3,80,880,880,29,0.58,0.5985443592071533,"string_operations:880
+",passed
+r062,string_operations,Turbo FAST,3,80,880,880,31,0.62,0.6175329685211182,"string_operations:880
+",passed
+r063,float_polynomial,Turbo FAST,3,4,9252,9252,104,2.08,2.085766315460205,"float_polynomial:9252
+",passed
+r064,float_polynomial,SB,3,4,9252,9252,103,2.06,2.07426381111145,"float_polynomial:9252
+",passed
+r065,float_transcendentals,SB,3,5,1280,1280,137,2.74,2.75110125541687,"float_transcendentals:1280
+",passed
+r066,float_transcendentals,Turbo FAST,3,5,1280,1280,155,3.1,3.126868486404419,"float_transcendentals:1280
+",passed
+r067,eight_queens,Turbo FAST,3,1,4962,4962,127,2.54,2.5535542964935303,"eight_queens:4962
+",passed
+r068,eight_queens,SB,3,1,4962,4962,47,0.94,0.9471206665039062,"eight_queens:4962
+",passed
+r069,route_planner,SB,3,1,4701,4701,105,2.1,2.100022077560425,"route_planner:4701
+",passed
+r070,route_planner,Turbo FAST,3,1,4701,4701,230,4.6,4.606137275695801,"route_planner:4701
+",passed
+r071,concordance,Turbo FAST,3,4,7936,7936,390,7.8,7.814248085021973,"concordance:7936
+",passed
+r072,concordance,SB,3,4,7936,7936,265,5.3,5.313190698623657,"concordance:7936
+",passed

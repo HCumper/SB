@@ -1,0 +1,15 @@
+{
+  "PowerThrottling": "execution speed and timer resolution disabled",
+  "ProcessorAffinity": "0xFFFF",
+  "PriorityClass": "High",
+  "ProcessId": 45648,
+  "Executable": "C:\\Program Files (x86)\\Q-emuLator\\QemuLator.exe",
+  "CommandLine": "\"C:\\Program Files (x86)\\Q-emuLator\\QemuLator.exe\" \"C:\\Source\\codex-workspace\\.scratch\\sb-direct-rom-maths-goldcard\\qemulator-unthrottled2\\benchmark.QCF\"",
+  "CreationDateUtc": "2026-11-24T23:22:47.3650160Z",
+  "WindowStyle": "Hidden",
+  "Config": "C:\\Source\\codex-workspace\\.scratch\\sb-direct-rom-maths-goldcard\\qemulator-unthrottled2\\benchmark.QCF",
+  "ConfigSha256": "DB5450BEE4146BDFFCB0CF223B1527791095E77F33B2DD4EFD36C9F7AEE2C076",
+  "Speed": "GoldCard",
+  "FullSuiteCompletedBeforeLaunch": true,
+  "CompilerSha256": "6F4338D858ABE7DDBE32758BAEE2610A78F71368F0AD41CE465203A7C5564BF6"
+}

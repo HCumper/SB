@@ -1,0 +1,16 @@
+{
+  "formatVersion": 2,
+  "timingMethod": "external-qdos-job",
+  "scope": "Whole job: executable loading, runtime startup, initialization, computation, internal checks, checksum PRINT and shutdown; runner file opening/closing and reporting are outside the timer.",
+  "complete": true,
+  "samples": 72,
+  "expected": 72,
+  "failed": [],
+  "calibration": {
+    "ticks": 0,
+    "expectedPauseTicks": 100,
+    "hostSeconds": 0.006514549255371094
+  },
+  "clockValidated": false,
+  "clockDiscrepancies": []
+}
