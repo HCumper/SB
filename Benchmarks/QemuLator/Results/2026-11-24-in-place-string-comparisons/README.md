@@ -17,7 +17,7 @@ whole string-array element, it substitutes three SB-only records:
   `compare_string`'s results for empty strings and otherwise calls `UT.CSTR`
   on the stored strings directly.
 
-See [native regions](../../../../SB/Optimization/TURBO-NATIVE-REGIONS.md#in-place-comparison-operands).
+See [native regions](../../../../SB/Optimization/TURBO-NATIVE-REGIONS.md#in-place-string-operands).
 
 ## Instruction counts
 

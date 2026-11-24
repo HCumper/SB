@@ -505,6 +505,11 @@ type private Generator(sourceLibrary: byte[], options: TurboCodegenOptions, sour
         // In-place string records keep their own tokens; SkipOperands knows their sizes.
         elif token=1531 || token=1532 then this.Lookup 265 |> Option.map(fun (_,record) -> token,record)
         elif token=1533 then this.Lookup 76 |> Option.map(fun (_,record) -> token,record)
+        elif token=1534 then this.Lookup 182 |> Option.map(fun (_,record) -> token,record)
+        elif token=1535 then this.Lookup 269 |> Option.map(fun (_,record) -> token,record)
+        elif token=1536 then this.Lookup 270 |> Option.map(fun (_,record) -> token,record)
+        elif token=1537 then this.Lookup 175 |> Option.map(fun (_,record) -> token,record)
+        elif token=1538 then this.Lookup 264 |> Option.map(fun (_,record) -> token,record)
         else this.Lookup(if TurboNativeArrays.isCompact token then TurboNativeArrays.baseOpcode token elif token >= 1000 then token - 1000 else token)
 
     /// g_t2 onwards: a token below 1000.
@@ -521,8 +526,8 @@ type private Generator(sourceLibrary: byte[], options: TurboCodegenOptions, sour
     /// Skips a token's operands (the "Now skip parameters" code after klim).
     member private this.SkipOperands(token: int, record: int) =
         if token=1911 || token=1912 || token=1530 then ic<-ic+6
-        elif token=1531 || token=1532 then ic<-ic+4
-        elif token=1533 then ic<-ic+2
+        elif token=1531 || token=1532 || token=1537 then ic<-ic+4
+        elif token=1533 || token=1534 || token=1538 then ic<-ic+2
         elif this.IsParameterised record then
             let _, header, _ = this.GetBytes record
             if header &&& 0x80 = 0 then
@@ -976,6 +981,52 @@ type private Generator(sourceLibrary: byte[], options: TurboCodegenOptions, sour
             if pass<>0 then write bytes
             objCode<-objCode+bytes.Length
             ic<-ic+4
+        elif token=1537 then
+            // extr_string with any slice, read in place: the same bound and slice
+            // checks, then the descriptor of the stored slice instead of a copy.
+            // The copy's out-of-memory test above mega_switch is kept.
+            if pMode then fail "In-place string operands require native mode."
+            let vector,pending=word ir ic,word ir (ic+2)
+            let w (values:int list) = values |> List.map wordBytes |> Array.concat
+            let heapTop = if pending<>0 then w [0x220C;0x3429;0x0006;0x48C2;0xD282;0xB5C1] else w [0xB5CC]
+            let memory = Array.concat [w [0x48C0;0x45E9;0xFF80;0x95C0];heapTop;w [0x6404;0x4EEE;0x8AEC]]
+            let bytes =
+                Array.concat [w [0x3A19;0x6D52;0x3819;0x6D4E;0x246E;vectTabAd+4*vector;0x205A;0x588A;0x7000;0x321A;0x3E1A;0x4A41;0x6B18;0x3607
+                                 0x3019;0x6B04;0xB052;0x6B04;0x4EEE;0x8AE0;0xC0C3;0xC6DA;0xD1C0;0x51C9;0xFFEC
+                                 0x5547;0x3404;0xD445;0x6608;0x3A10;0x6726;0x7801;0x6018
+                                 0x4A44;0x6602;0x7801;0x4A45;0x6606;0x3A10;0x6602;0x3A07
+                                 0xBE45;0x6404;0x4EEE;0x8AE0
+                                 0x9A44;0x5245;0x6DF6;0x47F0;0x4001
+                                 0x230B;0x3305;0x0C45;0x000E;0x6F00 ||| (2+memory.Length);0x3005];memory]
+            if pass<>0 then write bytes
+            objCode<-objCode+bytes.Length
+            ic<-ic+4
+        elif token=1535 || token=1536 then
+            // CODE and LEN of an in-place operand: the templates' results, with
+            // no heap to release.
+            if pMode then fail "In-place string operands require native mode."
+            let bytes =
+                if token=1535 then [0x3019;0x2059;0x6704;0x7000;0x1010;0x3300] else [0x3019;0x5889;0x3300]
+                |> List.map wordBytes |> Array.concat
+            if pass<>0 then write bytes
+            objCode<-objCode+bytes.Length
+        elif token=1534 || token=1538 then
+            // st_string_var / st_str_var_1d from an in-place operand: the template
+            // without its SUBA.L that released the source's heap copy. A slice of
+            // the destination itself starts at or after its text, so the forward
+            // copy is safe.
+            if pMode then fail "In-place string operands require native mode."
+            let vector=word ir ic
+            let operation=if token=1534 then 182 else 264
+            let record = match this.Search operation with Some record -> record | None -> fail $"Template {operation} not found."
+            let template = slice lib (this.CodeAddress record) (this.Length record)
+            let release,load = (if token=1534 then 0x99C4,0x246E else 0x99C3,0x206E)
+            if word template 4<>release || word template 8<>load then fail $"Template {operation} does not release its source as expected."
+            let bytes = Array.append template[0..3] template[6..]
+            setWord bytes 8 (vectTabAd+4*vector)
+            if pass<>0 then write bytes
+            objCode<-objCode+bytes.Length
+            ic<-ic+2
         elif token=1533 then
             // compare_string on two in-place operands: the same null-string results,
             // else UT.CSTR on the stored strings. Nothing was allocated, so the heap

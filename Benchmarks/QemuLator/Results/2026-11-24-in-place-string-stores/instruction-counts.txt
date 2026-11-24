@@ -1,0 +1,9 @@
+output=integer_arithmetic:6430 exit=0 instructions=405114 fetchWords=506684 bytes=6440
+output=sieve:840 exit=0 instructions=238788 fetchWords=275453 bytes=7424
+output=matrix_multiply:1094 exit=0 instructions=373583 fetchWords=538788 bytes=7966
+output=string_operations:880 exit=0 instructions=825575 fetchWords=953629 bytes=8160
+output=float_polynomial:9252 exit=0 instructions=2948841 fetchWords=3674238 bytes=7318
+output=float_transcendentals:1280 exit=0 instructions=4453600 fetchWords=5861939 bytes=7222
+output=eight_queens:4962 exit=0 instructions=1322374 fetchWords=1807583 bytes=8992
+output=route_planner:4701 exit=0 instructions=2994079 fetchWords=3946970 bytes=9494
+output=concordance:7936 exit=0 instructions=7643493 fetchWords=9469619 bytes=15180

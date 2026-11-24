@@ -1,13 +1,16 @@
 module TurboNativeStringOperands
 
-// String comparisons in native code whose operands are whole DIMmed strings
-// (265) or whole string-array elements (263 263 175) read them in place. The
-// original fetches copy each operand to the string heap, and compare_string
-// copies them again to the maths stack for UT.CSTR. The in-place records keep
-// every check at its original position, in order: extr_string's index checks
-// and each copy's out-of-memory test, computed against the heap the copies
-// would have used. Only integer arithmetic may separate the two operands, so
-// nothing can change the left string before it is compared.
+// Native string comparisons, stores, CODE and LEN read their operands in place
+// when they are whole DIMmed strings (265), whole string-array elements
+// (263 263 175) or, for stores, CODE and LEN, any extracted slice (175). The
+// original fetches copy each operand to the string heap; compare_string then
+// copies both again to the maths stack for UT.CSTR, and the consumers release
+// the copies. The in-place records keep every check at its original position,
+// in order: extr_string's index and slice checks and each copy's
+// out-of-memory test, computed against the heap the copies would have used.
+// Only integer arithmetic may separate two compared operands, and a store,
+// CODE or LEN directly follows its operand, so nothing can change a string
+// between its read and its use.
 open HirTurboIrBackend
 
 let private comparisons = set [73;74;75;76;77;78;79]
@@ -97,6 +100,27 @@ let select enabled (output:TurboIrOutput) : Result<TurboIrOutput,string list> =
                     replacements[k]<-[Instruction(1533,[Word op],inPlaceStringComment)]
                 | _ -> ()
             | _ -> ()
+        // A store, CODE or LEN consumes the operand fetched just before it, so
+        // nothing runs between the read and the use.
+        for k in 1..items.Length-1 do
+            let consumer =
+                match items[k] with
+                | Instruction(182,[Word vector],_) -> Some(Instruction(1534,[Word vector],inPlaceStringComment))
+                | Instruction(264,[Word vector],_) -> Some(Instruction(1538,[Word vector],inPlaceStringComment))
+                | Instruction(269,[],_) -> Some(Instruction(1535,[],inPlaceStringComment))
+                | Instruction(270,[],_) -> Some(Instruction(1536,[],inPlaceStringComment))
+                | _ -> None
+            let free i = native[i] && not(replacements.ContainsKey i)
+            match consumer with
+            | Some rewritten when free k && free(k-1) ->
+                match operandAt items (k-1),items[k-1] with
+                | Some(Whole _ as operand),_ -> replace operand 0;replacements[k]<-[rewritten]
+                | Some(Element(_,index) as operand),_ when free index && free(index+1) -> replace operand 0;replacements[k]<-[rewritten]
+                | _,Instruction(175,[Word vector],_) ->
+                    replacements[k-1]<-[Instruction(1537,[Word vector;Word 0],inPlaceStringComment)]
+                    replacements[k]<-[rewritten]
+                | _ -> ()
+            | _ -> ()
         if replacements.Count=0 then Ok output
         else
             let selected=[for i in 0..items.Length-1 do
@@ -109,5 +133,5 @@ let select enabled (output:TurboIrOutput) : Result<TurboIrOutput,string list> =
             | errors -> Error errors
 
 let format items =
-    let count=items |> List.sumBy(function Instruction(1533,_,_) -> 1 | _ -> 0)
-    $"In-place string comparisons: {count}\n"
+    let count opcodes=items |> List.sumBy(function Instruction(op,_,_) when List.contains op opcodes -> 1 | _ -> 0)
+    $"In-place string comparisons: {count [1533]}\nIn-place string stores: {count [1534;1538]}\nIn-place CODE and LEN: {count [1535;1536]}\n"

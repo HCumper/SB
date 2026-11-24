@@ -1,5 +1,7 @@
 # Turbo FAST versus SB in Q-emuLator
 
+[In-place string stores, CODE and LEN: concordance 32.1% ahead of Turbo FAST, 24 November 2026](Results/2026-11-24-in-place-string-stores/README.md)
+
 [In-place string comparison operands: concordance 26.8% fewer instructions, 28.6% ahead of Turbo FAST, 24 November 2026](Results/2026-11-24-in-place-string-comparisons/README.md)
 
 [Terminal STOP branches inside native loops: all nine workloads now ahead of Turbo FAST on instruction counts, 24 November 2026](Results/2026-11-24-terminal-stop-branches/README.md)

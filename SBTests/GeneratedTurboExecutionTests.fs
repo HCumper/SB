@@ -328,6 +328,86 @@ let ``in-place string reports count each rewritten comparison`` (hir:bool) =
             Assert.That(File.ReadAllText(prefix+".native-ir.txt"), Does.Contain($"In-place string comparisons: {count}"), $"fixture {index}")
     finally Directory.Delete(directory,true)
 
+// Stores, CODE and LEN read the operand fetched just before them in place:
+// elements, DIMmed strings and slices, including a long self-slice that the
+// forward copy moves down over itself, truncation into a shorter DIM, empty
+// sources and slices past the current length. Slice bounds are variables:
+// constant bounds become MID$ calls. The values are the report's in-place
+// store and CODE/LEN counts with HIR optimization off and on.
+let inPlaceStorePrograms = [|
+    "10 DIM w$(3,40),v$(40),s$(3),t$(40)\n20 w$(0)=\"apple\":w$(1)=\"banana split with cream and cherries\":a%=8:b%=12:c%=2:d%=3:e%=30\n30 v$=w$(1):w$(2)=v$:w$(3)=w$(0):s$=w$(1):t$=w$(1,a% TO b%)\n40 v$=v$(c% TO):w$(1)=w$(1,d% TO e%):t$=t$:w$(0)=w$(0)\n50 PRINT v$;\"|\";w$(1);\"|\";w$(2);\"|\";w$(3);\"|\";s$;\"|\";t$;\"|\";w$(0)\n60 w$(2)=\"\":v$=w$(4-2):PRINT LEN(v$)\n70 STOP", "anana split with cream and cherries|nana split with cream and ch|banana split with cream and cherries|apple|bana|split|apple\n0\n", (10,10), (0,0)
+    "10 DIM a$(10),w$(2,10)\n20 a$=\"Hello\":w$(1)=\"World\"\n30 FOR i%=0 TO 6\n40 n%=n%*3+CODE(a$(i%))+LEN(a$(i% TO 5))+CODE(w$(1,i%))+LEN(w$(1))\n50 n%=n% MOD 10007\n60 END FOR i%\n70 PRINT n%\n80 STOP", "", (0,0), (4,4)
+|]
+let inPlaceStoreModes = [|
+    for index in 0..inPlaceStorePrograms.Length-1 do
+        for hir in [false;true] do
+            for native,registers in [false,false;true,false;true,true] do
+                yield TestCaseData(index,hir,native,registers).SetName($"In-place store {index} (HIR {hir}, native {native}, registers {registers})") |]
+
+[<TestCaseSource(nameof inPlaceStoreModes)>]
+let ``in-place string stores CODE and LEN match threaded results`` (index:int,hir:bool,native:bool,registers:bool) =
+    let source,expected,_,_=inPlaceStorePrograms[index]
+    let capture native registers =
+        let mutable output=""
+        withCompiledProgramMode hir [(if native then "--native-regions" else "--no-native-regions");(if registers then "--regalloc" else "--no-regalloc")] ".bas" source (fun executable ->
+            let result=run 8000000L executable
+            Assert.That(result.ExitCode, Is.Zero)
+            output<-result.Output)
+        output
+    let threaded=capture false false
+    if expected<>"" then Assert.That(threaded, Is.EqualTo(expected))
+    Assert.That(capture native registers, Is.EqualTo(threaded))
+
+[<TestCase(false)>]
+[<TestCase(true)>]
+let ``in-place string reports count each store and CODE or LEN`` (hir:bool) =
+    let directory=Path.Combine(Path.GetTempPath(),$"in-place-store-report-{Guid.NewGuid():N}")
+    Directory.CreateDirectory directory |> ignore
+    try
+        for index in 0..inPlaceStorePrograms.Length-1 do
+            let prefix=Path.Combine(directory,string index)
+            let source,_,storeCounts,codeCounts=inPlaceStorePrograms[index]
+            let pick (off,on) = if hir then on else off
+            let stores,codes=pick storeCounts,pick codeCounts
+            withCompiledProgramMode hir ["--native-regions";"--regalloc";"--dump-hir="+prefix] ".bas" source ignore
+            let report=File.ReadAllText(prefix+".native-ir.txt")
+            Assert.That(report, Does.Contain($"In-place string stores: {stores}"), $"fixture {index}")
+            Assert.That(report, Does.Contain($"In-place CODE and LEN: {codes}"), $"fixture {index}")
+    finally Directory.Delete(directory,true)
+
+// Slice and bound checks fail as extr_string and the stores do, and a slice
+// above mega_switch keeps its copy's out-of-memory test while the heap grows.
+let inPlaceStoreErrors = [|
+    "10 DIM a$(10)\n20 a$=\"Hello\":k%=1\n30 n%=CODE(a$(k% TO 20))\n40 STOP"
+    "10 DIM a$(10)\n20 a$=\"Hello\":k%=-1\n30 n%=CODE(a$(k%))\n40 STOP"
+    "10 DIM a$(10)\n20 a$=\"Hello\":k%=5\n30 n%=LEN(a$(k% TO 2))\n40 STOP"
+    "10 DIM w$(2,10),v$(10)\n20 v$=\"x\":k%=5\n30 w$(k%)=v$\n40 STOP"
+    "10 DIM a$(10)\n20 a$=\"Hello\":k%=-1\n30 n%=LEN(a$(k% TO 3))\n40 STOP"
+    // A variable slice start reaches extr_string; constant bounds become MID$.
+    "10 DIM p$(8000),t$(128),w$(1,128)\n20 t$=\"x\":FOR k%=1 TO 7:t$=t$ & t$:END FOR k%\n30 w$(1)=t$:j%=1:i%=2\n40 FOR k%=1 TO 400\n50 p$=p$ & \"abcdefghijklmnopqrstuvwxyz012345\"\n60 n%=LEN(p$ & p$ & CHR$(LEN(w$(j%,i% TO 101))))\n70 PRINT k%\n80 END FOR k%\n90 STOP"
+|]
+
+[<TestCase(0)>]
+[<TestCase(1)>]
+[<TestCase(2)>]
+[<TestCase(3)>]
+[<TestCase(4)>]
+[<TestCase(5)>]
+let ``in-place string store and slice failures match threaded code`` (index:int) =
+    let capture native =
+        let mutable outcome=""
+        withCompiledProgramMode true [(if native then "--native-regions" else "--no-native-regions");"--regalloc"] ".bas" inPlaceStoreErrors[index] (fun executable ->
+            let error=Assert.Throws<M68kFault>(fun () -> run 400000000L executable |> ignore)
+            let parsed=System.Text.RegularExpressions.Regex.Match(error.Message,@"ERNUM=(-?\d+)")
+            Assert.That(parsed.Success, Is.True, error.Message)
+            let printed=error.Message.IndexOf("output=")
+            Assert.That(printed, Is.GreaterThanOrEqualTo(0), error.Message)
+            outcome<-parsed.Groups[1].Value+"|"+error.Message.Substring(printed))
+        outcome
+    let threaded=capture false
+    Assert.That(threaded, Does.StartWith([|"-4|";"-4|";"-4|";"-4|";"-4|";"-3|"|][index]))
+    Assert.That(capture true, Is.EqualTo(threaded))
+
 // Failures keep their order and number: extr_string's index checks on either
 // side, a left range error before a failing right index, and the copies'
 // out-of-memory tests as recursion fills memory (the depth reached is printed).

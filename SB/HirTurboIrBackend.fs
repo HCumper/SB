@@ -425,6 +425,11 @@ let private operandShapes =
     shapes[1531] <- FixedWords 2 // In-place string-array element: vector, pending in-place operand below (SB extension).
     shapes[1532] <- FixedWords 2 // In-place DIMmed string: vector, pending in-place operand below (SB extension).
     shapes[1533] <- FixedWords 1 // In-place string comparison: the original comparison opcode (SB extension).
+    shapes[1534] <- FixedWords 1 // Store a string-array element from an in-place operand: vector (SB extension).
+    shapes[1535] <- FixedWords 0 // CODE of an in-place operand (SB extension).
+    shapes[1536] <- FixedWords 0 // LEN of an in-place operand (SB extension).
+    shapes[1537] <- FixedWords 2 // In-place string slice: vector, pending in-place operand below (SB extension).
+    shapes[1538] <- FixedWords 1 // Store a DIMmed string from an in-place operand: vector (SB extension).
     shapes[247] <- FixedWords 9
     shapes[169] <- TextShape
     shapes[170] <- TextShape
@@ -446,7 +451,7 @@ let private vectorOperandPositions =
     let positions = Dictionary<int, int>()
     for opcode in [ 101; 102; 108; 109; 110; 111; 112; 114; 118; 125; 133; 134; 141; 142; 143; 144; 146; 150
                     175; 176; 182; 230; 232; 246; 249; 253; 257; 262; 264; 265; 266; 293; 294; 337; 338; 339; 340
-                    370; 374; 375; 382; 24; 26; 56; 58; 360; 227; 1339; 1340; 1530; 1531; 1532; 1111; 1112; 1143; 1144; 1611; 1612; 1643; 1644; 1711; 1712; 1811; 1812 ] do
+                    370; 374; 375; 382; 24; 26; 56; 58; 360; 227; 1339; 1340; 1530; 1531; 1532; 1534; 1537; 1538; 1111; 1112; 1143; 1144; 1611; 1612; 1643; 1644; 1711; 1712; 1811; 1812 ] do
         positions[opcode] <- 0
     positions[1911] <- 0
     positions[1912] <- 0
@@ -660,7 +665,7 @@ let validate (bytes: byte[]) : string list =
                     problems.Add $"Native integer ABS requires native mode (record {index})."
                 if not native && opcode = Op.nativeNextForInt then
                     problems.Add $"Inline native NEXT requires native mode (record {index})."
-                if not native && (opcode = 1531 || opcode = 1532 || opcode = 1533) then
+                if not native && opcode >= 1531 && opcode <= 1538 then
                     problems.Add $"In-place string operands require native mode (record {index})."
                 let operandArray = List.toArray operands
                 match opcode,operands with

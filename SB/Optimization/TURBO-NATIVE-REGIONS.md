@@ -78,7 +78,7 @@ DIMmed at that record (`AllocatedStringSites`; see
 record the listing comment `allocated string`. Unproven records stay threaded
 in straight regions, and memory-counter loops bridge them with SLOW/FAST.
 
-### In-place comparison operands
+### In-place string operands
 
 Every string fetch copies its text to the string heap: `fch_string_1d` (265)
 for a DIMmed string and `extr_string` (175) for an array element. A comparison
@@ -111,6 +111,30 @@ two operands, so nothing can change the left string before it is read.
 Stored strings are word-aligned, as `fch_string_1d` and `extr_string` already
 require when they read the length word. Validation rejects these records in
 threaded code.
+
+### In-place stores, CODE and LEN
+
+The consumers of a single string release its heap copy: the stores
+`st_string_var` (182) and `st_str_var_1d` (264) subtract its length from A4,
+and `code` (269) and `len` (270) reset A4 to its address. Where such a
+consumer directly follows its operand in native code, the operand is read in
+place and the consumer is an SB-only record that releases nothing:
+
+- **1534 `[vector]`** and **1538 `[vector]`** are the two store templates
+  without their `SUBA.L`; truncation to the destination's DIM, the
+  string-not-DIMmed exit and the index checks are unchanged.
+- **1535** and **1536** give `code`'s and `len`'s results.
+- The operand is 1532 or 1531 as above, or **1537 `[vector; pending]`** for
+  any other `extr_string`: the same slice checks (a negative bound, an end
+  beyond the DIM, or an end before the start less one give `range_error`),
+  then a descriptor for the stored slice. Its copy's out-of-memory test above
+  `mega_switch` is replayed.
+
+A store's source may be a slice of its own destination. The text always starts
+at or after the destination's text, and both the byte loop and `mega_move`
+copy forward, so the overlap is safe; the length word written first lies
+before the source text. Slices lowered to `MID$` calls instead of
+`extr_string`, such as some with constant bounds, keep that path.
 
 ## Integer ABS
 
