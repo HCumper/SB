@@ -1,0 +1,11 @@
+{
+  "CodeMapsByteIdentical": true,
+  "CompilerSha256": "17FFF50A13180C9CE00C4BD58FD7A9DF5DBD21B23B2E75C624278B8AC08371E8",
+  "Inputs": "C:\\Source\\codex-workspace\\.scratch\\sb-steps-goldcard\\qemulator",
+  "InstructionCountsAreNotCycles": true,
+  "OsUtilitiesAreHostHooks": true,
+  "ProfiledUnmodifiedJobs": true,
+  "RealRomExecuted": true,
+  "Rom": "C:\\Program Files (x86)\\Q-emuLator\\QL ROMs\\QL_ROM_JS",
+  "RomSha256": "FC6A683E44570D7E4A144580729E25FF4B3BD293A9EFF5313CFDAE11520D5EFC"
+}

@@ -495,6 +495,45 @@ let ``native FOR layout remains correct when its entry is beyond 64 KiB`` () =
     Assert.That(result.Code.Length, Is.GreaterThan(65536))
     Assert.That((TurboExecutionHarness.run 3000000L (executableFile result)).Output, Is.EqualTo("10\n"))
 
+/// Native-selected IR (memory-counter loops, audited regions) for an SB program.
+let private nativeIrOf (text: string) =
+    let path = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.bas")
+    File.WriteAllText(path, source text)
+    try
+        match loadAstFromInput (testSettings path) with
+        | Result.Error error -> failwith $"Parsing failed: %A{error}"
+        | Result.Ok(_, _, ast) ->
+            let state = runSemanticAnalysis ast
+            if not state.Errors.IsEmpty then failwith (String.concat "; " state.Errors)
+            let hir = runHirLowering state |> Result.defaultWith (fun errors -> failwith $"%A{errors}")
+            generateTurboIrFromLoweredHirWithNativeRegions HirTurboOptimizer.defaultOptions true state hir |> Result.defaultWith (String.concat "; " >> failwith)
+    finally
+        File.Delete path
+
+[<Test>]
+let ``fused conditions use a long jump when their word branch cannot reach the label`` () =
+    let ir=nativeIrOf "10 DIM a$(8):z%=0\n20 FOR i%=1 TO 3\n30 IF i%=2 THEN a$=a$ & \"x\"\n40 END FOR i%\n50 PRINT a$;\":\";i%;\":\";z%\n60 STOP"
+    let z=ir.Items |> List.pick(function Instruction(118,[Word v],comment) when comment.Contains "Z%" -> Some v | _ -> None)
+    let options={portOptions with LocalRegisterAllocation=true;NativeIntegerForLoops=true;NativeForLoopProofs=ir.NativeForLoopProofs}
+    let generate items=generateFromIr options (serialize items) |> Result.defaultWith(String.concat "; " >> failwith)
+    // About 36 KiB of native stores between IF FALSE and its END IF label.
+    let mutable widened=false
+    let wide=ir.Items |> List.collect(function
+        | Instruction(239,[LabelRef _],_) as branch when not widened ->
+            widened<-true
+            branch::(List.replicate 6000 [Instruction(106,[Word 7],"");Instruction(118,[Word z],"")] |> List.concat)
+        | item -> [item])
+    let near,far=generate ir.Items,generate wide
+    for result in [near;far] do
+        Assert.That(result.NativeConditions.Value.Conditions.Length, Is.EqualTo(1))
+    let longJump (code:byte[]) = [0..code.Length-12] |> List.exists(fun i ->
+        code[i]=0x67uy && code[i+1]=0x0Auy && code[i+2]=0x20uy && code[i+3]=0x3Cuy && code[i+8]=0x4Euy && code[i+9]=0xF6uy && code[i+10]=0x08uy && code[i+11]=0x00uy)
+    Assert.That(far.Code.Length, Is.GreaterThan(32768))
+    Assert.That(longJump far.Code, Is.True,"The far branch must use BEQ.S over a native long jump.")
+    Assert.That(longJump near.Code, Is.False,"The near branch must use a word branch.")
+    Assert.That((TurboExecutionHarness.run 3000000L (executableFile near)).Output, Is.EqualTo("x:3:0\n"))
+    Assert.That((TurboExecutionHarness.run 3000000L (executableFile far)).Output, Is.EqualTo("x:3:7\n"))
+
 [<Test>]
 let ``DIVMOD native loops preserve live accumulators and reserve both frame depths`` () =
     // A dynamic divisor keeps the checked two-register clobber and spill path;

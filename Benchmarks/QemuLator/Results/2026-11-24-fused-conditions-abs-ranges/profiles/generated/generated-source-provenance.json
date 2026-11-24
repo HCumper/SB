@@ -1,0 +1,16 @@
+{
+  "Sources": [
+    {
+      "Source": "SB/TurboCodegen.fs",
+      "SourceSha256": "9E1D35FA222F5B999BB5E585A13A4AE652A9D0ACA4B1F4E065192FA95E513F18",
+      "GeneratedSha256": "E5B05AC9798D06A6A56118A0381A2B298ADBF780D1336CE6EC1123C1FFE2B1EA"
+    },
+    {
+      "Source": "SBTests/TurboExecutionHarness.fs",
+      "SourceSha256": "72C579DBDDDE04019A609FA884F24EBE8D54644520AEC72D9A528EA50CD83336",
+      "GeneratedSha256": "96EB44058E6BE922C6F8B13DF26AE4A3DD9E5E31A31B45E5AFDFB5958177CCEF"
+    }
+  ],
+  "ProductionSourcesModified": false,
+  "CodeMapMustReproduceExecutable": true
+}

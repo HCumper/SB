@@ -1,0 +1,38 @@
+100 clock=RESPR(80)
+110 LBYTES "mdv1_pollclock",clock
+120 CALL clock
+130 OPEN_NEW #3,"mdv1_cal_start"
+140 PRINT #3,"START"
+150 CLOSE #3
+160 cal_start=PEEK_L(clock+36)
+170 PAUSE 100
+180 cal_ticks=PEEK_L(clock+36)-cal_start
+190 OPEN_NEW #3,"mdv1_cal_end"
+200 PRINT #3,cal_ticks
+210 CLOSE #3
+340 onecase "b06s","eight_queens","s",0,1,4962,"r013"
+350 onecase "b06t","eight_queens","t",0,1,4962,"r014"
+520 onecase "b06t","eight_queens","t",1,1,4962,"r031"
+530 onecase "b06s","eight_queens","s",1,1,4962,"r032"
+700 onecase "b06s","eight_queens","s",2,1,4962,"r049"
+710 onecase "b06t","eight_queens","t",2,1,4962,"r050"
+880 onecase "b06t","eight_queens","t",3,1,4962,"r067"
+890 onecase "b06s","eight_queens","s",3,1,4962,"r068"
+940 OPEN_NEW #3,"mdv1_done"
+950 PRINT #3,"DONE"
+960 CLOSE #3
+970 STOP
+15000 DEFine PROCedure onecase(file$,label$,compiler$,trial,passes,wanted,result$)
+15010 LOCal began,ticks
+15020 OPEN_NEW #4,"mdv1_" & result$ & "_out"
+15030 OPEN_NEW #3,"mdv1_" & result$ & "_start"
+15040 PRINT #3,label$;",";compiler$;",";trial
+15050 CLOSE #3
+15060 began=PEEK_L(clock+36)
+15070 EW "mdv1_" & file$,#4,#4,#4,#4,#4,#4,#4,#4,#4,#4,#4,#4,#4,#4,#4,#4,#4,#4,#4,#4,#4,#4,#4,#4,#4,#4,#4,#4,#4,#4,#4
+15080 ticks=PEEK_L(clock+36)-began
+15090 CLOSE #4
+15100 OPEN_NEW #3,"mdv1_" & result$
+15110 PRINT #3,label$;",";compiler$;",";trial;",";passes;",";wanted;",";ticks;",returned"
+15120 CLOSE #3
+15130 END DEFine

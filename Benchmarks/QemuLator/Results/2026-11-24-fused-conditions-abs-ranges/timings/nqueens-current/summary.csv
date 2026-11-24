@@ -1,0 +1,2 @@
+benchmark,category,passes,checksum,turboSamples,turboMedian,turboMin,turboMax,turboBytes,sbSamples,sbMedian,sbMin,sbMax,sbBytes,sbSpeedup,sbTimeReductionPercent
+eight_queens,application,1,4962,3,2.56,2.54,2.56,12718,3,1.0,1.0,1.02,8986,2.56,60.9375

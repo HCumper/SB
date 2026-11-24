@@ -182,9 +182,22 @@ let analyzeAliases (program: HirProgram) =
                         | Some actual -> if escapedRoots.Add actual then changed<-true
                         | _ -> ()
             | _ -> ()
+    // A formal can alias other storage only when some call binds it by
+    // reference. One that every static call site passes a scalar value is a
+    // private temporary; missing arguments and reference formals stay aliased.
+    // Like other uncalled routine facts, a formal with no call site stays aliased.
+    let privateFormal (routine:HirRoutine) index (formal:HirParameter) =
+        let calls=sites |> Seq.filter(fun (_,callee,_) -> callee=routine.Symbol) |> Seq.toList
+        formal.Binding<>ReferenceBinding && not calls.IsEmpty &&
+        calls |> List.forall(fun (scope,_,args) ->
+            index<List.length args &&
+            match args[index] with
+            | ValueArg _ as arg -> (actualRoot program storageMap arrays scope arg).IsNone
+            | RefArg _ -> false)
     { Storages=storageMap;ArrayStorages=arrays
       Visible=Map.ofList ((MainScope,globals) :: (program.Routines |> List.map (fun r -> RoutineScope r.Symbol, Set.union globals (List.map _.Storage r.Parameters @ r.Locals |> List.map _.Symbol |> Set.ofList))))
-      Parameters=program.Routines |> List.map (fun r -> RoutineScope r.Symbol, r.Parameters |> List.map (fun p -> p.Storage.Symbol) |> Set.ofList) |> Map.ofList
+      Parameters=program.Routines |> List.map (fun r ->
+          RoutineScope r.Symbol, r.Parameters |> List.indexed |> List.filter(fun (i,p) -> not(privateFormal r i p)) |> List.map (fun (_,p) -> p.Storage.Symbol) |> Set.ofList) |> Map.ofList
       AddressTaken=Set.ofSeq roots; Escaped=Set.ofSeq escapedRoots }
 
 let mayAlias (aliases: AliasInfo) scope a b =
@@ -255,6 +268,12 @@ let inlineCall (program:HirProgram) symbol args =
 
 let nonmutatingCall program symbol args =
     inlineCall program symbol args || nonmutatingFunction program symbol (List.length args)
+
+/// The one-argument ROM ABS resident. Native code generation replaces each
+/// x%=ABS(word) with an inline integer instruction. Any ROM call that remains
+/// is still rejected by the machine-level loop planners, which never cross one.
+let residentAbsCall (program:HirProgram) symbol args =
+    nonmutatingFunction program symbol (List.length args) && not(inlineFunction program symbol (List.length args))
 
 let rec expression (context: Context) scope expr =
     let children xs = xs |> List.map (expression context scope) |> combineAll

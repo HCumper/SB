@@ -231,7 +231,7 @@ let planWithProofs (proofs:Map<int,NativeForLoopProof>) maxExtraBytes vectorTabl
                         | Instruction((106|109|263),_,_) -> depth<-depth+1
                         | Instruction(268,_,_) -> if depth<1 then depthValid<-false else depth<-depth+1
                         | Instruction((5|6|7|8|20|1005|1006|1007),_,_) -> if depth<2 then depthValid<-false else depth<-depth-1
-                        | Instruction((1|1001),_,_) -> if depth<1 then depthValid<-false
+                        | Instruction((1|1001|1334),_,_) -> if depth<1 then depthValid<-false
                         | Instruction(118,_,_) -> if depth<1 then depthValid<-false else depth<-depth-1
                         | Instruction((1711|1811),_,_) -> if depth<1 then depthValid<-false
                         | Instruction((1712|1812),_,_) -> if depth<2 then depthValid<-false else depth<-depth-2

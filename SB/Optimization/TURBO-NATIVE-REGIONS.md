@@ -40,6 +40,30 @@ Every label stays in its original mode, and every selected run returns to
 threaded execution before a control-flow or unsupported instruction. Startup,
 DATA, linkage and resident-name records are unchanged.
 
+## Integer ABS
+
+`x%=ABS(word)` compiles to int-to-float (320), the one-float-argument ROM ABS
+resident (224) and float-to-int (334). Inside a selected native run, that exact
+triple becomes the SB-only record 1334, a checked integer ABS. It is chosen only
+when the 224 vector is bound solely to the resident named ABS, so a program's
+own ABS function keeps its call. Any other ABS use, such as a floating result,
+keeps the ROM call, and a triple left in threaded code keeps its three records.
+
+The result is exact: every word except -32768 has an exact float magnitude and
+converts back unchanged. For -32768 the ROM returns 32768.0, which
+`fast_float_to_int` pops and then rejects with overflow (ERNUM -18). The native
+form raises the same error through the same library handler, with the operand
+consumed and the pending words below it intact. It can no longer fail for lack
+of memory inside the ROM call, which needed none for a valid argument.
+Without register allocation, 1334 expands inline to `TST.W (A1)`, `BPL.S`,
+`NEG.W (A1)`, `BVC.S`, then the overflow exit. With allocation it is a
+register `TST.W/BPL.S/NEG.W` followed by the usual checked-arithmetic `BVC.W`.
+Validation rejects 1334 in threaded code.
+
+This assumes compiled programs use the QL ROM's ABS, as the effect analysis
+already does: a resident extension that later redefines ABS would no longer
+be called for these integer assignments.
+
 [Direct string append](TURBO-STRING-APPEND.md) uses Turbo's existing checked
 threaded append operation for safe self-concatenating assignments. It avoids
 copying the old prefix without extending native-region eligibility to strings.
@@ -68,7 +92,8 @@ Executable generation can then lower leaf integer sequences into a
 register-aware native IR and allocate D0/D1 locally. This defaults on in the CLI;
 `--no-regalloc` retains native templates. See
 [local register allocation](TURBO-REGISTER-ALLOCATION.md) for spill, alias and
-runtime-boundary guarantees.
+runtime-boundary guarantees. Native integer IF conditions additionally become
+one leaf and one branch; see [fused native conditions](TURBO-NATIVE-CONDITIONS.md).
 
 Checked integer DIV/MOD now participate in register allocation rather than
 splitting leaf blocks. Both operand clobbers and the original failure maths-stack

@@ -1,0 +1,200 @@
+[
+  {
+    "Benchmark": "integer_arithmetic",
+    "Tag": "b00",
+    "OriginalSourceUnchanged": true,
+    "OrdinaryExecutableIdentical": true,
+    "ExecutableSha256": "62347D2892EA659866C22D638EDA3C56C92DF011A6ABC557EB0760466EAB08F5",
+    "ReferenceSha256": "62347D2892EA659866C22D638EDA3C56C92DF011A6ABC557EB0760466EAB08F5",
+    "Coverage": {
+      "NativeForSelected": 1,
+      "NativeForRejected": 1,
+      "ArithmeticProofsEnabled": true,
+      "ProvenExpressions": 4,
+      "ProvenArrayAccesses": 0
+    },
+    "ReferenceCoverage": {
+      "NativeForSelected": 1,
+      "NativeForRejected": 1,
+      "ArithmeticProofsEnabled": true,
+      "ProvenExpressions": 4,
+      "ProvenArrayAccesses": 0
+    }
+  },
+  {
+    "Benchmark": "sieve",
+    "Tag": "b01",
+    "OriginalSourceUnchanged": true,
+    "OrdinaryExecutableIdentical": true,
+    "ExecutableSha256": "E680913D05AB16775CDA8B3081F4F428784E5BAF67851F226DE1C5AF896D8D1D",
+    "ReferenceSha256": "E680913D05AB16775CDA8B3081F4F428784E5BAF67851F226DE1C5AF896D8D1D",
+    "Coverage": {
+      "NativeForSelected": 3,
+      "NativeForRejected": 2,
+      "ArithmeticProofsEnabled": true,
+      "ProvenExpressions": 1,
+      "ProvenArrayAccesses": 6
+    },
+    "ReferenceCoverage": {
+      "NativeForSelected": 3,
+      "NativeForRejected": 2,
+      "ArithmeticProofsEnabled": true,
+      "ProvenExpressions": 1,
+      "ProvenArrayAccesses": 6
+    }
+  },
+  {
+    "Benchmark": "matrix_multiply",
+    "Tag": "b02",
+    "OriginalSourceUnchanged": true,
+    "OrdinaryExecutableIdentical": true,
+    "ExecutableSha256": "50DA6763E30ED9A86ED2A3872980A1838D8D4F15DC556BE0BB975A90754380A4",
+    "ReferenceSha256": "50DA6763E30ED9A86ED2A3872980A1838D8D4F15DC556BE0BB975A90754380A4",
+    "Coverage": {
+      "NativeForSelected": 3,
+      "NativeForRejected": 5,
+      "ArithmeticProofsEnabled": true,
+      "ProvenExpressions": 7,
+      "ProvenArrayAccesses": 6
+    },
+    "ReferenceCoverage": {
+      "NativeForSelected": 3,
+      "NativeForRejected": 5,
+      "ArithmeticProofsEnabled": true,
+      "ProvenExpressions": 7,
+      "ProvenArrayAccesses": 6
+    }
+  },
+  {
+    "Benchmark": "string_operations",
+    "Tag": "b03",
+    "OriginalSourceUnchanged": true,
+    "OrdinaryExecutableIdentical": true,
+    "ExecutableSha256": "24785C8FF7DB640DE6F5461FCDF934116CAF4B098AC3B08907066A6BE03A47B4",
+    "ReferenceSha256": "24785C8FF7DB640DE6F5461FCDF934116CAF4B098AC3B08907066A6BE03A47B4",
+    "Coverage": {
+      "NativeForSelected": 0,
+      "NativeForRejected": 1,
+      "ArithmeticProofsEnabled": true,
+      "ProvenExpressions": 0,
+      "ProvenArrayAccesses": 0
+    },
+    "ReferenceCoverage": {
+      "NativeForSelected": 0,
+      "NativeForRejected": 1,
+      "ArithmeticProofsEnabled": true,
+      "ProvenExpressions": 0,
+      "ProvenArrayAccesses": 0
+    }
+  },
+  {
+    "Benchmark": "float_polynomial",
+    "Tag": "b04",
+    "OriginalSourceUnchanged": true,
+    "OrdinaryExecutableIdentical": true,
+    "ExecutableSha256": "951E4B5095440E20CE8007FC015FB13EA2E54124E23CA3775766BF98DB4DDD20",
+    "ReferenceSha256": "951E4B5095440E20CE8007FC015FB13EA2E54124E23CA3775766BF98DB4DDD20",
+    "Coverage": {
+      "NativeForSelected": 0,
+      "NativeForRejected": 1,
+      "ArithmeticProofsEnabled": true,
+      "ProvenExpressions": 0,
+      "ProvenArrayAccesses": 0
+    },
+    "ReferenceCoverage": {
+      "NativeForSelected": 0,
+      "NativeForRejected": 1,
+      "ArithmeticProofsEnabled": true,
+      "ProvenExpressions": 0,
+      "ProvenArrayAccesses": 0
+    }
+  },
+  {
+    "Benchmark": "float_transcendentals",
+    "Tag": "b05",
+    "OriginalSourceUnchanged": true,
+    "OrdinaryExecutableIdentical": true,
+    "ExecutableSha256": "2A25D51F0CA6D915A2D62DAE92D07BAF740F2EBBB9469F34AE97F0A03658C5EF",
+    "ReferenceSha256": "2A25D51F0CA6D915A2D62DAE92D07BAF740F2EBBB9469F34AE97F0A03658C5EF",
+    "Coverage": {
+      "NativeForSelected": 0,
+      "NativeForRejected": 2,
+      "ArithmeticProofsEnabled": false,
+      "ProvenExpressions": 0,
+      "ProvenArrayAccesses": 0
+    },
+    "ReferenceCoverage": {
+      "NativeForSelected": 0,
+      "NativeForRejected": 2,
+      "ArithmeticProofsEnabled": false,
+      "ProvenExpressions": 0,
+      "ProvenArrayAccesses": 0
+    }
+  },
+  {
+    "Benchmark": "eight_queens",
+    "Tag": "b06",
+    "OriginalSourceUnchanged": true,
+    "OrdinaryExecutableIdentical": true,
+    "ExecutableSha256": "8A351D5F7656A9229B6FF4592C1F54FBFBA75691A3B90B9FC0CA66C840E14EAD",
+    "ReferenceSha256": "8A351D5F7656A9229B6FF4592C1F54FBFBA75691A3B90B9FC0CA66C840E14EAD",
+    "Coverage": {
+      "NativeForSelected": 4,
+      "NativeForRejected": 2,
+      "ArithmeticProofsEnabled": true,
+      "ProvenExpressions": 7,
+      "ProvenArrayAccesses": 23
+    },
+    "ReferenceCoverage": {
+      "NativeForSelected": 4,
+      "NativeForRejected": 2,
+      "ArithmeticProofsEnabled": true,
+      "ProvenExpressions": 7,
+      "ProvenArrayAccesses": 23
+    }
+  },
+  {
+    "Benchmark": "route_planner",
+    "Tag": "b07",
+    "OriginalSourceUnchanged": true,
+    "OrdinaryExecutableIdentical": true,
+    "ExecutableSha256": "CF82744C92DBBD0ABA02E07E1C3635727BF0BFF4776FB86EA07486C1637259B7",
+    "ReferenceSha256": "CF82744C92DBBD0ABA02E07E1C3635727BF0BFF4776FB86EA07486C1637259B7",
+    "Coverage": {
+      "NativeForSelected": 5,
+      "NativeForRejected": 5,
+      "ArithmeticProofsEnabled": true,
+      "ProvenExpressions": 6,
+      "ProvenArrayAccesses": 18
+    },
+    "ReferenceCoverage": {
+      "NativeForSelected": 5,
+      "NativeForRejected": 5,
+      "ArithmeticProofsEnabled": true,
+      "ProvenExpressions": 6,
+      "ProvenArrayAccesses": 18
+    }
+  },
+  {
+    "Benchmark": "concordance",
+    "Tag": "b08",
+    "OriginalSourceUnchanged": true,
+    "OrdinaryExecutableIdentical": true,
+    "ExecutableSha256": "1DF4EEC6C31AA926675FE7AEB84D9399D04A7951DE2A5BD6CB12BC999F266991",
+    "ReferenceSha256": "1DF4EEC6C31AA926675FE7AEB84D9399D04A7951DE2A5BD6CB12BC999F266991",
+    "Coverage": {
+      "NativeForSelected": 0,
+      "NativeForRejected": 5,
+      "ArithmeticProofsEnabled": true,
+      "ProvenExpressions": 3,
+      "ProvenArrayAccesses": 0
+    },
+    "ReferenceCoverage": {
+      "NativeForSelected": 0,
+      "NativeForRejected": 5,
+      "ArithmeticProofsEnabled": true,
+      "ProvenExpressions": 3,
+      "ProvenArrayAccesses": 0
+    }
+  }
+]

@@ -1,0 +1,17 @@
+sequence,benchmark,compiler,trial,passes,expected,checksum,ticks,seconds,hostJobSeconds,stdout,status
+r013,eight_queens,SB,0,1,4962,4962,51,1.02,1.0396442413330078,"eight_queens:4962
+",passed
+r014,eight_queens,Turbo FAST,0,1,4962,4962,127,2.54,2.5393545627593994,"eight_queens:4962
+",passed
+r031,eight_queens,Turbo FAST,1,1,4962,4962,128,2.56,2.5588748455047607,"eight_queens:4962
+",passed
+r032,eight_queens,SB,1,1,4962,4962,50,1.0,1.0006539821624756,"eight_queens:4962
+",passed
+r049,eight_queens,SB,2,1,4962,4962,51,1.02,1.0201225280761719,"eight_queens:4962
+",passed
+r050,eight_queens,Turbo FAST,2,1,4962,4962,127,2.54,2.557164192199707,"eight_queens:4962
+",passed
+r067,eight_queens,Turbo FAST,3,1,4962,4962,128,2.56,2.5595571994781494,"eight_queens:4962
+",passed
+r068,eight_queens,SB,3,1,4962,4962,50,1.0,1.0192639827728271,"eight_queens:4962
+",passed

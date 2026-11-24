@@ -187,7 +187,13 @@ let private restrict symbol low high state =
 let private comparison symbol op value state =
     match op with
     | Equal -> restrict symbol value value state
-    | NotEqual -> if get state symbol=singleton value then None else Some state
+    | NotEqual ->
+        // Only an excluded endpoint can narrow an interval.
+        let old=get state symbol
+        if old=singleton value then None
+        elif old.Lower=value then restrict symbol (value+1L) old.Upper state
+        elif old.Upper=value then restrict symbol old.Lower (value-1L) state
+        else Some state
     | LessThan -> restrict symbol word.Lower (value-1L) state
     | LessThanOrEqual -> restrict symbol word.Lower value state
     | GreaterThan -> restrict symbol (value+1L) word.Upper state
@@ -343,8 +349,12 @@ let private solve options context graph globalEntry =
             | Array _,Some dims when local && not(dimmed.Contains s) && not dims.IsEmpty && List.forall(fun n -> n>=0 && n<=32767) dims -> Some(s,dims)
             | _ -> None) |> Map.ofSeq
     let addFacts initial facts = Map.fold(fun state symbol shape -> Map.add symbol shape state) initial facts
-    let initial={unknownFlow with Bounds=addFacts initialBounds globalEntry.Bounds;ExactBounds=addFacts initialBounds globalEntry.ExactBounds}
-    incoming[graph.Entry]<-Some initial
+    // An unreachable entry (None) leaves every node unreachable: its call sites
+    // then contribute nothing to the call-entry equations.
+    // Entry ranges are only ever value-parameter facts imported from call sites.
+    let initial=globalEntry |> Option.map(fun (globalEntry:FlowState) ->
+        {unknownFlow with Ranges=globalEntry.Ranges;Bounds=addFacts initialBounds globalEntry.Bounds;ExactBounds=addFacts initialBounds globalEntry.ExactBounds})
+    incoming[graph.Entry]<-initial
     let edges=graph.Edges |> List.groupBy _.Source |> Map.ofList
     let predecessors=graph.Edges |> List.groupBy _.Target |> Map.ofList
     let limits=if options.UseWideningThresholds then thresholds context graph else [word.Lower;word.Upper]
@@ -385,7 +395,7 @@ let private solve options context graph globalEntry =
     let equation id =
         predecessors.TryFind id |> Option.defaultValue [] |> List.fold(fun result edge ->
             let candidate=incoming[edge.Source] |> Option.map(transfer context graph.Scope graph.Nodes[edge.Source]) |> Option.bind(edgeState context graph.Scope edge)
-            joinFlows result candidate) (if id=graph.Entry then Some initial else None)
+            joinFlows result candidate) (if id=graph.Entry then initial else None)
     let mutable certified=graph.Nodes |> Map.forall(fun id _ -> covers incoming[id] (equation id))
     let mutable passes=0
     let mutable changed=true
@@ -458,9 +468,15 @@ let private controlBarriers (context:RangeContext) (graphs:(Scope*Graph) list) =
 let private scopeTrusted barriers (data:ScopeAnalysis) =
     List.isEmpty barriers && data.Certified && not data.Graph.HasUncertainControl && data.ForMetadataTrusted
 
-// Incoming shapes are MUST facts from every statically known call site. No
-// scalar values, parameters, caller LOCALs or FOR captures cross the boundary.
-// Starting with no facts avoids bootstrapping assumptions around recursion.
+// Incoming shapes are MUST facts from every statically known call site. Integer
+// value parameters also receive the interval of their argument; no other scalar
+// values, caller LOCALs or FOR captures cross the boundary.
+// This is a least fixed point: a routine with static call sites starts
+// unreachable and gains states only from reachable sites, so entry states only
+// ever grow. A recursive site therefore contributes exactly what holds on the
+// paths back to it from an entry, rather than blocking every imported fact.
+// Main, uncalled routines and routines whose callers all stay unreachable use
+// the unknown entry. The final solution must satisfy every call-entry equation.
 let private solveCallEntries options context barriers (graphs:(Scope*Graph) list) =
     let globalArrays =
         context.Effects.Program.Globals
@@ -470,63 +486,105 @@ let private solveCallEntries options context barriers (graphs:(Scope*Graph) list
             | Array _,[(symbol,_)] when symbol=storage.Symbol -> Some symbol
             | _ -> None)
         |> Set.ofList
-    let emptyEntries=graphs |> List.map(fun (scope,_) -> scope,unknownFlow) |> Map.ofList
-    let original=graphs |> List.map(fun (scope,graph) -> scope,solve options context graph unknownFlow) |> Map.ofList
-    let infer (scopes:Map<Scope,ScopeAnalysis>) =
+    let original=graphs |> List.map(fun (scope,graph) -> scope,solve options context graph (Some unknownFlow)) |> Map.ofList
+    let callees (node:Node) = seq {
+        match node.Kind with Statement(ProcCall(s,_,_,_)) -> yield s | _ -> ()
+        for expr in nodeExpressions node.Kind |> Seq.collect HirEffects.expressions do
+            match expr with CallFunc(s,_,_,_) -> yield s | _ -> () }
+    let called=graphs |> Seq.collect(fun (_,graph) -> graph.Nodes |> Seq.collect(fun p -> callees p.Value)) |> Seq.map RoutineScope |> Set.ofSeq
+    let routines=context.Effects.Program.Routines |> List.map(fun r -> r.Symbol,r) |> Map.ofList
+    // An integer formal bound to an integer value argument starts with that
+    // argument's range. References (bare variables) may alias the actual and
+    // pass nothing; missing or extra arguments pass nothing either.
+    let parameterRanges callee args state =
+        match routines.TryFind callee with
+        | None -> Map.empty
+        | Some routine ->
+            Seq.zip routine.Parameters args |> Seq.choose(fun (formal,arg) ->
+                match arg with
+                | ValueArg expr when formal.Binding<>ReferenceBinding && context.Integers.Contains formal.Storage.Symbol ->
+                    evaluate context state expr |> fst |> Option.filter(fun range -> range<>word) |> Option.map(fun range -> formal.Storage.Symbol,range)
+                | _ -> None) |> Map.ofSeq
+    let calls (node:Node) = seq {
+        match node.Kind with Statement(ProcCall(s,_,args,_)) -> yield s,args | _ -> ()
+        for expr in nodeExpressions node.Kind |> Seq.collect HirEffects.expressions do
+            match expr with CallFunc(s,args,_,_) -> yield s,args | _ -> () }
+    let infer (forced:Set<Scope>) (scopes:Map<Scope,ScopeAnalysis>) =
         let inputs=Dictionary<Scope,FlowState option>()
         for scope,_ in graphs do inputs[scope]<-None
         for scope,graph in graphs do
             let data=scopes[scope]
             for KeyValue(id,node) in graph.Nodes do
-                match data.EntryBounds[id],data.EntryExactBounds[id] with
+                match data.EntryBounds[id],data.EntryExactBounds[id],data.EntryRanges[id] with
                 | _ when not(scopeTrusted barriers data) ->
                     // An untrusted caller contributes UNKNOWN, never an omitted
                     // call site or facts derived from incomplete continuations.
-                    let callees=seq {
-                        match node.Kind with Statement(ProcCall(s,_,_,_)) -> yield s | _ -> ()
-                        for expr in nodeExpressions node.Kind |> Seq.collect HirEffects.expressions do
-                            match expr with CallFunc(s,_,_,_) -> yield s | _ -> () }
-                    for callee in callees do
+                    for callee in callees node do
                         let target=RoutineScope callee
                         if inputs.ContainsKey target then inputs[target]<-Some unknownFlow
-                | Some bounds,Some exact ->
+                | Some bounds,Some exact,Some ranges ->
                     // Arguments and sibling calls may change descriptors before
                     // entry. For expression calls this also includes the callee's
                     // MAY effects, deliberately withholding some safe facts.
+                    let evaluation=nodeEvaluation context.Effects scope node.Kind
                     let before={unknownFlow with Bounds=bounds;ExactBounds=exact}
-                    let evaluated=killMetadata context scope (nodeEvaluation context.Effects scope node.Kind) before
+                    let evaluated=killMetadata context scope evaluation before
                     let passed={unknownFlow with Bounds=evaluated.Bounds |> Map.filter(fun s _ -> globalArrays.Contains s)
                                                  ExactBounds=evaluated.ExactBounds |> Map.filter(fun s _ -> globalArrays.Contains s)}
-                    let callees=seq {
-                        match node.Kind with Statement(ProcCall(s,_,_,_)) -> yield s | _ -> ()
-                        for expr in nodeExpressions node.Kind |> Seq.collect HirEffects.expressions do
-                            match expr with CallFunc(s,_,_,_) -> yield s | _ -> () } |> Seq.distinct
-                    for callee in callees do
+                    // Argument values use the node's entry state only when no
+                    // evaluation in the node can write storage first.
+                    let valuesKnown=not evaluation.WritesUnknown && evaluation.Writes.IsEmpty
+                    for callee,args in calls node do
                         let target=RoutineScope callee
-                        if inputs.ContainsKey target then inputs[target]<-joinFlows inputs[target] (Some passed)
+                        if inputs.ContainsKey target then
+                            let incoming={passed with Ranges=if valuesKnown then parameterRanges callee args ranges else Map.empty}
+                            inputs[target]<-joinFlows inputs[target] (Some incoming)
                 | _ -> () // Unreachable sites contribute no entry states.
-        emptyEntries |> Map.map(fun scope _ -> inputs[scope] |> Option.defaultValue unknownFlow)
-    if globalArrays.IsEmpty || graphs.Length=1 || not barriers.IsEmpty then original,0,true
+        graphs |> List.map(fun (scope,_) -> scope,if forced.Contains scope then Some unknownFlow else inputs[scope]) |> Map.ofList
+    let hasParameters=routines |> Map.exists(fun _ routine -> not routine.Parameters.IsEmpty)
+    if (globalArrays.IsEmpty && not hasParameters) || graphs.Length=1 || not barriers.IsEmpty then original,0,true
     else
-        let mutable entries=emptyEntries
-        let mutable scopes=original
+        let unknown=Some unknownFlow
+        let limits=graphs |> List.map(fun (scope,graph) -> scope,(if options.UseWideningThresholds then thresholds context graph else [word.Lower;word.Upper])) |> Map.ofList
+        let mutable forced=graphs |> List.map fst |> List.filter(fun scope -> scope=MainScope || not(called.Contains scope)) |> Set.ofList
+        let mutable entries=graphs |> List.map(fun (scope,_) -> scope,if forced.Contains scope then unknown else None) |> Map.ofList
+        let mutable scopes=graphs |> List.map(fun (scope,graph) -> scope,if entries[scope]=unknown then original[scope] else solve options context graph entries[scope]) |> Map.ofList
+        let mutable changes=graphs |> List.map(fun (scope,_) -> scope,0) |> Map.ofList
         let mutable passes=0
         let mutable stable=false
-        let mutable certified=true
+        let mutable certified=scopes |> Map.forall(fun scope data -> entries[scope]=unknown || data.Certified)
         // Bound compile time for unusually deep call graphs. Failure to reach
         // a certified fixed point discards all imported facts, not any checks.
-        let limit=min 64 graphs.Length
+        // Widening needs a few extra passes for each recursive parameter.
+        let limit=min 64 (2*graphs.Length+6)
         while not stable && certified && passes<limit do
             passes<-passes+1
-            let next=infer scopes
-            certified<-Map.forall(fun scope facts -> covers (Some entries[scope]) (Some facts)) next
-            if next=entries then stable<-true
-            elif certified then
+            let inferred=infer forced scopes
+            let next =
+                if inferred |> Map.forall(fun scope facts -> covers entries[scope] facts) then
+                    // Callers that stay unreachable cannot certify an entry:
+                    // analyze those routines from the unknown entry instead.
+                    let dead=entries |> Map.filter(fun _ facts -> facts.IsNone) |> Map.keys |> Set.ofSeq
+                    if dead.IsEmpty then stable<-true
+                    forced<-Set.union forced dead
+                    entries |> Map.map(fun scope facts -> if dead.Contains scope then unknown else facts)
+                else
+                    // Entries only grow: join the new call-site states into them.
+                    // Recursion can grow a parameter one step per pass, so a
+                    // repeatedly changing entry widens to the callee's thresholds.
+                    entries |> Map.map(fun scope previous ->
+                        let joined=joinFlows previous inferred[scope]
+                        if changes[scope]>=2 then widen limits[scope] previous joined else joined)
+            if not stable then
                 for scope,graph in graphs do
-                    if next[scope]<>entries[scope] then scopes<-scopes.Add(scope,solve options context graph next[scope])
+                    if next[scope]<>entries[scope] then
+                        scopes<-scopes.Add(scope,solve options context graph next[scope])
+                        changes<-changes.Add(scope,changes[scope]+1)
                 entries<-next
-                certified<-scopes |> Map.forall(fun scope data -> entries[scope]=unknownFlow || data.Certified)
-        if stable && certified && infer scopes=entries then scopes,passes,true
+                certified<-scopes |> Map.forall(fun scope data -> entries[scope]=unknown || data.Certified)
+        // A post-fixpoint: every call site's state is covered by its entry.
+        let finalEntries=entries
+        if stable && certified && (infer forced scopes |> Map.forall(fun scope facts -> covers finalEntries[scope] facts)) then scopes,passes,true
         else original,passes,false
 
 let private arithmetic = function Unary(Negate,_,_,_) | Binary((Add|Subtract|Multiply),_,_,_,_) -> true | _ -> false
@@ -570,8 +628,10 @@ let private nativeForCertificates (context:RangeContext) barriers (scopes:Map<Sc
                 if not independent then yield "body storage may alias the counter"
                 if effects.Aliases.Escaped.Contains counter then yield "counter reference escapes to an opaque callee"
                 if writes.ReadsUnknown || writes.WritesUnknown then yield "body has unresolved storage effects"
+                // Resident ABS is nonmutating. Its binding effects are already in
+                // `writes`; the machine planner rejects any ROM call left in the body.
                 if statements body |> Seq.collect statementExpressions |> Seq.collect expressions |> Seq.exists(function
-                    | CallFunc(symbol,args,_,_) -> not(inlineCall effects.Program symbol args)
+                    | CallFunc(symbol,args,_,_) -> not(inlineCall effects.Program symbol args || residentAbsCall effects.Program symbol args)
                     | _ -> false) then yield "body evaluates a function or procedure call"
                 if writes.Writes.Contains counter then yield "body writes the counter"
                 if writes.LoopMetadataWritesUnknown || not writes.LoopMetadataWrites.IsEmpty then yield "body may replace FOR metadata"]

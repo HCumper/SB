@@ -160,7 +160,10 @@ same conservative resolution rules.
 
 Alias queries are scope-aware. Same-named storage is conservative because Turbo
 uses dynamically rebound vectors. A parameter may alias another parameter or
-visible storage. Independent global variables are not made aliases merely
+visible storage, unless every static call site passes it a scalar value: such a
+formal is bound to a private temporary and aliases nothing. A bare variable or
+array argument, a missing argument, a reference formal, or a routine with no
+call site at all keeps the conservative rule. Independent global variables are not made aliases merely
 because one parameter could point to either: MAY alias is not transitively
 closed. Array elements share their owner region. Address-taken roots and
 references escaping through known forwarding calls to unknown callees are
@@ -182,7 +185,11 @@ they do not represent arbitrary writes to loop metadata.
 
 Known procedures and functions can inherit guaranteed bounds and exact shapes
 from their call sites. Only uniquely named global arrays qualify: any declared
-formal or LOCAL with the same name prevents propagation for that array. Scalar
+formal or LOCAL with the same name prevents propagation for that array. An
+integer formal bound to an integer value argument also starts with that
+argument's interval, joined over every call site. A bare-variable argument may
+alias the actual and passes nothing, as do missing arguments, reference
+formals and any call whose argument evaluation can write storage. Other scalar
 values, formal/LOCAL array shapes and captured FOR metadata are not imported.
 All statically known reachable call sites contribute, including calls in other
 routine bodies. Uncalled routine bodies are also considered conservatively.
@@ -195,10 +202,23 @@ sibling expression effects are applied before passing facts. For calls inside
 expressions this conservatively includes the callee's own MAY effects, so a
 mutating function may receive fewer facts than a standalone procedure.
 
-The outer solver starts every routine with no imported facts and reanalyzes
-only scopes whose entry facts change. Recursive calls cannot bootstrap assumed
-shapes. Each scope still requires its normal range/CFG certification, and the
-outer solution must satisfy all call-entry equations. An untrusted caller
+The outer solver computes a least fixed point. Main and routines with no static
+call site start from the unknown entry; every other routine starts unreachable
+and gains entry states only from reachable call sites, so entries only grow.
+A recursive call therefore contributes exactly the shapes that hold on the paths
+from an entry back to that call: the shape is an inductive invariant of every
+activation, never an assumption used to prove itself. A DIM or other descriptor
+change on the recursive path joins its smaller or different shape into the
+entry. Routines whose callers all stay unreachable, such as a mutually
+recursive pair never called from main, are then analyzed from the unknown entry.
+Only scopes whose entry facts change are reanalyzed. Each pass joins the new
+call-site states into the entries. A recursive parameter can grow one step per
+pass (`walk (d%+1)`), so an entry that has changed twice widens to the callee's
+literal thresholds, as loop heads do. A guard such as `IF d%=9 THEN RETurn`
+then excludes the endpoint: `<>` narrows an interval whose bound it equals.
+Each scope still requires its normal range/CFG certification, and the outer
+solution must be a post-fixpoint: every call site's state is covered by its
+callee's entry. An untrusted caller
 contributes unknown shapes at every static call site, including sites whose
 reachability it cannot certify. It is never silently omitted from a callee's
 MUST facts. Independent trusted callers/callees can still propagate shapes.
@@ -223,6 +243,9 @@ remain conservative; formal values may still supply the captured loop bounds.
 Only simple range FOR statements qualify, with no imported counter values or
 register state across calls. Nested IF arms are included in the effect proof;
 calls, counter/alias writes and other unsupported statements still reject it.
+Inline intrinsics and the nonmutating resident ABS are not rejected as calls:
+their argument effects are part of the proof, and the machine planner refuses
+any body in which an ABS ROM call remains rather than the native integer form.
 The downstream typed native CFG independently validates branch targets, join
 stacks and supported integer/boolean operations.
 The source CFG records each range FOR's initializer, check, advance and members.

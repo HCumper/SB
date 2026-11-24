@@ -209,7 +209,7 @@ let plan maxFrameBytes counter (references:Dictionary<int,int>) (items:IrItem li
                     | Instruction((106|109|263),_,_) -> stack<-IntegerWord::stack
                     | Instruction(268,_,_) -> popWord();stack<-IntegerWord::IntegerWord::stack
                     | Instruction((5|6|7|8|20|1005|1006|1007),_,_) -> popWord();popWord();stack<-IntegerWord::stack
-                    | Instruction((1|1001|1711|1811),_,_) -> popWord();stack<-IntegerWord::stack
+                    | Instruction((1|1001|1334|1711|1811),_,_) -> popWord();stack<-IntegerWord::stack
                     | Instruction(118,_,_) -> popWord()
                     | Instruction((1712|1812),_,_) -> popWord();popWord()
                     | Instruction(1911,_,_) -> popWord();popWord();stack<-IntegerWord::stack

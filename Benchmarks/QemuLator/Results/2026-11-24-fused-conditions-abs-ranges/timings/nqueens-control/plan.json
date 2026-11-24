@@ -1,0 +1,53 @@
+{
+  "formatVersion": 2,
+  "timingMethod": "external-qdos-job",
+  "trials": 3,
+  "warmups": 1,
+  "timerHz": 50,
+  "timingSpeed": "GoldCard",
+  "expectedResults": 8,
+  "benchmarks": [
+    {
+      "name": "eight_queens",
+      "file": "eight_queens.bas",
+      "passes": 1,
+      "expectedChecksum": 4962,
+      "category": "application",
+      "description": "Enumerate and validate every eight-queens solution",
+      "sourceLines": 72,
+      "reference": {
+        "solutions": 92,
+        "firstColumnHistogram": {
+          "1": 4,
+          "2": 8,
+          "3": 16,
+          "4": 18,
+          "5": 18,
+          "6": 16,
+          "7": 8,
+          "8": 4
+        },
+        "perPass": 4962
+      },
+      "tag": "b06",
+      "sourceFile": "C:\\Source\\SB\\Benchmarks\\QemuLator\\Programs\\eight_queens.bas",
+      "sourceSha256": "75F2FD3DBE01B807E7364A92F8498B55AE554E0EE53130990ECEFC036AB8D29D",
+      "compilerDirectives": [
+        "TURBO_objfil \"mdv1_b06t\"",
+        "TURBO_repfil \"mdv1_b06_report\"",
+        "TURBO_optim 2",
+        "TURBO_model \">\"",
+        "TURBO_diags 0",
+        "TURBO_windo 0",
+        "TURBO_objdat 20",
+        "TURBO_objstk 350",
+        "TURBO_buffersz 64",
+        "TURBO_list 0",
+        "TURBO_struct 1"
+      ]
+    }
+  ],
+  "scope": "Whole job: executable loading, runtime startup, initialization, computation, internal checks, checksum PRINT and shutdown; runner file opening/closing and reporting are outside the timer.",
+  "outputChannel": 1,
+  "inheritedChannels": 31
+}

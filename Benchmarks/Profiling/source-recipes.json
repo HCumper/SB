@@ -2,7 +2,7 @@
   {
     "Source": "SB/TurboCodegen.fs",
     "Output": "ProfileCodegen.fs",
-    "SourceSha256": "9A4FE96A34019650D8DD09407DA827D7A669FB0E34A762DE91E3A55132E00894",
+    "SourceSha256": "9E1D35FA222F5B999BB5E585A13A4AE652A9D0ACA4B1F4E065192FA95E513F18",
     "Edits": [
       {
         "Start": 0,
@@ -17,76 +17,82 @@
         "New": "    Segments:(int * int * string * int) array\n    Labels:Map<int,int>\n    ArrayHelpers:Map<int,int>\n"
       },
       {
-        "Start": 4238,
-        "End": 4338,
+        "Start": 4296,
+        "End": 4396,
         "Old": "        use stream = typeof<TurboCodegenOutput>.Assembly.GetManifestResourceStream(libraryResource)\n",
         "New": "        use stream = typeof<TurboCodegen.TurboCodegenOutput>.Assembly.GetManifestResourceStream(libraryResource)\n"
       },
       {
-        "Start": 6440,
-        "End": 6440,
+        "Start": 6710,
+        "End": 6710,
         "Old": "",
         "New": "    let segments=ResizeArray<int * int * string * int>()\n    let mutable traceKind=\"runtime-entry\"\n    let mutable traceOrigin=0\n"
       },
       {
-        "Start": 9243,
-        "End": 9297,
+        "Start": 9768,
+        "End": 9822,
         "Old": "    let write (bytes: byte[]) = output.AddRange bytes\n",
         "New": "    let write (bytes: byte[]) =\n        let first=output.Count\n        output.AddRange bytes\n        if bytes.Length>0 then segments.Add(first,output.Count,traceKind,traceOrigin)\n"
       },
       {
-        "Start": 21680,
-        "End": 21680,
+        "Start": 22205,
+        "End": 22205,
         "Old": "",
         "New": "        let previous=traceKind\n        traceKind<-sprintf \"shared-P:%d\" (word lib record)\n"
       },
       {
-        "Start": 21739,
-        "End": 21739,
+        "Start": 22264,
+        "End": 22264,
         "Old": "",
         "New": "        traceKind<-\"thread-dispatch\"\n"
       },
       {
-        "Start": 21765,
-        "End": 21765,
+        "Start": 22290,
+        "End": 22290,
         "Old": "",
         "New": "        traceKind<-previous\n"
       },
       {
-        "Start": 38847,
-        "End": 38847,
+        "Start": 40740,
+        "End": 40740,
         "Old": "",
         "New": "        let previous=traceKind\n        traceKind<-\"compact-array-helper\"\n"
       },
       {
-        "Start": 38871,
-        "End": 38871,
+        "Start": 40764,
+        "End": 40764,
         "Old": "",
         "New": "        traceKind<-previous\n"
       },
       {
-        "Start": 47329,
-        "End": 47329,
+        "Start": 51848,
+        "End": 51848,
         "Old": "",
         "New": "            traceOrigin<-ic\n            traceKind<-if pMode then \"threaded-data\" else sprintf \"native-template:%d\" (word ir ic)\n"
       },
       {
-        "Start": 47729,
-        "End": 47729,
+        "Start": 51926,
+        "End": 52031,
+        "Old": "            | _ when not pMode && nativeConditions.ContainsKey ic -> this.Condition nativeConditions[ic]\n",
+        "New": "            | _ when not pMode && nativeConditions.ContainsKey ic ->\n                traceOrigin<-ic\n                traceKind<-\"native-condition\"\n                this.Condition nativeConditions[ic]\n"
+      },
+      {
+        "Start": 52353,
+        "End": 52353,
         "Old": "",
         "New": "                traceKind<-\"native-loop\"\n"
       },
       {
-        "Start": 47949,
-        "End": 47949,
+        "Start": 52573,
+        "End": 52573,
         "Old": "",
         "New": "                traceKind<-\"native-block\"\n"
       },
       {
-        "Start": 50109,
-        "End": 50160,
-        "Old": "                  NativeLoops = nativeLoopReport }\n",
-        "New": "                  NativeLoops = nativeLoopReport\n                  Segments=segments.ToArray()\n                  Labels=symbols |> Seq.map(fun p -> p.Key,p.Value) |> Map.ofSeq\n                  ArrayHelpers=nativeArrayAddresses }\n"
+        "Start": 54822,
+        "End": 54883,
+        "Old": "                  NativeConditions = nativeConditionReport }\n",
+        "New": "                  NativeConditions = nativeConditionReport\n                  Segments=segments.ToArray()\n                  Labels=symbols |> Seq.map(fun p -> p.Key,p.Value) |> Map.ofSeq\n                  ArrayHelpers=nativeArrayAddresses }\n"
       }
     ]
   },

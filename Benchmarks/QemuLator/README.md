@@ -1,5 +1,7 @@
 # Turbo FAST versus SB in Q-emuLator
 
+[Fused conditions, native integer ABS and recursive parameter ranges: N-queens at GoldCard speed, profiles and full verification, 24 November 2026](Results/2026-11-24-fused-conditions-abs-ranges/README.md)
+
 [Memory-based native recursive calls: N-queens at GoldCard speed and full verification, 23 November 2026](Results/2026-11-23-native-recursion/README.md)
 
 [Native control flow for string and floating-point loop bodies: timings, instruction reductions and full verification, 23 November 2026](Results/2026-11-23-native-template-loops/README.md)
@@ -150,7 +152,7 @@ each original program with the same compile-time metadata, requires an identical
 complete executable, and compares native FOR and arithmetic/array proof coverage.
 The ordinary arithmetic build selects one native FOR loop; sieve selects three,
 matrix multiplication selects three, route planner selects five and eight queens
-selects three. The other four currently select none.
+selects four. The other four currently select none.
 Compiler checks and threaded fallbacks remain where required. Turbo FAST can
 omit overflow checks; supplied successful
 workloads keep integer arithmetic within signed 16-bit limits.

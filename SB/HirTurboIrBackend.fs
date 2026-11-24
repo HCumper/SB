@@ -177,6 +177,8 @@ let rangeProvenIntegerComment = "range-proven integer arithmetic"
 let rangeProvenArrayComment = "range-proven array access"
 let rankOneIntegerArrayComment = "rank-one integer array access"
 let provenRankOneIntegerArrayComment = "range-proven rank-one integer array access"
+/// Listing comment of the native-only 1334 record (int-to-float, ROM ABS, float-to-int).
+let nativeIntegerAbsComment = "native integer ABS"
 
 let rankTwoIntegerArrayComment facts =
     let checks=(if facts.ProvenRows then 0 else 1) ||| (if facts.ProvenColumns then 0 else 2)
@@ -382,6 +384,7 @@ let private operandShapes =
     let shapes = Dictionary<int, OperandShape>()
     let none =
         [ 1001; 1005; 1006; 1007 // Explicit checked forms, including in native mode (SB extension).
+          1334 // Native checked integer ABS of a word: replaces int-to-float, ROM ABS, float-to-int (SB extension).
           1; 2; 3; 4; 5; 6; 7; 8; 9; 10; 11; 12; 13; 14; 15; 16; 17; 18; 20
           33; 34; 36; 37; 38; 39; 40; 41; 42; 43; 44; 45; 46; 47; 51; 53; 54; 55
           73; 74; 75; 76; 77; 78; 79; 84; 90
@@ -637,6 +640,8 @@ let validate (bytes: byte[]) : string list =
                     problems.Add $"Data opcode {opcode} is in threaded code (record {index})."
                 if not native && rangeProvenNativeOnly.Contains opcode then
                     problems.Add $"Range-proven array opcode {opcode} requires native mode (record {index})."
+                if not native && opcode = 1334 then
+                    problems.Add $"Native integer ABS requires native mode (record {index})."
                 let operandArray = List.toArray operands
                 match opcode,operands with
                 | (1911|1912),[_;Word mask;Word columns] when mask>3 || columns>32768 ->

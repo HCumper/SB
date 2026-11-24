@@ -556,6 +556,28 @@ let ``independent globals do not alias through a shared possible parameter`` () 
     Assert.That(mayAlias a.Effects.Aliases (RoutineScope proc) x y, Is.False)
 
 [<Test>]
+let ``a formal passed only scalar values is private, one reference site makes it alias`` () =
+    let proc,p=SymbolId 100,SymbolId 101
+    let setter=routine proc "SETTER" [parameter "SETTER" p "P%"] [assign y (number 2)]
+    let byValue={program [ProcCall(proc,None,[ValueArg(number 1)],pos);ProcCall(proc,None,[ValueArg(binary Add (read x) (number 1))],pos)] with Routines=[setter]} |> analyze
+    Assert.That(mayAlias byValue.Effects.Aliases (RoutineScope proc) p x, Is.False)
+    Assert.That(mayAlias byValue.Effects.Aliases (RoutineScope proc) p y, Is.False)
+    let mixed={program [ProcCall(proc,None,[ValueArg(number 1)],pos);ProcCall(proc,None,[RefArg(target x)],pos)] with Routines=[setter]} |> analyze
+    Assert.That(mayAlias mixed.Effects.Aliases (RoutineScope proc) p x, Is.True)
+    let missing={program [ProcCall(proc,None,[],pos)] with Routines=[setter]} |> analyze
+    Assert.That(mayAlias missing.Effects.Aliases (RoutineScope proc) p x, Is.True)
+
+[<Test>]
+let ``a private formal keeps its entry range across writes to globals`` () =
+    // Without privacy, the global write would be treated as a possible write
+    // through the formal and discard its imported range.
+    let proc,p=SymbolId 100,SymbolId 101
+    let sum=binary Add (read p) (number 32000)
+    let worker=routine proc "WORK" [parameter "WORK" p "P%"] [assign y (number 5);assign z sum]
+    let facts={program [ProcCall(proc,None,[ValueArg(number 3)],pos)] with Routines=[worker]} |> analyze
+    proven sum facts
+
+[<Test>]
 let ``writing one possible reference alias invalidates another parameter`` () =
     let proc,p,q=SymbolId 100,SymbolId 101,SymbolId 102
     let expr=binary Add (read p) (number 1)
@@ -936,14 +958,57 @@ let ``call-entry shapes are discarded after an aliased formal can resize the glo
     Assert.That(facts.TwoDimensionalIntegerAccesses, Is.Empty)
 
 [<Test>]
-let ``call-entry shapes cannot bootstrap a recursive entry assumption`` () =
+let ``call-entry shapes follow recursion from the only real caller`` () =
+    // Every entry is the main call or a recursive call made while the shape
+    // still holds, so the shape is an inductive invariant of the entry.
     let proc=SymbolId 110
     let indexes=[number 1;number 2]
     let worker=routine proc "RECURSE" [] [assign y (arrayRead indexes);If(read flag,[ProcCall(proc,None,[],pos)],None,pos)]
     let source=arrayProgram [Dim(arraySymbol,[number 3;number 7],pos);ProcCall(proc,None,[],pos)]
     let facts={source with Routines=[worker]} |> analyze
     Assert.That(facts.EntryShapesCertified, Is.True)
+    arraySafe indexes facts
+    Assert.That(facts.TwoDimensionalIntegerAccesses["A%",indexes].ExactLengths, Is.EqualTo(Some(4,8)))
+
+[<Test>]
+let ``call-entry shapes follow mutual recursion`` () =
+    let first,second=SymbolId 110,SymbolId 111
+    let indexes=[number 1;number 2]
+    let a=routine first "PING" [] [ProcCall(second,None,[],pos)]
+    let b=routine second "PONG" [] [assign y (arrayRead indexes);If(read flag,[ProcCall(first,None,[],pos)],None,pos)]
+    let source=arrayProgram [Dim(arraySymbol,[number 3;number 7],pos);ProcCall(first,None,[],pos)]
+    let facts={source with Routines=[a;b]} |> analyze
+    Assert.That(facts.EntryShapesCertified, Is.True)
+    arraySafe indexes facts
+    Assert.That(facts.TwoDimensionalIntegerAccesses["A%",indexes].ExactLengths, Is.EqualTo(Some(4,8)))
+
+[<Test>]
+let ``call-entry shapes join a smaller shape allocated before a recursive call`` () =
+    let proc=SymbolId 110
+    let indexes=[number 1;number 2]
+    let worker=routine proc "RECURSE" [] [assign y (arrayRead indexes);If(read flag,[Dim(arraySymbol,[number 0;number 0],pos);ProcCall(proc,None,[],pos)],None,pos)]
+    let source=arrayProgram [Dim(arraySymbol,[number 3;number 7],pos);ProcCall(proc,None,[],pos)]
+    let facts={source with Routines=[worker]} |> analyze
+    Assert.That(facts.EntryShapesCertified, Is.True)
+    arrayChecked indexes facts
+    let scope=facts.Scopes[RoutineScope proc]
+    Assert.That(scope.EntryBounds[scope.Graph.Entry].Value[arraySymbol], Is.EqualTo(box [0;0]))
+
+[<Test>]
+let ``call-entry shapes keep a recursion cycle without real callers conservative`` () =
+    // Neither routine is reachable from main, so neither entry can be certified
+    // from a call site: both are analyzed from the unknown entry instead.
+    let first,second=SymbolId 110,SymbolId 111
+    let indexes=[number 1;number 2]
+    let a=routine first "PING" [] [ProcCall(second,None,[],pos)]
+    let b=routine second "PONG" [] [assign y (arrayRead indexes);ProcCall(first,None,[],pos)]
+    let source=arrayProgram [Dim(arraySymbol,[number 3;number 7],pos)]
+    let facts={source with Routines=[a;b]} |> analyze
+    Assert.That(facts.EntryShapesCertified, Is.True)
+    arrayChecked indexes facts
     Assert.That(facts.TwoDimensionalIntegerAccesses, Is.Empty)
+    let scope=facts.Scopes[RoutineScope second]
+    Assert.That(scope.EntryBounds[scope.Graph.Entry] |> Option.map Map.isEmpty, Is.EqualTo(Some true))
 
 [<Test>]
 let ``call-entry shapes may join a known recursive allocation with the real caller`` () =
@@ -954,6 +1019,52 @@ let ``call-entry shapes may join a known recursive allocation with the real call
     let facts={source with Routines=[worker]} |> analyze
     arraySafe indexes facts
     Assert.That(facts.TwoDimensionalIntegerAccesses["A%",indexes].ExactLengths, Is.EqualTo(None))
+
+[<TestCase(700,true)>]
+[<TestCase(800,false)>]
+let ``value parameters receive the joined ranges of their integer arguments`` (second:int,safe:bool) =
+    let proc,p=SymbolId 120,SymbolId 121
+    let sum=binary Add (read p) (number 32000)
+    let worker=routine proc "WORK" [parameter "WORK" p "P%"] [assign y sum]
+    let source=program [ProcCall(proc,None,[ValueArg(number 3)],pos);ProcCall(proc,None,[ValueArg(number second)],pos)]
+    let facts={source with Routines=[worker]} |> analyze
+    Assert.That(facts.EntryShapesCertified, Is.True)
+    if safe then proven sum facts else unproven sum facts
+
+[<Test>]
+let ``reference and missing arguments pass no parameter range`` () =
+    let proc,p,q=SymbolId 120,SymbolId 121,SymbolId 122
+    let sum=binary Add (read p) (number 32000)
+    let other=binary Add (read q) (number 32000)
+    let worker=routine proc "WORK" [parameter "WORK" p "P%";parameter "WORK" q "Q%"] [assign y sum;assign z other]
+    let source=program [assign x (number 3);ProcCall(proc,None,[RefArg(target x)],pos)]
+    let facts={source with Routines=[worker]} |> analyze
+    unproven sum facts
+    unproven other facts
+
+[<Test>]
+let ``recursive value parameters widen to a guard and exclude its endpoint`` () =
+    // walk(d%+1) only after IF d%=32767 THEN RETurn: d%+1 cannot overflow, but
+    // proving it needs both call-entry widening and the excluded endpoint.
+    let proc,d=SymbolId 120,SymbolId 121
+    let next=binary Add (read d) (number 1)
+    let body=[If(binary Equal (read d) (number 32767),[Return(None,pos)],None,pos);ProcCall(proc,None,[ValueArg next],pos)]
+    let worker=routine proc "WALK" [parameter "WALK" d "D%"] body
+    let facts={program [ProcCall(proc,None,[ValueArg(number 1)],pos)] with Routines=[worker]} |> analyze
+    Assert.That(facts.EntryShapesCertified, Is.True)
+    proven next facts
+    let scope=facts.Scopes[RoutineScope proc]
+    Assert.That(scope.EntryRanges[scope.Graph.Entry].Value[d], Is.EqualTo({Lower=1L;Upper=32767L}))
+
+[<Test>]
+let ``a parameter written while evaluating arguments passes no range`` () =
+    let proc,p,bump=SymbolId 120,SymbolId 121,SymbolId 122
+    let sum=binary Add (read p) (number 32000)
+    let worker=routine proc "WORK" [parameter "WORK" p "P%"] [assign y sum]
+    let mutator={routine bump "BUMP%" [] [assign x (number 9);Return(Some(number 1),pos)] with ReturnType=Some HirType.Int}
+    let source=program [ProcCall(proc,None,[ValueArg(number 3);ValueArg(CallFunc(bump,[],HirType.Int,pos))],pos)]
+    let facts={source with Routines=[worker;mutator]} |> analyze
+    unproven sum facts
 
 [<Test>]
 let ``call-entry shapes fall back completely when the bounded solver cannot converge`` () =

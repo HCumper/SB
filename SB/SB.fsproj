@@ -30,6 +30,7 @@
         <Compile Include="Optimization\TurboNativeTemplateLoops.fs" />
         <Compile Include="Optimization\TurboNativeArrays.fs" />
         <Compile Include="Optimization\TurboNativeIr.fs" />
+        <Compile Include="Optimization\TurboNativeConditions.fs" />
         <Compile Include="Optimization\TurboNativeControlFlow.fs" />
         <Compile Include="Optimization\TurboNativeInvariants.fs" />
         <Compile Include="Optimization\TurboNativeLoops.fs" />

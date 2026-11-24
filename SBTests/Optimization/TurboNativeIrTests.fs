@@ -896,3 +896,99 @@ let ``value propagation respects scalar aliases and keeps both memory reads`` ()
 let ``unsupported flag-check relationships are left intact`` () =
     let ir={block [] with Instructions=[Constant(Value 0,3);OverflowCheck(None,[],None);PushMaths(Value 0)]}
     Assert.That(optimize ir, Is.EqualTo(ir))
+
+// Fused conditions keep comparisons and AND/OR as 0/1 words. A failure in a
+// later operand must still leave the P templates' maths stack: each pending
+// Boolean as Turbo's six-byte float 0 or 1, below the failing operand's prefix.
+let private conditionAllocation items =
+    allocate 128 (lowerCondition 0 (serialize items).Length items |> optimize) |> Option.defaultWith(fun () -> failwith "Unexpected condition fallback.")
+
+let private pushedFloat (cpu:Cpu) =
+    Assert.That(cpu.A[1], Is.EqualTo(0x4FFAu),"Exactly one six-byte Boolean was rebuilt.")
+    cpu.ReadWord 0x4FFAu,cpu.ReadWord 0x4FFCu,cpu.ReadWord 0x4FFEu
+
+let booleanSnapshotCases = [|
+    for truth in [false;true] do
+        for location in ["register";"slot";"immediate"] do yield TestCaseData(truth,location) |]
+
+[<TestCaseSource(nameof booleanSnapshotCases)>]
+let ``boolean failure snapshots rebuild exact QL floats from every location`` (truth:bool,location:string) =
+    let flag=if truth then 1 else 0
+    let source,prefix =
+        match location with
+        | "register" -> RecoveryRegister 0,[Immediate(0,flag)]
+        | "slot" -> RecoverySlot 0,[Immediate(0,flag);Spill(0,0);Immediate(0,0x7F7F)]
+        | _ -> RecoveryImmediate flag,[]
+    let allocated={Instructions=prefix@[Immediate(1,5);LoadElement(30,true,1,1,[RecoveryBoolean source])];SpillSlots=(if location="slot" then 1 else 0);Registers=Set.ofList[0;1]}
+    let cpu=arrayExecuteAllocation allocated 2 [] false true
+    let exponent,high,low=pushedFloat cpu
+    Assert.That((exponent,high,low), Is.EqualTo(if truth then (0x0801u,0x4000u,0u) else (0u,0u,0u)))
+
+[<TestCase(1,true)>]
+[<TestCase(3,false)>]
+let ``a later checked operand fails after an earlier comparison even when it decides the result`` (left:int,truth:bool) =
+    // (left=1) AND (a%(5)=0): QL evaluates both operands, so index 5 still fails.
+    let items=[op 106 [left];op 106 [1];op 12 [];op 106 [5];op 1711 [30];op 263 [];op 12 [];op 54 []]
+    let allocated=conditionAllocation items
+    Assert.That(allocated.Instructions |> List.exists(function LoadElement(_,true,_,_,[RecoveryBoolean _]) -> true | _ -> false), Is.True)
+    let cpu=arrayExecuteAllocation allocated 2 [] false true
+    let exponent,high,low=pushedFloat cpu
+    Assert.That((exponent,high,low), Is.EqualTo(if truth then (0x0801u,0x4000u,0u) else (0u,0u,0u)))
+
+let logicalConditionCases = [|
+    for a,b,c,d in [1,1,2,2;1,2,2,2;1,1,2,3;1,2,3,4;-5,-5,7,-7] do
+        for opcode in [53;54] do yield TestCaseData(a,b,c,d,opcode) |]
+
+[<TestCaseSource(nameof logicalConditionCases)>]
+let ``fused AND and OR conditions end with the exact zero flag`` (a:int,b:int,c:int,d:int,opcode:int) =
+    // (a=b) AND/OR (c<>d), then a final TST.W of the 0/1 word.
+    let items=[op 106 [a];op 106 [b];op 12 [];op 106 [c];op 106 [d];op 13 [];op opcode []]
+    let allocated=conditionAllocation items
+    let cpu=execute allocated Map.empty []
+    let expected=if opcode=54 then (a=b && c<>d) else (a=b || c<>d)
+    Assert.That((cpu.StatusRegister &&& 4u)=0u, Is.EqualTo(expected),"Z must be clear exactly when the condition holds.")
+    Assert.That(cpu.A[1], Is.EqualTo(0x5000u),"A fused condition must not touch the maths stack.")
+
+[<TestCase(0,false)>]
+[<TestCase(-1,true)>]
+[<TestCase(32767,true)>]
+let ``a final integer truth test compares its word with zero`` (value:int,truth:bool) =
+    let allocated=conditionAllocation [op 106 [value];op 106 [0];op 1005 [];op 320 []]
+    let cpu=execute allocated Map.empty []
+    Assert.That((cpu.StatusRegister &&& 4u)=0u, Is.EqualTo(truth))
+
+// Native integer ABS: |word| with V set only by -32768. The original
+// float-to-int pops 32768.0 before overflow, so the operand is not restored.
+[<TestCase(0)>]
+[<TestCase(1)>]
+[<TestCase(-1)>]
+[<TestCase(32767)>]
+[<TestCase(-32767)>]
+[<TestCase(-12345)>]
+let ``integer ABS returns the exact word magnitude`` (value:int) =
+    let cpu=execute (allocation [op 1334 [];op 118 [20]]) Map.empty [value]
+    Assert.That(readVector 20 cpu, Is.EqualTo(abs value))
+    Assert.That(cpu.A[1], Is.EqualTo(0x5002u))
+
+[<Test>]
+let ``integer ABS of -32768 raises overflow with only the pending words below it`` () =
+    // 5, then (-32767-1): the checked subtract succeeds and ABS fails.
+    let items=[op 106 [5];op 106 [-32767];op 106 [1];op 1006 [];op 1334 [];op 1005 [];op 118 [20]]
+    let cpu=executeTo true (allocation items) Map.empty []
+    Assert.That(cpu.A[1], Is.EqualTo(0x4FFEu))
+    Assert.That(cpu.ReadWord 0x4FFEu, Is.EqualTo(5u))
+    Assert.That(readVector 20 cpu, Is.EqualTo(20),"A failed ABS must not commit the assignment.")
+
+[<Test>]
+let ``integer ABS keeps a still live source value`` () =
+    let cpu=execute (allocation [op 106 [-9];op 268 [];op 1334 [];op 118 [20];op 118 [21]]) Map.empty []
+    Assert.That(readVector 20 cpu, Is.EqualTo(9))
+    Assert.That(readVector 21 cpu, Is.EqualTo(-9))
+
+[<Test>]
+let ``constant integer ABS folds except for -32768`` () =
+    let folded=optimize (block [op 106 [-9];op 1334 [];op 118 [20]])
+    Assert.That(folded.Instructions |> List.exists(function AbsoluteWord _ -> true | _ -> false), Is.False)
+    let kept=optimize (block [op 106 [-32768];op 1334 [];op 118 [20]])
+    Assert.That(kept.Instructions |> List.exists(function AbsoluteWord _ -> true | _ -> false), Is.True)
+    Assert.That(kept.Instructions |> List.exists(function OverflowCheck _ -> true | _ -> false), Is.True)

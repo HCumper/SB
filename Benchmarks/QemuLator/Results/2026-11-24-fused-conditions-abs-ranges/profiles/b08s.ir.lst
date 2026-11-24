@@ -1,0 +1,515 @@
+999 28 ; vector table
+255
+242 10001
+254
+10000: ; DATA
+251
+255
+10001: ; first initialisation: windows, arrays, strings
+234 2 3 ; CORPUS$
+234 2 4 ; DICTIONARY$
+234 1 7 ; FREQUENCY_I
+234 1 9 ; LINE$
+234 1 14 ; SORT_WORD$
+234 1 15 ; TOKEN$
+242 10005
+255
+10002: ; program body
+326
+346
+106 4
+118 11 ; PASSES_I
+106 11
+106 100
+190 0 3 ; CORPUS$
+106 127
+106 24
+190 0 4 ; DICTIONARY$
+106 127
+126 0 7 ; FREQUENCY_I
+106 101
+253 9 ; LINE$
+106 24
+253 15 ; TOKEN$
+106 24
+253 14 ; SORT_WORD$
+254 ; audited native region
+263
+118 2 ; CHECK_I
+263
+118 6 ; FAILED_I
+255 ; resume threaded code
+236 65518 ; LOAD_CORPUS
+106 1
+109 11 ; PASSES_I
+106 1
+357 2001
+26 12 2000 ; PASS_I
+355
+2000: ; FOR PASS_I
+254 ; audited native region
+263
+118 17 ; USED_I
+263
+118 16 ; TOTAL_WORDS_I
+255 ; resume threaded code
+263
+106 11
+106 1
+357 2003
+26 10 2002 ; LINE_I
+355
+2002: ; FOR LINE_I
+109 10 ; LINE_I
+263
+263
+175 3 ; CORPUS$
+169 " "
+84
+264 9 ; LINE$
+169 ""
+264 15 ; TOKEN$
+106 1
+375 9 ; LINE$
+106 1
+254 ; audited memory-counter native FOR
+357 2005
+26 13 2004 ; POSITION_I
+355
+2004: ; FOR POSITION_I
+109 13 ; POSITION_I
+268
+175 9 ; LINE$
+269
+118 1 ; CHAR_I
+109 1 ; CHAR_I
+106 65
+9
+109 1 ; CHAR_I
+106 90
+14
+54
+239 2006
+109 1 ; CHAR_I
+106 32
+5 ; range-proven integer arithmetic
+118 1 ; CHAR_I
+2006: ; END IF
+109 1 ; CHAR_I
+106 97
+9
+109 1 ; CHAR_I
+106 122
+14
+54
+239 2007
+109 1 ; CHAR_I
+273
+255 ; checked string helper
+374 15 ; TOKEN$
+254 ; resume memory-counter loop
+242 2008
+2007: ; ELSE
+255 ; checked string helper
+375 15 ; TOKEN$
+254 ; resume memory-counter loop
+263
+10
+239 2009
+255 ; audited memory-counter procedure call
+236 65517 ; ADD_WORD
+254 ; resume memory-counter loop after call
+169 ""
+264 15 ; TOKEN$
+2009: ; END IF
+2008: ; END IF
+230 13 ; POSITION_I
+378 2005
+255 ; resume threaded code after memory-counter FOR
+230 10 ; LINE_I
+378 2003
+236 65514 ; SORT_INDEX
+236 65510 ; VERIFY_INDEX
+254 ; audited native region
+263
+109 17 ; USED_I
+106 1
+1006 ; checked native integer arithmetic
+255 ; resume threaded code
+106 1
+357 2011
+26 5 2010 ; ENTRY_I
+355
+2010: ; FOR ENTRY_I
+254 ; audited native region
+109 2 ; CHECK_I
+109 5 ; ENTRY_I
+1711 7 ; rank-one integer array access
+109 5 ; ENTRY_I
+106 1
+1005 ; checked native integer arithmetic
+1007 ; checked native integer arithmetic
+1005 ; checked native integer arithmetic
+106 10000
+20
+118 2 ; CHECK_I
+255 ; resume threaded code
+106 1
+109 5 ; ENTRY_I
+263
+263
+175 4 ; DICTIONARY$
+270
+106 1
+254 ; audited memory-counter native FOR
+357 2013
+26 8 2012 ; LETTER_I
+355
+2012: ; FOR LETTER_I
+109 2 ; CHECK_I
+109 5 ; ENTRY_I
+109 8 ; LETTER_I
+268
+175 4 ; DICTIONARY$
+269
+109 8 ; LETTER_I
+1007 ; checked native integer arithmetic
+1005 ; checked native integer arithmetic
+106 10000
+20
+118 2 ; CHECK_I
+230 8 ; LETTER_I
+378 2013
+255 ; resume threaded code after memory-counter FOR
+230 5 ; ENTRY_I
+378 2011
+230 12 ; PASS_I
+378 2001
+109 6 ; FAILED_I
+320
+239 2014
+106 -1
+118 2 ; CHECK_I
+2014: ; END IF
+106 1
+281
+169 "concordance:"
+186
+109 2 ; CHECK_I
+312
+186
+203
+220
+220
+65518: ; DEFine PROCedure LOAD_CORPUS
+263
+170 "The quick brown fox visits the quiet river. The river carries silver light."
+182 3 ; CORPUS$
+106 1
+170 "A small compiler reads a program and turns the program into machine code."
+182 3 ; CORPUS$
+106 2
+170 "Good measurements repeat the same work and check every result."
+182 3 ; CORPUS$
+106 3
+170 "Arrays store the map. Procedures search the map and return a route."
+182 3 ; CORPUS$
+106 4
+170 "The garden has red flowers, blue flowers, and a very old apple tree."
+182 3 ; CORPUS$
+106 5
+170 "At dawn the birds sing. At dusk the same birds settle beside the river."
+182 3 ; CORPUS$
+106 6
+170 "A word index counts words, sorts words, and preserves their frequencies."
+182 3 ; CORPUS$
+106 7
+170 "Native code can run quickly. Correct code must also preserve its meaning."
+182 3 ; CORPUS$
+106 8
+170 "Read each line, separate its words, then add each word to the index."
+182 3 ; CORPUS$
+106 9
+170 "The route crosses a bridge and follows the river back to the garden."
+182 3 ; CORPUS$
+106 10
+170 "Numbers and names describe the world; programs make those descriptions useful."
+182 3 ; CORPUS$
+106 11
+170 "Measure once, measure twice, and always compare the answers before the timings."
+182 3 ; CORPUS$
+244
+65517: ; DEFine PROCedure ADD_WORD
+110 20 ; FOUND_I
+102 21 ; SCAN_I
+254 ; audited native region
+106 -1
+118 20 ; FOUND_I
+263
+109 17 ; USED_I
+106 1
+1006 ; checked native integer arithmetic
+255 ; resume threaded code
+106 1
+357 2016
+26 21 2015 ; SCAN_I
+355
+2015: ; FOR SCAN_I
+109 21 ; SCAN_I
+263
+263
+175 4 ; DICTIONARY$
+265 15 ; TOKEN$
+76
+239 2017
+109 21 ; SCAN_I
+118 20 ; FOUND_I
+381 2016
+2017: ; END IF
+230 21 ; SCAN_I
+378 2016
+254 ; audited native region
+109 20 ; FOUND_I
+106 -1
+12
+255 ; resume threaded code
+239 2018
+254 ; audited native region
+109 17 ; USED_I
+106 128
+9
+255 ; resume threaded code
+239 2019
+106 1
+118 6 ; FAILED_I
+244
+2019: ; END IF
+254 ; audited native region
+109 17 ; USED_I
+118 20 ; FOUND_I
+109 17 ; USED_I
+106 1
+1005 ; checked native integer arithmetic
+118 17 ; USED_I
+255 ; resume threaded code
+109 20 ; FOUND_I
+265 15 ; TOKEN$
+182 4 ; DICTIONARY$
+254 ; audited native region
+109 20 ; FOUND_I
+263
+1712 7 ; rank-one integer array access
+255 ; resume threaded code
+2018: ; END IF
+254 ; audited native region
+109 20 ; FOUND_I
+109 20 ; FOUND_I
+1711 7 ; rank-one integer array access
+106 1
+1005 ; checked native integer arithmetic
+1712 7 ; rank-one integer array access
+109 16 ; TOTAL_WORDS_I
+106 1
+1005 ; checked native integer arithmetic
+118 16 ; TOTAL_WORDS_I
+255 ; resume threaded code
+244
+65514: ; DEFine PROCedure SORT_INDEX
+102 23 ; ITEM_I
+110 24 ; PLACE_I
+110 25 ; SORT_COUNT_I
+254 ; audited native region
+106 1
+109 17 ; USED_I
+106 1
+1006 ; checked native integer arithmetic
+255 ; resume threaded code
+106 1
+357 2021
+26 23 2020 ; ITEM_I
+355
+2020: ; FOR ITEM_I
+109 23 ; ITEM_I
+263
+263
+175 4 ; DICTIONARY$
+264 14 ; SORT_WORD$
+254 ; audited native region
+109 23 ; ITEM_I
+1711 7 ; rank-one integer array access
+118 25 ; SORT_COUNT_I
+109 23 ; ITEM_I
+106 1
+1006 ; checked native integer arithmetic
+118 24 ; PLACE_I
+255 ; resume threaded code
+2022: ; REPeat
+254 ; audited native region
+109 24 ; PLACE_I
+263
+15
+255 ; resume threaded code
+239 2024
+381 2023
+2024: ; END IF
+109 24 ; PLACE_I
+263
+263
+175 4 ; DICTIONARY$
+265 14 ; SORT_WORD$
+78
+239 2025
+381 2023
+2025: ; END IF
+254 ; audited native region
+109 24 ; PLACE_I
+106 1
+1005 ; checked native integer arithmetic
+255 ; resume threaded code
+109 24 ; PLACE_I
+263
+263
+175 4 ; DICTIONARY$
+182 4 ; DICTIONARY$
+254 ; audited native region
+109 24 ; PLACE_I
+106 1
+1005 ; checked native integer arithmetic
+109 24 ; PLACE_I
+1711 7 ; rank-one integer array access
+1712 7 ; rank-one integer array access
+109 24 ; PLACE_I
+106 1
+6 ; range-proven integer arithmetic
+118 24 ; PLACE_I
+255 ; resume threaded code
+242 2022
+2023: ; END REPeat
+254 ; audited native region
+109 24 ; PLACE_I
+106 1
+1005 ; checked native integer arithmetic
+255 ; resume threaded code
+265 14 ; SORT_WORD$
+182 4 ; DICTIONARY$
+254 ; audited native region
+109 24 ; PLACE_I
+106 1
+1005 ; checked native integer arithmetic
+109 25 ; SORT_COUNT_I
+1712 7 ; rank-one integer array access
+255 ; resume threaded code
+230 23 ; ITEM_I
+378 2021
+244
+65510: ; DEFine PROCedure VERIFY_INDEX
+110 27 ; COUNTED_I
+102 21 ; SCAN_I
+254 ; audited native region
+263
+118 27 ; COUNTED_I
+263
+109 17 ; USED_I
+106 1
+1006 ; checked native integer arithmetic
+255 ; resume threaded code
+106 1
+254 ; audited memory-counter native FOR
+357 2027
+26 21 2026 ; SCAN_I
+355
+2026: ; FOR SCAN_I
+109 27 ; COUNTED_I
+109 21 ; SCAN_I
+1711 7 ; rank-one integer array access
+1005 ; checked native integer arithmetic
+118 27 ; COUNTED_I
+109 21 ; SCAN_I
+1711 7 ; rank-one integer array access
+106 1
+15
+239 2028
+106 1
+118 6 ; FAILED_I
+2028: ; END IF
+109 21 ; SCAN_I
+263
+10
+239 2029
+109 21 ; SCAN_I
+106 1
+6 ; range-proven integer arithmetic
+263
+263
+175 4 ; DICTIONARY$
+109 21 ; SCAN_I
+263
+263
+175 4 ; DICTIONARY$
+73
+239 2030
+106 1
+118 6 ; FAILED_I
+2030: ; END IF
+2029: ; END IF
+230 21 ; SCAN_I
+378 2027
+255 ; resume threaded code after memory-counter FOR
+254 ; audited native region
+109 27 ; COUNTED_I
+109 16 ; TOTAL_WORDS_I
+13
+255 ; resume threaded code
+239 2031
+106 1
+118 6 ; FAILED_I
+2031: ; END IF
+254 ; audited native region
+109 17 ; USED_I
+106 97
+13
+109 16 ; TOTAL_WORDS_I
+106 147
+13
+255 ; resume threaded code
+53
+239 2032
+106 1
+118 6 ; FAILED_I
+2032: ; END IF
+244
+242 10007
+254
+10006: ; GLOBAL/EXTERNAL linkage list (empty)
+261 -1 "" ; end of list
+255
+10007:
+255
+10005: ; second initialisation: scalars
+114 1 ; CHAR_I
+114 2 ; CHECK_I
+101 5 ; ENTRY_I
+114 6 ; FAILED_I
+101 8 ; LETTER_I
+101 10 ; LINE_I
+114 11 ; PASSES_I
+101 12 ; PASS_I
+101 13 ; POSITION_I
+114 16 ; TOTAL_WORDS_I
+114 17 ; USED_I
+114 20 ; FOUND_I
+114 21 ; SCAN_I
+114 23 ; ITEM_I
+114 24 ; PLACE_I
+114 25 ; SORT_COUNT_I
+114 27 ; COUNTED_I
+267
+237 10000
+242 10002
+254
+10003: ; resident routine names
+261 -1 "" ; end of list
+243 10003 ; startup trailer
+358 0 ; own module number
+243 10006
+0

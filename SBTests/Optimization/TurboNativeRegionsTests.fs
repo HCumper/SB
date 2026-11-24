@@ -86,3 +86,48 @@ let ``checked numeric access becomes compact while array allocation and continua
         | _ -> ()
     Assert.That(validate after.Bytes, Is.Empty)
     Assert.That((select after).Bytes, Is.EqualTo(box after.Bytes))
+
+// x%=ABS(word) is int-to-float, ROM ABS and float-to-int. Only inside a
+// selected native run does that triple become the native integer ABS record.
+let private records opcode output = output.Items |> List.filter (function Instruction(op,_,_) -> op=opcode | _ -> false) |> List.length
+let private absLinks output =
+    output.Items |> List.filter (function Instruction(261,[_;Bytes8 name],_) -> Text.Encoding.ASCII.GetString(name).Trim()="ABS" | _ -> false) |> List.length
+
+[<Test>]
+let ``integer ABS assignments become one native record`` () =
+    let before = emit "10 x%=-5:y%=ABS(x%)\n20 STOP"
+    Assert.That(records 224 before, Is.EqualTo(1))
+    let after = select before
+    Assert.That(records 1334 after, Is.EqualTo(1))
+    Assert.That(records 224 after + records 320 after + records 334 after, Is.Zero)
+    // No ROM call remains, so the job no longer links the ABS resident.
+    Assert.That(absLinks before, Is.EqualTo(1))
+    Assert.That(absLinks after, Is.Zero)
+    Assert.That(validate after.Bytes, Is.Empty)
+
+[<Test>]
+let ``ABS in a floating context keeps its ROM call and link`` () =
+    let after = emit "10 x%=-5:y=ABS(x%)+0.5:z%=ABS(x%)*2:w%=ABS(x%)\n20 STOP" |> select
+    Assert.That(records 1334 after, Is.EqualTo(1))
+    Assert.That(records 224 after, Is.EqualTo(2))
+    Assert.That(absLinks after, Is.EqualTo(1))
+
+[<Test>]
+let ``a user-defined ABS keeps its call`` () =
+    let after = emit "10 x%=-5:y%=ABS((x%))\n20 STOP\n100 DEFine FuNction ABS(v)\n110 RETurn v+1\n120 END DEFine" |> select
+    Assert.That(records 1334 after, Is.Zero)
+    Assert.That(records 236 after, Is.EqualTo(1))
+
+[<Test>]
+let ``other residents with the same shape keep their calls`` () =
+    let after = emit "10 x%=9:y%=SQRT(x%)\n20 STOP" |> select
+    Assert.That(records 1334 after, Is.Zero)
+    Assert.That(records 224 after, Is.EqualTo(1))
+
+[<Test>]
+let ``native integer ABS is rejected in threaded code`` () =
+    let output = emit "10 x%=-5\n20 STOP"
+    let items = output.Items |> List.collect (function
+        | Instruction(118,_,_) as store -> [Instruction(1334,[],nativeIntegerAbsComment);store]
+        | item -> [item])
+    Assert.That(validate (serialize items) |> String.concat "; ", Does.Contain("Native integer ABS requires native mode"))

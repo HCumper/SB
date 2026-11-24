@@ -31,6 +31,8 @@ let private saving item =
     // Numeric literals, duplicates and integer-to-float conversion. No floating
     // arithmetic, allocation, ROM calls, array indexing or string operations.
     | 106 | 138 | 263 | 268 | 283 | 320 | 376 | 377 -> Some 2
+    // Integer ABS replaces a ROM call, two float conversions and their bridges.
+    | 1334 -> Some 40
     | _ -> None
 
 /// Checked lowering shared by straight runs and memory-counter loops.
@@ -52,8 +54,36 @@ let internal nativeInstruction = function
 
 let private completesValue opcode =
     match opcode with
-    | 1 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 20 | 111 | 112 | 118 | 143 | 144 | 150 | 320 -> true
+    | 1 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 20 | 111 | 112 | 118 | 143 | 144 | 150 | 320 | 1334 -> true
     | _ -> false
+
+/// Vectors bound only to the ROM resident named ABS.
+let internal absVectors (items:IrItem seq) =
+    items |> Seq.choose(function
+        | Instruction(261,[Word v;Bytes8 name],_) -> Some(v,System.Text.Encoding.ASCII.GetString(name).Trim().ToUpperInvariant())
+        | _ -> None)
+    |> Seq.groupBy fst |> Seq.choose(fun (v,names) -> if names |> Seq.map snd |> Seq.distinct |> Seq.toList=["ABS"] then Some v else None) |> Set.ofSeq
+
+/// x% = ABS(word): int-to-float, the one-float-argument ROM ABS returning a
+/// float, then float-to-int. |x| is exact for every word except -32768, whose
+/// float 32768 fails the conversion with overflow after it has been popped.
+let internal integerAbs (abs:Set<int>) (items:IrItem list) =
+    match items with
+    | Instruction(320,[],_)::Instruction(224,[Word 2;Word v;Bytes8 descriptors],_)::Instruction(334,[],_)::_
+        when abs.Contains v && descriptors=[|2uy|] -> true
+    | _ -> false
+
+let private units (items:IrItem list) =
+    let abs=absVectors items
+    let result=ResizeArray<IrItem * IrItem list>()
+    let mutable rest=items
+    while not rest.IsEmpty do
+        match rest with
+        | first::second::third::tail when integerAbs abs rest ->
+            result.Add(Instruction(1334,[],nativeIntegerAbsComment),[first;second;third]);rest<-tail
+        | item::tail -> result.Add(item,[item]);rest<-tail
+        | [] -> ()
+    List.ofSeq result
 
 let private regionBenefit (items:IrItem array) =
     let mutable benefit=0
@@ -85,7 +115,9 @@ let select enabled (output: TurboIrOutput) : Result<TurboIrOutput, string list> 
     if not enabled then Ok output
     else
         let items = ResizeArray<IrItem>()
-        let pending = ResizeArray<IrItem>()
+        // A unit is one selectable item and the original records it replaces.
+        // Only an integer ABS unit differs; threaded code keeps its records.
+        let pending = ResizeArray<IrItem * IrItem list>()
         let mutable body = false
         let mutable sourceNative = true
         let flush () =
@@ -94,25 +126,26 @@ let select enabled (output: TurboIrOutput) : Result<TurboIrOutput, string list> 
                 // fragments, this preserves codegen's checked x%=x%+constant
                 // and floating-increment peepholes at the next P instruction.
                 let finish =
-                    pending |> Seq.mapi (fun i item -> i, item)
+                    pending |> Seq.mapi (fun i (item, _) -> i, item)
                     |> Seq.choose (function i, Instruction(op, _, _) when completesValue op -> Some(i + 1) | _ -> None)
                     |> Seq.tryLast |> Option.defaultValue 0
-                let prefix = pending |> Seq.take finish |> Seq.toArray
+                let prefix = pending |> Seq.take finish |> Seq.map fst |> Seq.toArray
                 let benefit = regionBenefit prefix
+                let threaded units = units |> Seq.collect snd
                 if benefit > 6 then
                     items.Add(Instruction(254, [], "audited native region"))
                     items.AddRange(prefix |> Array.map nativeInstruction)
                     items.Add(Instruction(255, [], "resume threaded code"))
-                    items.AddRange(pending |> Seq.skip finish)
-                else items.AddRange pending
+                    items.AddRange(pending |> Seq.skip finish |> threaded)
+                else items.AddRange(threaded pending)
                 pending.Clear()
-        for item in output.Items do
+        for item,originals in units output.Items do
             match item with
             | Instruction _ when body && not sourceNative && (saving item).IsSome ->
-                pending.Add item
+                pending.Add((item,originals))
             | _ ->
                 flush ()
-                items.Add item
+                items.AddRange originals
                 match item with
                 | LabelDef(label, _) when label = TurboIrLabels.body -> body <- true
                 | Instruction(242, [LabelRef label], _) when label = TurboIrLabels.afterLinkage -> body <- false
@@ -120,7 +153,13 @@ let select enabled (output: TurboIrOutput) : Result<TurboIrOutput, string list> 
                 | Instruction(255, _, _) -> sourceNative <- false
                 | _ -> ()
         flush ()
-        let selected = List.ofSeq items
+        // An ABS resident no longer called after native rewriting needs no
+        // link-time name: drop its binding, as if the source never used ABS.
+        let called = items |> Seq.choose (function
+                         | Instruction(224, [_; Word v; _], _) | Instruction(227, Word v :: _, _) -> Some v
+                         | _ -> None) |> Set.ofSeq
+        let unused = if items |> Seq.exists (function Instruction(1334, _, _) -> true | _ -> false) then Set.difference (absVectors items) called else Set.empty
+        let selected = items |> Seq.filter (function Instruction(261, [Word v; _], _) -> not (unused.Contains v) | _ -> true) |> List.ofSeq
         let bytes = serialize selected
         match validate bytes with
         | [] -> Ok { output with Items = selected; Bytes = bytes; Listing = formatListing selected }

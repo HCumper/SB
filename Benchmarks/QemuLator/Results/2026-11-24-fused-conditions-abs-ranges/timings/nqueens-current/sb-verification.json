@@ -1,0 +1,24 @@
+[
+  {
+    "Benchmark": "eight_queens",
+    "Tag": "b06",
+    "OriginalSourceUnchanged": true,
+    "OrdinaryExecutableIdentical": true,
+    "ExecutableSha256": "8A351D5F7656A9229B6FF4592C1F54FBFBA75691A3B90B9FC0CA66C840E14EAD",
+    "ReferenceSha256": "8A351D5F7656A9229B6FF4592C1F54FBFBA75691A3B90B9FC0CA66C840E14EAD",
+    "Coverage": {
+      "NativeForSelected": 4,
+      "NativeForRejected": 2,
+      "ArithmeticProofsEnabled": true,
+      "ProvenExpressions": 7,
+      "ProvenArrayAccesses": 23
+    },
+    "ReferenceCoverage": {
+      "NativeForSelected": 4,
+      "NativeForRejected": 2,
+      "ArithmeticProofsEnabled": true,
+      "ProvenExpressions": 7,
+      "ProvenArrayAccesses": 23
+    }
+  }
+]

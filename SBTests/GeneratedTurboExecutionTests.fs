@@ -163,6 +163,148 @@ let ``memory-counter loops retain arithmetic division bounds and slice failures`
         let error=Assert.Throws<M68kFault>(fun () -> run 2000000L executable |> ignore)
         Assert.That(error.Message, Does.Contain("Runtime error message:")))
 
+// Integer IF conditions inside memory-counter loops become one native branch.
+// The last value is the number of fused conditions in the --dump-hir report.
+let fusedConditionPrograms = [|
+    // Five queens: three checked/proven array zero tests joined by AND.
+    "10 DIM col%(5),up%(10),dn%(10):count%=0:place (1)\n20 PRINT count%\n30 STOP\n100 DEFine PROCedure place(row%)\n110 LOCal c%\n120 IF row%=6 THEN count%=count%+1:RETurn\n130 FOR c%=1 TO 5\n140 IF col%(c%)=0 AND up%(row%+c%)=0 AND dn%(row%-c%+5)=0 THEN\n150 col%(c%)=1:up%(row%+c%)=1:dn%(row%-c%+5)=1\n160 place (row%+1)\n170 col%(c%)=0:up%(row%+c%)=0:dn%(row%-c%+5)=0\n180 END IF\n190 END FOR c%\n200 END DEFine", "10\n", 1
+    // Every integer comparison, OR, NOT, == and a truth test, in a string body.
+    "10 DIM a$(40)\n20 FOR i%=1 TO 12\n30 IF i%<4 OR i%>=10 THEN a$=a$ & \"a\"\n40 IF NOT(i%<>6) THEN a$=a$ & \"b\"\n50 IF i% MOD 3 THEN a$=a$ & \"c\"\n60 IF (i%<=2 AND i%>0) OR i%==11 THEN a$=a$ & \"d\"\n70 END FOR i%\n80 PRINT a$\n90 STOP", "acdacdaccbccacacda\n", 4
+    // ELSE arms, an assignment before the test and a value used by both arms.
+    "10 DIM a$(20)\n20 FOR i%=-3 TO 3\n30 j%=i%*i%-2\n40 IF j%>0 AND i%<0 THEN\n50 a$=a$ & \"n\"\n60 ELSE\n70 IF j%<=0 THEN a$=a$ & \"z\" : ELSE a$=a$ & \"p\"\n80 END IF\n90 END FOR i%\n100 PRINT a$;\":\";j%\n110 STOP", "nnzzzpp:7\n", 2
+    // A condition over a callee-written shared array, re-read after each call.
+    "10 DIM seen%(4):total%=0:walk (3)\n20 PRINT total%;\":\";seen%(1);seen%(2);seen%(3)\n30 STOP\n100 DEFine PROCedure walk(depth%)\n110 LOCal i%\n120 IF depth%=0 THEN RETurn\n130 FOR i%=1 TO 3\n140 IF seen%(i%)<depth% OR i%=depth% THEN seen%(i%)=seen%(i%)+1:total%=total%+i%\n150 walk (depth%-1)\n160 END FOR i%\n170 END DEFine", "30:1153\n", 1
+    // Proven reads short-circuit: AND exits to the IF label, OR to the THEN arm.
+    "10 DIM a%(4),b%(4),r$(20)\n20 a%(1)=1:a%(3)=1:b%(2)=1:b%(3)=1\n30 FOR i%=0 TO 4\n40 IF a%(i%)=0 AND b%(i%)=0 THEN r$=r$ & \"n\"\n50 IF a%(i%)=1 OR b%(i%)=1 THEN r$=r$ & \"o\"\n60 END FOR i%\n70 PRINT r$\n80 STOP", "nooon\n", 2
+|]
+let fusedConditionModes = [|
+    for index in 0..fusedConditionPrograms.Length-1 do
+        for hir in [false;true] do
+            for native,registers in [false,false;true,false;true,true] do
+                yield TestCaseData(index,hir,native,registers).SetName($"Fused condition {index} (HIR {hir}, native {native}, registers {registers})") |]
+
+[<TestCaseSource(nameof fusedConditionModes)>]
+let ``fused native conditions match threaded IF results`` (index:int,hir:bool,native:bool,registers:bool) =
+    let source,expected,_=fusedConditionPrograms[index]
+    withCompiledProgramMode hir [(if native then "--native-regions" else "--no-native-regions");(if registers then "--regalloc" else "--no-regalloc")] ".bas" source (fun executable ->
+        let result=run 6000000L executable
+        Assert.That(result.ExitCode, Is.Zero)
+        Assert.That(result.Output, Is.EqualTo(expected)))
+
+[<TestCase(false)>]
+[<TestCase(true)>]
+let ``fused native condition reports count every selected branch`` (hir:bool) =
+    let directory=Path.Combine(Path.GetTempPath(),$"fused-condition-report-{Guid.NewGuid():N}")
+    Directory.CreateDirectory directory |> ignore
+    try
+        for index in 0..fusedConditionPrograms.Length-1 do
+            let source,_,count=fusedConditionPrograms[index]
+            let prefix=Path.Combine(directory,string index)
+            let capture registers=withCompiledProgramMode hir ["--native-regions";(if registers then "--regalloc" else "--no-regalloc");"--dump-hir="+prefix] ".bas" source (fun executable -> run 6000000L executable)
+            let before=capture false
+            let after=capture true
+            Assert.That(File.ReadAllText(prefix+".native-ir.txt"), Does.Contain($"Fused native conditions: selected={count};"), $"fixture {index}")
+            Assert.That(after.Steps, Is.LessThan(before.Steps), $"fixture {index}")
+    finally Directory.Delete(directory,true)
+
+// x%=ABS(word) runs natively, so these jobs no longer call the ROM resident
+// that the functional CPU cannot link. Expected text matches real-ROM threaded
+// runs. The last value is the number of register-pinned native FOR loops.
+let integerAbsPrograms = [|
+    "10 DIM a%(5)\n20 FOR i%=0 TO 5:a%(i%)=i%*7-17:END FOR i%\n30 total%=0\n40 FOR i%=0 TO 5\n50 d%=ABS(a%(i%)):total%=total%*3+d%\n60 END FOR i%\n70 PRINT total%;\":\";d%\n80 STOP", "5109:18\n", 2
+    "10 x%=-32767:a%=ABS(x%):x%=32767:b%=ABS(x%):x%=0:c%=ABS(x%):x%=-1:d%=ABS(x%)\n20 e%=ABS(a%-b%-1)\n30 PRINT a%;\":\";b%;\":\";c%;\":\";d%;\":\";e%\n40 STOP", "32767:32767:0:1:1\n", 0
+    // Board validation: the inner loop with ABS and OR is now a native FOR.
+    "10 DIM q%(4):q%(1)=3:q%(2)=1:q%(3)=4:q%(4)=2:bad%=0\n20 FOR l%=1 TO 4\n30 FOR r%=l%+1 TO 4\n40 s%=ABS(q%(l%)-q%(r%))\n50 IF s%=0 OR s%=r%-l% THEN bad%=bad%+1\n60 END FOR r%\n70 END FOR l%\n80 PRINT bad%;\":\";s%\n90 STOP", "0:2\n", 1
+|]
+let integerAbsModes = [|
+    for index in 0..integerAbsPrograms.Length-1 do
+        for hir in [false;true] do
+            for registers in [false;true] do
+                yield TestCaseData(index,hir,registers).SetName($"Integer ABS {index} (HIR {hir}, registers {registers})") |]
+
+[<TestCaseSource(nameof integerAbsModes)>]
+let ``native integer ABS matches the ROM results without calling it`` (index:int,hir:bool,registers:bool) =
+    let source,expected,_=integerAbsPrograms[index]
+    withCompiledProgramMode hir ["--native-regions";(if registers then "--regalloc" else "--no-regalloc")] ".bas" source (fun executable ->
+        let result=run 4000000L executable
+        Assert.That(result.ExitCode, Is.Zero)
+        Assert.That(result.Output, Is.EqualTo(expected)))
+
+[<Test>]
+let ``native integer ABS lets call-free validation loops stay in registers`` () =
+    let directory=Path.Combine(Path.GetTempPath(),$"integer-abs-report-{Guid.NewGuid():N}")
+    Directory.CreateDirectory directory |> ignore
+    try
+        for index in 0..integerAbsPrograms.Length-1 do
+            let source,_,loops=integerAbsPrograms[index]
+            let prefix=Path.Combine(directory,string index)
+            withCompiledProgramMode true ["--native-regions";"--regalloc";"--dump-hir="+prefix] ".bas" source ignore
+            Assert.That(File.ReadAllText(prefix+".native-ir.txt"), Does.Contain($"Native integer FOR loops: selected={loops};"), $"fixture {index}")
+    finally Directory.Delete(directory,true)
+
+[<TestCase(false,false)>]
+[<TestCase(false,true)>]
+[<TestCase(true,false)>]
+[<TestCase(true,true)>]
+let ``native integer ABS of -32768 raises the ROM conversion overflow`` (hir:bool,registers:bool) =
+    // The ROM returns 32768.0 and float-to-int fails with overflow (-18).
+    let sources=["10 x%=-32767-1\n20 y%=ABS(x%)\n30 PRINT \"wrong\"\n40 STOP"
+                 "10 DIM a%(1):a%(1)=-32767-1\n20 FOR i%=0 TO 1\n30 y%=ABS(a%(i%))\n40 END FOR i%\n50 PRINT \"wrong\"\n60 STOP"]
+    for source in sources do
+        withCompiledProgramMode hir ["--native-regions";(if registers then "--regalloc" else "--no-regalloc")] ".bas" source (fun executable ->
+            let error=Assert.Throws<M68kFault>(fun () -> run 2000000L executable |> ignore)
+            let parsed=System.Text.RegularExpressions.Regex.Match(error.Message,@"ERNUM=(-?\d+)")
+            Assert.That(parsed.Success, Is.True, error.Message)
+            Assert.That(int parsed.Groups[1].Value, Is.EqualTo(-18)))
+
+[<Test>]
+let ``fused native conditions skip only terms that cannot fail`` () =
+    let directory=Path.Combine(Path.GetTempPath(),$"short-circuit-report-{Guid.NewGuid():N}")
+    Directory.CreateDirectory directory |> ignore
+    try
+        let report name source=
+            let prefix=Path.Combine(directory,name)
+            withCompiledProgramMode true ["--native-regions";"--regalloc";"--dump-hir="+prefix] ".bas" source ignore
+            File.ReadAllText(prefix+".native-ir.txt")
+        let program index=let source,_,_=fusedConditionPrograms[index] in source
+        let proven=report "proven" (program 4)
+        Assert.That(proven, Does.Contain("segments=2"))
+        Assert.That(proven, Does.Contain("to end;"),"An OR under IF FALSE exits early into the THEN arm.")
+        // Recursive row ranges prove every five-queens subscript and its arithmetic.
+        Assert.That(report "queens" (program 0), Does.Contain("segments=3"))
+        // A checked subscript may fail, so its AND stays one eager leaf.
+        let checkedRead="10 DIM a$(4),b%(2)\n20 FOR i%=1 TO 2\n30 IF i%=99 AND b%(i%*3)=0 THEN a$=a$ & \"x\"\n40 END FOR i%\n50 STOP"
+        Assert.That(report "checked" checkedRead, Does.Contain("segments=1"))
+    finally Directory.Delete(directory,true)
+
+// QL AND/OR evaluate every operand: a failing later operand must still fail
+// when an earlier comparison already decides the result. Errors match threaded code.
+let fusedConditionErrors = [|
+    "10 DIM a$(4),b%(2):index%=5\n20 FOR i%=1 TO 2\n30 IF i%=99 AND b%(index%)=0 THEN a$=a$ & \"x\"\n40 END FOR i%\n50 STOP", -4
+    "10 DIM a$(4),b%(2):index%=5\n20 FOR i%=1 TO 2\n30 IF i%>0 OR b%(index%)=0 THEN a$=a$ & \"x\"\n40 END FOR i%\n50 STOP", -4
+    "10 DIM a$(4)\n20 FOR i%=1 TO 2\n30 IF i%=99 AND i%+32767>0 THEN a$=a$ & \"x\"\n40 END FOR i%\n50 STOP", -18
+    "10 DIM a$(4),b%(2):index%=-1\n20 FOR i%=1 TO 2\n30 IF i%>0 AND i%<5 AND b%(index%)=0 THEN a$=a$ & \"x\"\n40 END FOR i%\n50 STOP", -4
+    "10 DIM a$(4):zero%=0\n20 FOR i%=1 TO 2\n30 IF i%=1 OR i% DIV zero%=0 THEN a$=a$ & \"x\"\n40 END FOR i%\n50 STOP", -18
+|]
+
+[<TestCase(0)>]
+[<TestCase(1)>]
+[<TestCase(2)>]
+[<TestCase(3)>]
+[<TestCase(4)>]
+let ``fused native conditions evaluate every operand and keep QL errors`` (index:int) =
+    let source,expected=fusedConditionErrors[index]
+    let capture native =
+        let mutable number=0
+        withCompiledProgramMode true [(if native then "--native-regions" else "--no-native-regions");"--regalloc"] ".bas" source (fun executable ->
+            let error=Assert.Throws<M68kFault>(fun () -> run 2000000L executable |> ignore)
+            let parsed=System.Text.RegularExpressions.Regex.Match(error.Message,@"ERNUM=(-?\d+)")
+            Assert.That(parsed.Success, Is.True, error.Message)
+            number<-int parsed.Groups[1].Value)
+        number
+    Assert.That(capture true, Is.EqualTo(expected))
+    Assert.That(capture false, Is.EqualTo(expected))
+
 let stringAppendPrograms = [|
     // Turbo rounds the declared odd maximum up to an even byte count.
     "10 DIM a$(5)\n20 a$=\"AB\":a$=a$ & \"CDEF\":a$=a$ & \"ignored\"\n30 PRINT a$\n40 STOP", "ABCDEF\n"

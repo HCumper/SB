@@ -83,7 +83,10 @@ own currently bound counter cell before normal return or error unwinding.
 The nonmutating ROM ABS helper is permitted outside a certified loop. Codegen
 independently checks its exact resident linkage, result and argument descriptor;
 other ROM calls retain their exclusion. Byte-only generation retains all legacy
-program-wide restrictions. ABS itself is still a call boundary inside a body.
+program-wide restrictions. An integer `x%=ABS(word)` inside a body is the
+native 1334 record (see [native regions](TURBO-NATIVE-REGIONS.md)), so such a
+body can be certified and pinned; any other ABS call is still a ROM call
+boundary and keeps the loop on its existing path.
 Bodies may contain nested integer IF/ELSE with acyclic forward edges. Calls,
 generic arrays, floating comparisons/arithmetic, counter assignments and nested
 loops are rejected. An inner loop may
@@ -259,6 +262,8 @@ Native append and simple LEN omit missing-string checks present in P mode, so
 those two operations use short SLOW/FAST sections with the original P templates.
 Native/threaded library IF truth tests agree, including their exponent-word test.
 This pass does not change the pinned allocator's existing predicate lowering.
+Integer IF conditions in these bodies become
+[fused native conditions](TURBO-NATIVE-CONDITIONS.md) during code generation.
 
 `--no-native-regions` disables selection. `--no-regalloc` disables pinned loops
 and local allocation but still permits these memory-counter native loops.

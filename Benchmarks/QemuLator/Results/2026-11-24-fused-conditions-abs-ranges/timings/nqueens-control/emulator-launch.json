@@ -1,0 +1,12 @@
+{
+  "ProcessId": 38804,
+  "Executable": "C:\\Program Files (x86)\\Q-emuLator\\QemuLator.exe",
+  "CommandLine": "\"C:\\Program Files (x86)\\Q-emuLator\\QemuLator.exe\" \"C:\\Source\\codex-workspace\\.scratch\\sb-steps-goldcard\\control-goldcard\\benchmark.QCF\"",
+  "CreationDateUtc": "2026-11-24T10:51:12.5625850Z",
+  "WindowStyle": "Hidden",
+  "Config": "C:\\Source\\codex-workspace\\.scratch\\sb-steps-goldcard\\control-goldcard\\benchmark.QCF",
+  "ConfigSha256": "804DB152351250873101C4C613CD1BDDDA86910E8C304A488654010A996CD1A0",
+  "Speed": "GoldCard",
+  "FullSuiteCompletedBeforeLaunch": true,
+  "CompilerSha256": "F3EA1710E1ADCF6D8196CA9CD15DB793C3E281F5C37B48D4725501C39F7D5B83"
+}

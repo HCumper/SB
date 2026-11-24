@@ -67,6 +67,7 @@ type TurboCodegenOutput = {
     Dataspace: int
     NativeAllocation: TurboNativeIr.Report option
     NativeLoops: TurboNativeLoops.Report option
+    NativeConditions: TurboNativeConditions.Report option
 }
 
 /// The 30-byte "]!QDOS File Header" block that QDOS emulators on PC file systems use to keep a
@@ -97,6 +98,9 @@ let library =
         memory.ToArray())
 
 exception private CodegenFailure of string
+// A fused condition's word branch cannot reach its label (or the label is P
+// code): generate again with that condition's long-jump slot.
+exception private ConditionBranchRange of int
 
 // Constants from codegen410.asm.
 let private lowName = 2000
@@ -139,7 +143,7 @@ let private interpreter = [| 0x30uy; 0x1Duy; 0x4Euy; 0xF6uy; 0x00uy; 0x00uy |]
 /// lands in the program as filler.
 let private fillerWord = 0x4A46
 
-type private Generator(sourceLibrary: byte[], options: TurboCodegenOptions, sourceIr: byte[]) =
+type private Generator(sourceLibrary: byte[], options: TurboCodegenOptions, sourceIr: byte[], longConditions: Set<int>) =
     // Codegen patches the library and the stream in place, so it works on copies.
     let lib = Array.copy sourceLibrary
     let ir = Array.copy sourceIr
@@ -148,7 +152,9 @@ type private Generator(sourceLibrary: byte[], options: TurboCodegenOptions, sour
     let records = Dictionary<int, int>()
     let nativeBlocks = Dictionary<int,TurboNativeIr.CompiledBlock>()
     let nativeLoops = Dictionary<int,TurboNativeLoops.CompiledLoop>()
+    let nativeConditions = Dictionary<int,TurboNativeConditions.CompiledCondition>()
     let mutable nativeLoopReport:TurboNativeLoops.Report option = None
+    let mutable nativeConditionReport:TurboNativeConditions.Report option = None
     let mutable nativeArrayAddresses:Map<int,int> = Map.empty
     let mutable nativeArrayOperations:Set<int> = Set.empty
     let mutable nativeAllocation:TurboNativeIr.Report option = None
@@ -170,6 +176,7 @@ type private Generator(sourceLibrary: byte[], options: TurboCodegenOptions, sour
     let extraStackBytes () =
         [ nativeAllocation |> Option.map _.StackExtraBytes |> Option.defaultValue 0
           nativeLoopReport |> Option.map _.StackExtraBytes |> Option.defaultValue 0
+          nativeConditionReport |> Option.map _.StackExtraBytes |> Option.defaultValue 0
           if nativeArrayOperations.IsEmpty then 0 else 8 ] |> List.max
 
     let word (bytes: byte[]) (index: int) = (int bytes[index] <<< 8) ||| int bytes[index + 1]
@@ -490,6 +497,9 @@ type private Generator(sourceLibrary: byte[], options: TurboCodegenOptions, sour
         if token >= lowName then this.NextToken()
         elif token=1911 || token=1912 then
             this.Lookup(TurboNativeArrays.baseOpcode token) |> Option.map(fun (_,record) -> token,record)
+        // Native integer ABS has 334's empty operand list but must never match
+        // a float-to-int peephole.
+        elif token=1334 then this.Lookup 334 |> Option.map(fun (_,record) -> token,record)
         else this.Lookup(if TurboNativeArrays.isCompact token then TurboNativeArrays.baseOpcode token elif token >= 1000 then token - 1000 else token)
 
     /// g_t2 onwards: a token below 1000.
@@ -773,6 +783,19 @@ type private Generator(sourceLibrary: byte[], options: TurboCodegenOptions, sour
                 nativeLoopReport<-Some report
                 for loop in report.Loops do nativeLoops.Add(loop.StartOffset,loop)
 
+    member private this.PlanNativeConditions() =
+        if options.LocalRegisterAllocation then
+            let requested=defaultArg options.StackSize 0 &&& ~~~1
+            let stack=if requested>=minStack && requested<=maxStack then requested else (word lib maxStackOffset + 1) &&& ~~~1
+            // Each condition releases its own leaf frame before its branch.
+            let limit=max 0 (min 128 (maxStack-stack))
+            let excluded=nativeLoops.Values |> Seq.map(fun loop -> loop.StartOffset,loop.EndOffset) |> List.ofSeq
+            match TurboNativeConditions.plan limit vectTabAd excluded ir with
+            | Error message -> fail $"Native condition lowering: {message}"
+            | Ok report ->
+                nativeConditionReport<-Some report
+                for condition in report.Conditions do nativeConditions.Add(condition.StartOffset,condition)
+
     member private this.PlanNativeRegisters() =
         if options.LocalRegisterAllocation then
             let requested=defaultArg options.StackSize 0 &&& ~~~1
@@ -781,7 +804,8 @@ type private Generator(sourceLibrary: byte[], options: TurboCodegenOptions, sour
             // call and control-flow boundary releases it. Reserve the maximum
             // extra stack AND dataspace so existing heap/stack capacity remains.
             let limit=max 0 (min 128 (maxStack-stack))
-            match TurboNativeIr.plan limit vectTabAd ir with
+            let conditions=nativeConditions.Values |> Seq.map(fun condition -> condition.StartOffset,condition.EndOffset) |> List.ofSeq
+            match TurboNativeIr.planExcluding limit vectTabAd conditions ir with
             | Error message -> fail $"Native register lowering: {message}"
             | Ok report ->
                 let blocks=report.Blocks |> List.filter(fun block ->
@@ -798,7 +822,8 @@ type private Generator(sourceLibrary: byte[], options: TurboCodegenOptions, sour
         let stack=if requested>=minStack && requested<=maxStack then requested else (word lib maxStackOffset + 1) &&& ~~~1
         if maxStack-stack>=8 then
             let excluded=[yield! nativeBlocks.Values |> Seq.map(fun block -> block.Ir.StartOffset,block.Ir.EndOffset)
-                          yield! nativeLoops.Values |> Seq.map(fun loop -> loop.StartOffset,loop.EndOffset)]
+                          yield! nativeLoops.Values |> Seq.map(fun loop -> loop.StartOffset,loop.EndOffset)
+                          yield! nativeConditions.Values |> Seq.map(fun condition -> condition.StartOffset,condition.EndOffset)]
             match TurboNativeArrays.requiredExcluding excluded ir with
             | Error _ -> ()
             | Ok operations when not operations.IsEmpty ->
@@ -904,6 +929,14 @@ type private Generator(sourceLibrary: byte[], options: TurboCodegenOptions, sour
             if pass<>0 then write bytes
             objCode<-objCode+bytes.Length
             ic<-ic+2
+        elif token=1334 then
+            // |word| in place on the maths stack. -32768 has no word result:
+            // as fast_float_to_int does for the float 32768, pop it and raise
+            // overflow through the unchanged library handler.
+            if pMode then fail "Native integer ABS requires native mode."
+            let bytes=Array.concat [wordBytes 0x4A51;wordBytes 0x6A0A;wordBytes 0x4451;wordBytes 0x6806;wordBytes 0x5489;wordBytes 0x4EEE;wordBytes 0x8AD8]
+            if pass<>0 then write bytes
+            objCode<-objCode+bytes.Length
         elif not pMode && (token=1339 || token=1340) then
             // The library's P increments read operands through A5, so cannot
             // simply be copied into native code. Commit the word before the
@@ -982,10 +1015,43 @@ type private Generator(sourceLibrary: byte[], options: TurboCodegenOptions, sour
         elif pMode then pNoPars ()
         else native ()
 
+    /// A fused condition: each segment's leaf, then its branch to the original
+    /// IF label or to the code after the condition. A word branch to the label
+    /// needs a native label within range; otherwise a retry uses the same long
+    /// jumps as lib537's native conditional templates.
+    member private this.Condition(condition: TurboNativeConditions.CompiledCondition) =
+        let long=longConditions.Contains condition.StartOffset
+        let total=TurboNativeConditions.size long condition
+        if pass<>0 then
+            let finish=objCode+total
+            let mutable at=objCode
+            for segment in condition.Segments do
+                write segment.Code
+                at<-at+segment.Code.Length
+                let wordBranch target =
+                    let displacement=target-(at+2)
+                    if displacement<int Int16.MinValue || displacement>int Int16.MaxValue then raise (ConditionBranchRange condition.StartOffset)
+                    write (Array.append (wordBytes(0x6000 ||| (segment.Condition <<< 8))) (wordBytes displacement))
+                match segment.Exit with
+                | TurboNativeConditions.ToEnd -> wordBranch finish
+                | TurboNativeConditions.ToTarget ->
+                    let address=this.LabelAddress condition.Target
+                    let target=address &&& ~~~1
+                    if long then
+                        write (wordBytes(0x6000 ||| ((segment.Condition ^^^ 1) <<< 8) ||| 10)) // BNCC.S over the jump
+                        if address &&& 1 <> 0 then write (Array.concat [ wordBytes 0x4EAE; wordBytes natToP; longBytes target; wordBytes fillerWord ])
+                        else write (Array.concat [ wordBytes 0x203C; longBytes target; wordBytes 0x4EF6; wordBytes 0x0800 ])
+                    elif address &&& 1 <> 0 then raise (ConditionBranchRange condition.StartOffset)
+                    else wordBranch target
+                at<-at+TurboNativeConditions.slotBytes long segment.Exit
+        objCode<-objCode+total
+        ic<-condition.EndOffset
+
     member private this.Passes() =
         let mutable running = true
         while running do
             match nativeLoops.TryGetValue ic,nativeBlocks.TryGetValue ic with
+            | _ when not pMode && nativeConditions.ContainsKey ic -> this.Condition nativeConditions[ic]
             | (true,loop),_ when pMode ->
                 // FOR's original TOPLOOP label still addresses a threaded FAST
                 // entry. Enter native mode once, take native backedges, and
@@ -1033,6 +1099,7 @@ type private Generator(sourceLibrary: byte[], options: TurboCodegenOptions, sour
                 fail "Dataspace must be between 0 and 65535 KiB."
             this.Improve()
             this.PlanNativeLoops()
+            this.PlanNativeConditions()
             this.PlanNativeRegisters()
             this.PlanNativeArrays()
             pass <- 0
@@ -1045,7 +1112,8 @@ type private Generator(sourceLibrary: byte[], options: TurboCodegenOptions, sour
                 { Code = output.ToArray()
                   Dataspace = options.DataspaceKiB * 1024 + extraStackBytes()
                   NativeAllocation = nativeAllocation
-                  NativeLoops = nativeLoopReport }
+                  NativeLoops = nativeLoopReport
+                  NativeConditions = nativeConditionReport }
         with
         | CodegenFailure message -> Result.Error [ $"Code generation failed, {message}" ]
         | :? IndexOutOfRangeException
@@ -1053,4 +1121,8 @@ type private Generator(sourceLibrary: byte[], options: TurboCodegenOptions, sour
 
 /// Generates a QDOS executable from a Turbo IR stream (codegen410's work).
 let generateFromIr (options: TurboCodegenOptions) (ir: byte[]) : Result<TurboCodegenOutput, string list> =
-    Generator(library.Value, options, ir).Run()
+    // Each retry gives one more condition a long slot; there are finitely many.
+    let rec attempt longConditions =
+        try Generator(library.Value, options, ir, longConditions).Run()
+        with ConditionBranchRange offset when not(Set.contains offset longConditions) -> attempt (Set.add offset longConditions)
+    attempt Set.empty
