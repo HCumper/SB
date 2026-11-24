@@ -1,5 +1,7 @@
 # Turbo FAST versus SB in Q-emuLator
 
+[Native string operations, ROM maths calls and loop EXIT: instruction counts for all nine workloads and full verification, 24 November 2026](Results/2026-11-24-native-strings-rom-maths/README.md)
+
 [Fused conditions, native integer ABS and recursive parameter ranges: N-queens at GoldCard speed, profiles and full verification, 24 November 2026](Results/2026-11-24-fused-conditions-abs-ranges/README.md)
 
 [Memory-based native recursive calls: N-queens at GoldCard speed and full verification, 23 November 2026](Results/2026-11-23-native-recursion/README.md)

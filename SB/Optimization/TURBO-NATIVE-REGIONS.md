@@ -40,6 +40,44 @@ Every label stays in its original mode, and every selected run returns to
 threaded execution before a control-flow or unsupported instruction. Startup,
 DATA, linkage and resident-name records are unchanged.
 
+## Floating arithmetic and ROM maths functions
+
+Straight regions also admit floating negate, NOT, add/subtract/multiply/divide,
+comparisons, Boolean AND/OR/XOR and float-to-int (33, 36, 37-47, 53-55, 334).
+These N templates call the same runtime routines as P mode, on the maths stack
+in place, and memory-counter loops already used them. A call (224) to a vector
+bound by exactly one link record to a one-argument ROM maths resident (ABS,
+ACOS, ACOT, ASIN, ATAN, COS, COT, DEG, EXP, INT, LN, LOG10, RAD, SIN, SQRT, TAN)
+with a float or integer argument uses lib537's native `rom_fn`, which shares
+`rom_fn_p`'s parameter, result and error protocol; Turbo FAST compiles every ROM
+function this way. RND and every other resident keep their threaded calls.
+Memory-counter loops accept the same calls. The HIR analysis treats these
+residents as nonmutating, so they no longer raise a program-wide barrier.
+
+`divide_float` keeps a one-entry result cache inside its own code. Threaded
+code shares one copy, so consecutive divisions with matching mantissas at
+different sites can reuse a cached quotient (exactly rescaled by a power of
+two); native code inlines a copy, and cache, per site, as Turbo FAST does.
+Results are identical, but such code can perform more ROM divisions natively.
+
+## Strings
+
+Straight regions admit string literals (169, 170), concatenation (84),
+comparisons (73-79), number/string conversions (310, 312, 317, 333), CODE,
+LEN of a string value and CHR$ (269, 270, 273), plus whole-string fetch/store
+of a rank-one (DIMmed) string (264, 265) and string-array element fetch/store
+(175, 176, 182) of a vector with one known rank. These are the N templates, and
+the conditions, memory-counter loops already used. A rank is known when every
+DIM (234) or string allocation (262) record for the vector agrees.
+
+Append (374) and simple LEN (375) are the exception: lib537's N templates omit
+the P-mode test for a missing string (`xtend_str_1d_p` and `str_len_1d_p` jump
+to `not_found`). They run natively only when the HIR analysis proves the string
+DIMmed at that record (`AllocatedStringSites`; see
+[HIR analysis](HIR-ANALYSIS.md#allocated-strings)): the backend then gives the
+record the listing comment `allocated string`. Unproven records stay threaded
+in straight regions, and memory-counter loops bridge them with SLOW/FAST.
+
 ## Integer ABS
 
 `x%=ABS(word)` compiles to int-to-float (320), the one-float-argument ROM ABS
@@ -64,9 +102,9 @@ This assumes compiled programs use the QL ROM's ABS, as the effect analysis
 already does: a resident extension that later redefines ABS would no longer
 be called for these integer assignments.
 
-[Direct string append](TURBO-STRING-APPEND.md) uses Turbo's existing checked
-threaded append operation for safe self-concatenating assignments. It avoids
-copying the old prefix without extending native-region eligibility to strings.
+[Direct string append](TURBO-STRING-APPEND.md) uses Turbo's append operation
+for safe self-concatenating assignments, avoiding a copy of the old prefix. It
+stays the checked threaded operation unless its string is proven allocated.
 
 Selection requires estimated instruction savings to exceed the six instructions
 in the two mode bridges. This is a conservative dispatch instruction count, not

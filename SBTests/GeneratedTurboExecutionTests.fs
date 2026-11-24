@@ -277,6 +277,21 @@ let ``fused native conditions skip only terms that cannot fail`` () =
         Assert.That(report "checked" checkedRead, Does.Contain("segments=1"))
     finally Directory.Delete(directory,true)
 
+[<TestCase(false)>]
+[<TestCase(true)>]
+let ``ROM maths calls keep floating loops native`` (hir:bool) =
+    // The functional CPU cannot link ROM residents, so this checks selection;
+    // real-ROM runs of the benchmark collection check the results.
+    let directory=Path.Combine(Path.GetTempPath(),$"rom-maths-report-{Guid.NewGuid():N}")
+    Directory.CreateDirectory directory |> ignore
+    try
+        let prefix=Path.Combine(directory,"maths")
+        let source="10 t=0\n20 FOR i%=1 TO 50\n30 t=t+SIN(i%/10)*COS(i%/20)+SQRT(i%)\n40 END FOR i%\n50 PRINT t\n60 STOP"
+        withCompiledProgramMode hir ["--native-regions";"--regalloc";"--dump-hir="+prefix] ".bas" source (fun executable -> Assert.That(executable.Length, Is.GreaterThan(0)))
+        Assert.That(File.ReadAllText(prefix+".native-ir.txt"), Does.Contain("Audited memory-counter native FOR loops: 1"))
+        Assert.That(File.ReadAllText(prefix+".analysis.txt"), Does.Not.Contain("Global control barrier:"))
+    finally Directory.Delete(directory,true)
+
 // QL AND/OR evaluate every operand: a failing later operand must still fail
 // when an earlier comparison already decides the result. Errors match threaded code.
 let fusedConditionErrors = [|
@@ -346,6 +361,62 @@ let ``direct string append does not invent a combined length overflow`` (hir:boo
         let result=run 4000000L largeJob
         Assert.That(result.ExitCode, Is.Zero)
         Assert.That(result.Output, Is.EqualTo("32760:a:a\n")))
+
+// Append and LEN of a string whose DIM reaches them run without P mode's
+// missing-string checks. The last value is the report's proven site count.
+let allocatedStringPrograms = [|
+    "10 DIM a$(6)\n20 FOR i%=1 TO 9\n30 a$=a$ & CHR$(64+i%):n%=n%+LEN(a$)\n40 END FOR i%\n50 PRINT a$;\":\";n%\n60 STOP", "ABCDEF:39\n", 2
+    "10 DIM a$(4)\n20 FOR p%=1 TO 2\n30 a$=\"\"\n40 FOR i%=1 TO 6\n50 a$=a$ & i%\n60 END FOR i%\n70 PRINT a$;\":\";LEN(a$)\n80 END FOR p%\n90 STOP", "1234:4\n1234:4\n", 2
+    // Turbo rounds DIM a$(1) up to two bytes; a full string takes no more.
+    "10 DIM a$(1)\n20 FOR i%=1 TO 3\n30 a$=a$ & \"x\":n%=n%+LEN(a$)\n40 END FOR i%\n50 PRINT a$;\":\";n%\n60 STOP", "xx:5\n", 2
+    "10 DIM a$(8)\n20 FOR i%=1 TO 9\n30 a$=a$ & i%\n40 IF LEN(a$)=4 THEN EXIT i%\n50 END FOR i%\n60 PRINT a$;\":\";i%\n70 STOP", "1234:4\n", 2
+    // String shapes do not cross calls: LEN inside the procedure stays checked.
+    "10 DIM t$(8)\n20 FOR i%=1 TO 3\n30 t$=t$ & \"ab\":show\n40 END FOR i%\n50 PRINT n%\n60 STOP\n100 DEFine PROCedure show\n110 n%=n%+LEN(t$)\n120 END DEFine", "12\n", 1
+|]
+let allocatedStringModes = [|
+    for index in 0..allocatedStringPrograms.Length-1 do
+        for hir in [false;true] do
+            for native,registers in [false,false;true,false;true,true] do
+                yield TestCaseData(index,hir,native,registers).SetName($"Allocated string {index} (HIR {hir}, native {native}, registers {registers})") |]
+
+[<TestCaseSource(nameof allocatedStringModes)>]
+let ``allocated string append and LEN match threaded results`` (index:int,hir:bool,native:bool,registers:bool) =
+    let source,expected,_=allocatedStringPrograms[index]
+    withCompiledProgramMode hir [(if native then "--native-regions" else "--no-native-regions");(if registers then "--regalloc" else "--no-regalloc")] ".bas" source (fun executable ->
+        let result=run 4000000L executable
+        Assert.That(result.ExitCode, Is.Zero)
+        Assert.That(result.Output, Is.EqualTo(expected)))
+
+[<TestCase(false)>]
+[<TestCase(true)>]
+let ``allocated string reports count every proven append and LEN`` (hir:bool) =
+    let directory=Path.Combine(Path.GetTempPath(),$"allocated-string-report-{Guid.NewGuid():N}")
+    Directory.CreateDirectory directory |> ignore
+    try
+        for index in 0..allocatedStringPrograms.Length-1 do
+            let prefix=Path.Combine(directory,string index)
+            let source,_,sites=allocatedStringPrograms[index]
+            withCompiledProgramMode hir ["--native-regions";"--regalloc";"--dump-hir="+prefix] ".bas" source ignore
+            Assert.That(File.ReadAllText(prefix+".analysis.txt"), Does.Contain($"Allocated-string append/LEN sites: {sites}"), $"fixture {index}")
+            // Each fixture's innermost loop, including the one leaving by EXIT, is native.
+            Assert.That(File.ReadAllText(prefix+".native-ir.txt"), Does.Contain("Audited memory-counter native FOR loops: 1"), $"fixture {index}")
+    finally Directory.Delete(directory,true)
+
+// A GO TO can skip the DIM: those sites keep the P-mode "not found" check,
+// inside native loops too.
+let unallocatedStringPrograms = [|
+    "10 GO TO 30\n20 DIM a$(4)\n30 FOR i%=1 TO 2\n40 a$=a$ & \"x\"\n50 END FOR i%\n60 STOP"
+    "10 GO TO 30\n20 DIM a$(4)\n30 FOR i%=1 TO 2\n40 n%=n%+LEN(a$)\n50 END FOR i%\n60 STOP"
+|]
+let unallocatedStringModes = [|
+    for index in 0..unallocatedStringPrograms.Length-1 do
+        for native in [false;true] do yield TestCaseData(index,native) |]
+
+[<TestCaseSource(nameof unallocatedStringModes)>]
+let ``append and LEN before a DIM keep the missing-string error`` (index:int,native:bool) =
+    withCompiledProgramMode true [(if native then "--native-regions" else "--no-native-regions");"--regalloc"] ".bas" unallocatedStringPrograms[index] (fun executable ->
+        let error=Assert.Throws<M68kFault>(fun () -> run 2000000L executable |> ignore)
+        Assert.That(error.Message, Does.Contain("Runtime error message:")))
 
 let nativeValuePrograms = [|
     "10 a%=3:b%=a%+4:c%=b%*2:d%=-c%\n20 PRINT a%;\":\";b%;\":\";c%;\":\";d%\n30 STOP", "3:7:14:-14\n"

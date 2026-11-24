@@ -6,11 +6,47 @@ module TurboNativeRegions
 // FAST/SLOW bridges, leaving every branch target and continuation threaded.
 open HirTurboIrBackend
 
+/// Vector ranks from DIM (234) and string allocation (262) records; vectors
+/// given conflicting or no ranks are absent. Shared with memory-counter loops.
+let internal ranks items =
+    items |> Seq.choose(function
+        | Instruction(234,[Word rank;Word vector],_) -> Some(vector,rank)
+        | Instruction(262,[Word vector],_) -> Some(vector,1)
+        | _ -> None)
+    |> Seq.groupBy fst |> Seq.choose(fun (vector,entries) ->
+        match entries |> Seq.map snd |> Seq.distinct |> Seq.toList with
+        | [rank] when rank>0 && rank<=8 -> Some(vector,rank)
+        | _ -> None) |> Map.ofSeq
+
+/// Vectors bound only to one-argument ROM maths residents (ABS, SIN, SQRT...).
+let internal mathsVectors (items:IrItem seq) =
+    items |> Seq.choose(function
+        | Instruction(261,[Word v;Bytes8 name],_) -> Some(v,System.Text.Encoding.ASCII.GetString(name).Trim().ToUpperInvariant())
+        | _ -> None)
+    |> Seq.groupBy fst |> Seq.choose(fun (v,names) ->
+        // Exactly one link record: duplicated linkage keeps every exclusion.
+        match names |> Seq.map snd |> Seq.toList with
+        | [name] when HirEffects.romMathsFunctions.Contains name -> Some v
+        | _ -> None) |> Set.ofSeq
+
+/// A float-valued call of such a resident with one float or integer argument.
+/// lib537's native rom_fn uses the same parameter, result and error protocol
+/// as the threaded rom_fn_p; Turbo FAST compiles every ROM function this way.
+let internal nativeRomFunction (maths:Set<int>) = function
+    | Instruction(224,[Word 2;Word v;Bytes8 [|descriptor|]],_) -> maths.Contains v && (descriptor=2uy || descriptor=3uy)
+    | _ -> false
+
+/// Facts the deny-by-default audit needs about the whole stream.
+type internal Facts = { Maths:Set<int>; Ranks:Map<int,int> }
+
 // Conservative instruction-count savings versus P dispatch, before the six
 // instructions needed by FAST/SLOW. These are not MC68008 cycle estimates.
 // Audit source: lib537.asm, the corresponding N and +1000 P templates.
-let private saving item =
+let private saving (facts:Facts) item =
+    let maths=facts.Maths
     let opcode = match item with Instruction(op,_,_) -> op | _ -> -1
+    let vector = match item with Instruction(_,Word v::_,_) -> Some v | _ -> None
+    let rank = vector |> Option.bind facts.Ranks.TryFind
     match opcode with
     // Unproven arithmetic uses explicit checked forms when selected below.
     // The unchecked N templates are still reserved for proven expressions.
@@ -28,9 +64,23 @@ let private saving item =
     // zero and -32768/-1 failures, floor division and divisor-signed remainder.
     // Comparisons keep Turbo's six-byte float Boolean result.
     | 4 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 20
-    // Numeric literals, duplicates and integer-to-float conversion. No floating
-    // arithmetic, allocation, ROM calls, array indexing or string operations.
-    | 106 | 138 | 263 | 268 | 283 | 320 | 376 | 377 -> Some 2
+    // Numeric literals, duplicates and integer/float conversions.
+    | 106 | 138 | 263 | 268 | 283 | 320 | 334 | 376 | 377 -> Some 2
+    // Floating negate, NOT, arithmetic, comparisons and Boolean operators. Both
+    // modes call the same runtime routines on the maths stack in place; memory-
+    // counter loops already run these N templates. No allocation is involved.
+    | 33 | 36 | 37 | 38 | 39 | 40 | 41 | 42 | 43 | 44 | 45 | 46 | 47 | 53 | 54 | 55 -> Some 2
+    // ROM maths residents: native rom_fn replaces rom_fn_p and its dispatch.
+    | 224 when nativeRomFunction maths item -> Some 3
+    // Strings: literals, concatenation, comparisons and conversions, simple
+    // rank-one string fetch/store and string-array element fetch/store, under
+    // the conditions memory-counter loops already run these N templates with.
+    // Append (374) and simple LEN (375) omit P mode's missing-string check:
+    // only records whose string is proven allocated run natively.
+    | 169 | 170 | 84 | 73 | 74 | 75 | 76 | 77 | 78 | 79 | 310 | 312 | 317 | 333 | 269 | 270 | 273 -> Some 2
+    | 264 | 265 when rank=Some 1 -> Some 3
+    | 374 | 375 when rank=Some 1 && (match item with Instruction(_,_,comment) -> comment=allocatedStringComment | _ -> false) -> Some 3
+    | 175 | 176 | 182 when rank.IsSome -> Some 3
     // Integer ABS replaces a ROM call, two float conversions and their bridges.
     | 1334 -> Some 40
     | _ -> None
@@ -54,7 +104,9 @@ let internal nativeInstruction = function
 
 let private completesValue opcode =
     match opcode with
-    | 1 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 20 | 111 | 112 | 118 | 143 | 144 | 150 | 320 | 1334 -> true
+    | 1 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 20 | 111 | 112 | 118 | 143 | 144 | 150 | 320 | 334 | 1334
+    | 33 | 36 | 37 | 38 | 39 | 40 | 41 | 42 | 43 | 44 | 45 | 46 | 47 | 53 | 54 | 55 | 224
+    | 84 | 73 | 74 | 75 | 76 | 77 | 78 | 79 | 310 | 312 | 317 | 333 | 269 | 270 | 273 | 264 | 374 | 175 | 176 | 182 -> true
     | _ -> false
 
 /// Vectors bound only to the ROM resident named ABS.
@@ -62,7 +114,7 @@ let internal absVectors (items:IrItem seq) =
     items |> Seq.choose(function
         | Instruction(261,[Word v;Bytes8 name],_) -> Some(v,System.Text.Encoding.ASCII.GetString(name).Trim().ToUpperInvariant())
         | _ -> None)
-    |> Seq.groupBy fst |> Seq.choose(fun (v,names) -> if names |> Seq.map snd |> Seq.distinct |> Seq.toList=["ABS"] then Some v else None) |> Set.ofSeq
+    |> Seq.groupBy fst |> Seq.choose(fun (v,names) -> if names |> Seq.map snd |> Seq.toList=["ABS"] then Some v else None) |> Set.ofSeq
 
 /// x% = ABS(word): int-to-float, the one-float-argument ROM ABS returning a
 /// float, then float-to-int. |x| is exact for every word except -32768, whose
@@ -85,7 +137,7 @@ let private units (items:IrItem list) =
         | [] -> ()
     List.ofSeq result
 
-let private regionBenefit (items:IrItem array) =
+let private regionBenefit facts (items:IrItem array) =
     let mutable benefit=0
     let mutable index=0
     while index<items.Length do
@@ -105,7 +157,7 @@ let private regionBenefit (items:IrItem array) =
             benefit<-benefit+score
             index<-index+4
         | _ ->
-            benefit<-benefit+(saving items[index] |> Option.defaultValue 0)
+            benefit<-benefit+(saving facts items[index] |> Option.defaultValue 0)
             index<-index+1
     benefit
 
@@ -115,6 +167,7 @@ let select enabled (output: TurboIrOutput) : Result<TurboIrOutput, string list> 
     if not enabled then Ok output
     else
         let items = ResizeArray<IrItem>()
+        let facts = { Maths=mathsVectors output.Items; Ranks=ranks output.Items }
         // A unit is one selectable item and the original records it replaces.
         // Only an integer ABS unit differs; threaded code keeps its records.
         let pending = ResizeArray<IrItem * IrItem list>()
@@ -130,7 +183,7 @@ let select enabled (output: TurboIrOutput) : Result<TurboIrOutput, string list> 
                     |> Seq.choose (function i, Instruction(op, _, _) when completesValue op -> Some(i + 1) | _ -> None)
                     |> Seq.tryLast |> Option.defaultValue 0
                 let prefix = pending |> Seq.take finish |> Seq.map fst |> Seq.toArray
-                let benefit = regionBenefit prefix
+                let benefit = regionBenefit facts prefix
                 let threaded units = units |> Seq.collect snd
                 if benefit > 6 then
                     items.Add(Instruction(254, [], "audited native region"))
@@ -141,7 +194,7 @@ let select enabled (output: TurboIrOutput) : Result<TurboIrOutput, string list> 
                 pending.Clear()
         for item,originals in units output.Items do
             match item with
-            | Instruction _ when body && not sourceNative && (saving item).IsSome ->
+            | Instruction _ when body && not sourceNative && (saving facts item).IsSome ->
                 pending.Add((item,originals))
             | _ ->
                 flush ()

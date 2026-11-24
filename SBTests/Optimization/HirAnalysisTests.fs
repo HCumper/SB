@@ -169,6 +169,68 @@ let ``ABS has nonmutating ROM effects but a user ABS retains its actual writes``
     let context=HirEffects.analyze {p with Routines=[own]}
     Assert.That((HirEffects.call context MainScope absSymbol []).Writes.Contains x, Is.True)
 
+[<TestCase("SIN")>]
+[<TestCase("COS")>]
+[<TestCase("SQRT")>]
+[<TestCase("ATAN")>]
+[<TestCase("LN")>]
+[<TestCase("INT")>]
+let ``ROM maths residents are nonmutating and leave no program-wide barrier`` (name:string) =
+    let symbol=SymbolId 999
+    let call=CallFunc(symbol,[ValueArg(read x)],HirType.Float,pos)
+    let expr=binary Add (read y) (number 1)
+    let facts=analyze {program [assign x (number 2);BuiltInCall(Print,None,[call],pos);assign y (number 3);assign z expr] with SymbolNames=Map.ofList[symbol,name]}
+    Assert.That(facts.GlobalControlBarriers, Is.Empty)
+    proven expr facts
+    let effect=HirEffects.call facts.Effects MainScope symbol [ValueArg(read x)]
+    Assert.That(effect.WritesUnknown || effect.DescriptorWritesUnknown || effect.LoopMetadataWritesUnknown, Is.False)
+
+// Native append (374) and LEN (375) omit P mode's missing-string checks. A
+// DIMmed string keeps its buffer through assignment; a site qualifies only
+// where its DIM reaches every path and no LOCAL can rebind the name.
+let private text=SymbolId 60
+let private lenSymbol=SymbolId 61
+let private readText=ReadVar(text,HirType.String,pos)
+let private assignText value=Assign(WriteVar(text,HirType.String,pos),value,pos)
+let private stringLiteral value=Literal(ConstString value,HirType.String,pos)
+let private textLength=CallFunc(lenSymbol,[ValueArg readText],HirType.Int,pos)
+let private textAppend=Binary(Concat,readText,stringLiteral "x",HirType.String,pos)
+let private dimText=Dim(text,[number 8],pos)
+let private stringProgram body=
+    {program body with Globals={storage text "TEXT$" GlobalStorage with Type=HirType.String}::globals;SymbolNames=Map.ofList[lenSymbol,"LEN"]}
+
+[<Test>]
+let ``append and LEN of a DIMmed string stay allocated through assignments`` () =
+    let facts=analyze (stringProgram [dimText;assignText(stringLiteral "");assignText textAppend;assign x textLength])
+    Assert.That(facts.AllocatedStringSites, Is.EquivalentTo([textAppend;textLength]))
+
+[<Test>]
+let ``append and LEN stay checked where a DIM may not have run`` () =
+    let facts=analyze (stringProgram [If(read flag,[dimText],None,pos);assignText textAppend;assign x textLength])
+    Assert.That(facts.AllocatedStringSites, Is.Empty)
+    let late=analyze (stringProgram [assign x textLength;dimText;assignText textAppend])
+    Assert.That(late.AllocatedStringSites, Is.EquivalentTo([textAppend]))
+
+[<TestCase("OTHER$",true)>]
+[<TestCase("TEXT$",false)>]
+let ``a LOCAL of the same name leaves a DIMmed global's sites checked`` (localName:string,allocated:bool) =
+    let work={routine (SymbolId 62) "WORK" [] [] with Locals=[{storage (SymbolId 63) localName (RoutineLocalStorage "WORK") with Type=HirType.String}]}
+    let facts=analyze {stringProgram [dimText;ProcCall(work.Symbol,None,[],pos);assignText textAppend;assign x textLength] with Routines=[work]}
+    Assert.That(facts.AllocatedStringSites.IsEmpty, Is.EqualTo(not allocated))
+
+[<Test>]
+let ``RND stays an opaque resident with a program-wide barrier`` () =
+    let symbol=SymbolId 999
+    let facts=analyze {program [BuiltInCall(Print,None,[CallFunc(symbol,[ValueArg(read x)],HirType.Float,pos)],pos)] with SymbolNames=Map.ofList[symbol,"RND"]}
+    Assert.That(facts.GlobalControlBarriers, Is.Not.Empty)
+
+[<Test>]
+let ``a loop calling a ROM maths resident keeps its binding certificate`` () =
+    let symbol=SymbolId 999
+    let work=localRoutine [localLoop [assign x (CallFunc(symbol,[ValueArg(read localCounter)],HirType.Float,pos))]]
+    let facts=analyze {program [ProcCall(work.Symbol,None,[],pos)] with Routines=[work];SymbolNames=Map.ofList[symbol,"SIN"]}
+    Assert.That(facts.CertifiedNativeForLoops.ContainsKey(Some work.Symbol,LoopId 80), Is.True)
+
 [<Test>]
 let ``independent loop certificates survive an unrelated enumerated FOR scope`` () =
     let enumeration=ForSequence(LoopId 1,i,[],number 1,number 3,[number 5],number 1,[],pos)

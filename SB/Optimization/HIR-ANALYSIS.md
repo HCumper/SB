@@ -125,6 +125,25 @@ Unknown ranks, sibling mutation, ambiguous bindings and uncertain continuation
 contexts retain the generic path. This enables fixed-rank native FOR accesses
 without assuming dimensions are constants or caching descriptor pointers.
 
+## Allocated strings
+
+A DIMmed string variable (`DIM s$(n)`, `String` storage) gets a one-element
+bound from its DIM, like an array. Unlike other scalar stores, an assignment to
+it keeps that bound: `st_str_var_1d` copies the value into the existing buffer,
+truncated to its capacity, and never replaces the descriptor. Other descriptor
+writes (calls whose summaries write it, unknown writes, INPUT/READ) still kill it.
+
+`AllocatedStringSites` holds the HIR expressions of append values (the Concat in
+`s$=s$&x`) and `LEN(s$)` calls whose string is allocated at every occurrence: the
+node's entry state, after effects evaluated earlier in that node, still holds
+the string's bound, and the scope is proof-eligible. The name must belong to
+exactly one storage in the program, so no LOCAL or formal can dynamically rebind
+it; a dynamic reference in a routine then names the DIMmed string. String bounds
+do not join the call-entry shape propagation: sites inside routines stay
+checked. A path that skips the DIM, such as a GO TO around it, leaves the site
+checked, as does any program-wide barrier. The backend tags proven 374/375
+records so native code may omit P mode's missing-string checks.
+
 ## Effects and aliases
 
 `HirEffects.analyze` computes interprocedural MAY summaries to a fixed point,
@@ -134,10 +153,13 @@ exceptions, I/O, allocation, control barriers and calls.
 Unknown residents remain full memory/effect barriers. Known calls map formal
 effects to actual references. Scalar `ValueArg` temporaries do not write their
 caller's variable; array references and element writes retain their owner root.
-The existing ROM `ABS` function has a narrow nonmutating effect summary: its
-argument effects, possible coercion/allocation failure and call boundary remain.
-It cannot replace descriptors or FOR continuations. A user-defined ABS routine
-uses its actual summary; unknown functions retain their full effects.
+The one-argument ROM maths functions (ABS, ACOS, ACOT, ASIN, ATAN, COS, COT,
+DEG, EXP, INT, LN, LOG10, RAD, SIN, SQRT, TAN) have a narrow nonmutating effect
+summary: their argument effects, possible coercion/allocation/domain failure and
+call boundary remain. They cannot replace descriptors or FOR continuations, and
+they raise no program-wide barrier. RND updates generator state and stays
+opaque. A user-defined routine of the same name uses its actual summary;
+unknown functions retain their full effects.
 
 Array-element stores invalidate affected values but preserve descriptor and
 captured FOR metadata. Scalar stores conservatively invalidate affected

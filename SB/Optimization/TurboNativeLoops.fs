@@ -169,8 +169,7 @@ let planWithProofs (proofs:Map<int,NativeForLoopProof>) maxExtraBytes vectorTabl
             | _ -> ()
         let globals=items |> Array.choose(function Instruction((101|114),[Word v],_) -> Some v | _ -> None) |> Set.ofArray
         let arrays=items |> Array.choose(function Instruction(126,[_;Word v],_) -> Some v | _ -> None) |> Set.ofArray
-        let residentNames=items |> Array.choose(function Instruction(261,[Word v;Bytes8 name],_) -> Some(v,System.Text.Encoding.ASCII.GetString(name).ToUpperInvariant()) | _ -> None)
-        let absVectors=residentNames |> Array.groupBy fst |> Array.choose(fun (v,names) -> if names.Length=1 && snd names[0]="ABS" then Some v else None) |> Set.ofArray
+        let maths=TurboNativeRegions.mathsVectors items
         let unsafeProgram = items |> Array.exists(function
             | Instruction((102|110|115|134|142|147|179|224|227|235|236|240|241|244|246|249|269|275|277|278|279|280|293|294|325|327|328|364|366|382|385),_,_) -> true
             | _ -> false)
@@ -178,8 +177,9 @@ let planWithProofs (proofs:Map<int,NativeForLoopProof>) maxExtraBytes vectorTabl
         // ROM calls and local transfers outside this region are then harmless.
         // Keep independent machine-level guards for persistent memory/resumption
         // operations. Byte-only callers still use the full legacy exclusions.
+        // Nonmutating ROM maths residents outside a loop cannot affect it.
         let unsafeCertifiedProgram = items |> Array.exists(function
-            | Instruction(224,[Word 2;Word v;Bytes8 descriptors],_) when absVectors.Contains v && descriptors.Length=1 && descriptors[0]>=1uy && descriptors[0]<=3uy -> false
+            | Instruction(224,[Word 2;Word v;Bytes8 descriptors],_) when maths.Contains v && descriptors.Length=1 && descriptors[0]>=1uy && descriptors[0]<=3uy -> false
             | Instruction((224|227|235|269|275|277|278|279|280|325|327|328|364|366|382|385),_,_) -> true
             | _ -> false)
         let references=Dictionary<int,int>()

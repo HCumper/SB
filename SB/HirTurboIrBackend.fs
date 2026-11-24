@@ -128,6 +128,9 @@ type TurboIrOptions = {
     /// Memory-counter loops may observe scalar aliases across audited calls.
     /// This proof must never be supplied to the register-pinning planner.
     CertifiedMemoryForLoops: Set<SymbolId option * LoopId>
+    /// Append values and LEN calls whose DIMmed string is allocated at every
+    /// occurrence: their records may run without P mode's missing-string check.
+    AllocatedStringSites: Set<HirExpr>
 }
 
 type TurboIrOutput = {
@@ -169,6 +172,7 @@ let defaultOptions = {
     TwoDimensionalIntegerAccesses = Map.empty
     CertifiedNativeForLoops = Map.empty
     CertifiedMemoryForLoops = Set.empty
+    AllocatedStringSites = Set.empty
 }
 
 /// Internal listing annotation consumed by native-region selection. The binary
@@ -177,6 +181,8 @@ let rangeProvenIntegerComment = "range-proven integer arithmetic"
 let rangeProvenArrayComment = "range-proven array access"
 let rankOneIntegerArrayComment = "rank-one integer array access"
 let provenRankOneIntegerArrayComment = "range-proven rank-one integer array access"
+/// Append (374) or LEN (375) of a string whose DIM reaches the record.
+let allocatedStringComment = "allocated string"
 /// Listing comment of the native-only 1334 record (int-to-float, ROM ABS, float-to-int).
 let nativeIntegerAbsComment = "native integer ABS"
 
@@ -1243,7 +1249,7 @@ type private Emitter(options: TurboIrOptions, program: HirProgram) =
             fail pos "an omitted argument can only be passed to a resident routine."
             TurboInt
         | Binary(binaryOp, lhs, rhs, _, pos) -> this.EmitBinary(scope, binaryOp, lhs, rhs, pos, expr)
-        | CallFunc(symbol, args, _, pos) -> this.EmitFunctionCall(scope, symbol, args, pos)
+        | CallFunc(symbol, args, _, pos) as call -> this.EmitFunctionCall(scope, call, symbol, args, pos)
 
     member private this.EmitBinary(scope: Scope, binaryOp: HirBinaryOp, lhs: HirExpr, rhs: HirExpr, pos: SourcePosition, original: HirExpr) =
         let operands turboType =
@@ -1573,7 +1579,7 @@ type private Emitter(options: TurboIrOptions, program: HirProgram) =
                 if formalType = TurboString then op0 Op.upString)
         entry
 
-    member private this.EmitFunctionCall(scope: Scope, symbol: SymbolId, args: HirCallArg list, pos: SourcePosition) : TurboType =
+    member private this.EmitFunctionCall(scope: Scope, call: HirExpr, symbol: SymbolId, args: HirCallArg list, pos: SourcePosition) : TurboType =
         match routines.TryGetValue symbol with
         | true, routine ->
             if routine.ReturnType.IsNone then
@@ -1587,12 +1593,12 @@ type private Emitter(options: TurboIrOptions, program: HirProgram) =
             let resultType = this.TypeOfName routine.Name
             if resultType = TurboString then op0 Op.downString
             resultType
-        | _ -> this.EmitBuiltInFunction(scope, normalizeIdentifier (this.SymbolName symbol), args, pos)
+        | _ -> this.EmitBuiltInFunction(scope, call, normalizeIdentifier (this.SymbolName symbol), args, pos)
 
     member private this.ArityError(name: string, pos: SourcePosition) =
         fail pos $"'{name}' is called with arguments it does not take."
 
-    member private this.EmitBuiltInFunction(scope: Scope, name: string, args: HirCallArg list, pos: SourcePosition) : TurboType =
+    member private this.EmitBuiltInFunction(scope: Scope, call: HirExpr, name: string, args: HirCallArg list, pos: SourcePosition) : TurboType =
         let values = args |> List.map argAsExpr
         let unary want opcode result =
             match values with
@@ -1606,7 +1612,7 @@ type private Emitter(options: TurboIrOptions, program: HirProgram) =
         | "LEN", [ ValueArg value ] when this.IsSimpleStringVariable value ->
             // LEN of a simple string variable reads its length word (375, P 19518-19534).
             let vector = this.NamedVector(this.NameOf value |> Option.defaultValue "", pos)
-            opc Op.strLen [ Word vector.Id ] vector.Name
+            opc Op.strLen [ Word vector.Id ] (if options.AllocatedStringSites.Contains call then allocatedStringComment else vector.Name)
             TurboInt
         | "LEN", _ -> unary TurboString Op.len TurboInt
         | "CODE", _ -> unary TurboString Op.code TurboInt
@@ -1802,7 +1808,7 @@ type private Emitter(options: TurboIrOptions, program: HirProgram) =
                 // as Turbo's Simple_Concat does. Do not add a concatenated-length
                 // overflow test: Turbo's append does not have one.
                 this.EmitAs(scope, TurboString, suffix)
-                opc Op.appendString [Word vector.Id] vector.Name
+                opc Op.appendString [Word vector.Id] (if options.AllocatedStringSites.Contains value then allocatedStringComment else vector.Name)
                 true
         | _ -> false
 

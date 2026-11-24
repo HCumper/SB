@@ -131,3 +131,48 @@ let ``native integer ABS is rejected in threaded code`` () =
         | Instruction(118,_,_) as store -> [Instruction(1334,[],nativeIntegerAbsComment);store]
         | item -> [item])
     Assert.That(validate (serialize items) |> String.concat "; ", Does.Contain("Native integer ABS requires native mode"))
+
+// Floating arithmetic and one-argument ROM maths calls run in native regions,
+// with lib537's native rom_fn. Other residents keep their threaded calls.
+let private nativeRecords opcode output =
+    let mutable native=false
+    let mutable inside,outside=0,0
+    for item in output.Items do
+        match item with
+        | Instruction(254,_,_) -> native<-true
+        | Instruction(255,_,_) -> native<-false
+        | Instruction(op,_,_) when op=opcode -> if native then inside<-inside+1 else outside<-outside+1
+        | _ -> ()
+    inside,outside
+
+[<Test>]
+let ``string fetch store and concatenation join native regions`` () =
+    let after = emit "10 DIM a$(10),b$(10)\n20 a$=\"ab\":b$=a$ & \"cd\":c%=CODE(b$)\n30 STOP" |> select
+    for opcode in [264;265;84] do Assert.That(fst (nativeRecords opcode after), Is.GreaterThan(0), $"opcode {opcode}")
+    Assert.That(validate after.Bytes, Is.Empty)
+
+// Append and simple LEN run natively only when HIR analysis proved the string
+// allocated: the listing comment carries that proof.
+[<TestCase(false)>]
+[<TestCase(true)>]
+let ``append and LEN join native regions only when proven allocated`` (proven:bool) =
+    let before = emit "10 DIM a$(10)\n20 a$=\"ab\":b%=1:c%=2:a$=a$ & \"cd\":c%=LEN(a$)+b%\n30 STOP"
+    let tag = function
+        | Instruction((374|375 as op),args,_) when proven -> Instruction(op,args,allocatedStringComment)
+        | item -> item
+    let after = select {before with Items=List.map tag before.Items}
+    for opcode in [374;375] do
+        Assert.That(nativeRecords opcode after, Is.EqualTo(if proven then (1,0) else (0,1)), $"opcode {opcode}")
+    Assert.That(validate after.Bytes, Is.Empty)
+
+[<Test>]
+let ``floating arithmetic and ROM maths calls join native regions`` () =
+    let after = emit "10 a=1.5:b=SIN(a)*2+COS(a)/3:c=SQRT(b*b)-ATAN(a)\n20 STOP" |> select
+    Assert.That(nativeRecords 224 after, Is.EqualTo((4,0)))
+    for opcode in [37;38;39;40] do Assert.That(fst (nativeRecords opcode after), Is.GreaterThan(0), $"opcode {opcode}")
+    Assert.That(validate after.Bytes, Is.Empty)
+
+[<Test>]
+let ``non-maths residents keep threaded calls`` () =
+    let after = emit "10 a=RND(5)*1.5\n20 STOP" |> select
+    Assert.That(nativeRecords 224 after, Is.EqualTo((0,1)))

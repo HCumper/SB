@@ -12,17 +12,14 @@ let private references = function
     | Instruction(_,args,_) -> args |> List.choose(function LabelRef label -> Some label | _ -> None)
     | _ -> []
 
-let private ranks items =
-    items |> Seq.choose(function
-        | Instruction(234,[Word rank;Word vector],_) -> Some(vector,rank)
-        | Instruction(262,[Word vector],_) -> Some(vector,1)
-        | _ -> None)
-    |> Seq.groupBy fst |> Seq.choose(fun (vector,entries) ->
-        match entries |> Seq.map snd |> Seq.distinct |> Seq.toList with
-        | [rank] when rank>0 && rank<=8 -> Some(vector,rank)
-        | _ -> None) |> Map.ofSeq
+let private ranks items = TurboNativeRegions.ranks items
 
-let private audit (dimensions:Map<int,int>) (allReferences:Map<int,int>) (calls:Map<int,int>) (body:IrItem array) =
+// x%=ABS(word) becomes the native integer record: an integer operation that
+// leaves word-only bodies to the register-pinning planner.
+let private absAt (abs:Set<int>) (items:IrItem array) index =
+    index+2<items.Length && TurboNativeRegions.integerAbs abs [items[index];items[index+1];items[index+2]]
+
+let private audit (maths:Set<int>) (abs:Set<int>) (finish:int) (dimensions:Map<int,int>) (allReferences:Map<int,int>) (calls:Map<int,int>) (body:IrItem array) =
     let labels=body |> Array.mapi(fun index item -> index,item) |> Array.choose(function i,LabelDef(label,_) -> Some(label,i) | _ -> None)
     let targets=Map.ofArray labels
     let localReferences=body |> Array.collect (references >> List.toArray) |> Array.countBy id |> Map.ofArray
@@ -43,7 +40,11 @@ let private audit (dimensions:Map<int,int>) (allReferences:Map<int,int>) (calls:
         match dimensions.TryFind vector with
         | Some rank -> transform (inputs @ List.replicate (rank+extra) Integer) output
         | None -> valid<-false
+    let mutable skip=0
     for index in 0..body.Length-1 do
+        if skip>0 then skip<-skip-1
+        elif absAt abs body index then transform [Integer] [Integer];skip<-2
+        else
         match body[index] with
         | LabelDef _ -> if not stack.IsEmpty then valid<-false
         | Instruction(op,args,_) ->
@@ -82,6 +83,9 @@ let private audit (dimensions:Map<int,int>) (allReferences:Map<int,int>) (calls:
             | 175,[Word vector] -> array vector [] [Text] 1;extended<-true
             | 176,[Word vector] -> array vector [Text] [] 1;extended<-true
             | 182,[Word vector] -> array vector [Text] [] -1;extended<-true
+            // A ROM maths resident: native rom_fn, one number in, a float out.
+            | 224,[Word 2;Word _;Bytes8 [|descriptor|]] when TurboNativeRegions.nativeRomFunction maths body[index] ->
+                transform [if descriptor=2uy then Floating else Integer] [Floating];extended<-true
             | 236,[LabelRef target] when calls.ContainsKey target ->
                 transform (List.replicate calls[target] Integer) []
                 if not stack.IsEmpty then valid<-false
@@ -89,14 +93,18 @@ let private audit (dimensions:Map<int,int>) (allReferences:Map<int,int>) (calls:
             | (239|245|242),[LabelRef label] ->
                 if op<>242 then transform [Floating] []
                 if not stack.IsEmpty || not(targets.TryFind label |> Option.exists(fun target -> target>index)) then valid<-false
+            // EXIT of this loop: lib537's native exit jumps to the loop's own end
+            // label (its 378), leaving the counter cell as threaded exit_p does.
+            | 381,[LabelRef label] when label=finish -> if not stack.IsEmpty then valid<-false
             | _ -> valid<-false
     valid && extended && stack.IsEmpty
 
 let private native item =
     match item with
     // Native append/LEN omit P-mode missing-string checks. Retain the exact P
-    // operations and their failure timing, including when an append is full.
-    | Instruction((374|375),_,_) ->
+    // operations and their failure timing, including when an append is full,
+    // unless the string's DIM is proven to reach the record.
+    | Instruction((374|375),_,comment) when comment<>allocatedStringComment ->
         [Instruction(255,[],"checked string helper");item;Instruction(254,[],"resume memory-counter loop")]
     | Instruction(236,_,_) ->
         // The original P call/return protocol owns every recursive LOCAL and
@@ -112,6 +120,8 @@ let select enabled (output:TurboIrOutput) : Result<TurboIrOutput,string list> =
     else
         let source=List.toArray output.Items
         let dimensions=ranks source
+        let maths=TurboNativeRegions.mathsVectors source
+        let abs=TurboNativeRegions.absVectors source
         let refs=source |> Array.collect (references >> List.toArray) |> Array.countBy id |> Map.ofArray
         let result=ResizeArray<IrItem>()
         let mutable index=0
@@ -131,14 +141,20 @@ let select enabled (output:TurboIrOutput) : Result<TurboIrOutput,string list> =
                                 | Instruction(230,[Word v],_),Instruction(378,[LabelRef target],_) -> v=counter && target=finish
                                 | _ -> false)
                             ending |> Option.filter(fun ending ->
-                                refs.TryFind finish=Some 1 &&
-                                audit dimensions refs (if memoryProof then output.NativeProcedureCalls else Map.empty) source[index+4..ending-1])
+                                // The end label's references: the initializer and this body's own EXITs.
+                                let exits=source[index+4..ending-1] |> Array.filter(function Instruction(381,[LabelRef label],_) -> label=finish | _ -> false) |> Array.length
+                                refs.TryFind finish=Some(1+exits) &&
+                                audit maths abs finish dimensions refs (if memoryProof then output.NativeProcedureCalls else Map.empty) source[index+4..ending-1])
                         else None
                     | _ -> None
             match candidate with
             | Some ending ->
                 result.Add(Instruction(254,[],marker))
-                for i in index..ending+1 do result.AddRange(native source[i])
+                let mutable i=index
+                while i<=ending+1 do
+                    if absAt abs source i && i+2<=ending+1 then
+                        result.Add(Instruction(1334,[],nativeIntegerAbsComment));i<-i+3
+                    else result.AddRange(native source[i]);i<-i+1
                 result.Add(Instruction(255,[],"resume threaded code after memory-counter FOR"))
                 index<-ending+2
             | None ->

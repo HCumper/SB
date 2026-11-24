@@ -246,10 +246,16 @@ let inlineFunction (program:HirProgram) symbol argumentCount =
     (program.SymbolNames.TryFind symbol |> Option.exists(fun name ->
         ["LEN";"CODE";"CHR$"] |> List.exists(fun intrinsic -> name.Equals(intrinsic,StringComparison.OrdinalIgnoreCase))))
 
+/// One-argument QL ROM maths functions. Each reads one coerced number and
+/// returns a float. Like ABS they may fail coercion, allocation or their own
+/// domain checks, but never rebind storage or install continuations. RND is
+/// excluded: it updates the generator's state.
+let romMathsFunctions = set ["ABS";"ACOS";"ACOT";"ASIN";"ATAN";"COS";"COT";"DEG";"EXP";"INT";"LN";"LOG10";"RAD";"SIN";"SQRT";"TAN"]
+
 let nonmutatingFunction (program:HirProgram) symbol argumentCount =
     inlineFunction program symbol argumentCount ||
     argumentCount=1 && not(program.Routines |> List.exists(fun r -> r.Symbol=symbol)) &&
-    (program.SymbolNames.TryFind symbol |> Option.exists(fun name -> name.Equals("ABS",StringComparison.OrdinalIgnoreCase)))
+    (program.SymbolNames.TryFind symbol |> Option.exists(fun name -> romMathsFunctions.Contains(name.ToUpperInvariant())))
 
 // Match only the slice shapes emitted inline by HirTurboIrBackend. General
 // RIGHT$/MID$ calls still use the resident-function ABI and remain opaque.
@@ -269,10 +275,11 @@ let inlineCall (program:HirProgram) symbol args =
 let nonmutatingCall program symbol args =
     inlineCall program symbol args || nonmutatingFunction program symbol (List.length args)
 
-/// The one-argument ROM ABS resident. Native code generation replaces each
-/// x%=ABS(word) with an inline integer instruction. Any ROM call that remains
-/// is still rejected by the machine-level loop planners, which never cross one.
-let residentAbsCall (program:HirProgram) symbol args =
+/// A one-argument ROM maths resident, such as ABS or SIN. Native code
+/// generation replaces each x%=ABS(word) with an inline integer instruction,
+/// and memory-counter native loops call the others with the native template.
+/// The register-pinning planner still rejects any body containing a ROM call.
+let residentMathsCall (program:HirProgram) symbol args =
     nonmutatingFunction program symbol (List.length args) && not(inlineFunction program symbol (List.length args))
 
 let rec expression (context: Context) scope expr =

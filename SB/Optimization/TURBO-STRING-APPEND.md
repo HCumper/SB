@@ -5,8 +5,9 @@ variable, including local, implicit-string and reference bindings. It evaluates
 the suffix and emits the existing Turbo append instruction 374 instead of
 fetching the old string, concatenating and assigning the complete result.
 
-The operation stays threaded, using lib537's checked P-mode implementation.
-It checks that the destination exists, consumes the suffix, and copies only the
+The operation stays threaded, using lib537's checked P-mode implementation,
+unless the HIR analysis proves the destination allocated (see
+[native regions](TURBO-NATIVE-REGIONS.md#strings)). It checks that the destination exists, consumes the suffix, and copies only the
 characters that fit the current descriptor. A full destination leaves its value
 unchanged; it still evaluates the suffix, including any failing arithmetic or
 slice operation. Capacity and odd-length rounding follow Turbo's descriptor.
@@ -29,8 +30,8 @@ errors therefore leave the destination unchanged, and WHEN ERROR/RETRY continue
 through the existing runtime checkpoints.
 
 This is a Turbo-compatible lowering choice, like specialized LEN and slice
-lowering, and applies with the HIR pass enabled or disabled. It does not extend
-native-region or register-allocation eligibility to strings.
+lowering, and applies with the HIR pass enabled or disabled. It does not by
+itself extend native-region or register-allocation eligibility to strings.
 
 Regression tests cover empty/full/truncated strings, self and slice aliases,
 local and reference bindings, mutating function fallbacks, missing destinations,

@@ -246,11 +246,19 @@ library or ROM arithmetic helpers. Initializers are evaluated in their original
 threaded order; the FOR initializer, body, NEXT and empty-loop exit then execute
 in a native region. SLOW follows the end marker so both exits restore P mode.
 
+A call to a one-argument ROM maths resident (SIN, SQRT and so on; see
+[native regions](TURBO-NATIVE-REGIONS.md)) is a float-valued native `rom_fn`.
+An integer `x%=ABS(word)` triple is the native 1334 record instead: it does not
+make a body string or floating, so word-only bodies stay with the
+register-pinning planner, and a selected loop receives 1334 rather than the call.
 Selection requires the same HIR binding certificate as integer loops, a matching
 NEXT, at most 256 body records, known descriptor ranks for indexed operands, no
 external entries, and forward local IF edges with empty, equal typed stacks at
-every join. Nested loops, procedure/resident calls, handlers, explicit transfers
-and unknown operations fall back. Word-only loops retain the existing allocator.
+every join. An EXIT of the loop itself is accepted: lib537's native exit jumps
+to the loop's own end label and leaves the counter cell as threaded `exit_p`
+does, and the end label may then be referenced only by the initializer and those
+EXITs. Nested loops, procedure/resident calls, handlers, other explicit
+transfers and unknown operations fall back. Word-only loops retain the existing allocator.
 LEN, CODE and CHR$ are classified as nonmutating inline intrinsics; only the exact
 MID$/RIGHT$ slice shapes lowered inline by the backend share this classification.
 User overrides and general MID$/RIGHT$ calls remain ordinary calls. Argument
@@ -259,7 +267,9 @@ effects, allocation and failures are retained.
 Integer arithmetic and numeric indexing use the same checked/proven lowering as
 straight native regions. Generic string indexing keeps its original checks.
 Native append and simple LEN omit missing-string checks present in P mode, so
-those two operations use short SLOW/FAST sections with the original P templates.
+those two operations use short SLOW/FAST sections with the original P templates,
+unless the HIR analysis proved their string allocated
+([native regions](TURBO-NATIVE-REGIONS.md#strings)).
 Native/threaded library IF truth tests agree, including their exponent-word test.
 This pass does not change the pinned allocator's existing predicate lowering.
 Integer IF conditions in these bodies become

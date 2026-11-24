@@ -47,6 +47,9 @@ type Analysis = {
     NativeForRejections:Map<SymbolId option * LoopId,string list>
     ProofEligibleScopes:Set<Scope>
     GlobalControlBarriers:string list
+    /// Append values (the Concat of s$=s$&x) and LEN(s$) calls, keyed by HIR
+    /// expression, whose DIMmed string s$ is allocated at every occurrence.
+    AllocatedStringSites:Set<HirExpr>
 }
 
 let word = {Lower = -32768L; Upper=32767L}
@@ -238,6 +241,11 @@ let private killMetadata context scope effects state =
                 ExactBounds=state.ExactBounds |> Map.filter(fun s _ -> not effects.DescriptorWritesUnknown && not(descriptors.Contains s))
                 Loops=state.Loops |> Map.filter(fun s _ -> not effects.LoopMetadataWritesUnknown && not(loops.Contains s))}
 
+// A string variable. DIM gives it a one-element bound, its fixed length; string
+// arrays have Array storage instead.
+let private dimmedString (context:RangeContext) symbol =
+    context.Effects.Aliases.Storages.TryFind symbol |> Option.exists(fun storage -> storage.Type=HirType.String)
+
 let private transfer context scope (node:Node) state =
     let evaluation=nodeEvaluation context.Effects scope node.Kind
     let evaluated=killMetadata context scope evaluation state
@@ -255,6 +263,14 @@ let private transfer context scope (node:Node) state =
                 exactBounds<-exactBounds.Add(symbol,values |> List.map(fun r -> int r.Lower))
     | ForInitialise(symbol,[first;last;step],_) ->
         loops<-loops.Add(symbol,{Owner=node.Id;Finish=range last;Step=range step})
+    // A DIMmed string keeps its buffer: st_str_var_1d copies the value into it,
+    // truncated to the DIMmed length, and never replaces the descriptor.
+    | Statement(Assign(WriteVar(symbol,_,_),_,_)) when dimmedString context symbol ->
+        match evaluated.Bounds.TryFind symbol with
+        | Some([_] as shape) ->
+            bounds<-bounds.Add(symbol,shape)
+            evaluated.ExactBounds.TryFind symbol |> Option.iter(fun exact -> exactBounds<-exactBounds.Add(symbol,exact))
+        | _ -> ()
     | _ -> ()
     {Ranges=transferRanges context scope node state.Ranges evaluated.Loops;Bounds=bounds;ExactBounds=exactBounds;Loops=loops}
 
@@ -607,8 +623,11 @@ let private nativeForCertificates (context:RangeContext) barriers (scopes:Map<Sc
                             effects.Aliases.Storages |> Map.toSeq |> Seq.filter(fun (_,other) -> String.Equals(storage.Name,other.Name,StringComparison.OrdinalIgnoreCase)) |> Seq.length = 1
                         | _ -> false
                     scalar && binding)
+            // EXIT of this loop leaves to its own end with the counter intact;
+            // it neither enters the region nor touches FOR metadata.
             let rec leaf body=body |> List.forall(function
                 | Assign _ | LineNumber _ | Remark _ -> true
+                | Exit(exited,_) -> exited=loop
                 | If(_,yes,no,_) -> leaf yes && leaf(Option.defaultValue [] no)
                 | _ -> false)
             let writes=body |> List.map(statement effects scope) |> combineAll
@@ -628,10 +647,10 @@ let private nativeForCertificates (context:RangeContext) barriers (scopes:Map<Sc
                 if not independent then yield "body storage may alias the counter"
                 if effects.Aliases.Escaped.Contains counter then yield "counter reference escapes to an opaque callee"
                 if writes.ReadsUnknown || writes.WritesUnknown then yield "body has unresolved storage effects"
-                // Resident ABS is nonmutating. Its binding effects are already in
-                // `writes`; the machine planner rejects any ROM call left in the body.
+                // ROM maths residents are nonmutating. Their binding effects are
+                // already in `writes`; machine planners audit any ROM call left.
                 if statements body |> Seq.collect statementExpressions |> Seq.collect expressions |> Seq.exists(function
-                    | CallFunc(symbol,args,_,_) -> not(inlineCall effects.Program symbol args || residentAbsCall effects.Program symbol args)
+                    | CallFunc(symbol,args,_,_) -> not(inlineCall effects.Program symbol args || residentMathsCall effects.Program symbol args)
                     | _ -> false) then yield "body evaluates a function or procedure call"
                 if writes.Writes.Contains counter then yield "body writes the counter"
                 if writes.LoopMetadataWritesUnknown || not writes.LoopMetadataWrites.IsEmpty then yield "body may replace FOR metadata"]
@@ -793,9 +812,53 @@ let analyzeWithOptions options target program =
             let exact=facts.Head.ExactLengths
             Some(key,{ProvenRows=facts |> List.forall _.ProvenRows;ProvenColumns=facts |> List.forall _.ProvenColumns
                       ExactLengths=if facts |> List.forall(fun fact -> fact.ExactLengths=exact) then exact else None})) |> Map.ofList
+    // Native append (374) and LEN (375) omit P mode's missing-string checks.
+    // A site qualifies when its string's DIM reaches it on every path. The
+    // name must be unique in the program: no LOCAL or formal can rebind it,
+    // so a dynamic reference in a routine is that DIMmed string.
+    let uniqueStrings =
+        effects.Aliases.Storages |> Map.toSeq |> Seq.groupBy(fun (_,storage) -> normalize storage.Name) |> Seq.choose(fun (name,entries) ->
+            match Seq.toList entries with
+            | [symbol,storage] when storage.Type=HirType.String -> Some(name,symbol)
+            | _ -> None) |> Map.ofSeq
+    let stringSites=[
+        for KeyValue(scope,analysis) in scopes do
+            let nameOf = function
+                | ReadVar(s,_,_) -> effects.Aliases.Storages.TryFind s |> Option.map(fun storage -> normalize storage.Name)
+                | DynamicReadVar(name,_,_) -> Some(normalize name)
+                | _ -> None
+            for KeyValue(id,node) in analysis.Graph.Nodes do
+                let lengths=nodeExpressions node.Kind |> Seq.collect HirEffects.expressions |> Seq.choose(function
+                    | CallFunc(len,[ValueArg value],_,_) as call
+                        when inlineFunction effects.Program len 1 && effects.Program.SymbolNames.TryFind len |> Option.exists(fun name -> normalize name="LEN") ->
+                        nameOf value |> Option.map(fun name -> call,name)
+                    | _ -> None) |> Seq.toList
+                let appends=
+                    match node.Kind with
+                    | Statement(Assign(target,(Binary(Concat,prefix,_,_,_) as value),_)) ->
+                        let destination=
+                            match target with
+                            | WriteVar(s,_,_) -> effects.Aliases.Storages.TryFind s |> Option.map(fun storage -> normalize storage.Name)
+                            | DynamicWriteVar(name,_,_) -> Some(normalize name)
+                            | _ -> None
+                        match destination,nameOf prefix with
+                        | Some destination,Some source when destination=source -> [value,destination]
+                        | _ -> []
+                    | _ -> []
+                for site,name in lengths @ appends do
+                    let allocated=
+                        trustedScopes.Contains scope &&
+                        uniqueStrings.TryFind name |> Option.exists(fun symbol ->
+                            analysis.EntryBounds[id] |> Option.exists(fun bounds ->
+                                // Effects evaluated earlier in the node may resize or rebind it.
+                                let evaluated=killMetadata context scope (nodeEvaluation effects scope node.Kind) {unknownFlow with Bounds=bounds}
+                                evaluated.Bounds.TryFind symbol |> Option.exists(fun shape -> shape.Length=1)))
+                    yield site,allocated]
+    let allocatedStrings=stringSites |> List.groupBy fst |> List.choose(fun (site,occurrences) -> if occurrences |> List.forall snd then Some site else None) |> Set.ofList
     {Effects=effects;Scopes=scopes;SafeIntegerExpressions=safe;ArithmeticProofsEnabled=not trustedScopes.IsEmpty;SafeArrayAccesses=safeArrays;OneDimensionalIntegerAccesses=rankOneArrays;TwoDimensionalIntegerAccesses=rankTwoArrays
      EntryShapePasses=entryShapePasses;EntryShapesCertified=entryShapesCertified
-     CertifiedNativeForLoops=certificates;CertifiedMemoryForLoops=memoryCertificates;NativeForRejections=rejections;ProofEligibleScopes=trustedScopes;GlobalControlBarriers=barriers}
+     CertifiedNativeForLoops=certificates;CertifiedMemoryForLoops=memoryCertificates;NativeForRejections=rejections;ProofEligibleScopes=trustedScopes;GlobalControlBarriers=barriers
+     AllocatedStringSites=allocatedStrings}
 
 let analyze target program = analyzeWithOptions defaultOptions target program
 
@@ -819,6 +882,7 @@ let format (analysis:Analysis) =
     line $"Global array call-entry analysis: passes={analysis.EntryShapePasses}; certified={analysis.EntryShapesCertified}"
     line $"Certified native FOR bindings: {analysis.CertifiedNativeForLoops.Count}"
     line $"Certified memory-counter FOR call regions: {analysis.CertifiedMemoryForLoops.Count}"
+    line $"Allocated-string append/LEN sites: {analysis.AllocatedStringSites.Count}"
     line $"Proof-eligible scopes: {analysis.ProofEligibleScopes.Count}/{analysis.Scopes.Count}"
     for barrier in analysis.GlobalControlBarriers do line $"Global control barrier: {barrier}"
     for KeyValue((routine,loop),reasons) in analysis.NativeForRejections do
