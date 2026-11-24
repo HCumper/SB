@@ -589,7 +589,7 @@ let private exactBits =
         "1010 LOCal t,s%,e%,h%,l%,z%"
         "1020 IF v=0 THEN PRINT 0:RETurn"
         "1030 t=v:s%=1:e%=0"
-        "1040 IF t<0 THEN t=0-t:s%=-1"
+        "1040 IF t<0 THEN t=-t:s%=-1"
         "1050 REPeat up"
         "1060 IF t<1 THEN EXIT up"
         "1070 t=t/2:e%=e%+1"
@@ -705,6 +705,27 @@ let ``direct ROM maths calls fail as the BASIC functions do`` (index:int) =
     Assert.That(report, Does.Contain("Direct RI.EXEC maths calls: 1"))
     Assert.That(threaded, Does.StartWith($"{expected}|"))
     Assert.That(native, Is.EqualTo(threaded))
+
+// Unary minus and plus of an untyped parameter, which has no type until a
+// caller supplies one, and of locals and expressions computed from one.
+let unaryParameterPrograms = [|
+    "10 p 2\n20 STOP\n100 DEFine PROCedure p(v)\n110 r%=-v\n120 PRINT r%\n130 END DEFine", "-2\n"
+    "10 p 2.5\n20 STOP\n100 DEFine PROCedure p(v)\n110 LOCal t\n120 t=v:t=-t*2:r%=t:s%=+t\n130 PRINT r%;\" \";s%\n140 END DEFine", "-5 -5\n"
+    "10 q 4:q -3\n20 STOP\n100 DEFine PROCedure q(w)\n110 r%=-(w-7)+-w\n120 PRINT r%\n130 END DEFine", "-1\n13\n"
+|]
+let unaryParameterModes = [|
+    for index in 0..unaryParameterPrograms.Length-1 do
+        for hir in [false;true] do
+            for native,registers in [false,false;true,false;true,true] do
+                yield TestCaseData(index,hir,native,registers).SetName($"Unary parameter {index} (HIR {hir}, native {native}, registers {registers})") |]
+
+[<TestCaseSource(nameof unaryParameterModes)>]
+let ``unary minus negates untyped parameters`` (index:int,hir:bool,native:bool,registers:bool) =
+    let source,expected=unaryParameterPrograms[index]
+    withCompiledProgramMode hir [(if native then "--native-regions" else "--no-native-regions");(if registers then "--regalloc" else "--no-regalloc")] ".bas" source (fun executable ->
+        let result=run 2000000L executable
+        Assert.That(result.ExitCode, Is.Zero)
+        Assert.That(result.Output, Is.EqualTo(expected)))
 
 // QL AND/OR evaluate every operand: a failing later operand must still fail
 // when an earlier comparison already decides the result. Errors match threaded code.

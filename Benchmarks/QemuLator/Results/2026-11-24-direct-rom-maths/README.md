@@ -114,8 +114,9 @@ Six guards were each disabled in turn, and a test failed every time:
 
 While writing the bit-exact test programs, a separate front-end bug turned
 up. Unary minus on an untyped procedure parameter (`PRINT -v`), or on an
-untyped `LOCal` in a procedure that has parameters, fails semantic analysis
-with `InvalidOperandTypes`. Binary minus works, so the fixtures use `0-t`.
+untyped `LOCal` assigned from one, failed semantic analysis with
+`InvalidOperandTypes`, although binary minus worked. The next commit fixes
+it, and the fixtures' `0-t` became `-t` again.
 
 ## Not measured
 

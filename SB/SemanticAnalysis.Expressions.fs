@@ -765,6 +765,9 @@ let rec inferExprType (state: ProcessingState) expr =
                         | Some _ -> nextState
                         | None -> appendDiagnostic SemanticDiagnosticCode.InvalidOperandCoercion None (Some pos) $"Operator '{op}' cannot coerce operand at {pos.EditorLineNo}:{pos.Column} to {coercedType}" nextState
                     | None -> nextState
+                // An untyped parameter, or a value assigned from one, has no type
+                // until a caller supplies it; binary arithmetic and NOT accept it too.
+                | _ when innerType = SBType.Unknown -> nextState
                 | _ -> appendDiagnostic SemanticDiagnosticCode.InvalidOperandTypes None (Some pos) $"Operator '{op}' expects a numeric-compatible expression at {pos.EditorLineNo}:{pos.Column}" nextState
             typed coercedType coercedState
         | _ -> typed innerType nextState

@@ -173,6 +173,23 @@ let ``not accepts forward assigned unknown operands without premature type error
 
     Assert.That(invalidOperandTypes, Is.Empty)
 
+// An untyped parameter has no type until a caller supplies one, nor has a
+// local assigned from it; unary +/- accepts them as binary arithmetic does.
+[<TestCase("10 p 2\n20 STOP\n100 DEFine PROCedure p(v)\n110 PRINT -v\n120 END DEFine\n")>]
+[<TestCase("10 p 2\n20 STOP\n100 DEFine PROCedure p(v)\n110 LOCal t\n120 t=v:PRINT -t;+t\n130 END DEFine\n")>]
+let ``unary minus accepts untyped procedure parameters and locals`` (source: string) =
+    let analyzed = analyzeProgram source
+    Assert.That(analyzed.Errors, Is.Empty)
+    let invalidOperandTypes =
+        analyzed.Diagnostics
+        |> List.filter (fun diagnostic -> diagnostic.Code = SemanticDiagnosticCode.InvalidOperandTypes)
+    Assert.That(invalidOperandTypes, Is.Empty)
+
+[<Test>]
+let ``unary minus still rejects a procedure name`` () =
+    let analyzed = analyzeProgram "10 x=-p\n20 STOP\n100 DEFine PROCedure p\n110 END DEFine\n"
+    Assert.That(analyzed.Errors, Has.Some.Contains("Operator '-' expects a numeric-compatible expression"))
+
 [<Test>]
 let ``dim inside procedure without local remains globally resolvable`` () =
     let analyzed =
