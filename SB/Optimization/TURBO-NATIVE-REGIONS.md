@@ -78,6 +78,40 @@ DIMmed at that record (`AllocatedStringSites`; see
 record the listing comment `allocated string`. Unproven records stay threaded
 in straight regions, and memory-counter loops bridge them with SLOW/FAST.
 
+### In-place comparison operands
+
+Every string fetch copies its text to the string heap: `fch_string_1d` (265)
+for a DIMmed string and `extr_string` (175) for an array element. A comparison
+(73-79) then calls `compare_string`, which resets the heap to the left copy and
+copies both texts again to the maths stack so that `UT.CSTR` can compare them.
+`TurboNativeStringOperands.fs` runs after region selection. Where both operands
+of a native comparison are a DIMmed string (265) or a whole element
+(`263 263 175`, empty slice bounds), it substitutes three SB-only records:
+
+- **1532 `[vector; pending]`** pushes the 6-byte descriptor `fch_string_1d`
+  would push, pointing at the stored text instead of a copy.
+- **1531 `[vector; pending]`** pops the indices with `extr_string`'s own
+  checks (negative or beyond a bound: `range_error`) and pushes a descriptor
+  for the element's stored text.
+- **1533 `[comparison]`** keeps the comparison template's `MOVEQ` type and its
+  true/false tail. In place of the `JSR compare_string` it gives the same
+  results for empty strings and otherwise calls `UT.CSTR` on the stored strings
+  (each length word, relative to A6). Nothing was allocated, so the heap
+  pointer is left as `compare_string` would have reset it.
+
+Each operand record stands where its fetch stood, so the checks keep their
+order. The out-of-memory test of the copy is replayed too: `mega_check`'s
+`maths - 128 - length < data` for every non-empty `fch_string_1d`, and for
+`extr_string` only above `mega_switch` (14 bytes). The right operand's test
+uses the heap the left copy would have taken (`pending`: the left descriptor's
+length is added to A4). After each operand record the maths stack is as deep as
+after the original fetch, so these tests see the same A1. Only integer
+constants, fetches and arithmetic may stand between the
+two operands, so nothing can change the left string before it is read.
+Stored strings are word-aligned, as `fch_string_1d` and `extr_string` already
+require when they read the length word. Validation rejects these records in
+threaded code.
+
 ## Integer ABS
 
 `x%=ABS(word)` compiles to int-to-float (320), the one-float-argument ROM ABS

@@ -502,6 +502,9 @@ type private Generator(sourceLibrary: byte[], options: TurboCodegenOptions, sour
         elif token=1334 then this.Lookup 334 |> Option.map(fun (_,record) -> token,record)
         // The inline NEXT keeps its own token, so no next_for_int peephole applies.
         elif token=1530 then this.Lookup 230 |> Option.map(fun (_,record) -> token,record)
+        // In-place string records keep their own tokens; SkipOperands knows their sizes.
+        elif token=1531 || token=1532 then this.Lookup 265 |> Option.map(fun (_,record) -> token,record)
+        elif token=1533 then this.Lookup 76 |> Option.map(fun (_,record) -> token,record)
         else this.Lookup(if TurboNativeArrays.isCompact token then TurboNativeArrays.baseOpcode token elif token >= 1000 then token - 1000 else token)
 
     /// g_t2 onwards: a token below 1000.
@@ -518,6 +521,8 @@ type private Generator(sourceLibrary: byte[], options: TurboCodegenOptions, sour
     /// Skips a token's operands (the "Now skip parameters" code after klim).
     member private this.SkipOperands(token: int, record: int) =
         if token=1911 || token=1912 || token=1530 then ic<-ic+6
+        elif token=1531 || token=1532 then ic<-ic+4
+        elif token=1533 then ic<-ic+2
         elif this.IsParameterised record then
             let _, header, _ = this.GetBytes record
             if header &&& 0x80 = 0 then
@@ -949,6 +954,46 @@ type private Generator(sourceLibrary: byte[], options: TurboCodegenOptions, sour
             if pass<>0 then write bytes
             objCode<-objCode+bytes.Length
             ic<-ic+4
+        elif token=1531 || token=1532 then
+            // A whole DIMmed string (1532) or string-array element (1531), read in
+            // place: push the descriptor fch_string_1d or extr_string would push,
+            // pointing at the stored text instead of a heap copy. The element's
+            // index checks are extr_string's own, and the out-of-memory test is the
+            // copy's: always for fch_string_1d, above mega_switch for extr_string.
+            // A pending in-place operand below stands for the heap its copy took.
+            if pMode then fail "In-place string operands require native mode."
+            let vector,pending=word ir ic,word ir (ic+2)
+            let w (values:int list) = values |> List.map wordBytes |> Array.concat
+            let heapTop = if pending<>0 then w [0x220C;0x3429;0x0006;0x48C2;0xD282;0xB5C1] else w [0xB5CC]
+            let memory = Array.concat [w [0x48C0;0x45E9;0xFF80;0x95C0];heapTop;w [0x6404;0x4EEE;0x8AEC]]
+            let cell = w [0x246E;vectTabAd+4*vector]
+            let bytes =
+                if token=1532 then Array.concat [cell;w [0x2052;0x3018;0x2308;0x3300;0x6700 ||| memory.Length];memory]
+                else
+                    Array.concat [cell;w [0x205A;0x588A;0x7000;0x321A;0x3E1A;0x4A41;0x6B18;0x3607
+                                          0x3019;0x6B04;0xB052;0x6B04;0x4EEE;0x8AE0;0xC0C3;0xC6DA;0xD1C0;0x51C9;0xFFEC
+                                          0x3A18;0x2308;0x3305;0x0C45;0x000E;0x6F00 ||| (2+memory.Length);0x3005];memory]
+            if pass<>0 then write bytes
+            objCode<-objCode+bytes.Length
+            ic<-ic+4
+        elif token=1533 then
+            // compare_string on two in-place operands: the same null-string results,
+            // else UT.CSTR on the stored strings. Nothing was allocated, so the heap
+            // pointer stays. The comparison's own MOVEQ and result tail are kept.
+            if pMode then fail "In-place string operands require native mode."
+            let operation=word ir ic
+            let record = match this.Search operation with Some record -> record | None -> fail $"Template {operation} not found."
+            let template = slice lib (this.CodeAddress record) (this.Length record)
+            if template.Length<>18 || template[2..5]<>[|0x4Euy;0xAEuy;0x83uy;0xDEuy|] then fail $"Template {operation} is not a compare_string comparison."
+            let body =
+                [0x3819;0x2A19;0x3019;0x2059;0x4A40;0x6608;0x4A44;0x670A;0x5340;0x6006
+                 0x4A44;0x660A;0x5244;0x40C0;0x4261;0x44C0;0x601E
+                 0x2E09;0x5588;0x2245;0x5589;0x2003;0x93CE;0x91CE;0x3478;0x00E6;0x4E92;0x2247;0x4261;0x4A00;0x6A02;0xE318]
+                |> List.map wordBytes |> Array.concat
+            let bytes = Array.concat [template[0..1];body;template[6..]]
+            if pass<>0 then write bytes
+            objCode<-objCode+bytes.Length
+            ic<-ic+2
         elif token=1530 then
             // next_for_int and its for_range_int iterator, inline: add the literal
             // STEP without a range check, leave on passing the cell's END, else

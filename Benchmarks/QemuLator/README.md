@@ -1,5 +1,7 @@
 # Turbo FAST versus SB in Q-emuLator
 
+[In-place string comparison operands: concordance 26.8% fewer instructions, 28.6% ahead of Turbo FAST, 24 November 2026](Results/2026-11-24-in-place-string-comparisons/README.md)
+
 [Terminal STOP branches inside native loops: all nine workloads now ahead of Turbo FAST on instruction counts, 24 November 2026](Results/2026-11-24-terminal-stop-branches/README.md)
 
 [Inline FOR stepping in memory-counter native loops: instruction counts for all nine workloads and full verification, 24 November 2026](Results/2026-11-24-inline-for-stepping/README.md)

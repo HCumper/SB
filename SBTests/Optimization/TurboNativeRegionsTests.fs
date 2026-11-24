@@ -164,6 +164,28 @@ let ``a tail without STOP or with a jump keeps its loop threaded`` () =
     for change in [withoutStop;withJump] do
         Assert.That(terminalLoop change, Does.Contain("Audited memory-counter native FOR loops: 0"))
 
+// Only integer arithmetic may separate in-place string operands, so nothing
+// can change the left string before the comparison reads it.
+let private inPlaceComparisons (change: IrItem list -> IrItem list) =
+    let output = emit "10 DIM a$(10),b$(2,10)\n20 i%=1:a$=\"x\":b$(1)=\"x\"\n30 c%=(a$=b$(i%)):d%=c%+1\n40 STOP" |> select
+    let changed = {output with Items=change output.Items}
+    let rewritten = TurboNativeStringOperands.select true {changed with Bytes=serialize changed.Items} |> ok
+    records 1533 rewritten
+
+[<Test>]
+let ``string comparisons read whole operands in place`` () =
+    Assert.That(inPlaceComparisons id, Is.EqualTo(1))
+
+[<Test>]
+let ``a store between string operands keeps the copying comparison`` () =
+    let storeBeforeIndex items =
+        let index = items |> List.findIndex (function Instruction(175,_,_) -> true | _ -> false)
+        let counter = items |> List.pick (function Instruction(118,[Word v],_) -> Some v | _ -> None)
+        // Inside the index expression: push i%, then a store that leaves it.
+        let before,after = List.splitAt (index-2) items
+        before @ [Instruction(109,[Word counter],"");Instruction(118,[Word counter],"")] @ after
+    Assert.That(inPlaceComparisons storeBeforeIndex, Is.Zero)
+
 [<Test>]
 let ``inline native NEXT is rejected in threaded code`` () =
     let output = emit "10 FOR i%=1 TO 3\n20 a=i%\n30 END FOR i%\n40 STOP"

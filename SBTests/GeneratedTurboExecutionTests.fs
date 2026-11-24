@@ -286,6 +286,84 @@ let ``an error in a terminal tail matches threaded code`` () =
         number
     Assert.That(capture true, Is.EqualTo(capture false))
 
+// String comparisons of whole DIMmed strings and string-array elements read
+// their operands in place. Native output must match threaded output for every
+// comparison, operand kind and order, including empty and case-different
+// strings and QL's numeric ordering. The last value is the report's count.
+let inPlaceComparePrograms = [|
+    "10 DIM w$(4,10),v$(10),r$(40)\n20 w$(0)=\"apple\":w$(1)=\"Apple\":w$(2)=\"\":w$(3)=\"banana\":w$(4)=\"item10\":v$=\"item9\"\n30 FOR i%=0 TO 4\n40 r$=\"\"\n50 FOR j%=0 TO 4\n60 r$=r$ & (w$(i%)=w$(j%)) & (w$(i%)<w$(j%)) & (w$(i%)>w$(j%)) & (w$(i%)<=w$(j%)) & (w$(i%)>=w$(j%)) & (w$(i%)<>w$(j%)) & (w$(i%)==w$(j%))\n70 END FOR j%\n80 PRINT r$\n90 END FOR i%\n100 STOP", 7
+    "10 DIM w$(4,10),v$(10),r$(40)\n20 w$(0)=\"apple\":w$(1)=\"Apple\":w$(2)=\"\":w$(3)=\"banana\":w$(4)=\"item10\"\n30 FOR i%=0 TO 4\n40 r$=\"\"\n50 FOR j%=0 TO 4\n60 v$=w$(j%)\n70 r$=r$ & (w$(i%)=v$) & (v$<w$(i%)) & (w$(i%)>v$) & (v$<=w$(i%)) & (w$(i%)>=v$) & (v$<>w$(i%)) & (w$(i%)==v$)\n80 END FOR j%\n90 PRINT r$\n100 END FOR i%\n110 STOP", 7
+    "10 DIM a$(10),b$(10)\n20 a$=\"Zebra\":b$=\"zebra\"\n30 FOR i%=1 TO 2\n40 n%=n%+(a$<b$)+2*(a$==b$)+4*(a$=b$)\n50 b$=\"\"\n60 END FOR i%\n70 PRINT n%\n80 STOP", 3
+|]
+let inPlaceCompareModes = [|
+    for index in 0..inPlaceComparePrograms.Length-1 do
+        for hir in [false;true] do
+            for registers in [false;true] do
+                yield TestCaseData(index,hir,registers).SetName($"In-place compare {index} (HIR {hir}, registers {registers})") |]
+
+[<TestCaseSource(nameof inPlaceCompareModes)>]
+let ``in-place string comparisons match threaded results`` (index:int,hir:bool,registers:bool) =
+    let source,_=inPlaceComparePrograms[index]
+    let capture native =
+        let mutable output=""
+        withCompiledProgramMode hir [(if native then "--native-regions" else "--no-native-regions");(if registers then "--regalloc" else "--no-regalloc")] ".bas" source (fun executable ->
+            let result=run 8000000L executable
+            Assert.That(result.ExitCode, Is.Zero)
+            output<-result.Output)
+        output
+    let threaded=capture false
+    Assert.That(threaded, Is.Not.Empty)
+    Assert.That(capture true, Is.EqualTo(threaded))
+
+[<TestCase(false)>]
+[<TestCase(true)>]
+let ``in-place string reports count each rewritten comparison`` (hir:bool) =
+    let directory=Path.Combine(Path.GetTempPath(),$"in-place-report-{Guid.NewGuid():N}")
+    Directory.CreateDirectory directory |> ignore
+    try
+        for index in 0..inPlaceComparePrograms.Length-1 do
+            let prefix=Path.Combine(directory,string index)
+            let source,count=inPlaceComparePrograms[index]
+            withCompiledProgramMode hir ["--native-regions";"--regalloc";"--dump-hir="+prefix] ".bas" source ignore
+            Assert.That(File.ReadAllText(prefix+".native-ir.txt"), Does.Contain($"In-place string comparisons: {count}"), $"fixture {index}")
+    finally Directory.Delete(directory,true)
+
+// Failures keep their order and number: extr_string's index checks on either
+// side, a left range error before a failing right index, and the copies'
+// out-of-memory tests as recursion fills memory (the depth reached is printed).
+let inPlaceCompareErrors = [|
+    "10 DIM w$(2,10),v$(10)\n20 k%=-1\n30 FOR i%=1 TO 2\n40 n%=n%+(w$(k%)=v$)\n50 END FOR i%\n60 STOP"
+    "10 DIM w$(2,10),v$(10)\n20 k%=3\n30 FOR i%=1 TO 2\n40 n%=n%+(v$=w$(k%))\n50 END FOR i%\n60 STOP"
+    "10 DIM w$(2,10)\n20 k%=5:j%=1\n30 FOR i%=1 TO 2\n40 n%=n%+(w$(k%)=w$(j%+32767))\n50 END FOR i%\n60 STOP"
+    "10 DIM t$(128)\n20 t$=\"x\"\n30 FOR k%=1 TO 7:t$=t$ & t$:END FOR k%\n40 walk 1\n50 STOP\n100 DEFine PROCedure walk(depth%)\n110 LOCal s$(100)\n120 s$=t$:n%=n%+(t$=s$)\n130 PRINT depth%\n140 walk depth%+1\n150 END DEFine"
+    // The heap grows 64 bytes an iteration below the comparison, so the right
+    // operand's test, which counts the left copy's 128 bytes, fails two
+    // iterations before one that ignored it.
+    "10 DIM p$(8000),t$(128),u$(128)\n20 t$=\"x\":FOR k%=1 TO 7:t$=t$ & t$:END FOR k%\n30 u$=t$\n40 FOR k%=1 TO 400\n50 p$=p$ & \"abcdefghijklmnopqrstuvwxyz012345\"\n60 n%=LEN(p$ & p$ & (t$=u$))\n70 PRINT k%\n80 END FOR k%\n90 STOP"
+    "10 DIM p$(8000),t$(128),w$(2,128)\n20 t$=\"x\":FOR k%=1 TO 7:t$=t$ & t$:END FOR k%\n30 w$(1)=t$:j%=1\n40 FOR k%=1 TO 400\n50 p$=p$ & \"abcdefghijklmnopqrstuvwxyz012345\"\n60 n%=LEN(p$ & p$ & (t$=w$(j%)))\n70 PRINT k%\n80 END FOR k%\n90 STOP"
+|]
+
+[<TestCase(0)>]
+[<TestCase(1)>]
+[<TestCase(2)>]
+[<TestCase(3)>]
+[<TestCase(4)>]
+[<TestCase(5)>]
+let ``in-place string comparison failures match threaded code`` (index:int) =
+    let capture native =
+        let mutable outcome=""
+        withCompiledProgramMode true [(if native then "--native-regions" else "--no-native-regions");"--regalloc"] ".bas" inPlaceCompareErrors[index] (fun executable ->
+            let error=Assert.Throws<M68kFault>(fun () -> run 400000000L executable |> ignore)
+            let parsed=System.Text.RegularExpressions.Regex.Match(error.Message,@"ERNUM=(-?\d+)")
+            Assert.That(parsed.Success, Is.True, error.Message)
+            let printed=error.Message.IndexOf("output=")
+            Assert.That(printed, Is.GreaterThanOrEqualTo(0), error.Message)
+            outcome<-parsed.Groups[1].Value+"|"+error.Message.Substring(printed))
+        outcome
+    let threaded=capture false
+    Assert.That(threaded, Does.StartWith([|"-4|";"-4|";"-4|";"-3|";"-3|";"-3|"|][index]))
+    Assert.That(capture true, Is.EqualTo(threaded))
+
 // Integer IF conditions inside memory-counter loops become one native branch.
 // The last value is the number of fused conditions in the --dump-hir report.
 let fusedConditionPrograms = [|

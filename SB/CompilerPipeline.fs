@@ -719,6 +719,7 @@ let generateTurboIrFromLoweredHirWithNativeRegions optimization nativeRegions (s
         HirTurboIrBackend.generateTurboIrFromHir target optimized
         |> Result.bind (TurboNativeTemplateLoops.select nativeRegions)
         |> Result.bind (TurboNativeRegions.select nativeRegions)
+        |> Result.bind (TurboNativeStringOperands.select nativeRegions)
 
 // Keep the existing programmatic entry points byte compatible. The CLI passes
 // the independent native-region setting explicitly through the new entry point.
@@ -748,7 +749,7 @@ let generateTurboExecutableFromLoweredHirWithRegisterAllocation optimization nat
                 let text=(executable.NativeAllocation |> Option.map TurboNativeIr.format |> Option.defaultValue "Local register allocation disabled.\n") +
                          (executable.NativeLoops |> Option.map TurboNativeLoops.format |> Option.defaultValue "Native integer FOR loops disabled.\n") +
                          (executable.NativeConditions |> Option.map TurboNativeConditions.format |> Option.defaultValue "Fused native conditions disabled.\n")
-                File.WriteAllText(prefix + ".native-ir.txt",text + TurboNativeTemplateLoops.format ir.Items)
+                File.WriteAllText(prefix + ".native-ir.txt",text + TurboNativeTemplateLoops.format ir.Items + TurboNativeStringOperands.format ir.Items)
             | None -> ()
             Result.Ok(ir, executable)
         | Result.Error errors -> Result.Error errors

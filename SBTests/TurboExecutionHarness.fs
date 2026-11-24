@@ -80,6 +80,30 @@ let run (maxSteps: int64) (executable: byte[]) =
         let errorNumber=int16(uint16(cpu.ReadWord errorAddress))
         raise (M68kFault $"Runtime error message: {readName cpu.A[1]}; ERNUM={errorNumber}"))
     hook 0x11Cu 5u (fun _ -> raise (M68kFault "Unsupported ROM arithmetic service RI.EXEC."))
+    // UT.CSTR compares the strings at A6+A0 and A6+A1. Comparison type D0.B:
+    // bit 0 ignores case, bit 1 compares runs of digits by value. D0 is -1, 0 or 1.
+    // An approximation of the ROM's collation, enough for differential tests.
+    hook 0xE6u 6u (fun cpu ->
+        let text offset =
+            let address = cpu.A[6] + offset
+            readText (address + 2u) (int (cpu.ReadWord address))
+        let kind = int (cpu.D[0] &&& 0xFFu)
+        let fold (value: string) = if kind &&& 1 <> 0 then value.ToUpperInvariant() else value
+        let left, right = fold (text cpu.A[0]), fold (text cpu.A[1])
+        let digits (value: string) start =
+            let mutable finish = start
+            while finish < value.Length && Char.IsDigit value[finish] do finish <- finish + 1
+            finish
+        let rec compare i j =
+            if i >= left.Length || j >= right.Length then sign ((left.Length - i) - (right.Length - j))
+            elif kind &&& 2 <> 0 && Char.IsDigit left[i] && Char.IsDigit right[j] then
+                let i', j' = digits left i, digits right j
+                let a, b = left[i..i'-1].TrimStart('0'), right[j..j'-1].TrimStart('0')
+                let order = if a.Length <> b.Length then sign (a.Length - b.Length) else sign (String.CompareOrdinal(a, b))
+                if order <> 0 then order else compare i' j'
+            elif left[i] <> right[j] then sign (int left[i] - int right[j])
+            else compare (i + 1) (j + 1)
+        cpu.D[0] <- uint32 (compare 0 0))
 
     cpu.TrapHandler <- fun cpu number ->
         let operation = int (cpu.D[0] &&& 0xFFu)
