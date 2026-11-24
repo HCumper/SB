@@ -163,6 +163,63 @@ let ``memory-counter loops retain arithmetic division bounds and slice failures`
         let error=Assert.Throws<M68kFault>(fun () -> run 2000000L executable |> ignore)
         Assert.That(error.Message, Does.Contain("Runtime error message:")))
 
+// A literal STEP lets the loop's NEXT step inline (1530): ADDQ/SUBQ up to 8,
+// ADDI beyond, BLT for a negative STEP. A finished loop leaves the counter at
+// its last value, the word add has no range check, and the body's writes to
+// the counter (here through a call) are seen, all as next_for_int does.
+let inlineNextPrograms = [|
+    "10 DIM a$(20)\n20 FOR i%=9 TO 1 STEP -2\n30 a$=a$ & i%\n40 END FOR i%\n50 PRINT a$;\":\";i%\n60 STOP", "97531:1\n"
+    "10 DIM a$(20)\n20 FOR i%=1 TO 20 STEP 8\n30 a$=a$ & i%\n40 END FOR i%\n50 PRINT a$;\":\";i%\n60 STOP", "1917:17\n"
+    "10 DIM a$(20)\n20 FOR i%=20 TO 1 STEP -8\n30 a$=a$ & i%\n40 END FOR i%\n50 PRINT a$;\":\";i%\n60 STOP", "20124:4\n"
+    "10 DIM a$(20)\n20 FOR i%=-300 TO 1000 STEP 500\n30 a$=a$ & i%\n40 END FOR i%\n50 PRINT a$;\":\";i%\n60 STOP", "-300200700:700\n"
+    "10 DIM a$(20)\n20 FOR i%=1000 TO -1000 STEP -900\n30 a$=a$ & i%\n40 END FOR i%\n50 PRINT a$;\":\";i%\n60 STOP", "1000100-800:-800\n"
+    "10 DIM a$(8)\n20 FOR i%=32766 TO 32767\n30 a$=a$ & \"x\"\n40 IF i%<0 THEN EXIT i%\n50 END FOR i%\n60 PRINT a$;\":\";i%\n70 STOP", "xxx:-32768\n"
+    "10 DIM a$(20)\n20 FOR i%=1 TO 10\n30 a$=a$ & i%:bump\n40 END FOR i%\n50 PRINT a$;\":\";i%\n60 STOP\n100 DEFine PROCedure bump\n110 i%=i%+2\n120 END DEFine", "14710:12\n"
+    "10 DIM a$(20)\n20 last%=3\n30 FOR i%=1 TO last%\n40 last%=9:a$=a$ & i%\n50 END FOR i%\n60 PRINT a$;\":\";i%\n70 STOP", "123:3\n"
+|]
+let inlineNextModes = [|
+    for index in 0..inlineNextPrograms.Length-1 do
+        for hir in [false;true] do
+            for native,registers in [false,false;true,false;true,true] do
+                yield TestCaseData(index,hir,native,registers).SetName($"Inline NEXT {index} (HIR {hir}, native {native}, registers {registers})") |]
+
+[<TestCaseSource(nameof inlineNextModes)>]
+let ``inline memory-counter NEXT matches threaded stepping`` (index:int,hir:bool,native:bool,registers:bool) =
+    let source,expected=inlineNextPrograms[index]
+    withCompiledProgramMode hir [(if native then "--native-regions" else "--no-native-regions");(if registers then "--regalloc" else "--no-regalloc")] ".bas" source (fun executable ->
+        let result=run 4000000L executable
+        Assert.That(result.ExitCode, Is.Zero)
+        Assert.That(result.Output, Is.EqualTo(expected)))
+
+[<TestCase(false)>]
+[<TestCase(true)>]
+let ``inline NEXT reports one record for each literal-step fixture`` (hir:bool) =
+    let directory=Path.Combine(Path.GetTempPath(),$"inline-next-report-{Guid.NewGuid():N}")
+    Directory.CreateDirectory directory |> ignore
+    try
+        for index in 0..inlineNextPrograms.Length-1 do
+            let prefix=Path.Combine(directory,string index)
+            let source,_=inlineNextPrograms[index]
+            withCompiledProgramMode hir ["--native-regions";"--regalloc";"--dump-hir="+prefix] ".bas" source ignore
+            let report=File.ReadAllText(prefix+".native-ir.txt")
+            Assert.That(report, Does.Contain("Audited memory-counter native FOR loops: 1"), $"fixture {index}")
+            Assert.That(report, Does.Contain("Inline memory-counter NEXT records: 1"), $"fixture {index}")
+    finally Directory.Delete(directory,true)
+
+// A computed STEP keeps next_for_int: only an adjacent literal is known.
+[<Test>]
+let ``a computed STEP keeps the template NEXT`` () =
+    let directory=Path.Combine(Path.GetTempPath(),$"inline-next-step-{Guid.NewGuid():N}")
+    Directory.CreateDirectory directory |> ignore
+    try
+        let prefix=Path.Combine(directory,"step")
+        let source,_=memoryCounterPrograms[4]
+        withCompiledProgramMode false ["--native-regions";"--regalloc";"--dump-hir="+prefix] ".bas" source ignore
+        let report=File.ReadAllText(prefix+".native-ir.txt")
+        Assert.That(report, Does.Contain("Audited memory-counter native FOR loops: 1"))
+        Assert.That(report, Does.Contain("Inline memory-counter NEXT records: 0"))
+    finally Directory.Delete(directory,true)
+
 // Integer IF conditions inside memory-counter loops become one native branch.
 // The last value is the number of fused conditions in the --dump-hir report.
 let fusedConditionPrograms = [|

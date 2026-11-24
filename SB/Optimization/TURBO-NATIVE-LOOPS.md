@@ -275,11 +275,42 @@ This pass does not change the pinned allocator's existing predicate lowering.
 Integer IF conditions in these bodies become
 [fused native conditions](TURBO-NATIVE-CONDITIONS.md) during code generation.
 
+### Inline NEXT
+
+lib537's `next_for_int` (230) loads the cell, sets A2 to its epilogue and jumps
+to the iterator that `for_range_int` left in the cell. The iterator adds STEP,
+tests the sign of STEP, compares with END, stores the counter and jumps through
+the stored TOPLOOP; a finished loop falls back through `done_for`'s `JMP (A2)`.
+That is 14 instructions for every repeated iteration.
+
+When the instruction before the loop's `remember_end` is a literal push, that
+literal is exactly the STEP, the last value `for_range_int` pops. The loop's own
+NEXT then becomes the SB record 1530 (`[counter vector; TOPLOOP; STEP]`), which
+code generation expands to seven instructions:
+
+```
+MOVEA.L vector(A6),A3      ; reload the binding: callee LOCALs may rebind it
+MOVE.W  (A3),D1
+ADDQ/SUBQ/ADDI #STEP,D1    ; no range check, as the iterator's ADD.W
+CMP.W   8(A3),D1           ; the END captured by for_range_int
+BGT.S   done               ; BLT.S for a negative STEP; zero takes BGT
+MOVE.W  D1,(A3)
+BRA.W   TOPLOOP            ; MOVE.L #, JMP 0(A6,D0.L) beyond word range
+done:                      ; the possible-end label, where JMP (A2) went
+```
+
+This is exact because both loop certificates exclude any FOR on the counter in
+the body or its callees, so the cell keeps this loop's STEP, END, iterator and
+TOPLOOP from initialization to NEXT. The counter value itself is read from the
+live cell, so ordinary writes by the body or a callee are seen as before, and a
+finished loop leaves the counter unchanged. A computed STEP, the initializer and
+EXIT keep their templates. Validation rejects 1530 in threaded code.
+
 `--no-native-regions` disables selection. `--no-regalloc` disables pinned loops
 and local allocation but still permits these memory-counter native loops.
 `--no-hir-opt` independently disables HIR rewriting. `.native-ir.txt` reports the
-number selected. The library, machine-code generator and legacy peephole pass
-are unchanged.
+number of loops selected and of inline NEXT records. The library and legacy
+peephole pass are unchanged.
 
 ## Memory-based procedure-call boundaries
 

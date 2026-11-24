@@ -150,10 +150,19 @@ let select enabled (output:TurboIrOutput) : Result<TurboIrOutput,string list> =
             match candidate with
             | Some ending ->
                 result.Add(Instruction(254,[],marker))
+                // The certificate excludes any FOR on this counter in the body or
+                // its callees, so the cell keeps this loop's STEP, END and TOPLOOP.
+                // An adjacent literal is exactly the last value pushed: the STEP.
+                let next =
+                    match (if index>0 then Some source[index-1] else None),source[index+1] with
+                    | Some(Instruction(106,[Word step],_)),Instruction(26,[Word counter;LabelRef top],_) ->
+                        Some(Instruction(1530,[Word counter;LabelRef top;Word step],inlineNextComment))
+                    | _ -> None
                 let mutable i=index
                 while i<=ending+1 do
                     if absAt abs source i && i+2<=ending+1 then
                         result.Add(Instruction(1334,[],nativeIntegerAbsComment));i<-i+3
+                    elif i=ending && next.IsSome then result.Add next.Value;i<-i+1
                     else result.AddRange(native source[i]);i<-i+1
                 result.Add(Instruction(255,[],"resume threaded code after memory-counter FOR"))
                 index<-ending+2
@@ -174,4 +183,5 @@ let select enabled (output:TurboIrOutput) : Result<TurboIrOutput,string list> =
 let format items =
     let count=items |> List.sumBy(function Instruction(254,[],comment) when comment=marker -> 1 | _ -> 0)
     let calls=items |> List.sumBy(function Instruction(255,[],"audited memory-counter procedure call") -> 1 | _ -> 0)
-    $"Audited memory-counter native FOR loops: {count}\nMemory-counter native procedure call boundaries: {calls}\n"
+    let inline'=items |> List.sumBy(function Instruction(1530,_,_) -> 1 | _ -> 0)
+    $"Audited memory-counter native FOR loops: {count}\nMemory-counter native procedure call boundaries: {calls}\nInline memory-counter NEXT records: {inline'}\n"

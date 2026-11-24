@@ -500,6 +500,8 @@ type private Generator(sourceLibrary: byte[], options: TurboCodegenOptions, sour
         // Native integer ABS has 334's empty operand list but must never match
         // a float-to-int peephole.
         elif token=1334 then this.Lookup 334 |> Option.map(fun (_,record) -> token,record)
+        // The inline NEXT keeps its own token, so no next_for_int peephole applies.
+        elif token=1530 then this.Lookup 230 |> Option.map(fun (_,record) -> token,record)
         else this.Lookup(if TurboNativeArrays.isCompact token then TurboNativeArrays.baseOpcode token elif token >= 1000 then token - 1000 else token)
 
     /// g_t2 onwards: a token below 1000.
@@ -515,7 +517,7 @@ type private Generator(sourceLibrary: byte[], options: TurboCodegenOptions, sour
 
     /// Skips a token's operands (the "Now skip parameters" code after klim).
     member private this.SkipOperands(token: int, record: int) =
-        if token=1911 || token=1912 then ic<-ic+6
+        if token=1911 || token=1912 || token=1530 then ic<-ic+6
         elif this.IsParameterised record then
             let _, header, _ = this.GetBytes record
             if header &&& 0x80 = 0 then
@@ -947,6 +949,32 @@ type private Generator(sourceLibrary: byte[], options: TurboCodegenOptions, sour
             if pass<>0 then write bytes
             objCode<-objCode+bytes.Length
             ic<-ic+4
+        elif token=1530 then
+            // next_for_int and its for_range_int iterator, inline: add the literal
+            // STEP without a range check, leave on passing the cell's END, else
+            // store the counter and branch to TOPLOOP. A finished loop falls
+            // through to the possible-end label, where done_for's JMP (A2) went.
+            if pMode then fail "Inline native NEXT requires native mode."
+            let vector,top,step=word ir ic,word ir (ic+2),int(int16(uint16(word ir (ic+4))))
+            let address=this.LabelAddress top
+            if address &&& 1 <> 0 then fail "Inline native NEXT must return to a native TOPLOOP."
+            let stepCode =
+                if step=0 then [||]
+                elif step>=1 && step<=8 then wordBytes(0x5041 ||| ((step &&& 7) <<< 9))
+                elif step>= -8 && step<= -1 then wordBytes(0x5141 ||| ((-step &&& 7) <<< 9))
+                else Array.append (wordBytes 0x0641) (wordBytes(step &&& 0xFFFF))
+            let head=Array.concat [wordBytes 0x266E;wordBytes(vectTabAd+4*vector);wordBytes 0x3213;stepCode;wordBytes 0xB26B;wordBytes 0x0008]
+            let branchAt=objCode+head.Length+4
+            let displacement=address-(branchAt+2)
+            let back =
+                if displacement>=int Int16.MinValue && displacement<=int Int16.MaxValue then Array.append (wordBytes 0x6000) (wordBytes(displacement &&& 0xFFFF))
+                else Array.concat [wordBytes 0x203C;longBytes address;wordBytes 0x4EF6;wordBytes 0x0800]
+            // A STEP of zero or more takes step_up's BGT; a negative STEP takes BLT.
+            let leave=(if step>=0 then 0x6E00 else 0x6D00) ||| (2+back.Length)
+            let bytes=Array.concat [head;wordBytes leave;wordBytes 0x3681;back]
+            if pass<>0 then write bytes
+            objCode<-objCode+bytes.Length
+            ic<-ic+6
         else
             let mutable opcode = if TurboNativeArrays.isCompact token then TurboNativeArrays.baseOpcode token elif token >= 1000 then token - 1000 else token
             if pMode && TurboNativeArrays.isUnchecked token then fail "Range-proven arrays require native mode."

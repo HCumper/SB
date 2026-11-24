@@ -185,6 +185,8 @@ let provenRankOneIntegerArrayComment = "range-proven rank-one integer array acce
 let allocatedStringComment = "allocated string"
 /// Listing comment of the native-only 1334 record (int-to-float, ROM ABS, float-to-int).
 let nativeIntegerAbsComment = "native integer ABS"
+/// Listing comment of the native-only 1530 record, an inline next_for_int.
+let inlineNextComment = "inline memory-counter NEXT"
 
 let rankTwoIntegerArrayComment facts =
     let checks=(if facts.ProvenRows then 0 else 1) ||| (if facts.ProvenColumns then 0 else 2)
@@ -301,6 +303,8 @@ module private Op =
     let romFunction = 224
     let romProcedure = 227
     let nextForInt = 230
+    /// SB extension: next_for_int stepped inline on the counter cell, in native mode.
+    let nativeNextForInt = 1530
     let nextForFloat = 232
     let arrayDescriptor = 234
     let gosub = 236
@@ -415,6 +419,7 @@ let private operandShapes =
     shapes[139] <- FixedWords 3
     shapes[1911] <- FixedWords 3 // vector, checked-dimension mask, exact column length (0 = dynamic).
     shapes[1912] <- FixedWords 3
+    shapes[1530] <- FixedWords 3 // Inline native NEXT: counter vector, TOPLOOP label, literal STEP (SB extension).
     shapes[247] <- FixedWords 9
     shapes[169] <- TextShape
     shapes[170] <- TextShape
@@ -428,7 +433,7 @@ let private operandShapes =
 /// Zero-based positions of label operands, by opcode (378's operand defines rather than references).
 let private labelOperandPositions =
     dict [
-        24, 1; 26, 1; 56, 1; 58, 1; 360, 1; 241, 1; 382, 1
+        24, 1; 26, 1; 56, 1; 58, 1; 360, 1; 241, 1; 382, 1; 1530, 1
         236, 0; 237, 0; 238, 0; 239, 0; 242, 0; 243, 0; 245, 0; 327, 0; 328, 0; 356, 0; 357, 0; 378, 0; 381, 0 ]
 
 /// Zero-based positions of vector-id operands, by opcode.
@@ -436,7 +441,7 @@ let private vectorOperandPositions =
     let positions = Dictionary<int, int>()
     for opcode in [ 101; 102; 108; 109; 110; 111; 112; 114; 118; 125; 133; 134; 141; 142; 143; 144; 146; 150
                     175; 176; 182; 230; 232; 246; 249; 253; 257; 262; 264; 265; 266; 293; 294; 337; 338; 339; 340
-                    370; 374; 375; 382; 24; 26; 56; 58; 360; 227; 1339; 1340; 1111; 1112; 1143; 1144; 1611; 1612; 1643; 1644; 1711; 1712; 1811; 1812 ] do
+                    370; 374; 375; 382; 24; 26; 56; 58; 360; 227; 1339; 1340; 1530; 1111; 1112; 1143; 1144; 1611; 1612; 1643; 1644; 1711; 1712; 1811; 1812 ] do
         positions[opcode] <- 0
     positions[1911] <- 0
     positions[1912] <- 0
@@ -648,6 +653,8 @@ let validate (bytes: byte[]) : string list =
                     problems.Add $"Range-proven array opcode {opcode} requires native mode (record {index})."
                 if not native && opcode = 1334 then
                     problems.Add $"Native integer ABS requires native mode (record {index})."
+                if not native && opcode = Op.nativeNextForInt then
+                    problems.Add $"Inline native NEXT requires native mode (record {index})."
                 let operandArray = List.toArray operands
                 match opcode,operands with
                 | (1911|1912),[_;Word mask;Word columns] when mask>3 || columns>32768 ->

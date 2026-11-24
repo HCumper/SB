@@ -132,6 +132,16 @@ let ``native integer ABS is rejected in threaded code`` () =
         | item -> [item])
     Assert.That(validate (serialize items) |> String.concat "; ", Does.Contain("Native integer ABS requires native mode"))
 
+[<Test>]
+let ``inline native NEXT is rejected in threaded code`` () =
+    let output = emit "10 FOR i%=1 TO 3\n20 a=i%\n30 END FOR i%\n40 STOP"
+    let top = output.Items |> List.pick (function Instruction(26,[_;LabelRef top],_) -> Some top | _ -> None)
+    let items = output.Items |> List.map (function
+        | Instruction(230,[Word counter],_) -> Instruction(1530,[Word counter;LabelRef top;Word 1],inlineNextComment)
+        | item -> item)
+    Assert.That(items |> List.exists(function Instruction(1530,_,_) -> true | _ -> false), Is.True)
+    Assert.That(validate (serialize items) |> String.concat "; ", Does.Contain("Inline native NEXT requires native mode"))
+
 // Floating arithmetic and one-argument ROM maths calls run in native regions,
 // with lib537's native rom_fn. Other residents keep their threaded calls.
 let private nativeRecords opcode output =
