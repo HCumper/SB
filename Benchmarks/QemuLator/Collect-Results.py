@@ -6,13 +6,27 @@ import json
 import re
 import statistics
 
+def birth(path):
+    """A file's creation time on the host."""
+    status=path.stat()
+    return getattr(status,'st_birthtime',status.st_ctime)
+
+# The host time between a job's start and result files exceeds its emulated
+# time only by file creation, at most a tick or so. More means the emulator
+# fell behind real time: its 50 Hz clock then follows host time while each
+# frame runs fewer instructions, so the emulated time is inflated too.
+REAL_TIME_TOLERANCE_RATIO=0.02
+REAL_TIME_TOLERANCE_SECONDS=0.05
+
+def behind_real_time(seconds,host_seconds):
+    return host_seconds is not None and host_seconds>seconds*(1+REAL_TIME_TOLERANCE_RATIO)+REAL_TIME_TOLERANCE_SECONDS
+
 def collect(run, require_complete=False):
     plan=json.loads((run/'plan.json').read_text())
     if plan.get('formatVersion')!=2 or plan.get('timingMethod')!='external-qdos-job':
         raise ValueError('Expected external timing format 2; old instrumented results must not be mixed in')
     drive=run/'drive'
     cases={c['name']:c for c in plan['benchmarks']}
-    birth=lambda p:getattr(p.stat(),'st_birthtime',p.stat().st_ctime)
     rows=[]
     seen=set()
     for path in sorted(drive.glob('r[0-9][0-9][0-9]')):
@@ -36,10 +50,12 @@ def collect(run, require_complete=False):
         actual=int(match[1]) if match else None
         start=drive/(path.name+'_start')
         host_seconds=birth(path)-birth(start) if start.exists() else None
-        valid=status=='returned' and actual==expected and ticks>0 and host_seconds is not None
+        seconds=ticks/plan['timerHz']
+        behind=behind_real_time(seconds,host_seconds)
+        valid=status=='returned' and actual==expected and ticks>0 and host_seconds is not None and not behind
         rows.append(dict(sequence=path.name,benchmark=name,compiler='SB' if compiler=='s' else 'Turbo FAST',
             trial=trial,passes=passes,expected=expected,checksum=actual,ticks=ticks,
-            seconds=ticks/plan['timerHz'],hostJobSeconds=host_seconds,stdout=stdout,
+            seconds=seconds,hostJobSeconds=host_seconds,behindRealTime=behind,stdout=stdout,
             status='passed' if valid else 'failed'))
     def write_csv(path,data):
         if data:
@@ -73,6 +89,7 @@ def collect(run, require_complete=False):
         samples=len(rows),expected=plan['expectedResults'],failed=[r for r in rows if r['status']!='passed'],calibration=calibration)
     state['clockValidated']=bool(calibration and 100<=calibration['ticks']<=110 and abs(calibration['ticks']/plan['timerHz']-calibration['hostSeconds'])<=0.15)
     state['clockDiscrepancies']=[r['sequence'] for r in rows if r['hostJobSeconds'] is None or r['seconds']>r['hostJobSeconds']+0.05]
+    state['behindRealTime']=[r['sequence'] for r in rows if r['behindRealTime']]
     (run/'result-state.json').write_text(json.dumps(state,indent=2)+'\n')
     print(json.dumps(state,indent=2))
     for row in summary:

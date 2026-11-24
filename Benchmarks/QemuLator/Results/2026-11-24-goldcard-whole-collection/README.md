@@ -76,8 +76,15 @@ comparable with these.
 ## Validation
 
 - `Collect-Results.py --complete` accepted both throttled runs. Its clock
-  check compares a 100-tick `PAUSE` with host time, and rejects samples only
-  when emulated time exceeds host time, not when host time exceeds it.
+  check compared a 100-tick `PAUSE` with host time, and rejected samples only
+  when emulated time exceeded host time, not when host time exceeded it.
+- The collector now also fails a sample whose host time exceeds its emulated
+  time by more than 2% plus 0.05 s. Rerun on these four directories, it fails
+  62 and 37 samples of the throttled runs and none of runs A and B. The pinned
+  run's remaining real-time samples give the same times as runs A and B, for
+  example float_polynomial 2.08 and 2.06 s and eight_queens 2.56 and 0.94 s.
+  The `samples.csv` files here predate the check and have no
+  `behindRealTime` column.
 - With power throttling disabled, that calibration `PAUSE` ended early: after
   0 ticks in run A and 53 ticks (1.06 s, still 50 Hz) in run B. It began 4.36 s
   after launch in all four runs, well after the settings were applied.

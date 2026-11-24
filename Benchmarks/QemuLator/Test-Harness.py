@@ -9,6 +9,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 ROOT=Path(__file__).resolve().parent
 sys.dont_write_bytecode=True
@@ -76,6 +77,16 @@ class ExternalResults(unittest.TestCase):
     def test_clock_failures_block_complete_run(self):
         with self.assertRaisesRegex(ValueError,'incomplete or contains failures'):
             self.collect(True)
+    def test_job_behind_real_time_fails(self):
+        # Both jobs ran 1.0 emulated seconds. SB's took 1.5 s on the host: the
+        # emulator fell behind real time. Turbo's 1.06 s is file-creation slack.
+        times={'r001_start':0.0,'r001':1.5,'r002_start':2.0,'r002':3.06}
+        with mock.patch.object(collector,'birth',lambda path:times[path.name]):
+            state,rows=self.collect()
+        self.assertEqual(state['behindRealTime'],['r001'])
+        self.assertEqual([r['sequence'] for r in state['failed']],['r001'])
+        self.assertIsNone(rows[0]['sbMedian'])
+        self.assertEqual(rows[0]['turboMedian'],1.0)
 
 class GuestPreparation(unittest.TestCase):
     def test_exact_program_body_without_timer_or_build_launcher(self):

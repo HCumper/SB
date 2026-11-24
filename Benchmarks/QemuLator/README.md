@@ -154,6 +154,13 @@ return from `EW`, positive ticks and an enclosing host timestamp. Runtime errors
 missing or duplicate results, extra output and incorrect checksums fail validation.
 Old instrumented-format results are rejected.
 
+A sample also fails when its host job time exceeds its emulated time by more
+than 2% plus 0.05 s (`behindRealTime`). The emulator has then fallen behind
+real time, and its emulated times are inflated as well. Windows 11 can throttle
+a hidden or background emulator this way: see the
+[whole-collection GoldCard result](Results/2026-11-24-goldcard-whole-collection/README.md),
+whose run script opts the emulator out of power throttling.
+
 One warm-up and three measured trials run per compiler/program pair, alternating
 order by trial and program: 72 jobs, of which 54 are measured. A 100-tick PAUSE
 checks clock calibration, and host file-creation timestamps enclose every job.
@@ -171,8 +178,8 @@ Compiler checks and threaded fallbacks remain where required. Turbo FAST can
 omit overflow checks; supplied successful
 workloads keep integer arithmetic within signed 16-bit limits.
 
-`Test-Harness.py` checks untouched inputs, failure detection, old-format rejection
-and refusal to overwrite completed samples. `pollclock.asm` and `pollclock.hex`
+`Test-Harness.py` checks untouched inputs, failure detection (including samples
+behind real time), old-format rejection and refusal to overwrite completed samples. `pollclock.asm` and `pollclock.hex`
 provide the external timer. Captured IR, native-mode evidence, ordinary-build
 verification, sources, reports, executable hashes, raw output and configuration
 fingerprints are retained in the run directory.
