@@ -52,4 +52,3 @@ follows for it; "P" numbers are lines of Turbo's parser source.
 
 - `$hex` literals are accepted, but the JS ROM's SuperBASIC does not load them; Minerva and
   SMSQ/E do.
-- A slice SB lowers to `MID$` is a resident call, which needs an extension providing `MID$`.

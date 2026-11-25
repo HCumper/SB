@@ -150,7 +150,10 @@ let private rewrite (target: TurboIrOptions) (program: HirProgram) =
             | ReadStringChar(s, index, t, p) -> ReadStringChar(s, expression index, t, p)
             | DynamicReadArrayElem(n, indexes, t, p) -> DynamicReadArrayElem(n, List.map expression indexes, t, p)
             | DynamicReadStringChar(n, index, t, p) -> DynamicReadStringChar(n, expression index, t, p)
-            | CallFunc(s, args, t, p) -> CallFunc(s, List.map argument args, t, p)
+            | CallFunc(s, args, t, p) ->
+                // A slice keeps its shape; only its string, start and end are simplified.
+                let args = HirEffects.mapSliceArguments program expression s args |> Option.defaultWith (fun () -> List.map argument args)
+                CallFunc(s, args, t, p)
             | Unary(op, inner, t, p) ->
                 let inner = expression inner
                 let fallback = Unary(op, inner, t, p)

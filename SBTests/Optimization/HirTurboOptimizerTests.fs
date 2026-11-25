@@ -94,6 +94,20 @@ let ``simplified call values keep their value and reference classifications`` ()
     Assert.That(optimized.Main, Is.EqualTo<HirBlock>([ProcCall(SymbolId 2, None, [ValueArg read; args[1]], pos)]))
     Assert.That(validate p optimized, Is.Empty)
 
+// a$(1 TO 31) is MID$(a$, 1, (31 - 1) + 1). Folding that length to 31 would leave a
+// resident MID$ call, so a slice keeps its shape while its bounds are simplified.
+[<Test>]
+let ``constant slice bounds keep the shape the backend emits as a slice`` () =
+    let mid, text = SymbolId 1, SymbolId 2
+    let call args = CallFunc(mid, ValueArg(ReadVar(text, HirType.String, pos)) :: List.map ValueArg args, HirType.String, pos)
+    let slice start finish = call [ start; binary Add (binary Subtract finish start) (number 1) ]
+    let p =
+        { program [ print (slice (number 1) (binary Add (number 30) (number 1))); print (call [ number 1; binary Add (number 2) (number 1) ]) ]
+            with SymbolNames = Map.ofList [ mid, "MID$" ] }
+    let optimized = run HirTurboIrBackend.defaultOptions p
+    Assert.That(optimized.Main, Is.EqualTo<HirBlock>([ print (slice (number 1) (number 31)); print (call [ number 1; number 3 ]) ]))
+    Assert.That(validate p optimized, Is.Empty)
+
 [<Test>]
 let ``multiplication by zero retains side effects and errors`` () =
     let expr = binary Multiply (CallFunc(SymbolId 1, [], HirType.Int, pos)) (number 0)

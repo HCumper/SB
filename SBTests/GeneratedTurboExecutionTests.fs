@@ -748,6 +748,10 @@ let turboDialectPrograms = [|
     // DEBUG 1 leaves lines out until DEBUG 0 while DEBUG_LEVEL is 0, as Turbo does.
     "10 PRINT \"a\"\n20 DEBUG 1\n30 NOSUCH_KEYWORD 5\n40 DEBUG 0\n50 PRINT \"b\"\n60 STOP",
         "a\nb\n"
+    // Constant slice bounds, as in PROG$(1 TO 31) (P 12706), stay slices when HIR
+    // optimization folds their lengths, rather than becoming resident MID$ calls.
+    "10 MANIFEST : k% = 3\n20 a$=\"TURBO_TASK\"\n30 PRINT a$(1 TO 5);\" \";a$(k% TO k%+2);\" \";a$(7 TO);\" \";a$(2 TO 2)\n40 IF a$(1 TO 5)=\"TURBO\" THEN PRINT \"match\"\n50 a$=a$(1 TO 3) : PRINT a$;LEN(a$)\n60 STOP",
+        "TURBO RBO TASK U\nmatch\nTUR3\n"
 |]
 let turboDialectModes = [|
     for index in 0..turboDialectPrograms.Length-1 do

@@ -257,20 +257,31 @@ let nonmutatingFunction (program:HirProgram) symbol argumentCount =
     argumentCount=1 && not(program.Routines |> List.exists(fun r -> r.Symbol=symbol)) &&
     (program.SymbolNames.TryFind symbol |> Option.exists(fun name -> romMathsFunctions.Contains(name.ToUpperInvariant())))
 
-// Match only the slice shapes emitted inline by HirTurboIrBackend. General
-// RIGHT$/MID$ calls still use the resident-function ABI and remain opaque.
-let inlineCall (program:HirProgram) symbol args =
+// AstToHir lowers a$(s TO e) to MID$(a$, s, (e - s) + 1) and a$(s TO) to
+// RIGHT$(a$, (LEN(a$) - s) + 1). HirTurboIrBackend emits only these exact shapes
+// inline as slices; general RIGHT$/MID$ calls still use the resident-function ABI
+// and remain opaque. For a slice, this applies f to its string, start and end and
+// rebuilds the shape around them. A pass rewriting expressions must keep the shape:
+// folding a constant slice's (31 - 1) + 1 to 31 would leave a resident MID$ call,
+// which no QL ROM provides.
+let mapSliceArguments (program:HirProgram) (f:HirExpr -> HirExpr) symbol args =
     let named symbol name = program.SymbolNames.TryFind symbol |> Option.exists(fun actual -> actual.Equals(name,StringComparison.OrdinalIgnoreCase))
     let builtin symbol = not(program.Routines |> List.exists(fun r -> r.Symbol=symbol))
     let one = function Literal(ConstInt 1,_,_) -> true | _ -> false
-    inlineFunction program symbol (List.length args) ||
-    (builtin symbol &&
-     match args with
-     | [ValueArg _;ValueArg start;ValueArg(Binary(Add,Binary(Subtract,_,start2,_,_),unit,_,_))] ->
-         named symbol "MID$" && start=start2 && one unit
-     | [ValueArg baseExpr;ValueArg(Binary(Add,Binary(Subtract,CallFunc(len,[ValueArg base2],_,_),_,_,_),unit,_,_))] ->
-         named symbol "RIGHT$" && baseExpr=base2 && builtin len && named len "LEN" && one unit
-     | _ -> false)
+    if not(builtin symbol) then None else
+    match args with
+    | [ValueArg baseExpr;ValueArg start;ValueArg(Binary(Add,Binary(Subtract,finish,start2,dt,dp),unit,ct,cp))]
+        when named symbol "MID$" && start=start2 && one unit ->
+        let start=f start
+        Some [ValueArg(f baseExpr);ValueArg start;ValueArg(Binary(Add,Binary(Subtract,f finish,start,dt,dp),unit,ct,cp))]
+    | [ValueArg baseExpr;ValueArg(Binary(Add,Binary(Subtract,CallFunc(len,[ValueArg base2],lt,lp),start,dt,dp),unit,ct,cp))]
+        when named symbol "RIGHT$" && baseExpr=base2 && builtin len && named len "LEN" && one unit ->
+        let baseExpr=f baseExpr
+        Some [ValueArg baseExpr;ValueArg(Binary(Add,Binary(Subtract,CallFunc(len,[ValueArg baseExpr],lt,lp),f start,dt,dp),unit,ct,cp))]
+    | _ -> None
+
+let inlineCall (program:HirProgram) symbol args =
+    inlineFunction program symbol (List.length args) || (mapSliceArguments program id symbol args).IsSome
 
 let nonmutatingCall program symbol args =
     inlineCall program symbol args || nonmutatingFunction program symbol (List.length args)
