@@ -33,7 +33,10 @@ type HirConst =
 type HirUnaryOp =
     | Identity
     | Negate
+    /// SuperBASIC's NOT keyword.
     | BitwiseNot
+    /// SuperBASIC's ~~: bitwise NOT of a 16-bit integer.
+    | IntegerNot
     /// A '#' on a call argument after the first, as in CLOSE #3, #4. The value is unchanged;
     /// Turbo passes the mark to the resident routine.
     | Hash
@@ -48,9 +51,14 @@ type HirBinaryOp =
     | Concat
     | IntegerDivide
     | Modulo
+    /// SuperBASIC's AND, OR and XOR keywords.
     | BitwiseAnd
     | BitwiseOr
     | BitwiseXor
+    /// SuperBASIC's &&, || and ^^: bitwise on 16-bit integers.
+    | IntegerAnd
+    | IntegerOr
+    | IntegerXor
     | Equal
     /// SuperBASIC '==': strings equal ignoring case, numbers equal to about 1 part in 10^7.
     | AlmostEqual

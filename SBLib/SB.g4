@@ -16,6 +16,7 @@ options {
         || (TokenStream.LA(1) == Integer && TokenStream.LA(2) == End)
         || IsInlineEndIfLineAhead();
 
+    // "a : END REPeat x" needs no predicate: only repeatTerminator can parse such a line.
     private bool IsEndRepeatLineAhead() =>
         TokenStream.LA(1) == End || (TokenStream.LA(1) == Integer && TokenStream.LA(2) == End);
 
@@ -31,22 +32,33 @@ options {
     private bool IsSelectClauseHeaderAhead() =>
         TokenStream.LA(1) == Equal || (TokenStream.LA(1) == Integer && TokenStream.LA(2) == Equal);
 
-    private bool IsInlineEndIfLineAhead() {
+    private bool IsInlineEndIfLineAhead() => InlineClosersExceedOpeners(If);
+
+    // A line ends the enclosing block when it holds more ": END <keyword>" closers than
+    // <keyword> openers: "IF a : b : END IF : c" closes its own short-form IF, while
+    // "b : END IF" and "IF a : b : END IF : END IF" close the block around them.
+    private bool InlineClosersExceedOpeners(int keyword) {
         int i = 1;
         if (TokenStream.LA(i) == Integer) {
             i++;
         }
 
+        int opened = 0, closed = 0, previous = 0;
         while (true) {
             int la = TokenStream.LA(i);
             if (la == Newline || la == Antlr4.Runtime.TokenConstants.EOF) {
-                return false;
+                return closed > opened;
             }
 
-            if (la == Colon && TokenStream.LA(i + 1) == End) {
-                return true;
+            if (la == keyword && previous != End) {
+                opened++;
             }
 
+            if (la == End && previous == Colon && TokenStream.LA(i + 1) == keyword) {
+                closed++;
+            }
+
+            previous = la;
             i++;
         }
     }
@@ -229,18 +241,25 @@ forTerminator:
 
 repeatStmt:
     Repeat ID (
-        Colon stmtlist
-        | Newline repeatBodyLine* lineNumber? endRepeat ID?
+        Colon stmtlist (Colon endRepeat ID?)? // short form
+        | Newline repeatBodyLine* repeatTerminator
     )
 ;
 
 repeatBodyLine: {!IsEndRepeatLineAhead()}? line;
 
+repeatTerminator:
+    lineNumber? endRepeat ID?
+    | lineNumber? plainStmtlist Colon endRepeat ID?
+;
+
 ifStmt:
     If expr (
         Then Newline ifBlock elseBlock? ifTerminator // long form
         | Newline ifBlock elseBlock? ifTerminator // long form
-        | (Then | Colon) stmtlist (Colon Else (Colon? stmtlist)?)? // short form
+        // Short form; an END IF on the same line closes it, and the line's later
+        // statements run whatever the condition.
+        | (Then | Colon) stmtlist (Colon Else (Colon? stmtlist)?)? (Colon endIf)?
     )
 ;
 
@@ -307,7 +326,8 @@ orExpr: andExpr ((Or | PipePipe | Xor | XorSym) andExpr)*;
 
 andExpr: notExpr ((And | AmpAmp) notExpr)*;
 
-notExpr: Not notExpr | compareExpr;
+// ~~ (bitwise NOT) shares NOT's priority, as in Turbo's parser.
+notExpr: (Not | TildeTilde) notExpr | compareExpr;
 
 // Includes == case-sensitive equality
 compareExpr:
@@ -336,7 +356,7 @@ mulExpr: powExpr ((Multiply | Divide | Mod | Div) powExpr)*;
 powExpr: unaryExpr (Caret unaryExpr)*;
 
 // Unary minus/plus handled here — NOT in the Real lexer rule
-unaryExpr: (Plus | Minus | Not) unaryExpr | primary;
+unaryExpr: (Plus | Minus | Not | TildeTilde) unaryExpr | primary;
 
 primary:
     Integer
@@ -448,6 +468,7 @@ Semi: ';';
 Comma: ',';
 Bang: '!';
 Backslash: '\\';
+TildeTilde: '~~';
 Tilde: '~';
 Question: '?';
 Point: '.';

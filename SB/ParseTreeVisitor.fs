@@ -682,6 +682,10 @@ type ASTBuildingVisitor() =
         else
             match ctx.stmtArglist() with
             | null -> single (StmtNode(ProcedureCall(p, name, [])))
+            // In PRINT a leading '\' is SuperBASIC's newline separator, as in
+            // PRINT \"text", not SB's '\' channel form.
+            | sa when not (isNull (sa.stmtTail())) && String.Equals(name, "PRINT", StringComparison.OrdinalIgnoreCase) ->
+                this.CollectPrintCallsFromStmtTail(p, name, (fun args -> ProcedureCall(p, name, args)), sa.stmtTail())
             | sa when not (isNull (sa.stmtTail())) ->
                 match this.TryCollectImplicitChannelCall(sa.stmtTail()) with
                 | Some(channelExpr, args) ->
@@ -894,10 +898,14 @@ type ASTBuildingVisitor() =
             match ids with
             | id :: _ -> id.GetText()
             | [] -> ""
+        let terminator = ctx.repeatTerminator()
         let closingName =
-            match ids with
-            | _ :: closing :: [] -> Some(closing.GetText())
-            | _ -> None
+            match terminator with
+            | null ->
+                match ids with
+                | _ :: closing :: [] -> Some(closing.GetText())
+                | _ -> None
+            | t -> match t.ID() with null -> None | id -> Some(id.GetText())
         let body =
             match ctx.stmtlist() with
             | null ->
@@ -908,7 +916,17 @@ type ASTBuildingVisitor() =
                         | null -> None
                         | line -> Some (singleLine line (line.Accept(this))))
                     |> Seq.toList
-                LineBlock(lines)
+                // "a : END REPeat x" ends the loop after its own statements.
+                let terminatorLine =
+                    match terminator with
+                    | null -> []
+                    | t ->
+                        match t.plainStmtlist() with
+                        | null -> []
+                        | stmts ->
+                            let lineNo = match t.lineNumber() with null -> None | ln -> parseLineNumber (ln.GetText())
+                            [ Line(posOfTree t, lineNo, this.CollectPlainStmtList(stmts)) ]
+                LineBlock(lines @ terminatorLine)
             | stmtList ->
                 StatementBlock(this.CollectStmtList(stmtList))
         single (StmtNode(RepeatStmt(p, name, body, closingName)))
@@ -1088,9 +1106,9 @@ type ASTBuildingVisitor() =
         let p = posOfTree ctx
         let terms =
             this.SafeChildren(ctx.andExpr()) |> Seq.map (fun x -> this.SafeAcceptExpr(x)) |> Seq.toList
-        let ops =
-            this.OperatorTexts(ctx, set [ "OR"; "||"; "XOR"; "^^" ])
-            |> List.map (function | "^^" -> "XOR" | "||" -> "OR" | other -> other)
+        // || and ^^ are bitwise on integers; they share OR and XOR's priority but not
+        // their meaning, so they keep their own text.
+        let ops = this.OperatorTexts(ctx, set [ "OR"; "||"; "XOR"; "^^" ])
         match terms with
         | [] -> []
         | first :: rest -> single (ExprNode(this.FoldLeft(p, first, ops, rest)))
@@ -1099,9 +1117,8 @@ type ASTBuildingVisitor() =
         let p = posOfTree ctx
         let terms =
             this.SafeChildren(ctx.notExpr()) |> Seq.map (fun x -> this.SafeAcceptExpr(x)) |> Seq.toList
-        let ops =
-            this.OperatorTexts(ctx, set [ "AND"; "&&" ])
-            |> List.map (function | "&&" -> "AND" | other -> other)
+        // && is bitwise on integers, at AND's priority.
+        let ops = this.OperatorTexts(ctx, set [ "AND"; "&&" ])
         match terms with
         | [] -> []
         | first :: rest -> single (ExprNode(this.FoldLeft(p, first, ops, rest)))
@@ -1112,7 +1129,8 @@ type ASTBuildingVisitor() =
             ctx.compareExpr().Accept(this)
         else
             let rhs = this.SafeAcceptExpr(ctx.notExpr())
-            single (ExprNode(mkUnaryExpr p "NOT" rhs))
+            let op = if isNull (ctx.TildeTilde()) then "NOT" else "~~"
+            single (ExprNode(mkUnaryExpr p op rhs))
 
     override this.VisitCompareExpr(ctx: SBParser.CompareExprContext) =
         let p = posOfTree ctx

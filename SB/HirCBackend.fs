@@ -367,7 +367,7 @@ and private emitExpr ctx = function
         | Identity
         | Hash -> value
         | Negate -> $"negate_value({value})"
-        | BitwiseNot -> $"bitwise_not_value({value})"
+        | BitwiseNot | IntegerNot -> $"bitwise_not_value({value})"
         | UnaryUnknown name -> $"unsupported_unary(\"{escapeCString name}\", {value})"
     | Binary(op, lhs, rhs, _, _) ->
         let left = emitExpr ctx lhs
@@ -381,9 +381,9 @@ and private emitExpr ctx = function
         | Concat -> $"concat_value({left}, {right})"
         | IntegerDivide -> $"integer_divide_value({left}, {right})"
         | Modulo -> $"modulo_value({left}, {right})"
-        | BitwiseAnd -> $"bitwise_and_value({left}, {right})"
-        | BitwiseOr -> $"bitwise_or_value({left}, {right})"
-        | BitwiseXor -> $"bitwise_xor_value({left}, {right})"
+        | BitwiseAnd | IntegerAnd -> $"bitwise_and_value({left}, {right})"
+        | BitwiseOr | IntegerOr -> $"bitwise_or_value({left}, {right})"
+        | BitwiseXor | IntegerXor -> $"bitwise_xor_value({left}, {right})"
         | Equal -> $"compare_equal({left}, {right})"
         | AlmostEqual -> $"compare_almost_equal({left}, {right})"
         | NotEqual -> $"compare_not_equal({left}, {right})"

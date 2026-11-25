@@ -1,0 +1,25 @@
+
+++++ Warning at 0: watermark$ only exists as a LOCAL.
+
+++++ Warning at 0: txt$ only exists as a LOCAL.
+
+++++ Warning at 0: a$ only exists as a LOCAL.
+
+++++ Warning at 0: reftxt$ only exists as a LOCAL.
+
+++++ Warning at 0: tmp$ only exists as a LOCAL.
+
+++++ Warning at 0: fl$ only exists as a LOCAL.
+
+++++ Warning at 0: c$ only exists as a LOCAL.
+
+++++ Warning at 0: b$ only exists as a LOCAL.
+
+++++ Warning at 0: fv$ only exists as a LOCAL.
+
+++++ Warning at 0: vv$ only exists as a LOCAL.
+
+++++ Warning at 0: filename$ only exists as a LOCAL.
+TURBO: Parsing done, at 10384 statements per minute.
+0 errors and 11 warnings.
+TURBO Code generation completed successfully.

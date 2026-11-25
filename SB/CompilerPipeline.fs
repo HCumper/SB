@@ -300,6 +300,106 @@ let createLexer (input: AntlrInputStream) =
     let factory = CommonTokenFactory() :> ITokenFactory
     SBGrammarApi.CreateLexer(input, factory)
 
+/// A line's statements, split at colons outside string literals. A REMark statement
+/// runs to the end of the line, colons and all.
+let private splitStatements (text: string) =
+    let statements = ResizeArray<string>()
+    let current = Text.StringBuilder()
+    let mutable quote = None
+    let mutable i = 0
+    while i < text.Length do
+        let c = text[i]
+        match quote with
+        | Some q ->
+            current.Append c |> ignore
+            if c = q then quote <- None
+            i <- i + 1
+        | None when c = '"' || c = '\'' ->
+            current.Append c |> ignore
+            quote <- Some c
+            i <- i + 1
+        | None when c = ':' ->
+            statements.Add(current.ToString())
+            current.Clear() |> ignore
+            i <- i + 1
+            if Text.RegularExpressions.Regex.IsMatch(text.Substring(i), @"^\s*REM(ARK)?\b", Text.RegularExpressions.RegexOptions.IgnoreCase) then
+                current.Append(text.Substring(i)) |> ignore
+                i <- text.Length
+        | None ->
+            if current.Length = 0 && Text.RegularExpressions.Regex.IsMatch(text.Substring(i), @"^\s*REM(ARK)?\b", Text.RegularExpressions.RegexOptions.IgnoreCase) then
+                current.Append(text.Substring(i)) |> ignore
+                i <- text.Length
+            else
+                current.Append c |> ignore
+                i <- i + 1
+    statements.Add(current.ToString())
+    List.ofSeq statements
+
+/// SuperBASIC allows ELSE as a statement anywhere in a long-form IF's lines, as in
+/// "wk$ = "0" : ELSE" or "a : ELSE : b". Each such line becomes the statements before
+/// the ELSE, an ELSE line and the statements after it, all with the same line number.
+/// An ELSE after a short-form IF on the same line belongs to that IF and stays.
+let private splitMidLineElse (sourceText: string) =
+    let keyword word (statement: string) =
+        Text.RegularExpressions.Regex.IsMatch(statement, $@"^\s*{word}\b", Text.RegularExpressions.RegexOptions.IgnoreCase)
+    let rec tryExpand (lineNumber: string) (body: string) =
+        let statements = splitStatements body
+        match statements |> List.tryFindIndex (fun s -> s.Trim().Equals("ELSE", StringComparison.OrdinalIgnoreCase)) with
+        | Some k when k > 0 && not (statements |> List.take k |> List.exists (fun s -> keyword "IF" s || keyword "REM(ARK)?" s)) ->
+            let before = statements |> List.take k |> String.concat ":"
+            let after = statements |> List.skip (k + 1) |> String.concat ":"
+            [ yield $"{lineNumber} {before.Trim()}"
+              yield $"{lineNumber} ELSE"
+              if not (String.IsNullOrWhiteSpace after) then
+                  yield! tryExpand lineNumber (after.Trim()) |> Option.defaultValue [ $"{lineNumber} {after.Trim()}" ] ]
+            |> Some
+        | _ -> None
+    sourceText.Replace("\r\n", "\n").Split('\n')
+    |> Array.toList
+    |> List.collect (fun line ->
+        let trimmed = line.TrimStart()
+        let digitCount = trimmed |> Seq.takeWhile Char.IsDigit |> Seq.length
+        if digitCount = 0 then [ line ]
+        else tryExpand (trimmed.Substring(0, digitCount)) (trimmed.Substring(digitCount)) |> Option.defaultValue [ line ])
+    |> String.concat "\n"
+
+/// Turbo's DEBUG and DEBUG_LEVEL directives compile lines conditionally (P 17582-17750,
+/// 26970): after DEBUG n, lines are left out while n is nonzero and above the program's
+/// DEBUG_LEVEL (0 unless given; only the first counts, at most 9). Left-out lines keep
+/// their numbers as remarks. A program with its own DEBUG procedure keeps every line.
+let private applyDebugDirectives (sourceText: string) =
+    let lines = sourceText.Replace("\r\n", "\n").Split('\n')
+    let directive name (body: string) =
+        let m = Text.RegularExpressions.Regex.Match(body, $@"^\s*{name}(\s+(\d+))?\s*$", Text.RegularExpressions.RegexOptions.IgnoreCase)
+        if m.Success then Some(if m.Groups[2].Success then min 9 (int m.Groups[2].Value) else 0) else None
+    let numbered (line: string) =
+        let trimmed = line.TrimStart()
+        let digits = trimmed |> Seq.takeWhile Char.IsDigit |> Seq.length
+        if digits = 0 then None else Some(trimmed.Substring(0, digits), trimmed.Substring(digits))
+    let ownDebug =
+        lines |> Array.exists (fun line ->
+            Text.RegularExpressions.Regex.IsMatch(line, @"DEFine\s+(PROCedure|FuNction)\s+DEBUG\b", Text.RegularExpressions.RegexOptions.IgnoreCase))
+    let hasDirective = lines |> Array.exists (fun line -> match numbered line with Some(_, body) -> (directive "DEBUG" body).IsSome | None -> false)
+    if ownDebug || not hasDirective then sourceText
+    else
+        let mutable level = None
+        let mutable current = 0
+        lines
+        |> Array.map (fun line ->
+            match numbered line with
+            | None -> line
+            | Some(number, body) ->
+                match directive "DEBUG_LEVEL" body, directive "DEBUG" body with
+                | Some n, _ ->
+                    if level.IsNone then level <- Some n
+                    $"{number} REMark {body.Trim()}"
+                | _, Some n ->
+                    current <- n
+                    $"{number} REMark {body.Trim()}"
+                | _ when current <> 0 && current > defaultArg level 0 -> $"{number} REMark DEBUG {current} line left out"
+                | _ -> line)
+        |> String.concat "\n"
+
 let private splitInlineElseBodies (sourceText: string) =
     let normalizeNewlines (text: string) = text.Replace("\r\n", "\n")
 
@@ -406,6 +506,8 @@ let private prepareSource (inputFileName: string) : Result<PreparedSource, Parse
                 (match kind with
                  | Ssb.SourceKind.SuperBasic -> sourceText
                  | Ssb.SourceKind.Ssb -> Ssb.transformFile inputFileName)
+                |> applyDebugDirectives
+                |> splitMidLineElse
                 |> splitInlineElseBodies
                 |> splitInlineEndIfClosers
 

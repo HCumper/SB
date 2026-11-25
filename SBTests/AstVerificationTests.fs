@@ -13,6 +13,28 @@ let private parseProgram (input: string) =
     let parser = SBParser(tokenStream)
     parser.program()
 
+let private syntaxErrors (input: string) =
+    let lexer = CompilerPipeline.createLexer (AntlrInputStream(input))
+    let parser = SBParser(CommonTokenStream(lexer))
+    parser.RemoveErrorListeners()
+    parser.program() |> ignore
+    parser.NumberOfSyntaxErrors
+
+// A line closes the block IF around it only with more ": END IF" closers than IF openers of
+// its own, and a short IF may be closed on its own line. ": END REPeat" may end a line.
+[<TestCase("10 IF a\n20 IF b : c=1 : END IF : d=2\n30 e=3\n40 END IF\n")>]
+[<TestCase("10 IF a\n20 IF b : c=1 : ELSE c=2 : END IF : d=2\n30 e=3 : END IF\n")>]
+[<TestCase("10 REPeat lp\n20 x=x+1 : IF x=3 : EXIT lp\n30 PRINT x : END REPeat lp\n")>]
+[<TestCase("10 REPeat lp\n20 IF x : y=1 : END IF : x=x+1 : END REPeat lp\n")>]
+let ``inline closers end only their own block`` (source: string) =
+    Assert.That(syntaxErrors source, Is.Zero)
+
+[<Test>]
+let ``a short IF's own END IF leaves its block IF open`` () =
+    match convertTreeToAst (parseProgram "10 IF a\n20 IF b : c=1 : END IF : d=2\n30 e=3\n40 END IF\n") with
+    | [ Program(_, [ Line(_, Some 10, [ IfStmt(_, _, LineBlock [ Line(_, Some 20, [ IfStmt _; Assignment _ ]); Line(_, Some 30, _) ], None) ]) ]) ] -> Assert.Pass()
+    | other -> Assert.Fail($"Unexpected AST: %A{other}")
+
 [<Test>]
 let ``procedure definitions preserve parameters and body structure`` () =
     let testTree =
@@ -118,7 +140,7 @@ let ``when_error alias parses as when error`` () =
     | other -> Assert.Fail($"Unexpected WHEN_ERROR AST: %A{other}")
 
 [<Test>]
-let ``double caret parses as xor`` () =
+let ``double caret parses as bitwise xor`` () =
     let testTree =
         parseProgram
             "10 IF a ^^ b\n20 PRINT \"x\"\n30 END IF\n"
@@ -131,8 +153,8 @@ let ``double caret parses as xor`` () =
         [ Line(
             _,
             Some 10,
-            [ IfStmt(_, BinaryExpr(_, _, "XOR", Identifier(_, _, "a"), Identifier(_, _, "b")), _, _) ]) ]) -> Assert.Pass()
-    | other -> Assert.Fail($"Unexpected XOR AST: %A{other}")
+            [ IfStmt(_, BinaryExpr(_, _, "^^", Identifier(_, _, "a"), Identifier(_, _, "b")), _, _) ]) ]) -> Assert.Pass()
+    | other -> Assert.Fail($"Unexpected ^^ AST: %A{other}")
 
 [<Test>]
 let ``print TO is a column separator, not a channel`` () =
@@ -232,7 +254,7 @@ let ``identifiers may start with underscore`` () =
     | other -> Assert.Fail($"Unexpected underscore identifier AST: %A{other}")
 
 [<Test>]
-let ``double pipe parses as or`` () =
+let ``double pipe parses as bitwise or`` () =
     let testTree =
         parseProgram
             "10 IF a || b\n20 PRINT \"x\"\n30 END IF\n"
@@ -245,7 +267,7 @@ let ``double pipe parses as or`` () =
         [ Line(
             _,
             Some 10,
-            [ IfStmt(_, BinaryExpr(_, _, "OR", Identifier(_, _, "a"), Identifier(_, _, "b")), _, _) ]) ]) -> Assert.Pass()
+            [ IfStmt(_, BinaryExpr(_, _, "||", Identifier(_, _, "a"), Identifier(_, _, "b")), _, _) ]) ]) -> Assert.Pass()
     | other -> Assert.Fail($"Unexpected double-pipe AST: %A{other}")
 
 [<Test>]

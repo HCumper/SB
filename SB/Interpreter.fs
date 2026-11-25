@@ -869,7 +869,7 @@ let rec private evalExpr state expr =
                 | Identity
                 | Hash -> value
                 | Negate -> makeNumericValue hirType (-normalizeNumber value)
-                | BitwiseNot -> IntValue(~~~(asInt value))
+                | BitwiseNot | IntegerNot -> IntValue(~~~(asInt value))
                 | UnaryUnknown _ -> value
             result, nextState)
     | Binary(op, lhs, rhs, hirType, _) ->
@@ -889,9 +889,9 @@ let rec private evalExpr state expr =
                     | Concat -> StringValue (asString leftValue + asString rightValue)
                     | IntegerDivide -> IntValue (asInt leftValue / asInt rightValue)
                     | Modulo -> IntValue (asInt leftValue % asInt rightValue)
-                    | BitwiseAnd -> IntValue (asInt leftValue &&& asInt rightValue)
-                    | BitwiseOr -> IntValue (asInt leftValue ||| asInt rightValue)
-                    | BitwiseXor -> IntValue (asInt leftValue ^^^ asInt rightValue)
+                    | BitwiseAnd | IntegerAnd -> IntValue (asInt leftValue &&& asInt rightValue)
+                    | BitwiseOr | IntegerOr -> IntValue (asInt leftValue ||| asInt rightValue)
+                    | BitwiseXor | IntegerXor -> IntValue (asInt leftValue ^^^ asInt rightValue)
                     | Equal ->
                         match leftValue, rightValue with
                         | StringValue _, _

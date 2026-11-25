@@ -1,0 +1,10 @@
+{
+  "ProcessId": 17968,
+  "CreationDateUtc": "2026-11-25T02:35:58.0519630Z",
+  "Config": "C:\\Source\\codex-workspace\\.scratch\\turbo-parser-compile\\run2\\turbo.QCF",
+  "Speed": "GoldCard",
+  "WindowStyle": "Hidden",
+  "PowerThrottling": "execution speed and timer resolution disabled",
+  "ProcessorAffinity": "0xFFFF",
+  "PriorityClass": "High"
+}

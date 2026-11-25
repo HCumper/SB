@@ -228,6 +228,11 @@ module private Op =
     let leqInt = 14
     let lessInt = 15
     let modInt = 20
+    /// SuperBASIC ~~, ||, && and ^^: bitwise on integers (spec 5.2).
+    let bitwiseNotInt = 3
+    let bitwiseOrInt = 16
+    let bitwiseAndInt = 17
+    let bitwiseXorInt = 18
     let forInstanceInt = 24
     let forRangeInt = 26
     let minusFloat = 33
@@ -1125,6 +1130,7 @@ type private Emitter(options: TurboIrOptions, program: HirProgram) =
             | Missing _ -> TurboInt
             | Unary(Negate, inner, _, _)
             | Unary(BitwiseNot, inner, _, _) -> if this.TypeOf inner = TurboInt then TurboInt else TurboFloat
+            | Unary(IntegerNot, _, _, _) -> TurboInt
             | Unary(UnaryUnknown _, _, _, _) -> TurboFloat
             | Binary(op, lhs, rhs, _, _) ->
                 match op with
@@ -1133,6 +1139,9 @@ type private Emitter(options: TurboIrOptions, program: HirProgram) =
                 | Multiply -> if this.TypeOf lhs = TurboInt && this.TypeOf rhs = TurboInt then TurboInt else TurboFloat
                 | IntegerDivide
                 | Modulo
+                | IntegerAnd
+                | IntegerOr
+                | IntegerXor
                 | Instr -> TurboInt
                 | Concat -> TurboString
                 | _ -> TurboFloat
@@ -1268,6 +1277,11 @@ type private Emitter(options: TurboIrOptions, program: HirProgram) =
                 this.EmitAs(scope, TurboFloat, inner)
                 op0 Op.logicalNotFloat
                 TurboFloat
+        | Unary(IntegerNot, inner, _, _) ->
+            // SuperBASIC ~~ complements the bits of its operand converted to an integer.
+            this.EmitAs(scope, TurboInt, inner)
+            op0 Op.bitwiseNotInt
+            TurboInt
         | Unary(UnaryUnknown name, _, _, pos) ->
             fail pos $"unary operator '{name}' has no Turbo IR equivalent."
             TurboFloat
@@ -1328,6 +1342,10 @@ type private Emitter(options: TurboIrOptions, program: HirProgram) =
         | BitwiseAnd -> fixedType TurboFloat Op.logicalAndFloat TurboFloat
         | BitwiseOr -> fixedType TurboFloat Op.logicalOrFloat TurboFloat
         | BitwiseXor -> fixedType TurboFloat Op.logicalXorFloat TurboFloat
+        // SuperBASIC &&, || and ^^ are bitwise on their operands converted to integers.
+        | IntegerAnd -> fixedType TurboInt Op.bitwiseAndInt TurboInt
+        | IntegerOr -> fixedType TurboInt Op.bitwiseOrInt TurboInt
+        | IntegerXor -> fixedType TurboInt Op.bitwiseXorInt TurboInt
         | GreaterThanOrEqual -> comparison Op.geqInt Op.geqFloat Op.geqString
         | GreaterThan -> comparison Op.gtInt Op.gtFloat Op.gtString
         | Equal -> comparison Op.eqInt Op.eqFloat Op.eqString
@@ -1543,12 +1561,29 @@ type private Emitter(options: TurboIrOptions, program: HirProgram) =
     member private this.EmitRoutineArguments(scope: Scope, routine: HirRoutine, args: HirCallArg list, pos: SourcePosition) =
         if args.Length > routine.Parameters.Length then
             fail pos $"'{routine.Name}' takes {routine.Parameters.Length} argument(s) but {args.Length} are given."
+        // A REFERENCE formal is always by reference, as in Turbo. A plain variable passed to
+        // another formal is bound by reference too, as the interpreter does, when its
+        // storage has the formal's type and kind; otherwise it is passed by value in the
+        // formal's type, as Turbo passes every formal that REFERENCE does not name
+        // (P 21386-21486, 24046). Array elements and expressions are values.
+        let bindsVariable (parameter: HirParameter) target =
+            let name =
+                match target with
+                | WriteVar(symbol, _, _) when (this.ManifestSymbol symbol).IsNone -> Some(this.SymbolName symbol)
+                | DynamicWriteVar(name, _, _) -> Some name
+                | _ -> None
+            match name with
+            | Some name ->
+                let vector = this.NamedVector(name, pos)
+                let formalKind = if arrayFormals.Contains parameter.Storage.Symbol then ArrayVector else ScalarVector
+                vector.Type = this.TypeOfName(normalizeIdentifier parameter.Storage.Name) && vector.Kind = formalKind
+            | None -> false
         let refs =
             routine.Parameters
             |> List.mapi (fun index parameter ->
                 let byReference =
                     this.IsReferenceFormal parameter
-                    || (match List.tryItem index args with Some(RefArg _) -> true | _ -> false)
+                    || (match List.tryItem index args with Some(RefArg target) -> bindsVariable parameter target | _ -> false)
                 if byReference then Some parameter.Storage.Symbol else None)
             |> List.choose id
             |> Set.ofList
@@ -1703,6 +1738,10 @@ type private Emitter(options: TurboIrOptions, program: HirProgram) =
         | "PI", [] ->
             // The parser wires PI in as this constant (P 19458-19462).
             opc Op.constFloat [ Word 2050; Word 25735; Word 60753 ] "PI"
+            TurboFloat
+        | "COMPILED", [] ->
+            // Turbo Toolkit's COMPILED: compiled code is the float 1 (P 19442-19454).
+            opc Op.longFloat [ Word 2049; Word 16384 ] "COMPILED"
             TurboFloat
         | "INSTR", [ ValueArg lhs; ValueArg rhs ] ->
             this.EmitAs(scope, TurboString, lhs)
@@ -2035,6 +2074,18 @@ type private Emitter(options: TurboIrOptions, program: HirProgram) =
             noArguments ()
             op Op.slow []
             op0 Op.retry
+        // Turbo's RETRY_HERE directive sets where WHEN ERROR's RETRY resumes (P 17042,
+        // 23370): RETRY_HERE 0 or 1 sets that one retry point, plain RETRY_HERE both.
+        | "RETRY_HERE" ->
+            match args with
+            | [] ->
+                op Op.slow []
+                op0 Op.retryHere
+                op0 Op.retry1Here
+            | [ Literal(ConstInt level, _, _) ] when level = 0 || level = 1 ->
+                op Op.slow []
+                op0 (if level = 0 then Op.retryHere else Op.retry1Here)
+            | _ -> fail pos "RETRY_HERE takes no argument, or a constant 0 or 1."
         | "CONTINUE" ->
             noArguments ()
             if scope.InHandler then
@@ -2585,8 +2636,35 @@ type private Emitter(options: TurboIrOptions, program: HirProgram) =
                     vector.BoundCount <- Some dims.Length
             | Array _, _ -> vector.HasDescriptor <- true
             | _ -> ()
+        // A global the program never uses as a plain variable, named like an array in some
+        // routine, is that routine's LOCal array seen from its callees (SuperBASIC's dynamic
+        // scope): its one vector is that array.
+        let routineArrayNames =
+            [ for routine in program.Routines do
+                for local in routine.Locals do
+                    match local.Type with
+                    | Array _ -> yield normalizeIdentifier local.Name
+                    | _ -> ()
+                for parameter in routine.Parameters do
+                    if arrayFormals.Contains parameter.Storage.Symbol then yield normalizeIdentifier parameter.Storage.Name ]
+            |> Set.ofList
+        let plainNames = HashSet<string>()
+        for block in allBlocks do
+            block
+            |> iterStatements (fun stmt ->
+                statementExprs stmt
+                |> List.iter (iterExpr (function
+                    | ReadVar(symbol, _, _) -> plainNames.Add(normalizeIdentifier (this.SymbolName symbol)) |> ignore
+                    | DynamicReadVar(name, _, _) -> plainNames.Add(normalizeIdentifier name) |> ignore
+                    | _ -> ())))
         for storage in program.Globals do
-            if (this.Manifest storage.Name).IsNone then register storage
+            if (this.Manifest storage.Name).IsNone then
+                let key = normalizeIdentifier storage.Name
+                match storage.Type with
+                | Array _ -> register storage
+                | _ when routineArrayNames.Contains key && not (plainNames.Contains key) ->
+                    this.Vector(storage.Name, ArrayVector, storage.Position) |> ignore
+                | _ -> register storage
         for routine in program.Routines do
             this.Vector(routine.Name, RoutineVector, routine.Position) |> ignore
             for parameter in routine.Parameters do

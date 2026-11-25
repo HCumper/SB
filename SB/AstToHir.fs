@@ -65,6 +65,7 @@ let private lowerUnaryOp op =
     | "+" -> HirUnaryOp.Identity
     | "-" -> HirUnaryOp.Negate
     | "NOT" -> HirUnaryOp.BitwiseNot
+    | "~~" -> HirUnaryOp.IntegerNot
     | "#" -> HirUnaryOp.Hash
     | _ -> HirUnaryOp.UnaryUnknown op
 
@@ -81,6 +82,9 @@ let private lowerBinaryOp op =
     | "AND" -> HirBinaryOp.BitwiseAnd
     | "OR" -> HirBinaryOp.BitwiseOr
     | "XOR" -> HirBinaryOp.BitwiseXor
+    | "&&" -> HirBinaryOp.IntegerAnd
+    | "||" -> HirBinaryOp.IntegerOr
+    | "^^" -> HirBinaryOp.IntegerXor
     | "=" -> HirBinaryOp.Equal
     | "==" -> HirBinaryOp.AlmostEqual
     | "<>" -> HirBinaryOp.NotEqual

@@ -193,6 +193,12 @@ let rec private stateIter (action: 'T -> State<'S, unit>) (items: 'T list) : Sta
             do! stateIter action tail
     }
 
+/// A DIM's bounds as constants, or none when any bound is not yet a constant (a MANIFEST
+/// name or a variable): a partial list would give the array a wrong number of dimensions.
+let private constantDimensionSizes state (bounds: Expr list) =
+    let sizes = bounds |> List.map (tryEvaluateConstantIntegerExpr state)
+    if sizes |> List.forall Option.isSome then sizes |> List.choose id else []
+
 let rec private collectRoutineDeclaration mode declareRoutine pos name parameters body =
     monad {
         let! currentState = State.get
@@ -295,9 +301,7 @@ and collectDeclarations (mode: SymbolAddMode) (node: Stmt) : State<ProcessingSta
             let nextState =
                 items
                 |> List.fold (fun state (name, dims) ->
-                    let sizes =
-                        dims
-                        |> List.choose (tryEvaluateConstantIntegerExpr state)
+                    let sizes = constantDimensionSizes state dims
                     let targetScope = declarationScopeForDim state.CurrentScope name state.SymTab
                     if isSizedStringDeclaration name dims then
                         declareVariable mode targetScope name pos state
@@ -311,9 +315,7 @@ and collectDeclarations (mode: SymbolAddMode) (node: Stmt) : State<ProcessingSta
                 |> List.fold (fun state (name, dims) ->
                     match dims with
                     | Some dimExprs ->
-                        let sizes =
-                            dimExprs
-                            |> List.choose (tryEvaluateConstantIntegerExpr state)
+                        let sizes = constantDimensionSizes state dimExprs
                         if isSizedStringDeclaration name dimExprs then
                             declareVariable mode state.CurrentScope name pos state
                         else
@@ -904,7 +906,8 @@ and private resolveStmt (mode: SymbolAddMode) (node: Stmt) : State<ProcessingSta
                         | Some(_, FunctionSym symbol) ->
                             let withReturnType =
                                 { typedValueState with SymTab = tryUpdateResolvedSymbolTypeAndValue valueType None typedValueState.CurrentScope typedValueState.CurrentScope typedValueState.SymTab }
-                            if areTypesCompatible symbol.ReturnType valueType then withReturnType
+                            // The value converts to the function's type, as an assignment's does.
+                            if areAssignmentTypesCompatible symbol.ReturnType valueType None then withReturnType
                             else appendDiagnostic SemanticDiagnosticCode.InvalidReturn (Some typedValueState.CurrentScope) (Some pos) $"Return expression type does not match function '{typedValueState.CurrentScope}' at {pos.EditorLineNo}:{pos.Column}" withReturnType
                         | Some(_, ProcedureSym _) ->
                             appendDiagnostic SemanticDiagnosticCode.InvalidReturn (Some typedValueState.CurrentScope) (Some pos) $"Procedure '{typedValueState.CurrentScope}' cannot return a value at {pos.EditorLineNo}:{pos.Column}" typedValueState

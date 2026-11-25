@@ -1,0 +1,17 @@
+SB compiling p509 (sha256 bc46254655d4adc253dc3fee46071eb1fec091d3d5123128b7fad14f369e2e57),
+the same file Turbo compiled, on Windows 11, Intel Core i7-13700, host otherwise quiet.
+Wall-clock seconds of `dotnet SB.dll p509_sb.bas <output> false turbo <flags>`, including
+.NET startup and JIT. Every run exited 0. The executable is 159,112 bytes with native regions
+(both builds), 88,876 bytes with HIR optimization only and 88,828 bytes without either.
+
+Debug build (as the benchmark scripts use), --hir-opt --native-regions --regalloc:
+  37.493, 36.177, 37.536, 36.042, 36.317    median 36.317
+
+Release build, --hir-opt --native-regions --regalloc:
+  27.354, 27.220, 27.040, 27.062, 26.995    median 27.062
+
+Release build, --hir-opt --no-native-regions --no-regalloc:
+  6.021, 5.698, 5.304                       median 5.698
+
+Release build, --no-hir-opt --no-native-regions --no-regalloc:
+  2.842, 2.780, 3.184                       median 2.842

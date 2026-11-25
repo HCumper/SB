@@ -1,0 +1,5 @@
+100 LRESPR "mdv1_ttk"
+110 PROG_USE "mdv1_"
+120 DATA_USE "mdv1_"
+130 TYPE_IN "OPEN_NEW #3,mdv1_s:CLOSE #3:EXECUTE_W mdv1_parser_task;"&CHR$(34)&"*"&CHR$(34)&":EW mdv1_codegen_task:OPEN_NEW #3,mdv1_e:CLOSE #3"&CHR$(10)
+140 LOAD "mdv1_p509_bas"

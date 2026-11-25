@@ -727,6 +727,62 @@ let ``unary minus negates untyped parameters`` (index:int,hir:bool,native:bool,r
         Assert.That(result.ExitCode, Is.Zero)
         Assert.That(result.Output, Is.EqualTo(expected)))
 
+// Constructs Turbo's own parser source uses, each compiled as Turbo compiles it.
+let turboDialectPrograms = [|
+    // &&, || and ^^ are bitwise on integers at AND's and OR's priority, ~~ at NOT's;
+    // AND stays logical.
+    "10 a%=12:b%=10\n20 PRINT a% && b%;\" \";a% || b%;\" \";a% ^^ b%;\" \";~~a%;\" \";1+2 && 3\n30 IF (a% && 4) <> 0 THEN PRINT \"bit\"\n40 IF a% AND 0 THEN PRINT \"wrong\"\n50 c%=a% AND b%:PRINT c%\n60 STOP",
+        "8 14 6 -13 3\nbit\n1\n"
+    // ELSE anywhere in a block IF's lines; a short IF closed by END IF on its line, whose
+    // later statements always run; END REPeat after statements.
+    "10 FOR i%=1 TO 3\n20 IF i%=2\n30 PRINT \"two\" : ELSE : PRINT \"not\";i%\n40 END IF\n50 IF i%=1\n60 PRINT \"one\" : ELSE\n70 PRINT \"other\"\n80 END IF\n90 IF i%=3 : PRINT \"three\" : ELSE PRINT \"x\" : END IF : PRINT \"after\";i%\n100 END FOR i%\n110 n%=0\n112 IF n%=0\n114 IF n%>=0 : PRINT \"zero\" : END IF : PRINT \"still\"\n116 END IF\n120 REPeat lp\n130 n%=n%+1 : IF n%=3 : EXIT lp\n140 PRINT \"loop\";n% : END REPeat lp\n150 PRINT \"done\";n%\n160 STOP",
+        "not1\none\nx\nafter1\ntwo\nother\nx\nafter2\nnot3\nother\nthree\nafter3\nzero\nstill\nloop1\nloop2\ndone3\n"
+    // A MANIFEST bound in DIM; LEN of a number; a string function returning a number; a
+    // callee indexing its caller's LOCal array; COMPILED; PRINT's leading newline '\'.
+    "10 MANIFEST : m% = 4\n20 DIM e$(m%-1,8),p%(m%-1,1)\n30 p%(1,0)=5 : e$(1)=\"ab\"\n40 PRINT p%(1,0);e$(1);LEN(123);f$(7)\n50 a\n60 IF COMPILED THEN PRINT \"compiled\"\n70 PRINT \\\"next\"\n80 STOP\n100 DEFine PROCedure a\n110 LOCal x%(3)\n120 b\n130 PRINT x%(1)\n140 END DEFine\n200 DEFine PROCedure b\n210 x%(1)=9\n220 END DEFine\n300 DEFine FuNction f$(v)\n310 RETurn v+1\n320 END DEFine",
+        "5ab38\n9\ncompiled\n\nnext\n"
+    // A variable of the formal's type is passed by reference; a float variable to an
+    // integer formal and an array element are passed by value, as Turbo passes them.
+    "10 b%=3 : p b% : PRINT b%\n20 a=3 : p a : c%=a : PRINT c%\n30 DIM q%(2) : q%(1)=4 : p q%(1) : PRINT q%(1)\n40 STOP\n100 DEFine PROCedure p(x%)\n110 x%=x%*2 : PRINT x%\n120 END DEFine",
+        "6\n6\n6\n3\n8\n4\n"
+    // DEBUG 1 leaves lines out until DEBUG 0 while DEBUG_LEVEL is 0, as Turbo does.
+    "10 PRINT \"a\"\n20 DEBUG 1\n30 NOSUCH_KEYWORD 5\n40 DEBUG 0\n50 PRINT \"b\"\n60 STOP",
+        "a\nb\n"
+|]
+let turboDialectModes = [|
+    for index in 0..turboDialectPrograms.Length-1 do
+        for hir in [false;true] do
+            for native,registers in [false,false;true,false;true,true] do
+                yield TestCaseData(index,hir,native,registers).SetName($"Turbo dialect {index} (HIR {hir}, native {native}, registers {registers})") |]
+
+[<TestCaseSource(nameof turboDialectModes)>]
+let ``Turbo dialect constructs compile as Turbo compiles them`` (index:int,hir:bool,native:bool,registers:bool) =
+    let source,expected=turboDialectPrograms[index]
+    withCompiledProgramMode hir [(if native then "--native-regions" else "--no-native-regions");(if registers then "--regalloc" else "--no-regalloc")] ".bas" source (fun executable ->
+        let result=run 2000000L executable
+        Assert.That(result.ExitCode, Is.Zero)
+        Assert.That(result.Output, Is.EqualTo(expected)))
+
+[<Test>]
+let ``a DEBUG_LEVEL at or above DEBUG keeps the lines`` () =
+    let directory = Path.Combine(Path.GetTempPath(), $"turbo-debug-{Guid.NewGuid():N}")
+    Directory.CreateDirectory directory |> ignore
+    try
+        let input = Path.Combine(directory, "program.bas")
+        File.WriteAllText(input, "5 DEBUG_LEVEL 1\n10 PRINT \"a\"\n20 DEBUG 1\n30 NOSUCH_KEYWORD 5\n40 DEBUG 0\n50 STOP\n")
+        let start = ProcessStartInfo("dotnet")
+        for argument in [ typeof<TurboCodegen.TurboCodegenOutput>.Assembly.Location; input; Path.Combine(directory, "test_exe"); "false"; "turbo" ] do
+            start.ArgumentList.Add argument
+        start.RedirectStandardOutput <- true
+        start.RedirectStandardError <- true
+        use compiler = new Process(StartInfo = start)
+        compiler.Start() |> ignore
+        let output = compiler.StandardOutput.ReadToEnd() + compiler.StandardError.ReadToEnd()
+        compiler.WaitForExit()
+        Assert.That(compiler.ExitCode, Is.Not.Zero)
+        Assert.That(output, Does.Contain("NOSUCH_KEYWORD"))
+    finally Directory.Delete(directory, true)
+
 // QL AND/OR evaluate every operand: a failing later operand must still fail
 // when an earlier comparison already decides the result. Errors match threaded code.
 let fusedConditionErrors = [|

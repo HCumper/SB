@@ -88,7 +88,18 @@ let private coreCallableBuiltInNames =
 // Toolkit / environment / project-specific names that are intentionally treated as built-ins.
 let private extensionBuiltInNames =
     [ "ALLOCATE"; "APPEND"; "ASC"; "BACKUP"; "DEALLOCATE"; "DRAW"; "GETENV$"; "INKEY"; "LEFT$"; "LOADMEM"; "LOG"; "LPRINT"; "MID$"; "MODE"; "PALETTE"; "RAD"; "REPL$"; "RIGHT$"; "ROUND"; "S_FONT"; "SAVEMEM"; "SGN"; "SHELL"; "STR$"; "SYSVAR"; "TIME"; "TRON"; "TROFF"; "VAL"; "WAIT"
-      "TURBO_BUFFERSZ"; "TURBO_DIAGS"; "TURBO_LOCSTR"; "TURBO_OBJDAT"; "TURBO_OBJFIL"; "TURBO_OPTIM"; "TURBO_REPFIL"; "TURBO_STRUCT"; "TURBO_TASKN"; "TURBO_WINDO" ]
+      "TURBO_BUFFERSZ"; "TURBO_DIAGS"; "TURBO_LOCSTR"; "TURBO_OBJDAT"; "TURBO_OBJFIL"; "TURBO_OPTIM"; "TURBO_REPFIL"; "TURBO_STRUCT"; "TURBO_TASKN"; "TURBO_WINDO"
+      // Turbo Toolkit procedures Turbo's parser links as resident routines (P 11662-11754),
+      // and its RETRY_HERE directive.
+      "COMMAND_LINE"; "CURSOR_OFF"; "CURSOR_ON"; "EXECUTE"; "EXECUTE_A"; "EXECUTE_W"; "LINK_LOAD"; "LINK_LOAD_A"; "LINK_LOAD_W"
+      "LIST_TASKS"; "MOVE_MEMORY"; "POKE$"; "RELEASE_TASK"; "REMOVE_TASK"; "RETRY_HERE"; "SET_CHANNEL"; "SET_FONT"; "SET_POSITION"
+      "SET_PRIORITY"; "SUSPEND_TASK"
+      "CONNECT"; "DEFAULT_DEVICE"; "END_CMD"; "GETHEAD"; "GET_MSEC"; "GMINFO"; "PUT_MSEC"; "SETHEAD"; "TYPE_IN"
+      // Turbo Toolkit functions (P 11806-11898); COMPILED is the constant 1 in compiled code.
+      "ALLOCATION"; "BASIC_ADR"; "BASIC_B%"; "BASIC_F"; "BASIC_INDEX%"; "BASIC_L"; "BASIC_NAME$"; "BASIC_POINTER"; "BASIC_TYPE%"
+      "BASIC_W%"; "CHANNEL_ID"; "COMPILED"; "DATASPACE"; "DEVICE_SPACE"; "DEVICE_STATUS"; "EDIT$"; "EDIT%"; "EDITF"; "ERLIN%"
+      "ERNUM%"; "FLOAT$"; "FREE_MEMORY"; "GET$"; "GET%"; "GETF"; "INPUT$"; "INTEGER$"; "OPTION_CMD$"; "PEEK$"; "PEEK_F"
+      "POSITION"; "SEARCH_MEMORY"; "STRING$"; "STRING%"; "STRINGF"; "SYS_VARS"; "TK_VER$" ]
 
 let callableBuiltInNames =
     coreCallableBuiltInNames @ extensionBuiltInNames
@@ -244,7 +255,8 @@ let private builtInSignatures =
       signature "INSTR" (Some 2) (Some [ String; String ])
       signature "INT" (Some 1) (Some [ Numeric ])
       signature "KEYROW" (Some 1) (Some [ Numeric ])
-      signature "LEN" (Some 1) (Some [ String ])
+      // A number converts to its string form: LEN(123) is 3.
+      signature "LEN" (Some 1) (Some [ Any ])
       signature "LEFT$" (Some 2) (Some [ String; Numeric ])
       signature "LN" (Some 1) (Some [ Numeric ])
       signature "LOG" (Some 1) (Some [ Numeric ])

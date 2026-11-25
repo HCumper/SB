@@ -93,7 +93,9 @@ let rec private integerExpression context expr =
         | DynamicReadVar(name,_,_) | DynamicReadArrayElem(name,_,_,_) -> nameIsInteger context.Target name
         | Unary((Identity|Hash|Negate|BitwiseNot),x,_,_) -> integerExpression context x
         | Binary((Add|Subtract|Multiply),a,b,_,_) -> integerExpression context a && integerExpression context b
-        | Binary((IntegerDivide|Modulo|Instr),_,_,_,_) -> true
+        | Binary((IntegerDivide|Modulo|Instr|IntegerAnd|IntegerOr|IntegerXor),_,_,_,_) -> true
+        // ~~ always yields an integer; its range stays the whole word.
+        | Unary(IntegerNot,_,_,_) -> true
         | CallFunc(s,_,_,_) ->
             context.Effects.Program.Routines |> List.tryFind (fun r -> r.Symbol=s) |> Option.exists (fun r -> nameIsInteger context.Target r.Name)
         | _ -> false

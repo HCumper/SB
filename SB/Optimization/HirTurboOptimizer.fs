@@ -129,10 +129,11 @@ let private context (target: TurboIrOptions) (program: HirProgram) =
             | ReadStringChar _ | DynamicReadStringChar _ -> Text
             | Unary(Identity, x, _, _) | Unary(Hash, x, _, _) -> expressionType x
             | Unary(Negate, x, _, _) | Unary(BitwiseNot, x, _, _) -> if expressionType x = Integer then Integer else Real
+            | Unary(IntegerNot, _, _, _) -> Integer
             | Binary(op, a, b, _, _) ->
                 match op with
                 | Add | Subtract | Multiply -> if expressionType a = Integer && expressionType b = Integer then Integer else Real
-                | IntegerDivide | Modulo | Instr -> Integer
+                | IntegerDivide | Modulo | Instr | IntegerAnd | IntegerOr | IntegerXor -> Integer
                 | Concat -> Text
                 | _ -> Real
             | _ -> Unknown

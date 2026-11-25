@@ -185,6 +185,30 @@ let ``unary minus accepts untyped procedure parameters and locals`` (source: str
         |> List.filter (fun diagnostic -> diagnostic.Code = SemanticDiagnosticCode.InvalidOperandTypes)
     Assert.That(invalidOperandTypes, Is.Empty)
 
+// SuperBASIC's LOCal arrays are visible to the routines a routine calls.
+[<Test>]
+let ``a callee may index its caller's LOCal array`` () =
+    let analyzed =
+        analyzeProgram "10 a\n20 STOP\n100 DEFine PROCedure a\n110 LOCal x%(3)\n120 b\n130 END DEFine\n200 DEFine PROCedure b\n210 x%(1)=5\n220 PRINT x%(1)\n230 END DEFine\n"
+    Assert.That(analyzed.Errors, Is.Empty)
+
+[<Test>]
+let ``a routine's own scalar still cannot be indexed`` () =
+    let analyzed =
+        analyzeProgram "10 a\n20 STOP\n100 DEFine PROCedure a\n110 LOCal x%(3)\n120 b\n130 END DEFine\n200 DEFine PROCedure b\n205 LOCal x%\n210 PRINT x%(1)\n230 END DEFine\n"
+    Assert.That(analyzed.Errors, Has.Some.Contains("Scalar 'x%' cannot be indexed"))
+
+[<Test>]
+let ``Turbo Toolkit keywords resolve`` () =
+    let analyzed =
+        analyzeProgram "10 CURSOR_ON : RETRY_HERE : x=BASIC_L(4) : p$=PEEK$(x,2)\n20 IF COMPILED : SET_PRIORITY 0,0,0\n30 STOP\n"
+    Assert.That(analyzed.Errors, Is.Empty)
+
+[<Test>]
+let ``LEN takes a number and a string function may return one`` () =
+    let analyzed = analyzeProgram "10 PRINT LEN(123);f$(1)\n20 STOP\n100 DEFine FuNction f$(v)\n110 RETurn v+1\n120 END DEFine\n"
+    Assert.That(analyzed.Errors, Is.Empty)
+
 [<Test>]
 let ``unary minus still rejects a procedure name`` () =
     let analyzed = analyzeProgram "10 x=-p\n20 STOP\n100 DEFine PROCedure p\n110 END DEFine\n"
@@ -711,9 +735,9 @@ let ``fixed arity built in calls are validated where modeled`` () =
 [<Test>]
 let ``built in string arguments are validated where modeled`` () =
     let analyzed =
-        analyzeProgram "10 value = LEN(1)\n"
+        analyzeProgram "10 value = CODE(1)\n"
 
-    Assert.That(analyzed.Errors, Has.Some.Contains("Built-in 'LEN' argument 1 must be string-compatible"))
+    Assert.That(analyzed.Errors, Has.Some.Contains("Built-in 'CODE' argument 1 must be string-compatible"))
 
 [<Test>]
 let ``built in numeric arguments reject non coercible constant strings`` () =

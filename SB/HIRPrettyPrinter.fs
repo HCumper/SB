@@ -47,6 +47,7 @@ let private formatUnaryOp = function
     | Identity -> "+"
     | Negate -> "-"
     | BitwiseNot -> "NOT"
+    | IntegerNot -> "~~"
     | Hash -> "#"
     | UnaryUnknown value -> value
 
@@ -62,6 +63,9 @@ let private formatBinaryOp = function
     | BitwiseAnd -> "AND"
     | BitwiseOr -> "OR"
     | BitwiseXor -> "XOR"
+    | IntegerAnd -> "&&"
+    | IntegerOr -> "||"
+    | IntegerXor -> "^^"
     | Equal -> "="
     | AlmostEqual -> "=="
     | NotEqual -> "<>"

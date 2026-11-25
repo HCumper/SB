@@ -381,7 +381,7 @@ and private emitExpr ctx = function
         | Identity
         | Hash -> $"Identity({emitExpr ctx inner})"
         | Negate -> emitNumericResult hirType $"Negate({emitExpr ctx inner})"
-        | BitwiseNot -> $"BitwiseNot({emitExpr ctx inner})"
+        | BitwiseNot | IntegerNot -> $"BitwiseNot({emitExpr ctx inner})"
         | UnaryUnknown name -> $"ApplyUnary(\"{name}\", {emitExpr ctx inner})"
     | Binary(op, lhs, rhs, hirType, _) ->
         let left = emitExpr ctx lhs
@@ -395,9 +395,9 @@ and private emitExpr ctx = function
         | Concat -> $"Concat({left}, {right})"
         | IntegerDivide -> $"IntegerDivide({left}, {right})"
         | Modulo -> $"Modulo({left}, {right})"
-        | BitwiseAnd -> $"BitwiseAnd({left}, {right})"
-        | BitwiseOr -> $"BitwiseOr({left}, {right})"
-        | BitwiseXor -> $"BitwiseXor({left}, {right})"
+        | BitwiseAnd | IntegerAnd -> $"BitwiseAnd({left}, {right})"
+        | BitwiseOr | IntegerOr -> $"BitwiseOr({left}, {right})"
+        | BitwiseXor | IntegerXor -> $"BitwiseXor({left}, {right})"
         | Equal -> $"CompareEqual({left}, {right})"
         | AlmostEqual -> $"CompareAlmostEqual({left}, {right})"
         | NotEqual -> $"CompareNotEqual({left}, {right})"

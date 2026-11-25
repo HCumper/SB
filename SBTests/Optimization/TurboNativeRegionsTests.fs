@@ -20,6 +20,19 @@ let private emit (source: string) =
     finally File.Delete path
 
 let private select output = TurboNativeRegions.select true output |> ok
+
+// Turbo's RETRY_HERE directive sets WHEN ERROR's retry points (326, 346) where it stands,
+// as the body's start already does; RETRY_HERE 1 sets only the second.
+[<TestCase("10 RETRY_HERE\n20 STOP", 2, 2)>]
+[<TestCase("10 RETRY_HERE 1\n20 STOP", 1, 2)>]
+[<TestCase("10 RETRY_HERE 0\n20 STOP", 2, 1)>]
+let ``RETRY_HERE sets retry points instead of calling a routine`` (source: string, retry: int, retry1: int) =
+    let output = emit source
+    let count opcode = output.Items |> List.filter (function Instruction(op,_,_) -> op=opcode | _ -> false) |> List.length
+    Assert.That(count 326, Is.EqualTo(retry))
+    Assert.That(count 346, Is.EqualTo(retry1))
+    Assert.That(count 227, Is.Zero)
+
 let private starts output = output.Items |> List.filter (function Instruction(254,_,"audited native region") -> true | _ -> false) |> List.length
 
 [<Test>]

@@ -58,6 +58,8 @@ let private operandTypeSetFromOperator op =
     | "+" | "-" | "*" | "^" -> Some FloatOrInteger
     | "/" -> Some FloatOrInteger
     | "DIV" | "MOD" | "AND" | "OR" | "XOR" -> Some OnlyInteger
+    // Bitwise on 16-bit integers, as in Turbo: && at AND's priority, || and ^^ at OR's.
+    | "&&" | "||" | "^^" -> Some OnlyInteger
     | "=" | "==" | "<>" | "<" | "<=" | ">" | ">=" -> Some StringFloatOrInteger
     | "INSTR" -> Some OnlyString
     | _ -> None
@@ -66,7 +68,7 @@ let private resultTypeForOperator op finalOperandType =
     match normalizeIdentifier op with
     | "&" -> SBType.String
     | "/" -> SBType.Real
-    | "DIV" | "MOD" | "AND" | "OR" | "XOR" -> SBType.Integer
+    | "DIV" | "MOD" | "AND" | "OR" | "XOR" | "&&" | "||" | "^^" -> SBType.Integer
     | "=" | "==" | "<>" | "<" | "<=" | ">" | ">=" -> SBType.Integer
     | "INSTR" -> SBType.Integer
     | _ -> finalOperandType
@@ -278,9 +280,9 @@ let rec tryEvaluateConstantExpr (state: ProcessingState) expr =
             match op with
             | "DIV" when rhs <> 0 -> Some(string (lhs / rhs))
             | "MOD" when rhs <> 0 -> Some(string (lhs % rhs))
-            | "AND" -> Some(string (lhs &&& rhs))
-            | "OR" -> Some(string (lhs ||| rhs))
-            | "XOR" -> Some(string (lhs ^^^ rhs))
+            | "AND" | "&&" -> Some(string (lhs &&& rhs))
+            | "OR" | "||" -> Some(string (lhs ||| rhs))
+            | "XOR" | "^^" -> Some(string (lhs ^^^ rhs))
             | _ -> None
         | _ -> None
 
@@ -328,7 +330,7 @@ let rec tryEvaluateConstantExpr (state: ProcessingState) expr =
                 | true, numeric -> Some(formatReal (-numeric))
                 | _ -> None
             | _ -> None
-        | "NOT", Some value ->
+        | ("NOT" | "~~"), Some value ->
             match tryCoerceValueText SBType.Integer value with
             | Some coerced ->
                 match tryParseInt coerced with
@@ -344,7 +346,7 @@ let rec tryEvaluateConstantExpr (state: ProcessingState) expr =
                 match normalizeIdentifier op with
                 | "&" -> Some(quoteString (stripQuotedString coercedLeft + stripQuotedString coercedRight))
                 | "+" | "-" | "*" | "/" | "^" -> numericBinary op coercedLeft coercedRight
-                | "DIV" | "MOD" | "AND" | "OR" | "XOR" -> integerBinary (normalizeIdentifier op) coercedLeft coercedRight
+                | "DIV" | "MOD" | "AND" | "OR" | "XOR" | "&&" | "||" | "^^" -> integerBinary (normalizeIdentifier op) coercedLeft coercedRight
                 | "="
                 | "=="
                 | "<>"
@@ -453,10 +455,26 @@ let tryUpdateResolvedSymbolTypeAndValue inferredType valueText scopeName symbolN
                 { scope with Symbols = Map.add (normalizeIdentifier symbolName) updatedSymbol scope.Symbols }
             Map.add resolvedScope updatedScope table
 
+/// Inside a routine, a name it does not declare is found at run time through its
+/// callers, whose LOCal arrays SuperBASIC makes visible. Such a name may be indexed
+/// when another routine declares an array of that name.
+let private arrayVisibleThroughCallers name (state: ProcessingState) =
+    let key = normalizeIdentifier name
+    let declares scopeId =
+        Map.tryFind scopeId state.SymTab |> Option.exists (fun scope -> scope.Symbols.ContainsKey key)
+    state.CurrentScope <> ScopeNames.globalScope
+    && not (declares state.CurrentScope)
+    && state.SymTab |> Map.exists (fun scopeId scope ->
+        scopeId <> ScopeNames.globalScope
+        && (match Map.tryFind key scope.Symbols with
+            | Some(ArraySym _) -> true
+            | _ -> false))
+
 let validateScalarVsArrayUsage name position requiresIndexedAccess symbol (state: ProcessingState) =
     match symbol with
     | ArraySym _ when not requiresIndexedAccess ->
         appendDiagnostic SemanticDiagnosticCode.InvalidIndexing (Some name) (Some position) $"Array '{name}' used without index at {position.EditorLineNo}:{position.Column}" state
+    | VariableSym _ when requiresIndexedAccess && arrayVisibleThroughCallers name state -> state
     // A formal takes whatever the caller passes, so it may be indexed as an array.
     | VariableSym _
     | ConstantSym _ when requiresIndexedAccess ->
@@ -495,7 +513,9 @@ let private isWritableResolvedTarget requiresIndexedAccess symbol =
 
 let validateWritableTarget name position requiresIndexedAccess symbol (state: ProcessingState) =
     let shapeValidatedState = validateScalarVsArrayUsage name position requiresIndexedAccess symbol state
-    if isWritableResolvedTarget requiresIndexedAccess symbol then
+    let callersArray =
+        requiresIndexedAccess && (match symbol with VariableSym _ -> arrayVisibleThroughCallers name state | _ -> false)
+    if isWritableResolvedTarget requiresIndexedAccess symbol || callersArray then
         shapeValidatedState
     else
         match symbol with
@@ -736,7 +756,7 @@ let rec inferExprType (state: ProcessingState) expr =
     | UnaryExpr(_, pos, op, inner) ->
         let innerType, nextState = inferExprType state inner
         match normalizeIdentifier op with
-        | "NOT" ->
+        | "NOT" | "~~" ->
             let coercedState =
                 match coerceOperandType innerType OnlyInteger with
                 | Some SBType.Integer ->
@@ -744,10 +764,10 @@ let rec inferExprType (state: ProcessingState) expr =
                     | Some value ->
                         match tryCoerceValueText SBType.Integer value with
                         | Some _ -> nextState
-                        | None -> appendDiagnostic SemanticDiagnosticCode.InvalidOperandCoercion None (Some pos) $"Operator 'NOT' cannot coerce operand at {pos.EditorLineNo}:{pos.Column} to Integer" nextState
+                        | None -> appendDiagnostic SemanticDiagnosticCode.InvalidOperandCoercion None (Some pos) $"Operator '{normalizeIdentifier op}' cannot coerce operand at {pos.EditorLineNo}:{pos.Column} to Integer" nextState
                     | None -> nextState
                 | _ when innerType = SBType.Unknown -> nextState
-                | _ -> appendDiagnostic SemanticDiagnosticCode.InvalidOperandTypes None (Some pos) $"Operator 'NOT' expects an integer-coercible expression at {pos.EditorLineNo}:{pos.Column}" nextState
+                | _ -> appendDiagnostic SemanticDiagnosticCode.InvalidOperandTypes None (Some pos) $"Operator '{normalizeIdentifier op}' expects an integer-coercible expression at {pos.EditorLineNo}:{pos.Column}" nextState
             typed SBType.Integer coercedState
         | "+"
         | "-" ->
