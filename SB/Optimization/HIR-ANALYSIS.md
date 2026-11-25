@@ -13,6 +13,24 @@ escaping references, widening thresholds, narrowing/certification status,
 captured FOR metadata, array shapes and native check-removal decisions. Analysis can also
 be requested directly through the F# API without generating code.
 
+## Compile cost
+
+The solver revisits each node many times (worklist, certification, narrowing),
+and call-entry solving re-solves whole scopes. Everything it would recompute
+that does not depend on flow state is therefore computed once per analysis:
+
+- each node's evaluation and full effects, per scope and node;
+- each scope's declared array bounds, and the arrays re-DIMmed anywhere;
+- alias expansions and name resolutions, which `HirEffects` keeps per alias or
+  storage table (an empty set expands to nothing without a scan);
+- effect summaries: each round of the interprocedural fixed point re-evaluates
+  only the callers of a summary that changed in the round before.
+
+Liveness is computed only when the analysis dump reads it. None of this changes
+a result: Turbo's parser and the benchmark programs produce byte-identical
+executables and analysis dumps. On Turbo's parser (4,369 lines, 258 scopes) the
+analysis takes 1.7 s instead of 11.3 s.
+
 ## Control flow
 
 Each elementary operation or source anchor has its own block. IF diamonds,

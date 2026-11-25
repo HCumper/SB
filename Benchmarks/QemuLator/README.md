@@ -1,6 +1,6 @@
 # Turbo FAST versus SB in Q-emuLator
 
-[Compiling Turbo's own parser: Turbo 94.9 s at GoldCard speed, SB 15.8 s on a PC, 24 November 2026](Results/2026-11-24-turbo-parser-compile/README.md)
+[Compiling Turbo's own parser: Turbo 94.9 s at GoldCard speed, SB 5.5 s on a PC, 24 November 2026](Results/2026-11-24-turbo-parser-compile/README.md)
 
 [Whole collection at GoldCard speed: SB faster than Turbo FAST on all nine workloads, and keeping the emulator in real time, 24 November 2026](Results/2026-11-24-goldcard-whole-collection/README.md)
 

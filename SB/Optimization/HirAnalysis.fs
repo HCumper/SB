@@ -19,7 +19,8 @@ let defaultOptions = {UseWideningThresholds=true;NarrowingPasses=8}
 type private FlowState = { Ranges:RangeState; Bounds:Map<SymbolId,int list>; ExactBounds:Map<SymbolId,int list>; Loops:Map<SymbolId,CapturedLoop> }
 type ScopeAnalysis = {
     Graph:Graph
-    Liveness:Liveness
+    /// Only the analysis dump reads liveness, so it is computed on demand.
+    Liveness:Lazy<Liveness>
     EntryRanges:Map<int,RangeState option>
     ExitRanges:Map<int,RangeState option>
     ExpressionRanges:Map<int * HirExpr,Interval option>
@@ -60,7 +61,28 @@ let private get state symbol = state |> Map.tryFind symbol |> Option.defaultValu
 let private put symbol range state = if range=word then Map.remove symbol state else Map.add symbol range state
 let private join a b = {Lower=min a.Lower b.Lower;Upper=max a.Upper b.Upper}
 
-type private RangeContext = { Target:TurboIrOptions; Effects:Context; Integers:Set<SymbolId> }
+// A node's effects depend only on the program and the node, never on flow
+// state, and a scope's declared bounds only on the scope. Solving revisits each
+// node many times (worklist, certification, narrowing) and call entries
+// re-solve scopes, so these are computed once per analysis.
+type private RangeContext = {
+    Target:TurboIrOptions; Effects:Context; Integers:Set<SymbolId>
+    Evaluations:Dictionary<Scope * int,Effects>
+    NodeEffects:Dictionary<Scope * int,Effects>
+    /// Arrays re-DIMmed anywhere in the program.
+    Dimmed:Set<SymbolId>
+    InitialBounds:Dictionary<Scope,Map<SymbolId,int list>> }
+
+let private cached (cache:Dictionary<_,_>) key compute =
+    match cache.TryGetValue key with
+    | true,value -> value
+    | _ ->
+        let value=compute ()
+        cache[key]<-value
+        value
+let private evaluationOf context scope (node:Node) = cached context.Evaluations (scope,node.Id) (fun () -> nodeEvaluation context.Effects scope node.Kind)
+let private effectsOf context scope (node:Node) = cached context.NodeEffects (scope,node.Id) (fun () -> nodeEffects context.Effects scope node.Kind)
+let private expanded context scope symbols = expand context.Effects.Aliases scope symbols
 
 let private nameIsInteger target (name:string) =
     let name=name.ToUpperInvariant()
@@ -146,15 +168,15 @@ let rec private evaluate context state expr : Interval option * bool =
 let private kill context scope effects state =
     if effects.WritesUnknown then Map.empty
     else
-        let killed=expand context.Effects.Aliases scope effects.Writes
+        let killed=expanded context scope effects.Writes
         state |> Map.filter (fun s _ -> not (killed.Contains s))
 
 let private transferRanges context scope (node:Node) state (captures:Map<SymbolId,CapturedLoop>) =
-    let evaluation = nodeEvaluation context.Effects scope node.Kind
+    let evaluation = evaluationOf context scope node
     // All writes made while evaluating sibling expressions are killed before
     // using any sibling's facts. This over-approximates either evaluation order.
     let evaluated = kill context scope evaluation state
-    let effects=nodeEffects context.Effects scope node.Kind
+    let effects=effectsOf context scope node
     let after=kill context scope effects state
     let assign s value =
         if context.Integers.Contains s then put s (evaluate context evaluated value |> fst |> Option.defaultValue word) after else after
@@ -237,8 +259,8 @@ let rec private refine context scope expr truth state =
 let private unknownFlow = {Ranges=Map.empty;Bounds=Map.empty;ExactBounds=Map.empty;Loops=Map.empty}
 
 let private killMetadata context scope effects state =
-    let descriptors=expand context.Effects.Aliases scope effects.DescriptorWrites
-    let loops=expand context.Effects.Aliases scope effects.LoopMetadataWrites
+    let descriptors=expanded context scope effects.DescriptorWrites
+    let loops=expanded context scope effects.LoopMetadataWrites
     {state with Bounds=state.Bounds |> Map.filter(fun s _ -> not effects.DescriptorWritesUnknown && not(descriptors.Contains s))
                 ExactBounds=state.ExactBounds |> Map.filter(fun s _ -> not effects.DescriptorWritesUnknown && not(descriptors.Contains s))
                 Loops=state.Loops |> Map.filter(fun s _ -> not effects.LoopMetadataWritesUnknown && not(loops.Contains s))}
@@ -249,9 +271,9 @@ let private dimmedString (context:RangeContext) symbol =
     context.Effects.Aliases.Storages.TryFind symbol |> Option.exists(fun storage -> storage.Type=HirType.String)
 
 let private transfer context scope (node:Node) state =
-    let evaluation=nodeEvaluation context.Effects scope node.Kind
+    let evaluation=evaluationOf context scope node
     let evaluated=killMetadata context scope evaluation state
-    let after=killMetadata context scope (nodeEffects context.Effects scope node.Kind) evaluated
+    let after=killMetadata context scope (effectsOf context scope node) evaluated
     let mutable bounds=after.Bounds
     let mutable exactBounds=after.ExactBounds
     let mutable loops=after.Loops
@@ -354,18 +376,22 @@ let private covers old candidate =
         (old.ExactBounds |> Map.forall(fun s bounds -> candidate.ExactBounds.TryFind s = Some bounds)) &&
         (old.Loops |> Map.forall(fun s loop -> candidate.Loops.TryFind s |> Option.exists(fun actual -> loop.Owner=actual.Owner && interval loop.Finish actual.Finish && interval loop.Step actual.Step)))
 
+// Arrays this scope declares with constant bounds and never re-DIMs anywhere.
+let private declaredBounds context scope =
+    let program=context.Effects.Program
+    let routineName=match scope with RoutineScope r -> program.Routines |> List.tryFind(fun routine -> routine.Symbol=r) |> Option.map _.Name | MainScope -> None
+    context.Effects.Aliases.Storages |> Map.toSeq |> Seq.choose(fun (s,storage) ->
+        let local=match scope,storage.Class with MainScope,GlobalStorage -> true | RoutineScope _,RoutineLocalStorage name -> routineName=Some name | _ -> false
+        match storage.Type,storage.Dimensions with
+        | Array _,Some dims when local && not(context.Dimmed.Contains s) && not dims.IsEmpty && List.forall(fun n -> n>=0 && n<=32767) dims -> Some(s,dims)
+        | _ -> None) |> Map.ofSeq
+
 let private solve options context graph globalEntry =
     let incoming=Dictionary<int,FlowState option>()
     let outgoing=Dictionary<int,FlowState option>()
     let changes=Dictionary<int,int>()
     for KeyValue(id,_) in graph.Nodes do incoming[id]<-None;outgoing[id]<-None;changes[id]<-0
-    let dimmed=HirEffects.statements context.Effects.Program.Main |> Seq.append(context.Effects.Program.Routines |> Seq.collect(fun r -> HirEffects.statements r.Body)) |> Seq.choose(function Dim(s,_,_) -> Some s | _ -> None) |> Set.ofSeq
-    let initialBounds =
-        context.Effects.Aliases.Storages |> Map.toSeq |> Seq.choose(fun (s,storage) ->
-            let local=match graph.Scope,storage.Class with MainScope,GlobalStorage -> true | RoutineScope r,RoutineLocalStorage name -> context.Effects.Program.Routines |> List.exists(fun routine -> routine.Symbol=r && routine.Name=name) | _ -> false
-            match storage.Type,storage.Dimensions with
-            | Array _,Some dims when local && not(dimmed.Contains s) && not dims.IsEmpty && List.forall(fun n -> n>=0 && n<=32767) dims -> Some(s,dims)
-            | _ -> None) |> Map.ofSeq
+    let initialBounds = cached context.InitialBounds graph.Scope (fun () -> declaredBounds context graph.Scope)
     let addFacts initial facts = Map.fold(fun state symbol shape -> Map.add symbol shape state) initial facts
     // An unreachable entry (None) leaves every node unreachable: its call sites
     // then contribute nothing to the call-entry equations.
@@ -430,7 +456,7 @@ let private solve options context graph globalEntry =
     let exitRanges=outgoing |> Seq.map (fun p -> p.Key,p.Value |> Option.map _.Ranges) |> Map.ofSeq
     let expressions = [
         for KeyValue(id,node) in graph.Nodes do
-            let state=entryRanges[id] |> Option.map (kill context graph.Scope (nodeEvaluation context.Effects graph.Scope node.Kind))
+            let state=entryRanges[id] |> Option.map (kill context graph.Scope (evaluationOf context graph.Scope node))
             for expr in nodeExpressions node.Kind |> Seq.collect HirEffects.expressions do
                 yield (id,expr), state |> Option.bind (fun state -> evaluate context state expr |> fst)] |> Map.ofList
     // A jump into a different FOR body can carry another loop's hidden NEXT
@@ -453,7 +479,7 @@ let private solve options context graph globalEntry =
     let metadataTrusted=graph.Nodes |> Map.forall metadataValid
     let trustedInitialisers=graph.ForRegions |> Map.toSeq |> Seq.choose(fun (_,region) ->
         if metadataValid region.Check graph.Nodes[region.Check] then Some region.Initialiser else None) |> Set.ofSeq
-    {Graph=graph;Liveness=liveness context.Effects graph;EntryRanges=entryRanges;ExitRanges=exitRanges;ExpressionRanges=expressions
+    {Graph=graph;Liveness=lazy(liveness context.Effects graph);EntryRanges=entryRanges;ExitRanges=exitRanges;ExpressionRanges=expressions
      EntryBounds=incoming |> Seq.map(fun p -> p.Key,p.Value |> Option.map _.Bounds) |> Map.ofSeq
      EntryExactBounds=incoming |> Seq.map(fun p -> p.Key,p.Value |> Option.map _.ExactBounds) |> Map.ofSeq
      EntryLoops=incoming |> Seq.map(fun p -> p.Key,p.Value |> Option.map _.Loops) |> Map.ofSeq
@@ -544,7 +570,7 @@ let private solveCallEntries options context barriers (graphs:(Scope*Graph) list
                     // Arguments and sibling calls may change descriptors before
                     // entry. For expression calls this also includes the callee's
                     // MAY effects, deliberately withholding some safe facts.
-                    let evaluation=nodeEvaluation context.Effects scope node.Kind
+                    let evaluation=evaluationOf context scope node
                     let before={unknownFlow with Bounds=bounds;ExactBounds=exact}
                     let evaluated=killMetadata context scope evaluation before
                     let passed={unknownFlow with Bounds=evaluated.Bounds |> Map.filter(fun s _ -> globalArrays.Contains s)
@@ -738,7 +764,8 @@ let analyzeWithOptions options target program =
     let effects=HirEffects.analyze program
     let integers=effects.Aliases.Storages |> Map.toSeq |> Seq.choose (fun (symbol,storage) ->
         if storage.Dimensions.IsNone && (match storage.Type with Array _ -> false | _ -> true) && nameIsInteger target storage.Name then Some symbol else None) |> Set.ofSeq
-    let context={Target=target;Effects=effects;Integers=integers}
+    let context={Target=target;Effects=effects;Integers=integers;Evaluations=Dictionary();NodeEffects=Dictionary();InitialBounds=Dictionary()
+                 Dimmed=HirEffects.statements program.Main |> Seq.append(program.Routines |> Seq.collect(fun r -> HirEffects.statements r.Body)) |> Seq.choose(function Dim(s,_,_) -> Some s | _ -> None) |> Set.ofSeq}
     let graphs = (MainScope,build effects MainScope program.Main) :: (program.Routines |> List.map (fun r -> RoutineScope r.Symbol,build effects (RoutineScope r.Symbol) r.Body))
     let barriers=controlBarriers context graphs
     let scopes,entryShapePasses,entryShapesCertified=solveCallEntries options context barriers graphs
@@ -748,7 +775,7 @@ let analyzeWithOptions options target program =
     let candidates = [
         for KeyValue(scope,analysis) in scopes do
             for KeyValue(id,node) in analysis.Graph.Nodes do
-                let evaluation=nodeEvaluation effects scope node.Kind
+                let evaluation=evaluationOf context scope node
                 let state=analysis.EntryRanges[id] |> Option.map (kill context scope evaluation)
                 for expr in nodeExpressions node.Kind |> Seq.collect HirEffects.expressions |> Seq.filter arithmetic do
                     let proven=
@@ -764,7 +791,7 @@ let analyzeWithOptions options target program =
             let access symbol indexes =
                 effects.Aliases.Storages.TryFind symbol |> Option.map(fun storage -> normalize storage.Name,indexes,Some symbol)
             for KeyValue(id,node) in analysis.Graph.Nodes do
-                let evaluation=nodeEvaluation effects scope node.Kind
+                let evaluation=evaluationOf context scope node
                 let state=analysis.EntryRanges[id] |> Option.map(kill context scope evaluation)
                 let bounds=analysis.EntryBounds[id]
                 let exactBounds=analysis.EntryExactBounds[id]
@@ -864,7 +891,7 @@ let analyzeWithOptions options target program =
                         uniqueStrings.TryFind name |> Option.exists(fun symbol ->
                             analysis.EntryBounds[id] |> Option.exists(fun bounds ->
                                 // Effects evaluated earlier in the node may resize or rebind it.
-                                let evaluated=killMetadata context scope (nodeEvaluation effects scope node.Kind) {unknownFlow with Bounds=bounds}
+                                let evaluated=killMetadata context scope (evaluationOf context scope node) {unknownFlow with Bounds=bounds}
                                 evaluated.Bounds.TryFind symbol |> Option.exists(fun shape -> shape.Length=1)))
                     yield site,allocated]
     let allocatedStrings=stringSites |> List.groupBy fst |> List.choose(fun (site,occurrences) -> if occurrences |> List.forall snd then Some site else None) |> Set.ofList
@@ -918,7 +945,7 @@ let format (analysis:Analysis) =
             data.EntryLoops[id] |> Option.iter(fun loops ->
                 for KeyValue(symbol,captured) in loops do line $"    captured FOR {symbols(Set.singleton symbol)} owner={captured.Owner} end=[{captured.Finish.Lower},{captured.Finish.Upper}] step=[{captured.Step.Lower},{captured.Step.Upper}]")
             line $"    {effects (nodeEffects analysis.Effects scope node.Kind)}"
-            line $"    live-in=[{symbols data.Liveness.LiveIn[id]}] live-out=[{symbols data.Liveness.LiveOut[id]}] dominators={data.Graph.Dominators[id]}"
+            line $"    live-in=[{symbols data.Liveness.Value.LiveIn[id]}] live-out=[{symbols data.Liveness.Value.LiveOut[id]}] dominators={data.Graph.Dominators[id]}"
             for expr in nodeExpressions node.Kind |> Seq.collect HirEffects.expressions |> Seq.filter arithmetic |> Seq.distinct do
                 let bound=data.ExpressionRanges.TryFind(id,expr) |> Option.flatten
                 let value=match bound with Some r -> $"[{r.Lower},{r.Upper}]" | None -> "unknown/unreachable"

@@ -1,39 +1,50 @@
 # Compiling Turbo's own parser: Turbo and SB
 
 Turbo 5.09 compiles its own parser (`parser509`, 4,369 lines) in **94.9 s** at GoldCard speed
-under Q-emuLator. SB compiles the identical file in **15.8 s** with full optimization (Release
-build) on a Windows PC, or **3.0 s** without optimization.
+under Q-emuLator. SB compiles the identical file in **5.5 s** with full optimization (Release
+build) on a Windows PC, or **2.9 s** without optimization.
 
 | Compiler | Where it runs | Optimization | Compile time, s | Output, bytes |
 |---|---|---|---:|---:|
 | Turbo 5.09 (parse + codegen) | Q-emuLator, GoldCard speed | `TURBO_optim 2`, `TURBO_model ">"` | 94.87 (94.873, 94.872) | 354,960 |
-| SB, Release build | i7-13700 PC | `--hir-opt --native-regions --regalloc` | 15.75 (15.4–15.8) | 160,060 |
-| SB, Debug build | i7-13700 PC | the same | 21.23 (20.9–23.5) | 160,060 |
-| SB, Release build | i7-13700 PC | `--hir-opt --native-regions` | 15.39 (15.4–15.5) | 159,950 |
-| SB, Release build | i7-13700 PC | HIR optimization only | 3.83 (3.7–4.1) | 88,814 |
-| SB, Release build | i7-13700 PC | none | 2.97 (2.9–3.0) | 88,828 |
+| SB, Release build | i7-13700 PC | `--hir-opt --native-regions --regalloc` | 5.51 (5.4–5.6) | 160,060 |
+| SB, Debug build | i7-13700 PC | the same | 5.59 (5.5–5.8) | 160,060 |
+| SB, Release build | i7-13700 PC | `--hir-opt --native-regions` | 5.35 (5.3–5.4) | 159,950 |
+| SB, Release build | i7-13700 PC | HIR optimization only | 3.64 (3.6–3.7) | 88,814 |
+| SB, Release build | i7-13700 PC | none | 2.91 (2.9–3.0) | 88,828 |
 
 The two sides run on different machines, so these are not like-for-like. Turbo compiles inside
 the emulated QL; SB is a cross-compiler running on .NET, and its times include .NET startup
 and JIT. SB times are the median (range) of five runs, or three for the last three rows
-([SB timings](sb-timings.txt)).
+([SB timings](sb-timings.txt)). Another CPU-heavy program ran on the PC throughout, using about
+a third of its threads, so SB's absolute times are approximate; times measured back to back
+compare fairly.
 
-- Native-region selection takes about 11.6 of SB's 15.8 seconds. HIR optimization adds about
-  0.9 s and register allocation about 0.4 s; the rest is parsing, analysis and code generation.
+- Native regions, mostly the HIR analysis behind them, take about 1.7 of SB's 5.5 seconds. HIR
+  optimization adds about 0.7 s and register allocation about 0.2 s; the rest is parsing,
+  semantic analysis and code generation.
 - Turbo's two runs agree to the millisecond and produced byte-identical object files. Its report
   gives 0 errors, 11 warnings ("only exists as a LOCAL") and a parse rate of 10,384
   statements per minute ([report](turbo-run3/p509_report.txt)).
 - Neither compiled parser was run. Both need the Turbo Toolkit, and SB's needs nothing else: its
   29 resident names are all Turbo Toolkit routines from Turbo's own name table.
 
-### The first SB figures
+### Earlier SB figures
 
-The first SB build (commit 404837e) took **27.06 s** (Release) and 36.32 s (Debug). HIR
-optimization then folded the lengths of five constant slices, such as `PROG$(1 TO 31)`
-(P 12706), and code generation no longer recognised them as slices. Each became a call to a
-resident `MID$`, which neither the QL ROM nor these toolkits provide. With the slices kept,
-register allocation fell from about 11 s to 0.4 s and HIR optimization from about 2.9 s to
-0.9 s. Why those five calls cost so much has not been traced.
+The first figures given here, 27.06 s (Release) and 36.32 s (Debug) at commit 404837e, were
+wrong. Those five Release runs did take 27 s each, but rebuilt from 404837e the next day the
+same compiler takes 15.20 s (14.9–15.3) and makes the same executable; the host was more
+heavily loaded the first time. They were followed by 15.75 s for commit 5400ccb, and the
+difference was credited to 5400ccb. It changes the executable but not the compile time:
+measured back to back, 404837e takes 15.20 s and 5400ccb 15.45 s (14.9–15.5).
+
+5400ccb fixed five constant slices, such as `PROG$(1 TO 31)` (P 12706). HIR optimization had
+folded their lengths, so code generation no longer recognised them as slices and called a
+resident `MID$` instead, which neither the QL ROM nor these toolkits provide.
+
+At both commits the HIR analysis behind native regions took 11.3 of the 15.2 s. It now takes
+1.7 s and produces the same results, as described under
+[compile cost](../../../../SB/Optimization/HIR-ANALYSIS.md#compile-cost).
 
 ## The source both compilers compiled
 
@@ -90,7 +101,7 @@ changes, each tested and each confirmed by disabling it, are described in
 - Turbo's argument passing: a formal not named by `REFERENCE` takes a value when the argument
   cannot be bound by reference (a different type, an array element or an expression).
 - Constant slice bounds, such as `PROG$(1 TO 31)`, stay slices under HIR optimization (see
-  [the first SB figures](#the-first-sb-figures)).
+  [earlier SB figures](#earlier-sb-figures)).
 
 Each of the 18 changes made at least one test fail when disabled. Each new Turbo-dialect
 program runs in six modes (HIR optimization, native regions and register allocation on and

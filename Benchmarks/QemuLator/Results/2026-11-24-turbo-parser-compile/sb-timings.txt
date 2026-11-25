@@ -1,46 +1,56 @@
 SB compiling p509 (sha256 bc46254655d4adc253dc3fee46071eb1fec091d3d5123128b7fad14f369e2e57),
-the same file Turbo compiled, on Windows 11, Intel Core i7-13700, host otherwise quiet.
-Wall-clock milliseconds of `dotnet SB.dll p509_sb.bas <output> false turbo <flags>`, including
-.NET startup and JIT. Every run exited 0.
+the same file Turbo compiled, on Windows 11, Intel Core i7-13700 (24 threads). Wall-clock milliseconds of
+`dotnet SB.dll p509_sb.bas <output> false turbo <flags>`, including .NET startup and JIT.
+Every run exited 0. The host was never quiet: on 25 November a chess engine averaged about 8.5
+cores throughout, so absolute times are approximate. Runs made back to back compare fairly.
 
-With constant slices kept as slices (the commit after 404837e)
---------------------------------------------------------------
-The executable calls no resident MID$. It is 160,060 bytes with native regions and register
-allocation, 159,950 bytes with native regions only, 88,814 bytes with HIR optimization only and
-88,828 bytes without any.
+After the HIR analysis speed-up (the commit after 5400ccb), 25 November, 10:24-10:26
+------------------------------------------------------------------------------------
+The executables and every --dump-hir file are byte-identical to 5400ccb's: 160,060 bytes with
+native regions and register allocation, 159,950 with native regions only, 88,814 with HIR
+optimization only and 88,828 without any.
 
 Debug build, --hir-opt --native-regions --regalloc:
-  21233, 20932, 21135, 23482, 23019         median 21233
+  5581, 5592, 5715, 5841, 5499              median 5592
 
 Release build, --hir-opt --native-regions --regalloc:
-  15801, 15751, 15805, 15449, 15454         median 15751
+  5404, 5587, 5426, 5511, 5529              median 5511
 
 Release build, --hir-opt --native-regions --no-regalloc:
-  15468, 15359, 15392                       median 15392
+  5335, 5349, 5412                          median 5349
 
 Release build, --hir-opt --no-native-regions --no-regalloc:
-  3834, 3749, 4103                          median 3834
+  3635, 3615, 3740                          median 3635
 
 Release build, --no-hir-opt --no-native-regions --no-regalloc:
-  2861, 2972, 3005                          median 2972
+  2979, 2909, 2869                          median 2909
 
-At 404837e, before that fix
----------------------------
-HIR optimization folded the lengths of five constant slices, which then became resident MID$
-calls. The executable was 159,112 bytes with native regions (both builds), 88,876 bytes with
-HIR optimization only and 88,828 bytes without either.
+404837e and 5400ccb rebuilt and timed back to back, 25 November, 10:17-10:20
+---------------------------------------------------------------------------
+Release builds. 5400ccb keeps constant slices as slices, so its executables differ, but its
+compile time does not.
 
-Debug build, --hir-opt --native-regions --regalloc:
+404837e, --hir-opt --native-regions --regalloc:   15284, 14910, 15196   median 15196
+404837e, --hir-opt --no-native-regions --no-regalloc: 3701, 3888, 3742  median 3742
+5400ccb, --hir-opt --native-regions --regalloc:   15457, 15447, 14910   median 15447
+5400ccb, --hir-opt --no-native-regions --no-regalloc: 3807, 3668, 3683  median 3683
+
+Stage times at 404837e (temporary stopwatches in CompilerPipeline): HIR optimization 0.9 s,
+HIR analysis 11.3 s, IR backend 0.1 s, native selection 0.1 s, code generation with register
+allocation 0.13 s.
+
+Earlier figures, 24 November: wrong, the host was more heavily loaded
+----------------------------------------------------------------------
+These were recorded as "host otherwise quiet", which was not checked. Rebuilt and rerun the
+next day, the same commits take the times above and make the same executables.
+
+404837e, Debug build, full optimization:
   37493, 36177, 37536, 36042, 36317         median 36317
-
-Release build, --hir-opt --native-regions --regalloc:
+404837e, Release build, full optimization:
   27354, 27220, 27040, 27062, 26995         median 27062
-
-Release build, --hir-opt --native-regions --no-regalloc:
-  16401, 15946                              two runs
-
-Release build, --hir-opt --no-native-regions --no-regalloc:
+404837e, Release build, HIR optimization only:
   6021, 5698, 5304                          median 5698
-
-Release build, --no-hir-opt --no-native-regions --no-regalloc:
+404837e, Release build, no optimization:
   2842, 2780, 3184                          median 2842
+5400ccb, Release build, full optimization, measured later that evening:
+  15801, 15751, 15805, 15449, 15454         median 15751

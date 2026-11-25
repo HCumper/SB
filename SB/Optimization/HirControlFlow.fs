@@ -235,20 +235,27 @@ type Liveness = { LiveIn:Map<int,Set<SymbolId>>; LiveOut:Map<int,Set<SymbolId>> 
 /// symbol; alias-expanded reads deliberately keep possible referents live.
 let liveness context graph =
     let visible = context.Aliases.Visible[graph.Scope]
+    let order = List.rev graph.ReversePostOrder
+    // A node's uses, definitions and successors never change between iterations.
+    let targets = graph.Edges |> List.groupBy _.Source |> Map.ofList |> Map.map (fun _ edges -> edges |> List.map _.Target)
+    let facts = Dictionary<int,Set<SymbolId> * Set<SymbolId> * int list>()
+    for id in order do
+        let node=graph.Nodes[id]
+        let effects = nodeEffects context graph.Scope node.Kind
+        let uses = if effects.ReadsUnknown then visible else expand context.Aliases graph.Scope effects.Reads
+        let defs =
+            match node.Kind with
+            | Statement(Assign(WriteVar(s,_,_),_,_)) | ForInitialise(s,_,_) -> Set.singleton s
+            | _ -> Set.empty
+        facts[id] <- (uses, defs, targets.TryFind id |> Option.defaultValue [])
     let mutable liveIn = graph.Nodes |> Map.map (fun _ _ -> Set.empty)
     let mutable liveOut = liveIn
     let mutable changed = true
     while changed do
         changed <- false
-        for id in List.rev graph.ReversePostOrder do
-            let node=graph.Nodes[id]
-            let effects = nodeEffects context graph.Scope node.Kind
-            let uses = if effects.ReadsUnknown then visible else expand context.Aliases graph.Scope effects.Reads
-            let defs =
-                match node.Kind with
-                | Statement(Assign(WriteVar(s,_,_),_,_)) | ForInitialise(s,_,_) -> Set.singleton s
-                | _ -> Set.empty
-            let after = successors graph id |> List.map (fun e -> liveIn[e.Target]) |> Set.unionMany
+        for id in order do
+            let uses, defs, next = facts[id]
+            let after = next |> List.map (fun target -> liveIn[target]) |> Set.unionMany
             let before = Set.union uses (Set.difference after defs)
             if before<>liveIn[id] || after<>liveOut[id] then
                 liveIn <- liveIn.Add(id,before); liveOut <- liveOut.Add(id,after); changed <- true

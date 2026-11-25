@@ -107,7 +107,7 @@ let rec statements body = seq {
 // A free name in a procedure can refer to a caller's dynamic binding. Resolve
 // it only if no parameter/local anywhere can shadow the unique global. A
 // procedure's own binding takes precedence and is private across normal calls.
-let private namedRoot (program:HirProgram) (storages:Map<SymbolId,HirStorage>) scope name =
+let private resolveName (program:HirProgram) (storages:Map<SymbolId,HirStorage>) scope name =
     let same (storage:HirStorage)=String.Equals(storage.Name,name,StringComparison.OrdinalIgnoreCase)
     let single (matches:HirStorage list) = match matches with [storage] -> Some storage.Symbol | _ -> None
     match scope with
@@ -118,6 +118,17 @@ let private namedRoot (program:HirProgram) (storages:Map<SymbolId,HirStorage>) s
         else
             let matches=storages |> Map.toList |> List.map snd |> List.filter same
             if matches |> List.forall(fun storage -> storage.Class=GlobalStorage) then single matches else None
+
+// Resolution is pure in the program and its storage table, and the analyses
+// resolve the same names many times over, so results are kept per table. A
+// table seen with a different program is resolved afresh, never from the cache.
+type private RootCache = { Program:HirProgram; Results:System.Collections.Concurrent.ConcurrentDictionary<Scope * string,SymbolId option> }
+let private rootCaches = System.Runtime.CompilerServices.ConditionalWeakTable<Map<SymbolId,HirStorage>,RootCache>()
+
+let private namedRoot (program:HirProgram) (storages:Map<SymbolId,HirStorage>) scope name =
+    let cache = rootCaches.GetValue(storages, fun _ -> { Program=program; Results=System.Collections.Concurrent.ConcurrentDictionary() })
+    if obj.ReferenceEquals(cache.Program, program) then cache.Results.GetOrAdd((scope,name), fun _ -> resolveName program storages scope name)
+    else resolveName program storages scope name
 
 let private storageRoot program (storages:Map<SymbolId,HirStorage>) scope symbol =
     storages.TryFind symbol |> Option.bind(fun storage -> namedRoot program storages scope storage.Name)
@@ -207,9 +218,17 @@ let mayAlias (aliases: AliasInfo) scope a b =
          | Some a,Some b -> String.Equals(a.Name,b.Name,StringComparison.OrdinalIgnoreCase)
          | _ -> true)
 
+// Expansion is pure in the alias table, and analyses expand the same write and
+// read sets at every visit to a node, so results are kept per table. Nothing
+// aliases an empty set, which skips scanning every visible symbol.
+let private expansionCaches = System.Runtime.CompilerServices.ConditionalWeakTable<AliasInfo,System.Collections.Concurrent.ConcurrentDictionary<Scope * Set<SymbolId>,Set<SymbolId>>>()
+
 let expand aliases scope symbols =
-    let visible = aliases.Visible.TryFind scope |> Option.defaultValue Set.empty
-    visible |> Set.filter (fun candidate -> symbols |> Set.exists (mayAlias aliases scope candidate))
+    if Set.isEmpty symbols then Set.empty
+    else
+        expansionCaches.GetValue(aliases, fun _ -> System.Collections.Concurrent.ConcurrentDictionary()).GetOrAdd((scope,symbols), fun _ ->
+            let visible = aliases.Visible.TryFind scope |> Option.defaultValue Set.empty
+            visible |> Set.filter (fun candidate -> symbols |> Set.exists (mayAlias aliases scope candidate)))
 
 let conflicts aliases scope a b =
     a.WritesUnknown || b.WritesUnknown ||
@@ -403,15 +422,28 @@ let rec statement context scope stmt =
 /// residents remain full barriers; known calls map formal effects to actuals.
 let analyze program =
     let aliases = analyzeAliases program
+    // A routine's effects read only the summaries of the routines it calls. A
+    // round therefore re-evaluates just the callers of a summary that changed in
+    // the round before: for any other routine it would recompute its summary
+    // unchanged, combine being idempotent. Each round still equals a full pass.
+    let callees =
+        program.Routines |> List.map (fun r ->
+            r.Symbol,
+            set [ for stmt in statements r.Body do
+                      match stmt with ProcCall(s,_,_,_) -> yield s | _ -> ()
+                      for expr in statementExpressions stmt |> Seq.collect expressions do
+                          match expr with CallFunc(s,_,_,_) -> yield s | _ -> () ]) |> Map.ofList
     let mutable summaries = program.Routines |> List.map (fun r -> r.Symbol,empty) |> Map.ofList
-    let mutable changed = true
-    while changed do
+    let mutable pending = program.Routines |> List.map _.Symbol |> Set.ofList
+    while not pending.IsEmpty do
         let context = {Program=program;Aliases=aliases;Summaries=summaries}
         let next = program.Routines |> List.map (fun r ->
+            if not (pending.Contains r.Symbol) then r.Symbol,summaries[r.Symbol] else
             let effects = r.Body |> List.map (statement context (RoutineScope r.Symbol)) |> combineAll
             // Own LOCAL/formal bindings are projected out at a normal return.
             // Free names that could be rebound remain explicitly unknown.
             r.Symbol,combine summaries[r.Symbol] effects) |> Map.ofList
-        changed <- next<>summaries
+        let changed = next |> Map.filter (fun symbol effects -> effects<>summaries[symbol]) |> Map.keys |> Set.ofSeq
+        pending <- program.Routines |> List.filter (fun r -> not (Set.intersect callees[r.Symbol] changed).IsEmpty) |> List.map _.Symbol |> Set.ofList
         summaries <- next
     {Program=program;Aliases=aliases;Summaries=summaries}

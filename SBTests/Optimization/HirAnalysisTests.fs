@@ -706,7 +706,7 @@ let ``liveness never treats a call MAY write as a definite kill`` () =
     let setter=routine proc "SETTER" [] [If(read flag,[assign x (number 1)],None,pos)]
     let a={program [ProcCall(proc,None,[],pos);print(read x)] with Routines=[setter]} |> analyze
     let id=(main a).Graph.Nodes |> Map.toList |> List.find (fun (_,n) -> match n.Kind with Statement(ProcCall _) -> true | _ -> false) |> fst
-    Assert.That((main a).Liveness.LiveIn[id].Contains x, Is.True)
+    Assert.That((main a).Liveness.Value.LiveIn[id].Contains x, Is.True)
 
 [<Test>]
 let ``unknown writes during expression evaluation defeat arithmetic proofs`` () =
